@@ -851,7 +851,7 @@ async fn watchdog(app: &Arc<App>, s: &Arc<Session>, what: &str) {
 
 /// Periodic care: interrupts, stuck steps, idle and orphaned sessions, stale deliveries.
 pub async fn sweep(app: &Arc<App>) -> AppResult<()> {
-    let projects = app.blocking(|app| app.projects()).await?;
+    let projects = app.blocking(|app| app.with_server(|db| db.projects())).await?;
     for p in projects {
         let slug = p.slug.clone();
         let interrupted = app.blocking(move |app| app.with_tracker(&slug, |t| t.bus().interrupted_mailboxes())).await.unwrap_or_default();

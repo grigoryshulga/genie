@@ -1,8 +1,7 @@
 //! SQLite access: connection setup, schema, migrations and write transactions.
 //!
-//! The schema is the TypeScript tracker's schema v3 unchanged plus the event
-//! journal (v4), so the Rust core opens an existing `.genie/genie.db` in place and
-//! the TypeScript tools keep working on the same file during the migration.
+//! The core opens an existing `.genie/genie.db` in place: the schema is created
+//! if missing and older databases get the columns they lack.
 
 use std::cell::Cell;
 use std::path::Path;
@@ -182,7 +181,7 @@ CREATE INDEX IF NOT EXISTS usage_task ON usage(task);
 CREATE INDEX IF NOT EXISTS usage_agent ON usage(agent);
 "#;
 
-/// Columns added after the first TypeScript release; applied to existing databases on open.
+/// Columns added after the first release; applied to existing databases on open.
 const COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     ("members", "heartbeat_at", "ALTER TABLE members ADD COLUMN heartbeat_at TEXT"),
     ("teams", "stop_reason", "ALTER TABLE teams ADD COLUMN stop_reason TEXT"),
@@ -203,7 +202,7 @@ const COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     ("tasks", "assignee", "ALTER TABLE tasks ADD COLUMN assignee TEXT NOT NULL DEFAULT ''"),
 ];
 
-/// Current time in the format the TypeScript tracker writes (`Date#toISOString`).
+/// Current time as an ISO 8601 UTC timestamp with milliseconds (`2026-09-29T12:00:00.000Z`).
 pub fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }

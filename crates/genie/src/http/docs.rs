@@ -1,6 +1,5 @@
-//! Knowledge routes. `/api/docs/{version,tree,search,page}` keep the TypeScript
-//! server's JSON, so the SPA's Docs page works on the vault; proposals, spaces
-//! and the changelog are new.
+//! Knowledge routes: `/api/docs/{version,tree,search,page}` serve the SPA's Docs
+//! page from the vault, next to proposals, spaces and the changelog.
 
 use std::sync::Arc;
 

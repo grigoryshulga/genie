@@ -1,7 +1,6 @@
 //! Genie domain core.
 //!
-//! The task tracker (ported from the TypeScript version, which opened the same
-//! database) plus the event journal the platform is built on. See
+//! The task tracker plus the event journal the platform is built on. See
 //! `docs/platform/backend.md`.
 
 pub mod automation;

@@ -4,7 +4,7 @@
 //! turns and jobs, questionnaires and knowledge proposals.
 //!
 //! Task data stays in one tracker database per project (see `tracker`), which
-//! keeps projects isolated, portable and compatible with the TypeScript tools.
+//! keeps projects isolated and portable.
 //!
 //! Secrets are never stored: sessions, API tokens, invites and answer links are
 //! kept as SHA-256 hashes; passwords as Argon2id hashes. The one exception is a

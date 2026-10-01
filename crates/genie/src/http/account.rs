@@ -310,7 +310,7 @@ async fn update_user(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>,
             })?;
             if user.login != before.login {
                 // Tasks name the person responsible by login: they follow the new one.
-                for p in app.projects()? {
+                for p in app.with_server(|db| db.projects())? {
                     app.with_tracker(&p.slug, |t| {
                         t.conn().execute("UPDATE tasks SET assignee = ?1 WHERE assignee = ?2", [&user.login, &before.login])?;
                         Ok(())
