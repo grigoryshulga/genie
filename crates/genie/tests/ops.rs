@@ -71,7 +71,10 @@ async fn the_preflight_is_for_server_admins() {
     assert_eq!(s, StatusCode::OK, "the local owner is an admin: {d}");
     let checks = d["checks"].as_array().unwrap();
     assert!(checks.iter().any(|c| c["area"] == "projects" && c["level"] == "ok"), "{d}");
-    assert!(checks.iter().any(|c| c["area"] == "web" && c["level"] == "fail"), "the harness serves no web UI: {d}");
+    assert!(
+        checks.iter().any(|c| c["area"] == "web" && c["level"] == "warn"),
+        "the harness's --web directory is missing: the built-in UI is served: {d}"
+    );
 
     let vic = h.app.with_server(|db| db.create_user("vic", "", None, Some("password-2"), false)).unwrap();
     h.app.with_server(|db| db.set_membership("shop", vic.id, genie_core::server_db::ProjectRole::Admin)).unwrap();
