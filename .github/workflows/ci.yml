@@ -5,6 +5,10 @@ on:
     branches: [main, rc]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust:
     name: Rust server
@@ -35,7 +39,7 @@ jobs:
         env:
           GENIE_REQUIRE_SANDBOX: 1
           GENIE_TEST_SANDBOX: bwrap
-        run: cargo test --all
+        run: cargo test --workspace
       # `cargo test` writes the API types for the web from the Rust structs (ts-rs).
       - name: API types for the web are committed
         run: |
