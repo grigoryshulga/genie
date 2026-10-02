@@ -530,22 +530,27 @@ async fn images_come_from_the_repository_or_the_teams_worktree_and_nowhere_else(
     assert_ne!(s, StatusCode::OK);
 }
 
-/// Moving from the pi extension: the repository's `.genie/` — here the one the
-/// TypeScript CLI wrote — joins the server in place, with its tasks and ids.
+/// A repository's existing `.genie/` joins the server in place, with its tasks and ids.
 #[tokio::test]
-async fn a_repository_tracker_from_the_pi_extension_joins_with_its_tasks() {
+async fn a_repository_tracker_joins_with_its_tasks() {
     let h = Harness::new();
     let repo = h.dir.path().join("my-repo");
-    std::fs::create_dir_all(repo.join(".genie")).unwrap();
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../genie-core/tests/fixtures/ts-tracker.db");
-    std::fs::copy(fixture, repo.join(".genie/genie.db")).unwrap();
+    std::fs::create_dir_all(&repo).unwrap();
+    let tracker = genie_core::Tracker::init(repo.join(".genie"), Some("TS"), Some("shop")).unwrap();
+    tracker
+        .create(
+            &genie_core::Actor::new("anna", genie_core::Role::Human),
+            genie_core::CreateInput { title: "Export".into(), ..Default::default() },
+        )
+        .unwrap();
+    drop(tracker);
     let r = &h.router;
     let (s, p, _) = call(r, "POST", "/api/projects").json(json!({ "slug": "shop", "repo": repo.to_string_lossy() })).send().await;
     assert_eq!(s, StatusCode::CREATED, "{p}");
     assert_eq!(p["trackerDir"], repo.join(".genie").canonicalize().unwrap().to_string_lossy().as_ref(), "registered in place");
     let (s, task, _) = call(r, "GET", "/api/tasks/TS-1").header("x-genie-project", "shop").send().await;
     assert_eq!(s, StatusCode::OK, "{task}");
-    assert_eq!((task["title"].as_str(), task["status"].as_str()), (Some("Export"), Some("needs_owner")));
+    assert_eq!(task["title"].as_str(), Some("Export"));
     let (s, next, _) = call(r, "POST", "/api/tasks").header("x-genie-project", "shop").json(json!({ "title": "Next" })).send().await;
     assert_eq!((s, next["id"].as_str()), (StatusCode::CREATED, Some("TS-2")), "{next}");
 }

@@ -257,7 +257,7 @@ pub async fn handle_update(app: &Arc<App>, u: &Value) -> Result<(), String> {
             .blocking(move |app| {
                 let u = app.with_server(|db| db.user(user))?;
                 let project = app
-                    .projects()?
+                    .with_server(|db| db.projects())?
                     .into_iter()
                     .find(|p| app.with_server(|db| Ok(db.project_role(&p.slug, &u)?.is_some_and(|r| r.can_write()))).unwrap_or(false));
                 let Some(p) = project else { return Ok(None) };

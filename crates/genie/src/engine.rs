@@ -52,7 +52,7 @@ pub fn start(app: &Arc<App>) {
 
 /// One engine pass (also used directly by tests).
 pub fn tick(app: &App) -> AppResult<()> {
-    for p in app.projects()? {
+    for p in app.with_server(|db| db.projects())? {
         if let Err(e) = intake(app, &p.slug) {
             eprintln!("genie engine: {}: {e}", p.slug);
         }

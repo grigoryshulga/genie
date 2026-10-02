@@ -128,7 +128,7 @@ pub fn recover(app: &App) -> AppResult<()> {
         db.requeue_running_jobs()?;
         db.interrupt_running_turns()
     })?;
-    for p in app.projects()? {
+    for p in app.with_server(|db| db.projects())? {
         match app.with_tracker(&p.slug, |t| t.bus().release_all_leases()) {
             Ok(n) if n > 0 => println!("genie runtime: {}: {n} message(s) from interrupted turns offered again", p.slug),
             Err(e) => eprintln!("genie runtime: {}: {e}", p.slug),
@@ -167,7 +167,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
     let candidates = app
         .blocking(|app| {
             let mut out = Vec::new();
-            for p in app.projects()? {
+            for p in app.with_server(|db| db.projects())? {
                 let boxes = match app.with_tracker(&p.slug, |t| t.bus().mailboxes_with_mail()) {
                     Ok(b) => b,
                     Err(e) => {
@@ -760,7 +760,7 @@ fn sandbox_plan(app: &App, project: &str, cwd: &Path, dir: &Path) -> Result<Opti
     plan.set(&sessions, Writable);
     plan.tmp(&tmp);
     // The trackers (agents reach tasks through the API) and the other projects.
-    for p in app.projects().map_err(|e| e.to_string())? {
+    for p in app.with_server(|db| db.projects()).map_err(|e| e.to_string())? {
         plan.set(Path::new(&p.tracker_dir), Hidden);
         if p.slug == project {
             continue;

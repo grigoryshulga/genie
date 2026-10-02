@@ -36,11 +36,6 @@ impl std::fmt::Display for AppError {
 
 pub type AppResult<T> = Result<T, AppError>;
 
-pub struct ProjectRt {
-    pub slug: String,
-    pub tracker: Mutex<Tracker>,
-}
-
 pub struct App {
     pub data: PathBuf,
     pub cfg: Config,
@@ -49,7 +44,7 @@ pub struct App {
     server: Mutex<ServerDb>,
     /// The knowledge vault shared by all projects of this installation.
     pub vault: Mutex<Vault>,
-    projects: RwLock<HashMap<String, Arc<ProjectRt>>>,
+    projects: RwLock<HashMap<String, Arc<Mutex<Tracker>>>>,
     /// Wakes the agent scheduler (new mail, finished turn, new job).
     pub wake_runtime: Notify,
     /// Wakes the automation engine (new events, answered questions, finished jobs).
@@ -135,27 +130,22 @@ impl App {
         Ok(f(&db)?)
     }
 
-    /// Runtime handle for a project, opening its tracker on first use.
-    pub fn project_rt(&self, slug: &str) -> AppResult<Arc<ProjectRt>> {
+    /// A project's tracker, opened on first use.
+    fn project_tracker(&self, slug: &str) -> AppResult<Arc<Mutex<Tracker>>> {
         if let Some(p) = self.projects.read().map_err(|_| AppError::Internal("registry poisoned".into()))?.get(slug) {
             return Ok(p.clone());
         }
         let project = self.with_server(|db| db.project(slug))?;
-        let tracker = Tracker::open(&project.tracker_dir)?;
-        let rt = Arc::new(ProjectRt { slug: slug.to_string(), tracker: Mutex::new(tracker) });
+        let tracker = Arc::new(Mutex::new(Tracker::open(&project.tracker_dir)?));
         let mut map = self.projects.write().map_err(|_| AppError::Internal("registry poisoned".into()))?;
-        Ok(map.entry(slug.to_string()).or_insert(rt).clone())
+        Ok(map.entry(slug.to_string()).or_insert(tracker).clone())
     }
 
     /// Synchronous access to a project's tracker (call from blocking contexts only).
     pub fn with_tracker<T>(&self, slug: &str, f: impl FnOnce(&Tracker) -> Result<T, GenieError>) -> AppResult<T> {
-        let rt = self.project_rt(slug)?;
-        let t = rt.tracker.lock().map_err(|_| AppError::Internal("tracker lock poisoned".into()))?;
+        let tracker = self.project_tracker(slug)?;
+        let t = tracker.lock().map_err(|_| AppError::Internal("tracker lock poisoned".into()))?;
         Ok(f(&t)?)
-    }
-
-    pub fn projects(&self) -> AppResult<Vec<Project>> {
-        self.with_server(|db| db.projects())
     }
 
     /// Run blocking work (SQLite, git, files) off the async runtime.

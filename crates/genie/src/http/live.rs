@@ -2,9 +2,7 @@
 //!
 //! - `event: journal` carries each journal event with `id:` = event id, so a
 //!   reconnecting client resumes with `Last-Event-ID`;
-//! - `event: change` is what the SPA listens to. It also fires when another
-//!   process (the TypeScript tools during the migration) commits to the same
-//!   tracker, detected with `PRAGMA data_version`.
+//! - `event: change` is what the SPA listens to: it fires when events arrive.
 
 use std::collections::VecDeque;
 use std::convert::Infallible;
@@ -31,7 +29,6 @@ struct Cursor {
     app: Arc<App>,
     project: String,
     last_event: i64,
-    data_version: i64,
     pending: VecDeque<SseEvent>,
 }
 
@@ -42,12 +39,8 @@ async fn live(
 ) -> ApiResult<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>> {
     let access = ctx.access(&app, None).await?;
     let resume = headers.get("last-event-id").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<i64>().ok());
-    let (last_event, data_version) = tracker(&app, &access, move |t| {
-        let dv: i64 = t.conn().query_row("PRAGMA data_version", [], |r| r.get(0))?;
-        Ok((resume.unwrap_or(t.last_event_id()?), dv))
-    })
-    .await?;
-    let cursor = Cursor { app, project: access.project, last_event, data_version, pending: VecDeque::new() };
+    let last_event = tracker(&app, &access, move |t| Ok(resume.unwrap_or(t.last_event_id()?))).await?;
+    let cursor = Cursor { app, project: access.project, last_event, pending: VecDeque::new() };
     let events = stream::unfold(cursor, |mut c| async move {
         loop {
             if let Some(ev) = c.pending.pop_front() {
@@ -55,18 +48,9 @@ async fn live(
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
             let (after, slug) = (c.last_event, c.project.clone());
-            let polled = c
-                .app
-                .blocking(move |app| {
-                    app.with_tracker(&slug, |t| {
-                        let dv: i64 = t.conn().query_row("PRAGMA data_version", [], |r| r.get(0))?;
-                        Ok((t.events_after(after, 200)?, dv))
-                    })
-                })
-                .await;
-            let Ok((events, dv)) = polled else { continue };
-            let changed = !events.is_empty() || dv != c.data_version;
-            c.data_version = dv;
+            let polled = c.app.blocking(move |app| app.with_tracker(&slug, |t| t.events_after(after, 200))).await;
+            let Ok(events) = polled else { continue };
+            let changed = !events.is_empty();
             for e in events {
                 c.last_event = e.id;
                 if let Ok(ev) = SseEvent::default().event("journal").id(e.id.to_string()).json_data(&e) {

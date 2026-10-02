@@ -92,11 +92,6 @@ impl Tracker {
         Ok(())
     }
 
-    /// Every row from `day` (`YYYY-MM-DD`) on.
-    pub fn usage_since(&self, day: &str) -> Result<Vec<UsageRow>> {
-        Ok(usage_since(self.conn(), day)?)
-    }
-
     /// Every row of a task and of the tasks under it (an epic's tasks, subtasks).
     pub fn usage_of_task(&self, task: &str) -> Result<Vec<UsageRow>> {
         let mut stmt = self.conn().prepare(&format!(
