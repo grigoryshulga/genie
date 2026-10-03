@@ -7,3 +7,4 @@ migration/
 /target/
 secrets/
 .env
+.claude/worktrees/
