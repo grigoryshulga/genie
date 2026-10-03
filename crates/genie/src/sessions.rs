@@ -668,6 +668,11 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
             }
             if give_up {
                 set_activity(app, &k, "error", None);
+                // The board shows why the agent stopped, not the line it set when it started.
+                if let AgentKey::Member { project, team, member } = &k {
+                    let why = clip(error.as_deref().unwrap_or("error"), 200);
+                    let _ = app.with_tracker(project, |t| t.bus().set_member_status(team, member, &format!("stopped: {why}")));
+                }
                 tell_orchestrator(
                     app,
                     &k,
@@ -769,7 +774,10 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
             }
             app.with_server(|db| db.revoke_token(&token))?;
             if expected {
-                set_activity(app, &k, "idle", None);
+                // A member that gave up stays in `error` after its session is stopped.
+                if let AgentKey::Member { project, team, member } = &k {
+                    app.with_tracker(project, |t| t.bus().set_idle_keeping_error(team, member))?;
+                }
             } else if failures >= max {
                 set_activity(app, &k, "error", None);
                 tell_orchestrator(

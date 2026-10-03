@@ -579,6 +579,17 @@ impl Bus<'_> {
         Ok(())
     }
 
+    /// The member's session ended as planned: it is idle, unless it gave up (`error`) —
+    /// that stays until someone restarts it.
+    pub fn set_idle_keeping_error(&self, team: &str, member: &str) -> Result<()> {
+        let at = now();
+        self.conn().execute(
+            "UPDATE members SET activity = 'idle', activity_at = ?1, heartbeat_at = ?1 WHERE team = ?2 AND name = ?3 AND state != 'error'",
+            params![at, team, member],
+        )?;
+        Ok(())
+    }
+
     /// Deliver a message. `to` is a member name, `orchestrator` or `all` (everyone but the sender).
     pub fn send(&self, m: SendMail<'_>) -> Result<Vec<Mail>> {
         let level = m.level.unwrap_or("normal");

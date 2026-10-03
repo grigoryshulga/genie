@@ -73,7 +73,7 @@ fn decide(messages: &[(String, String)]) -> Value {
     json!({ "content": "ok" })
 }
 
-async fn completions(State(log): State<Log>, body: Bytes) -> impl IntoResponse {
+async fn completions(State(log): State<Log>, body: Bytes) -> axum::response::Response {
     let r: Value = serde_json::from_slice(&body).unwrap_or_default();
     let all = r["messages"].as_array().cloned().unwrap_or_default();
     let is_system = |m: &Value| m["role"] == "system" || m["role"] == "developer";
@@ -84,6 +84,11 @@ async fn completions(State(log): State<Log>, body: Bytes) -> impl IntoResponse {
         .map(|m| (m["role"].as_str().unwrap_or_default().to_string(), text_of(&m["content"])))
         .collect();
     let model = r["model"].as_str().unwrap_or_default().to_string();
+    // `PROVIDER-DOWN` anywhere in the conversation: the provider refuses every request.
+    if messages.iter().any(|(_, t)| t.contains("PROVIDER-DOWN")) {
+        let body = json!({ "error": { "message": "usage limit has been reached", "type": "invalid_request_error" } });
+        return (axum::http::StatusCode::BAD_REQUEST, [("content-type", "application/json")], body.to_string()).into_response();
+    }
     let n = {
         let mut l = log.lock().unwrap();
         l.push(Req { at: Instant::now(), model: model.clone(), system, messages: messages.clone() });
@@ -112,7 +117,7 @@ async fn completions(State(log): State<Log>, body: Bytes) -> impl IntoResponse {
         json!({ "id": format!("c{n}"), "object": "chat.completion.chunk", "created": 0, "model": model, "choices": [], "usage": { "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 } })
     ));
     sse.push_str("data: [DONE]\n\n");
-    ([("content-type", "text/event-stream")], sse)
+    ([("content-type", "text/event-stream")], sse).into_response()
 }
 
 fn pi_bin() -> Option<PathBuf> {
@@ -646,4 +651,32 @@ async fn at_the_console_mail_reaches_the_idle_session_by_itself() {
     let status = tokio::time::timeout(Duration::from_secs(30), child.wait()).await.expect("pi ends").unwrap();
     assert!(status.success(), "{status:?}");
     assert!(app.with_server(|db| db.console("shop")).unwrap().is_none(), "the console is given back");
+}
+
+/// A provider that refuses every request (a usage limit): after `maxAttempts` the agent stays
+/// in `error` — also once its session is stopped — with the reason on the board, and the
+/// orchestrator is told; a restart lets it work again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_agent_whose_provider_refuses_stays_in_error_with_the_reason() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        return;
+    };
+    let l = live(pi, |cfg| cfg.runtime.max_attempts = 2).await;
+    let app = &l.app;
+
+    mail(app, "anna", "human", "bender", "PROVIDER-DOWN please work", None);
+    until("the orchestrator hears the agent gave up", 60, || orchestrator_mail(app, "failed 2 runs in a row")).await;
+    until("the session to be stopped", 30, || app.sessions.get(&member("bender")).is_none().then_some(())).await;
+
+    let bender = || {
+        let team = app.with_tracker("shop", |t| t.bus().get("SHOP-1")).unwrap();
+        team.members.into_iter().find(|m| m.name == "bender").unwrap()
+    };
+    let m = bender();
+    assert_eq!(m.state, "error", "a stopped session does not clear the error: {m:?}");
+    assert!(m.status.contains("usage limit has been reached"), "the board says why: {}", m.status);
+
+    genie::runtime::restart_member(app, "shop", "SHOP-1", "bender").unwrap();
+    assert_eq!(bender().state, "active", "a restart lets the agent work again");
 }
