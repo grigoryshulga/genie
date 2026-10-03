@@ -145,6 +145,13 @@ fn repo_aad(project: &str, repo: &str) -> String {
 }
 
 impl ServerDb {
+    /// Whether any token is stored sealed (people's keys, repositories' tokens).
+    pub fn has_sealed_secrets(&self) -> Result<bool> {
+        let n: i64 =
+            self.conn().query_row("SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets)", [], |r| r.get(0))?;
+        Ok(n > 0)
+    }
+
     /// Set a person's secret (a blank value removes it).
     pub fn set_user_secret(&self, user: i64, name: &str, value: &str) -> Result<()> {
         let value = value.trim();

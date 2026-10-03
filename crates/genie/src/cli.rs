@@ -69,6 +69,17 @@ enum Command {
         /// Keep only this many most recent backups in the directory (older `genie-*` are removed).
         #[arg(long)]
         keep: Option<usize>,
+        /// Also copy `secrets.key`, the key of the stored tokens (repositories, LiteLLM): without it a restored server asks for them again.
+        #[arg(long)]
+        with_secrets: bool,
+    },
+    /// Put a backup back: the databases, the vault and the configuration into the data directory (stop the server first).
+    Restore {
+        /// A backup directory made by `genie backup` (`genie-<time>`).
+        backup: PathBuf,
+        /// Replace what the data directory already holds.
+        #[arg(long)]
+        force: bool,
     },
     /// What happened over the last days, for reviewing a pilot: tasks, decisions, reviews, agent runs, knowledge (--project: one project only).
     Stats {
@@ -213,9 +224,12 @@ pub async fn run() -> Result<(), String> {
             let args = serde_json::json!({ "project": slug, "role": role, "email": email });
             println!("{}", legacy_op("project", "invite", args, &data).await?);
         }
-        Command::Backup { dir, keep } => {
+        Command::Restore { backup: dir, force } => {
+            println!("{}", restore(&data, &dir, force)?);
+        }
+        Command::Backup { dir, keep, with_secrets } => {
             let cfg = Config::load(&data)?;
-            let report = backup(&data, &cfg, &dir)?;
+            let report = backup_with(&data, &cfg, &dir, with_secrets)?;
             println!("{report}");
             if let Some(keep) = keep {
                 for old in prune_backups(&dir, keep)? {
@@ -326,6 +340,11 @@ pub async fn run() -> Result<(), String> {
 /// configuration (`config.json` with the channel secrets, roles, templates,
 /// skills, `mcp.json`) is copied too: the backup directory is private (0700).
 pub fn backup(data: &std::path::Path, cfg: &Config, dir: &std::path::Path) -> Result<String, String> {
+    backup_with(data, cfg, dir, false)
+}
+
+/// [`backup`], optionally with `secrets.key` (the key of the tokens stored in `server.db`).
+pub fn backup_with(data: &std::path::Path, cfg: &Config, dir: &std::path::Path, with_secrets: bool) -> Result<String, String> {
     let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string();
     let out = dir.join(format!("genie-{stamp}"));
     std::fs::create_dir_all(out.join("projects")).map_err(|e| e.to_string())?;
@@ -366,7 +385,7 @@ pub fn backup(data: &std::path::Path, cfg: &Config, dir: &std::path::Path) -> Re
         lines.push("vault.bundle (restore: git clone vault.bundle vault)".into());
     }
     let mut config = Vec::new();
-    for item in ["config.json", "mcp.json", "agents", "teams", "skills"] {
+    for item in ["config.json", "git.json", "mcp.json", "agents", "teams", "skills"] {
         let src = data.join(item);
         if src.exists() {
             copy_tree(&src, &out.join("config").join(item))?;
@@ -376,7 +395,163 @@ pub fn backup(data: &std::path::Path, cfg: &Config, dir: &std::path::Path) -> Re
     if !config.is_empty() {
         lines.push(format!("config/: {}", config.join(", ")));
     }
+    // Where the server lived: a restore elsewhere moves the trackers that were under this directory.
+    let manifest = serde_json::json!({ "data": data.to_string_lossy(), "version": env!("CARGO_PKG_VERSION"), "made": chrono::Utc::now().to_rfc3339() });
+    std::fs::write(out.join("MANIFEST.json"), serde_json::to_string_pretty(&manifest).unwrap_or_default()).map_err(|e| e.to_string())?;
+    let key = data.join("secrets.key");
+    if with_secrets && key.exists() {
+        copy_tree(&key, &out.join("secrets.key"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(out.join("secrets.key"), std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+        }
+        lines.push("secrets.key (the key of the stored tokens: keep this backup private)".into());
+    } else if key.exists() {
+        lines.push("secrets.key is NOT included: tokens of repositories and LiteLLM keys cannot be read after a restore (--with-secrets, or keep the file apart)".into());
+    }
     Ok(format!("backup in {}:\n  {}", out.display(), lines.join("\n  ")))
+}
+
+/// Put a backup (made by [`backup`]) into `data`: every database is checked first, then
+/// `server.db`, the trackers (to the paths the restored server records for them), the vault
+/// and the configuration go back. Nothing is overwritten without `force`; stop the server first.
+pub fn restore(data: &std::path::Path, backup: &std::path::Path, force: bool) -> Result<String, String> {
+    let server_db = backup.join("server.db");
+    if !server_db.is_file() {
+        return Err(format!("{} is not a genie backup: no server.db in it", backup.display()));
+    }
+    let integrity = |path: &std::path::Path| -> Result<(), String> {
+        let conn = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let verdict: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).map_err(|e| format!("{}: {e}", path.display()))?;
+        if verdict == "ok" { Ok(()) } else { Err(format!("{} is damaged: {verdict}", path.display())) }
+    };
+    integrity(&server_db)?;
+    let mut trackers: Vec<(String, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(backup.join("projects")) {
+        for e in entries.flatten() {
+            let path = e.path();
+            if path.extension().is_some_and(|x| x == "db") {
+                integrity(&path)?;
+                if let Some(slug) = path.file_stem().and_then(|s| s.to_str()) {
+                    trackers.push((slug.to_string(), path));
+                }
+            }
+        }
+    }
+    let target_db = data.join("server.db");
+    if target_db.exists() && !force {
+        return Err(format!(
+            "{} already holds a server (server.db): restore into an empty directory, or pass --force to replace it",
+            data.display()
+        ));
+    }
+    std::fs::create_dir_all(data).map_err(|e| format!("{}: {e}", data.display()))?;
+    let put = |from: &std::path::Path, to: &std::path::Path| -> Result<(), String> {
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        // The databases of a live server carry -wal/-shm files that must not outlive the copy they belonged to.
+        for suffix in ["-wal", "-shm"] {
+            let mut stale = to.as_os_str().to_owned();
+            stale.push(suffix);
+            let _ = std::fs::remove_file(stale);
+        }
+        std::fs::copy(from, to).map(|_| ()).map_err(|e| format!("{}: {e}", to.display()))
+    };
+    let mut lines = Vec::new();
+    put(&server_db, &target_db)?;
+    lines.push(format!("server.db → {}", target_db.display()));
+
+    let db = ServerDb::open(&target_db).map_err(|e| e.to_string())?;
+    let mut missing = Vec::new();
+    let old_data: Option<String> = std::fs::read_to_string(backup.join("MANIFEST.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|m| m["data"].as_str().map(str::to_string));
+    for p in db.projects().map_err(|e| e.to_string())? {
+        match trackers.iter().find(|(slug, _)| *slug == p.slug) {
+            Some((_, from)) => {
+                // A tracker that lived under the old data directory moves with it (projects without code).
+                let mut tracker_dir = p.tracker_dir.clone();
+                if let Some(old) = &old_data
+                    && let Ok(rest) = std::path::Path::new(&tracker_dir).strip_prefix(old)
+                    && std::path::Path::new(old) != data
+                {
+                    tracker_dir = data.join(rest).to_string_lossy().into_owned();
+                    db.conn()
+                        .execute("UPDATE projects SET tracker_dir = ?1 WHERE slug = ?2", rusqlite::params![tracker_dir, p.slug])
+                        .map_err(|e| e.to_string())?;
+                }
+                let to = std::path::Path::new(&tracker_dir).join("genie.db");
+                put(from, &to)?;
+                lines.push(format!("projects/{}.db → {}", p.slug, to.display()));
+                if let Some(repo) = &p.repo
+                    && !std::path::Path::new(repo).is_dir()
+                {
+                    lines.push(format!("  note: the repository of {} ({repo}) is not on this machine: clone it there, or `genie project update` to move it", p.slug));
+                }
+            }
+            None => missing.push(p.slug),
+        }
+    }
+    if !missing.is_empty() {
+        lines.push(format!("WARNING: the backup has no tracker for: {}", missing.join(", ")));
+    }
+
+    let cfg = Config::load(&backup.join("config")).unwrap_or_default();
+    let vault = cfg.vault_path(data);
+    let bundle = backup.join("vault.bundle");
+    if bundle.is_file() {
+        if vault.join(".git").exists() && !force {
+            lines.push(format!("vault: {} exists, left as it is (--force replaces it)", vault.display()));
+        } else {
+            if vault.exists() {
+                std::fs::remove_dir_all(&vault).map_err(|e| format!("{}: {e}", vault.display()))?;
+            }
+            let out =
+                std::process::Command::new("git").arg("clone").arg("-q").arg(&bundle).arg(&vault).output().map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(format!("git clone of the vault bundle: {}", String::from_utf8_lossy(&out.stderr).trim()));
+            }
+            lines.push(format!("vault.bundle → {}", vault.display()));
+        }
+    }
+
+    let mut restored = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(backup.join("config")) {
+        for e in entries.flatten() {
+            let to = data.join(e.file_name());
+            if to.exists() && !force {
+                lines.push(format!("config/{} exists, left as it is (--force replaces it)", e.file_name().to_string_lossy()));
+                continue;
+            }
+            if to.is_dir() {
+                std::fs::remove_dir_all(&to).map_err(|e| format!("{}: {e}", to.display()))?;
+            }
+            copy_tree(&e.path(), &to)?;
+            restored.push(e.file_name().to_string_lossy().into_owned());
+        }
+    }
+    if !restored.is_empty() {
+        lines.push(format!("config: {}", restored.join(", ")));
+    }
+
+    let key = backup.join("secrets.key");
+    if key.is_file() {
+        put(&key, &data.join("secrets.key"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(data.join("secrets.key"), std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+        }
+        lines.push("secrets.key → the stored tokens are readable".into());
+    } else if db.has_sealed_secrets().unwrap_or(false) && !data.join("secrets.key").exists() {
+        lines.push("note: the backup has no secrets.key: tokens of repositories and LiteLLM keys must be entered again".into());
+    }
+    lines.push("not in a backup: agents' conversations (sessions/), workspaces, mirrors of repositories (made again on the first sync). Start the server, then `genie doctor`.".into());
+    Ok(format!("restored from {}:\n  {}", backup.display(), lines.join("\n  ")))
 }
 
 fn copy_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {

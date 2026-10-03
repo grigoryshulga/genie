@@ -287,6 +287,17 @@ docker compose exec -u genie genie genie backup /data/backups
 docker compose cp genie:/data/backups ./backups
 ```
 
+Восстановление (сервис остановлен, том `/data` пуст или копия заменяет его через `--force`):
+
+```bash
+docker compose stop genie
+docker compose cp ./backups/genie-20261003-152743 genie:/data/backups/   # если копии ещё нет в томе
+docker compose run --rm --no-deps genie restore /data/backups/genie-20261003-152743
+docker compose up -d && docker compose exec -u genie genie genie doctor
+```
+
+Первую копию с `secrets.key` делайте с `--with-secrets` (`genie backup /data/backups --with-secrets`). Восстановление проверено на хосте (CLI, пустой каталог данных); внутри контейнера эта последовательность по документации не прогонялась.
+
 Копия не содержит `~/.pi/agent`, `~/.ssh` и репозитории в `/workspace`: их сохраняйте отдельно (снимок тома или `docker run --rm -v genie_genie-data:/d -v "$PWD":/b alpine tar czf /b/genie-data.tgz -C /d .`).
 
 Обновление:
