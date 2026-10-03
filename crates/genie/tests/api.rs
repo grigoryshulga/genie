@@ -627,3 +627,33 @@ async fn people_rename_themselves_set_a_photo_and_manage_their_tokens() {
     let (_, list, _) = call(r, "GET", "/api/auth/tokens").cookie(&session).send().await;
     assert_eq!(list, json!([]));
 }
+
+/// G-74: a team with an explicit roster and no template works in its own git
+/// worktree, not in the project's main checkout.
+#[tokio::test]
+async fn a_team_with_an_explicit_roster_and_no_template_gets_its_own_worktree() {
+    let h = Harness::new();
+    let repo = h.dir.path().join("shop-repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    std::fs::write(repo.join("README.md"), "shop").unwrap();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git").arg("-C").arg(&repo).args(args).output().unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["add", "README.md"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
+    h.app.create_project("shop", "Магазин", Some(&repo.to_string_lossy()), None, None).unwrap();
+    let r = &h.router;
+
+    call(r, "POST", "/api/tasks").json(json!({ "title": "Fix" })).send().await;
+    call(r, "POST", "/api/tasks/G-1/status").json(json!({ "status": "ready" })).send().await;
+    let (s, team, _) = call(r, "POST", "/api/teams")
+        .json(json!({ "task": "G-1", "members": [{ "role": "executor" }, { "role": "reviewer" }] }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{team}");
+    let path = team["worktree"]["path"].as_str().expect("the team has a worktree");
+    assert_ne!(std::path::Path::new(path), repo.as_path(), "not the main checkout");
+    assert_eq!(team["cwd"].as_str(), Some(path), "members work in the worktree");
+}
