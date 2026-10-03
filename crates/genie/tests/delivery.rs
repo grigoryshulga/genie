@@ -244,6 +244,10 @@ async fn the_watcher_follows_the_host_and_tells_the_team_and_the_orchestrator() 
     let team_id = r.h.app.with_tracker("shop", |t| Ok(t.get(&id)?.team.unwrap())).unwrap();
     let mail = r.h.app.with_tracker("shop", |t| t.bus().history(&team_id, 50)).unwrap();
     assert!(mail.iter().any(|m| m.from == "git-host" && m.text.contains("checks") && m.text.contains("failed")), "{mail:?}");
+    // The team gets which job failed, a link to it and the end of its log (without colour codes).
+    let m = mail.iter().find(|m| m.from == "git-host" && m.text.contains("checks")).unwrap();
+    assert!(m.text.contains("- test (https://gitlab.example/acme/api/-/jobs/41)"), "{}", m.text);
+    assert!(m.text.contains("test export::csv ... FAILED") && !m.text.contains('\u{1b}'), "{}", m.text);
     watch().await;
     assert_eq!(journal(&r, "ci.failed").len(), 1, "one announcement per change");
 
@@ -471,4 +475,25 @@ async fn the_owner_merges_from_the_agents_request_by_the_policy() {
     let (s, b) = http(&r, "POST", &merge, None, Some(json!({ "policy": true }))).await;
     assert_eq!(s, StatusCode::OK, "{b}");
     assert_eq!(b["request"]["state"], "merged");
+}
+
+/// G-88: on GitHub the team hears which check failed, where to look and what the host says.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_github_check_reaches_the_team_with_its_name_link_and_summary() {
+    let r = rig("github", json!({})).await;
+    let t = team(&r, "Fix the export").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+    let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+
+    r.fake.lock().ci = "failed".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let team_id = r.h.app.with_tracker("shop", |t| Ok(t.get(&id)?.team.unwrap())).unwrap();
+    let mail = r.h.app.with_tracker("shop", |t| t.bus().history(&team_id, 50)).unwrap();
+    let m = mail.iter().find(|m| m.from == "git-host" && m.text.contains("checks")).expect("the team is told");
+    assert!(m.text.contains("- build (https://github.example/acme/api/runs/9)"), "{}", m.text);
+    assert!(m.text.contains("Build failed") && m.text.contains("unresolved import `orders`"), "{}", m.text);
+    let event = journal(&r, "ci.failed");
+    assert_eq!(event[0].payload["failures"][0]["name"], "build", "{event:?}");
 }

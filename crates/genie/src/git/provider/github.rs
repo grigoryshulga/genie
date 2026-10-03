@@ -185,3 +185,39 @@ pub(super) async fn ci(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult
         _ => Ci::None,
     })
 }
+
+/// The failed check runs (with the host's title and summary) and failed commit statuses.
+pub(super) async fn ci_failures(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult<Vec<super::CiFailure>> {
+    let Some(sha) = &cr.head_sha else { return Ok(Vec::new()) };
+    let base = repo_path(remote)?;
+    let mut out = Vec::new();
+    let runs = api.send(Method::GET, &format!("{base}/commits/{sha}/check-runs"), &[("per_page", "100".into())], None).await?.body;
+    for r in runs["check_runs"].as_array().into_iter().flatten() {
+        if !matches!(r["conclusion"].as_str(), Some("failure" | "timed_out" | "cancelled" | "action_required" | "startup_failure")) {
+            continue;
+        }
+        let detail = [r["output"]["title"].as_str(), r["output"]["summary"].as_str(), r["output"]["text"].as_str()]
+            .into_iter()
+            .flatten()
+            .filter(|t| !t.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        out.push(super::CiFailure {
+            name: r["name"].as_str().unwrap_or("check").to_string(),
+            url: r["html_url"].as_str().map(str::to_string),
+            detail: super::tail(&detail),
+        });
+    }
+    let status = api.send(Method::GET, &format!("{base}/commits/{sha}/status"), &[], None).await?.body;
+    for st in status["statuses"].as_array().into_iter().flatten() {
+        if matches!(st["state"].as_str(), Some("failure" | "error")) {
+            out.push(super::CiFailure {
+                name: st["context"].as_str().unwrap_or("status").to_string(),
+                url: st["target_url"].as_str().map(str::to_string),
+                detail: super::tail(st["description"].as_str().unwrap_or_default()),
+            });
+        }
+    }
+    out.truncate(super::MAX_FAILURES);
+    Ok(out)
+}

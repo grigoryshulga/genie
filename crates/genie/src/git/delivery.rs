@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 
 use super::hosts::Host;
 use super::policy::{Effective, Merge, RoleGit, effective};
-use super::provider::{Api, ApiError, ChangeRequest, Ci, Comment, CrState, OpenRequest};
+use super::provider::{Api, ApiError, ChangeRequest, Ci, CiFailure, Comment, CrState, OpenRequest};
 use super::service::{self, AgentId};
 use super::store;
 use crate::state::{App, AppError};
@@ -356,8 +356,14 @@ pub async fn sync_row(app: &Arc<App>, row: &TaskRepo) -> DResult<(ChangeRequest,
     };
     // What people wrote on an open request (a failure to read it must not hide the rest).
     let comments = if cr.state == CrState::Open { api.comments(&record.remote, number).await.unwrap_or_default() } else { Vec::new() };
+    // A check that just failed: which one and why, for the team (a host that says nothing leaves it empty).
+    let failures = if ci == Ci::Failed && row.ci_state.as_deref() != Some("failed") {
+        api.ci_failures(&record.remote, &cr).await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let (row0, cr2) = (row.clone(), cr.clone());
-    let row = app.blocking(move |app| record_changes(app, &row0, &cr2, ci, &comments)).await?;
+    let row = app.blocking(move |app| record_changes(app, &row0, &cr2, ci, &comments, &failures)).await?;
     Ok((cr, ci, row))
 }
 
@@ -371,7 +377,14 @@ fn parse_ci(s: &str) -> Ci {
 }
 
 /// Store the host's state and, for what changed, the event, the note on the task and the message to whoever acts on it.
-fn record_changes(app: &App, row: &TaskRepo, cr: &ChangeRequest, ci: Ci, comments: &[Comment]) -> Result<TaskRepo, AppError> {
+fn record_changes(
+    app: &App,
+    row: &TaskRepo,
+    cr: &ChangeRequest,
+    ci: Ci,
+    comments: &[Comment],
+    failures: &[CiFailure],
+) -> Result<TaskRepo, AppError> {
     let (p, task, repo) = (row.project.as_str(), row.task.as_str(), row.repo.as_str());
     let host_actor = Actor::new("git-host", Role::Human);
     let state_now = cr.state.as_str();
@@ -450,13 +463,21 @@ fn record_changes(app: &App, row: &TaskRepo, cr: &ChangeRequest, ci: Ci, comment
             )?;
         }
         if ci_changed && ci == Ci::Failed {
-            events::append(t.conn(), events::CI_FAILED, Some(task), "git-host", "human", payload.clone())?;
+            let mut payload = payload.clone();
+            payload["failures"] = json!(failures);
+            events::append(t.conn(), events::CI_FAILED, Some(task), "git-host", "human", payload)?;
             if let Ok(tk) = t.get(task)
                 && let Some(team) = tk.team
                 && t.bus().get(&team).is_ok_and(|x| x.state == "active")
             {
-                let text =
+                let mut text =
                     format!("The checks of the request #{} in {repo} failed: {}. Open it, find out why, fix and push.", cr.number, cr.url);
+                for f in failures {
+                    text.push_str(&format!("\n\n- {}{}", f.name, f.url.as_deref().map(|u| format!(" ({u})")).unwrap_or_default()));
+                    if !f.detail.is_empty() {
+                        text.push_str(&format!(":\n{}", f.detail));
+                    }
+                }
                 let _ = t.bus().send(SendMail {
                     team: &team,
                     from: "git-host",

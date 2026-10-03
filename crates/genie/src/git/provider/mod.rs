@@ -20,6 +20,39 @@ use serde_json::Value;
 
 use super::hosts::{Host, Kind};
 
+/// One failed check of a request: which, where to look, and what the host says.
+#[derive(Debug, Clone, Serialize)]
+pub struct CiFailure {
+    pub name: String,
+    pub url: Option<String>,
+    /// The end of the log, or the host's summary of the failure.
+    pub detail: String,
+}
+
+/// At most this many failures are reported, each with at most this many characters of detail.
+pub(crate) const MAX_FAILURES: usize = 5;
+const DETAIL_CHARS: usize = 600;
+
+/// The last `DETAIL_CHARS` characters of `text`, without terminal colour codes and blank edges.
+pub(crate) fn tail(text: &str) -> String {
+    let mut clean = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            for n in chars.by_ref() {
+                if n.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else if c != '\r' {
+            clean.push(c);
+        }
+    }
+    let clean = clean.trim();
+    let n = clean.chars().count();
+    if n <= DETAIL_CHARS { clean.to_string() } else { format!("…{}", clean.chars().skip(n - DETAIL_CHARS).collect::<String>()) }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CrState {
@@ -295,6 +328,14 @@ impl Api {
         match self.host.kind {
             Kind::Github => github::merge(self, remote, number, method, sha).await,
             _ => gitlab::merge(self, remote, number, method, sha).await,
+        }
+    }
+
+    /// Which checks of the request's head commit failed and why (best effort: an empty list when the host says nothing).
+    pub async fn ci_failures(&self, remote: &str, cr: &ChangeRequest) -> ApiResult<Vec<CiFailure>> {
+        match self.host.kind {
+            Kind::Github => github::ci_failures(self, remote, cr).await,
+            _ => gitlab::ci_failures(self, remote, cr).await,
         }
     }
 

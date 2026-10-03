@@ -236,7 +236,16 @@ fn github(s: Shared) -> Router {
         }))
         .route("/repos/{o}/{r}/commits/{sha}/check-runs", get(|State(s): State<Shared>, h: HeaderMap| async move {
             check!(s, h, "checks", true);
-            axum::Json(json!({ "check_runs": [] })).into_response()
+            let f = s.lock().unwrap();
+            let runs = if f.ci == "failed" {
+                vec![json!({
+                    "name": "build", "status": "completed", "conclusion": "failure", "html_url": "https://github.example/acme/api/runs/9",
+                    "output": { "title": "Build failed", "summary": "error[E0432]: unresolved import `orders`" }
+                })]
+            } else {
+                Vec::new()
+            };
+            axum::Json(json!({ "check_runs": runs })).into_response()
         }));
     Router::new().nest("/api/v3", api).with_state(s)
 }
@@ -347,7 +356,16 @@ fn gitlab(s: Shared) -> Router {
                 "pending" => Some("running"),
                 _ => None,
             };
-            axum::Json(json!(status.map(|st| vec![json!({ "status": st })]).unwrap_or_default())).into_response()
+            axum::Json(json!(status.map(|st| vec![json!({ "id": 7, "status": st })]).unwrap_or_default())).into_response()
+        }))
+        .route("/projects/{pid}/pipelines/{id}/jobs", get(|State(s): State<Shared>, h: HeaderMap| async move {
+            check!(s, h, "jobs", true);
+            axum::Json(json!([{ "id": 41, "name": "test", "web_url": "https://gitlab.example/acme/api/-/jobs/41", "failure_reason": "script_failure" }]))
+                .into_response()
+        }))
+        .route("/projects/{pid}/jobs/{id}/trace", get(|State(s): State<Shared>, h: HeaderMap| async move {
+            check!(s, h, "trace", true);
+            "\u{1b}[31mrunning cargo test\u{1b}[0m\r\ntest export::csv ... FAILED\nassertion failed: left == right".into_response()
         }));
     Router::new().nest("/api/v4", api).with_state(s)
 }

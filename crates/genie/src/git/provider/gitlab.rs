@@ -152,3 +152,37 @@ pub(super) async fn ci(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult
         _ => Ci::None,
     })
 }
+
+/// The failed jobs of the request's latest pipeline, each with the end of its log.
+pub(super) async fn ci_failures(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult<Vec<super::CiFailure>> {
+    let Some(sha) = &cr.head_sha else { return Ok(Vec::new()) };
+    let base = project(remote);
+    let list = api
+        .send(
+            Method::GET,
+            &format!("{base}/pipelines"),
+            &[("sha", sha.clone()), ("order_by", "id".into()), ("sort", "desc".into()), ("per_page", "1".into())],
+            None,
+        )
+        .await?
+        .body;
+    let Some(id) = list.as_array().and_then(|a| a.first()).and_then(|p| p["id"].as_i64()) else { return Ok(Vec::new()) };
+    let jobs = api.send(Method::GET, &format!("{base}/pipelines/{id}/jobs"), &[("scope", "failed".into())], None).await?.body;
+    let mut out = Vec::new();
+    for j in jobs.as_array().into_iter().flatten().take(super::MAX_FAILURES) {
+        let trace = match j["id"].as_i64() {
+            Some(job) => match api.send(Method::GET, &format!("{base}/jobs/{job}/trace"), &[], None).await {
+                Ok(r) => r.body.as_str().map(str::to_string).unwrap_or_else(|| r.body.to_string()),
+                Err(_) => String::new(),
+            },
+            None => String::new(),
+        };
+        let detail = if trace.trim().is_empty() { j["failure_reason"].as_str().unwrap_or_default().to_string() } else { trace };
+        out.push(super::CiFailure {
+            name: j["name"].as_str().unwrap_or("job").to_string(),
+            url: j["web_url"].as_str().map(str::to_string),
+            detail: super::tail(&detail),
+        });
+    }
+    Ok(out)
+}
