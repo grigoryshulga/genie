@@ -671,7 +671,10 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
                 // The board shows why the agent stopped, not the line it set when it started.
                 if let AgentKey::Member { project, team, member } = &k {
                     let why = clip(error.as_deref().unwrap_or("error"), 200);
-                    let _ = app.with_tracker(project, |t| t.bus().set_member_status(team, member, &format!("stopped: {why}")));
+                    let _ = app.with_tracker(project, |t| {
+                        t.bus().set_member_status(team, member, &format!("stopped: {why}"))?;
+                        t.bus().log(team, "agent_error", json!({ "member": member, "error": error, "attempts": max }))
+                    });
                 }
                 tell_orchestrator(
                     app,
@@ -780,6 +783,11 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
                 }
             } else if failures >= max {
                 set_activity(app, &k, "error", None);
+                if let AgentKey::Member { project, team, member } = &k {
+                    let _ = app.with_tracker(project, |t| {
+                        t.bus().log(team, "agent_error", json!({ "member": member, "error": "the session ended unexpectedly", "attempts": failures }))
+                    });
+                }
                 tell_orchestrator(
                     app,
                     &k,
