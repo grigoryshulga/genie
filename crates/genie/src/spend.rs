@@ -129,6 +129,21 @@ impl TaskIndex {
         self.0.get(id).map(|t| t.3.clone())
     }
 
+    /// Whether `task` is `ancestor` or lies under it (a subtask, a task of an epic).
+    pub fn is_under(&self, task: &str, ancestor: &str) -> bool {
+        let mut id = task.to_string();
+        for _ in 0..32 {
+            if id == ancestor {
+                return true;
+            }
+            match self.0.get(&id).and_then(|t| t.2.clone()) {
+                Some(parent) => id = parent,
+                None => return false,
+            }
+        }
+        false
+    }
+
     /// The epic of a task (itself for an epic), following parents up.
     pub fn epic_of(&self, id: &str) -> Option<String> {
         let mut id = id.to_string();

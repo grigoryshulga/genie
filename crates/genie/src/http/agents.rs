@@ -339,7 +339,12 @@ async fn usage(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<UsageBody>) 
                 t.record_usage(&agent, task.as_deref(), &model.chars().take(200).collect::<String>(), &r.tokens)?;
             }
             Ok(())
-        })
+        })?;
+        // A budget used up stops the teams it covers; the agent that reported may be one of them.
+        if let Err(e) = crate::budget::enforce(app, slug, task.as_deref()) {
+            eprintln!("genie budget: {slug}: {e}");
+        }
+        Ok(())
     })
     .await?;
     Ok(Json(json!({ "ok": true, "recorded": n })))

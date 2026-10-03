@@ -689,3 +689,114 @@ async fn teams_per_epic_are_limited() {
     call(r, "POST", &format!("/api/teams/{}/stop", team["id"].as_str().unwrap())).send().await;
     assert_eq!(spawn(b).await.0, StatusCode::CREATED, "a stopped team frees room in its epic");
 }
+
+/// G-81: a budget used up stops the teams it covers and keeps new ones away.
+#[tokio::test]
+async fn a_budget_used_up_stops_the_teams_it_covers_and_keeps_new_ones_away() {
+    use genie::config::ModelPrice;
+    let h = Harness::with_config(|cfg| {
+        cfg.budgets.per_task = 1.0;
+        cfg.budgets.per_epic = 3.0;
+        cfg.model_prices.insert("fake/m".into(), ModelPrice { input: 1000.0, output: 0.0, cache_read: None, cache_write: None });
+    });
+    h.project("shop");
+    let (r, remote) = (&h.router, &h.remote);
+    let mk = |body: serde_json::Value| async move {
+        call(r, "POST", "/api/tasks").json(body).send().await.1["id"].as_str().unwrap().to_string()
+    };
+    let epic = mk(json!({ "title": "Reports", "type": "epic" })).await;
+    let (a, b, c) = (
+        mk(json!({ "title": "A", "parent": epic })).await,
+        mk(json!({ "title": "B", "parent": epic })).await,
+        mk(json!({ "title": "C", "parent": epic })).await,
+    );
+    for id in [&a, &b, &c] {
+        call(r, "POST", &format!("/api/tasks/{id}/status")).json(json!({ "status": "ready" })).send().await;
+    }
+    let spawn = |id: String| async move {
+        call(r, "POST", "/api/teams").json(json!({ "task": id, "members": [{ "role": "executor" }] })).send().await
+    };
+    // 1000 tokens of "fake/m" cost $1.
+    let app = &h.app;
+    let report = |team: String, member: String, tokens: u64| async move {
+        let token = app
+            .with_server(|db| db.create_agent_token("shop", Role::Executor, &member, Some(&team), None, chrono::Duration::hours(1)))
+            .unwrap();
+        call(remote, "POST", "/api/agent/usage")
+            .bearer(&token)
+            .no_csrf()
+            .json(json!({ "reports": [{ "model": "fake/m", "input": tokens }] }))
+            .send()
+            .await
+            .0
+    };
+    let state = |team: &str| h.app.with_tracker("shop", |t| t.bus().get(team)).unwrap();
+
+    let (s, ta, _) = spawn(a.clone()).await;
+    assert_eq!(s, StatusCode::CREATED, "{ta}");
+    let (team_a, member_a) = (ta["id"].as_str().unwrap().to_string(), ta["members"][0]["name"].as_str().unwrap().to_string());
+    assert_eq!(report(team_a.clone(), member_a.clone(), 500).await, StatusCode::OK);
+    assert_eq!(state(&team_a).state, "active", "half the budget is not the budget");
+
+    // The task's budget is used up: its team stops, and another one for it does not start.
+    assert_eq!(report(team_a.clone(), member_a.clone(), 600).await, StatusCode::OK);
+    let tm = state(&team_a);
+    assert_eq!((tm.state.as_str(), tm.stop_reason.as_deref()), ("stopped", Some("budget")));
+    let (s, err, _) = spawn(a.clone()).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    assert!(err["error"].as_str().unwrap().contains("budget") && err["error"].as_str().unwrap().contains(&a), "{err}");
+    let told = h.app.with_tracker("shop", |t| t.bus().pending(None, "orchestrator")).unwrap();
+    assert!(told.iter().any(|m| m.text.contains("budget") && m.text.contains(&team_a)), "the orchestrator is told: {told:?}");
+
+    // The epic's budget ($3) covers its tasks together: A spent $1.1, B and C ($0.99 each, under their own limits) bring it over.
+    let (_, tb, _) = spawn(b.clone()).await;
+    let (team_b, member_b) = (tb["id"].as_str().unwrap().to_string(), tb["members"][0]["name"].as_str().unwrap().to_string());
+    assert_eq!(report(team_b.clone(), member_b.clone(), 990).await, StatusCode::OK);
+    let (_, tc, _) = spawn(c.clone()).await;
+    let (team_c, member_c) = (tc["id"].as_str().unwrap().to_string(), tc["members"][0]["name"].as_str().unwrap().to_string());
+    assert_eq!(state(&team_b).state, "active");
+    assert_eq!(report(team_c.clone(), member_c, 990).await, StatusCode::OK);
+    assert_eq!(state(&team_c).state, "stopped", "the epic is over its budget");
+    assert_eq!(state(&team_b).state, "stopped", "and so are the other teams of the epic");
+}
+
+/// G-81: the day's budget covers every team of the project.
+#[tokio::test]
+async fn the_budget_of_the_day_stops_every_team() {
+    use genie::config::ModelPrice;
+    let h = Harness::with_config(|cfg| {
+        cfg.budgets.per_day = 2.0;
+        cfg.model_prices.insert("fake/m".into(), ModelPrice { input: 1000.0, output: 0.0, cache_read: None, cache_write: None });
+    });
+    h.project("shop");
+    let (r, remote, app) = (&h.router, &h.remote, &h.app);
+    let mut teams = Vec::new();
+    for title in ["A", "B"] {
+        let id = call(r, "POST", "/api/tasks").json(json!({ "title": title })).send().await.1["id"].as_str().unwrap().to_string();
+        call(r, "POST", &format!("/api/tasks/{id}/status")).json(json!({ "status": "ready" })).send().await;
+        let (s, t, _) = call(r, "POST", "/api/teams").json(json!({ "task": id, "members": [{ "role": "executor" }] })).send().await;
+        assert_eq!(s, StatusCode::CREATED, "{t}");
+        teams.push((t["id"].as_str().unwrap().to_string(), t["members"][0]["name"].as_str().unwrap().to_string()));
+    }
+    let active = || app.with_tracker("shop", |t| t.bus().active_count()).unwrap();
+    assert_eq!(active(), 2);
+    let (team, member) = &teams[0];
+    let token =
+        app.with_server(|db| db.create_agent_token("shop", Role::Executor, member, Some(team), None, chrono::Duration::hours(1))).unwrap();
+    let post = |tokens: u64| {
+        call(remote, "POST", "/api/agent/usage")
+            .bearer(&token)
+            .no_csrf()
+            .json(json!({ "reports": [{ "model": "fake/m", "input": tokens }] }))
+            .send()
+    };
+    assert_eq!(post(1500).await.0, StatusCode::OK);
+    assert_eq!(active(), 2, "$1.5 of $2");
+    assert_eq!(post(600).await.0, StatusCode::OK);
+    assert_eq!(active(), 0, "the day's budget is used up: no team of the project goes on");
+    let id = call(r, "POST", "/api/tasks").json(json!({ "title": "C" })).send().await.1["id"].as_str().unwrap().to_string();
+    call(r, "POST", &format!("/api/tasks/{id}/status")).json(json!({ "status": "ready" })).send().await;
+    let (s, err, _) = call(r, "POST", "/api/teams").json(json!({ "task": id, "members": [{ "role": "executor" }] })).send().await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    assert!(err["error"].as_str().unwrap().contains("today"), "{err}");
+}

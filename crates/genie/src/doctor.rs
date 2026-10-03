@@ -348,6 +348,24 @@ fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
             "set roleModels in config.json (see config/default.json)",
         );
     }
+    let b = cfg.budgets;
+    if b.per_task > 0.0 || b.per_epic > 0.0 || b.per_day > 0.0 {
+        let unpriced: BTreeSet<&str> = wanted
+            .iter()
+            .map(|(m, _)| m.as_str())
+            .filter(|m| !m.is_empty() && crate::config::price_of(&cfg.model_prices, m).is_none())
+            .collect();
+        if !unpriced.is_empty() {
+            out.warn(
+                "budgets",
+                format!(
+                    "budgets count dollars, but these models have no price and are not counted: {}",
+                    unpriced.iter().copied().collect::<Vec<_>>().join(", ")
+                ),
+                "add them to modelPrices in config.json (dollars per million tokens)",
+            );
+        }
+    }
     let Some(pi) = pi else { return };
     let Some(available) = list_models(&pi, cfg) else {
         out.warn("models", "pi --list-models did not answer", "run it as the server user to see why");

@@ -340,6 +340,19 @@ pub struct VaultConfig {
     pub sync_secs: Option<u64>,
 }
 
+/// `budgets`: dollars an agent's work may cost (models with a price in `modelPrices`);
+/// 0 is no limit. Changes take effect when the server restarts.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Budgets {
+    /// One task with its subtasks.
+    pub per_task: f64,
+    /// One epic with all its tasks.
+    pub per_epic: f64,
+    /// Everything agents spend in a UTC day, all projects' trackers apart (per project).
+    pub per_day: f64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
@@ -351,6 +364,7 @@ pub struct Config {
     pub role_models: BTreeMap<String, RoleModel>,
     /// Prices of models (`provider/model` or the model alone), for what agents' work cost.
     pub model_prices: BTreeMap<String, ModelPrice>,
+    pub budgets: Budgets,
     pub limits: Limits,
     pub worktrees: Worktrees,
     pub language: Language,
@@ -370,6 +384,7 @@ impl Default for Config {
             allow_hosts: Vec::new(),
             role_models: BTreeMap::new(),
             model_prices: BTreeMap::new(),
+            budgets: Budgets::default(),
             limits: Limits::default(),
             worktrees: Worktrees::default(),
             language: Language::default(),

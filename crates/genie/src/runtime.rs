@@ -1601,6 +1601,9 @@ pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_c
             .into());
         }
     }
+    if let Some(over) = crate::budget::check(app, slug, Some(&task.id))? {
+        return Err(GenieError::invalid(over.explain()).into());
+    }
     let team_id = app.with_tracker(slug, |t| t.bus().free_id(&task.id))?;
     let workspace = template.as_ref().map(|t| t.workspace).unwrap_or(Workspace::Worktree);
     let has_repos = !app.with_server(|db| db.repos(slug))?.is_empty();

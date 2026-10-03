@@ -4,6 +4,7 @@
 //! engine and the delivery channels in one process. See docs/platform/backend.md.
 
 pub mod agent_config;
+pub mod budget;
 pub mod channels;
 pub mod cli;
 pub mod config;

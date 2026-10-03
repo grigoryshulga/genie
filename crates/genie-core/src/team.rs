@@ -28,8 +28,8 @@ pub const ORCHESTRATOR: &str = "orchestrator";
 pub const BROADCAST: &str = "all";
 
 /// Stops made on purpose: such teams are not revived and their late mail is dropped.
-pub const DELIBERATE_STOPS: &[&str] = &["orchestrator", "owner", "task_closed"];
-const DELIBERATE_SQL: &str = "('orchestrator', 'owner', 'task_closed')";
+pub const DELIBERATE_STOPS: &[&str] = &["orchestrator", "owner", "task_closed", "budget"];
+const DELIBERATE_SQL: &str = "('orchestrator', 'owner', 'task_closed', 'budget')";
 
 /// `interrupt` stops the recipient's current step (orchestrator and people only).
 pub const MAIL_LEVELS: &[&str] = &["low", "normal", "high", "interrupt"];
