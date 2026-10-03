@@ -120,3 +120,45 @@ fn the_ready_start_playbook_wakes_the_orchestrator_to_start_work() {
     assert_eq!(starts[0].task.as_deref(), Some(task.as_str()));
     assert!(starts[0].text.contains(&task) && !starts[0].text.contains(&epic), "{}", starts[0].text);
 }
+
+/// G-89: a stopped team frees room, and the orchestrator is asked to take the next ready task.
+#[test]
+fn the_ready_next_playbook_wakes_the_orchestrator_when_a_team_stops() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = App::open(dir.path(), Config::load(dir.path()).unwrap(), PathBuf::from("/nonexistent")).unwrap();
+    app.create_project("shop", "Shop", None, None, None).unwrap();
+    let (_, _, spec) = genie::engine::playbooks().into_iter().find(|(id, ..)| *id == "ready-next").unwrap();
+    assert!(genie_core::automation::validate(&spec).is_empty());
+    app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+
+    let anna = Actor::new("anna", Role::Human);
+    let task = app.with_tracker("shop", |t| t.create(&anna, CreateInput { title: "Export".into(), ..Default::default() })).unwrap().id;
+    app.with_tracker("shop", |t| {
+        t.bus().create(
+            "anna",
+            "human",
+            genie_core::team::NewTeam {
+                id: task.clone(),
+                task: task.clone(),
+                cwd: dir.path().to_string_lossy().into_owned(),
+                members: vec![genie_core::team::NewMember { name: "bender".into(), role: "executor".into(), ..Default::default() }],
+                ..Default::default()
+            },
+        )
+    })
+    .unwrap();
+    genie::engine::tick(&app).unwrap();
+    let asked = |app: &App| {
+        app.with_tracker("shop", |t| t.bus().pending(None, "orchestrator"))
+            .unwrap()
+            .iter()
+            .filter(|m| m.text.contains("A team stopped"))
+            .count()
+    };
+    assert_eq!(asked(&app), 0, "a team that starts does not free room");
+
+    app.with_tracker("shop", |t| t.bus().set_state(&task, "stopped", Some("done"), "anna")).unwrap();
+    genie::engine::tick(&app).unwrap();
+    assert_eq!(asked(&app), 1, "a stopped team asks the orchestrator for the next ready task");
+}

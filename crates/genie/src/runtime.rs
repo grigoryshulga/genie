@@ -1585,6 +1585,18 @@ pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_c
             GenieError::invalid(format!("limit: at most {} active teams per project; stop one first", limits.max_active_teams)).into()
         );
     }
+    if limits.max_active_teams_per_epic > 0
+        && let Some(epic) = &task.parent
+    {
+        let in_epic = app.with_tracker(slug, |t| t.bus().active_count_in_epic(epic))?;
+        if in_epic as usize >= limits.max_active_teams_per_epic {
+            return Err(GenieError::invalid(format!(
+                "limit: at most {} active teams per epic ({epic}); {} stays in its status until one of them stops",
+                limits.max_active_teams_per_epic, task.id
+            ))
+            .into());
+        }
+    }
     let team_id = app.with_tracker(slug, |t| t.bus().free_id(&task.id))?;
     let workspace = template.as_ref().map(|t| t.workspace).unwrap_or(Workspace::Worktree);
     let has_repos = !app.with_server(|db| db.repos(slug))?.is_empty();

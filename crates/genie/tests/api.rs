@@ -657,3 +657,35 @@ async fn a_team_with_an_explicit_roster_and_no_template_gets_its_own_worktree() 
     assert_ne!(std::path::Path::new(path), repo.as_path(), "not the main checkout");
     assert_eq!(team["cwd"].as_str(), Some(path), "members work in the worktree");
 }
+
+/// G-89: with `maxActiveTeamsPerEpic` the tasks of an epic above the limit are refused a team
+/// and stay in their status; another epic's tasks are not affected; a stopped team frees room.
+#[tokio::test]
+async fn teams_per_epic_are_limited() {
+    let h = Harness::with_config(|cfg| cfg.limits.max_active_teams_per_epic = 1);
+    h.app.create_project("shop", "Shop", None, None, None).unwrap();
+    let r = &h.router;
+    let mk = |body: serde_json::Value| async move {
+        call(r, "POST", "/api/tasks").json(body).send().await.1["id"].as_str().unwrap().to_string()
+    };
+    let epic = mk(json!({ "title": "Reports", "type": "epic" })).await;
+    let other = mk(json!({ "title": "Billing", "type": "epic" })).await;
+    let a = mk(json!({ "title": "A", "parent": epic })).await;
+    let b = mk(json!({ "title": "B", "parent": epic })).await;
+    let c = mk(json!({ "title": "C", "parent": other })).await;
+    for id in [&a, &b, &c] {
+        call(r, "POST", &format!("/api/tasks/{id}/status")).json(json!({ "status": "ready" })).send().await;
+    }
+    let spawn = |id: String| async move {
+        call(r, "POST", "/api/teams").json(json!({ "task": id, "members": [{ "role": "executor" }] })).send().await
+    };
+    let (s, team, _) = spawn(a.clone()).await;
+    assert_eq!(s, StatusCode::CREATED, "{team}");
+    let (s, err, _) = spawn(b.clone()).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    assert!(err["error"].as_str().unwrap().contains("per epic"), "{err}");
+    assert_eq!(spawn(c.clone()).await.0, StatusCode::CREATED, "another epic has its own room");
+
+    call(r, "POST", &format!("/api/teams/{}/stop", team["id"].as_str().unwrap())).send().await;
+    assert_eq!(spawn(b).await.0, StatusCode::CREATED, "a stopped team frees room in its epic");
+}

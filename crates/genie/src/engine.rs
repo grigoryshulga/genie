@@ -897,7 +897,19 @@ pub fn playbooks() -> Vec<(&'static str, &'static str, Value)> {
                 "on": { "event": "task.status_changed", "where": { "to": "ready", "task.type": { "not": "epic" } } },
                 "limits": { "concurrency": 3, "maxRunsPerHour": 60 },
                 "steps": [
-                    { "id": "start", "wake_orchestrator": { "text": "Task {{ event.task.id }} ({{ event.task.title }}) is now ready: start work on it. If a team already works on it, do nothing. Check the Definition of Ready first: if something only the owner can settle is missing (the integration, the repositories), ask the owner instead of dispatching. Otherwise compose its team and spawn it now." } }
+                    { "id": "start", "wake_orchestrator": { "text": "Task {{ event.task.id }} ({{ event.task.title }}) is now ready: start work on it. If a team already works on it, do nothing. Check the Definition of Ready first: if something only the owner can settle is missing (the integration, the repositories), ask the owner instead of dispatching. Otherwise compose its team and spawn it now. If the server refuses the spawn because a limit is reached (active teams per project or per epic), do not retry and do not force it: the task stays in ready and starts when a team stops." } }
+                ]
+            }),
+        ),
+        (
+            "ready-next",
+            "Команда остановилась → оркестратор берёт следующую готовую задачу",
+            json!({
+                "name": "Команда остановилась — следующая готовая задача",
+                "on": { "event": "team.stopped" },
+                "limits": { "concurrency": 1, "maxRunsPerHour": 60 },
+                "steps": [
+                    { "id": "next", "wake_orchestrator": { "text": "A team stopped, so there may be room for work. List the tasks that wait in `ready` without a team (`genie task list --status ready`), take them in order of priority and start work on as many as the limits allow: spawn a team for each. If the server refuses a spawn because a limit is reached, stop there: the rest stay in ready. If nothing waits, do nothing." } }
                 ]
             }),
         ),

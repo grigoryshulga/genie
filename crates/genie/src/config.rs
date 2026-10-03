@@ -71,11 +71,14 @@ pub struct SkillsConfig {
 pub struct Limits {
     pub max_members_per_team: usize,
     pub max_active_teams: usize,
+    /// Active teams on the tasks of one epic at a time; 0 is no limit. The tasks
+    /// above the limit wait in `ready` until a team of the epic stops.
+    pub max_active_teams_per_epic: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits { max_members_per_team: 6, max_active_teams: 4 }
+        Limits { max_members_per_team: 6, max_active_teams: 4, max_active_teams_per_epic: 0 }
     }
 }
 

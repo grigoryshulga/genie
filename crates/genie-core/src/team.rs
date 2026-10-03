@@ -321,6 +321,15 @@ impl Bus<'_> {
         Ok(self.conn().query_row("SELECT COUNT(*) FROM teams WHERE state = 'active'", [], |r| r.get(0))?)
     }
 
+    /// Active teams whose task is a child of `epic`.
+    pub fn active_count_in_epic(&self, epic: &str) -> Result<i64> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*) FROM teams t JOIN tasks k ON k.id = t.task WHERE t.state = 'active' AND k.parent = ?1",
+            [epic],
+            |r| r.get(0),
+        )?)
+    }
+
     /// A free team id derived from the task id: G-7, G-7b, G-7c…
     pub fn free_id(&self, task: &str) -> Result<String> {
         if !self.exists(task)? {
