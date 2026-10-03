@@ -781,6 +781,10 @@ fn sandbox_plan(app: &App, project: &str, cwd: &Path, dir: &Path) -> Result<Opti
     plan.set(cwd, Writable);
     if let Some(git) = git_common_dir(cwd) {
         plan.set(&git, Writable);
+        // Not what the server runs outside the sandbox: hooks and configuration.
+        for f in sandbox::GIT_DIR_READONLY {
+            plan.set(&git.join(f), ReadOnly);
+        }
     }
     let pi_dir = app.cfg.runtime.env.get("PI_CODING_AGENT_DIR").cloned().or_else(|| std::env::var("PI_CODING_AGENT_DIR").ok());
     sandbox::defaults(&mut plan, cfg, &home, pi_dir.map(|d| sandbox::expand(&d, &home)).as_deref());

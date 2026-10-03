@@ -46,6 +46,21 @@ const PROBE: &str = r#"
   (echo x > "$HOME/.cache/x") 2>/dev/null && echo cache:writable || echo cache:read-only
   (echo x > /tmp/x && test -s /tmp/x) 2>/dev/null && echo tmp:writable || echo tmp:read-only
   (echo change > change.txt && git add change.txt && git commit -qm probe) >/dev/null 2>&1 && echo commit:ok || echo commit:failed
+  # Ways round the mounts: a link inside the worktree, `..`, the server's key, the container and desktop sockets.
+  ln -s "$DATA/server.db" link-db; test -s link-db && echo link-to-db:visible || echo link-to-db:hidden
+  ln -s "$ROOT/outside.txt" link-out; (echo x > link-out) 2>/dev/null && echo link-write:writable || echo link-write:read-only
+  test -e ../../data/config.json && echo dotdot:visible || echo dotdot:hidden
+  test -e "$DATA/secrets.key" && echo key:visible || echo key:hidden
+  test -S /var/run/docker.sock && echo docker-sock:visible || echo docker-sock:hidden
+  test -S /run/docker.sock && echo run-docker-sock:visible || echo run-docker-sock:hidden
+  # The repository's own git directory is writable (commits go there), but what the server runs outside the sandbox is not:
+  # a hook or a config key written here would run with the server's rights the next time it uses git there.
+  GITDIR=$(git rev-parse --path-format=absolute --git-common-dir)
+  (echo '#!/bin/sh' > "$GITDIR/hooks/post-checkout") 2>/dev/null && echo git-hook:writable || echo git-hook:read-only
+  (git config core.fsmonitor 'touch pwned') 2>/dev/null && echo git-config:writable || echo git-config:read-only
+  (git config --worktree core.hooksPath /tmp) 2>/dev/null && echo git-hookspath:writable || echo git-hookspath:read-only
+  # Without a token the API does not take the agent for the local owner once the server has people.
+  echo "api-anonymous:$(curl -s -o /dev/null -w '%{http_code}' -m 5 "$GENIE_URL/api/users" || echo none)"
 } > probe.txt 2>&1
 "$GENIE_BIN" agent output '{"summary":"probed"}'
 "#;
@@ -68,6 +83,7 @@ async fn a_sandboxed_agent_sees_only_its_own_work() {
 
     let data = root.join("data");
     write(&data.join("config.json"), &json!({ "telegram": { "token": "tg-s3cret" } }).to_string());
+    write(&data.join("secrets.key"), "KEY\n");
     let shop = root.join("shop");
     repo(&shop, "README.md");
     let other = root.join("other");
@@ -95,6 +111,8 @@ async fn a_sandboxed_agent_sees_only_its_own_work() {
         app.create_project(slug, slug, Some(&repo.to_string_lossy()), None, Some(prefix)).unwrap();
         app.with_server(|db| db.set_autonomy(slug, "manual")).unwrap();
     }
+    // The server has people: an address on this machine is no longer taken for its owner.
+    app.with_server(|db| db.create_user("anna", "Anna", None, Some("password-1"), true)).unwrap();
     let (_stop, rx) = tokio::sync::oneshot::channel::<()>();
     let a = app.clone();
     tokio::spawn(async move {
@@ -145,6 +163,16 @@ async fn a_sandboxed_agent_sees_only_its_own_work() {
         "cache:writable",
         "tmp:writable",
         "commit:ok",
+        "link-to-db:hidden",
+        "link-write:read-only",
+        "dotdot:hidden",
+        "key:hidden",
+        "docker-sock:hidden",
+        "run-docker-sock:hidden",
+        "git-hook:read-only",
+        "git-config:read-only",
+        "git-hookspath:read-only",
+        "api-anonymous:401",
     ] {
         assert!(seen.contains(&expected), "expected {expected}, the agent saw:\n{probe}");
     }

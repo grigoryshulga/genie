@@ -162,8 +162,8 @@ fn people_and_projects(out: &mut Out, data: &Path) -> Vec<(String, PathBuf)> {
     if active.is_empty() {
         out.warn(
             "people",
-            "no users: the web is open without a login, from this machine only",
-            "create an admin: genie user add <login> --admin --password-stdin (or in the web: Project and people)",
+            "no users: everything on this machine, the agents the server runs included, acts as the owner without a login",
+            "create an admin: genie user add <login> --admin --password-stdin (or in the web: Project and people); from then on agents need their tokens",
         );
     } else if !active.iter().any(|u| u.is_admin) {
         out.warn(

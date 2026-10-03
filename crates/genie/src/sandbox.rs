@@ -46,6 +46,20 @@ const HOME_HIDDEN: &[&str] = &[
     ".git-credentials",
 ];
 
+/// Sockets that hand out the machine: the container engines' control sockets reach root through a mounted host path.
+const HIDDEN_SOCKETS: &[&str] = &[
+    "/run/docker.sock",
+    "/run/podman/podman.sock",
+    "/run/containerd/containerd.sock",
+    "/run/crio/crio.sock",
+    "/run/buildkit/buildkitd.sock",
+];
+
+/// What the server itself runs outside the sandbox when it uses git in a repository the agent writes to
+/// (`git worktree add`, `git status`, checkouts): a hook, or a config key such as `core.fsmonitor`, written by
+/// the agent would run with the server's rights. They stay read-only; commits, refs and objects remain writable.
+pub const GIT_DIR_READONLY: &[&str] = &["hooks", "config", "config.worktree", "info/attributes"];
+
 /// The mounts of one agent's sandbox.
 #[derive(Debug, Clone, Default)]
 pub struct Plan {
@@ -96,9 +110,8 @@ impl Plan {
                 Access::Writable => out.extend(["--bind".into(), s(path), s(path)]),
                 Access::ReadOnly => out.extend(["--ro-bind".into(), s(path), s(path)]),
                 Access::Hidden if path.is_dir() => out.extend(["--tmpfs".into(), s(path)]),
-                Access::Hidden if path.is_file() => out.extend(["--ro-bind".into(), "/dev/null".into(), s(path)]),
-                // Sockets and other special files: nothing to put over them.
-                Access::Hidden => {}
+                // A file, a socket or any other special file: an empty file takes its place (a connection to the socket is refused).
+                Access::Hidden => out.extend(["--ro-bind".into(), "/dev/null".into(), s(path)]),
             }
         }
         for var in ["DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK", "GPG_AGENT_INFO"] {
@@ -141,6 +154,9 @@ pub fn defaults(plan: &mut Plan, cfg: &SandboxConfig, home: &Path, pi_dir: Optio
     }
     for p in HOME_HIDDEN {
         plan.set(&home.join(p), Access::Hidden);
+    }
+    for p in HIDDEN_SOCKETS {
+        plan.set(Path::new(p), Access::Hidden);
     }
     // The desktop session: its bus, keyring and agent sockets.
     if let Ok(run) = std::env::var("XDG_RUNTIME_DIR") {
