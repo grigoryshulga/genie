@@ -21,19 +21,12 @@ import { Modal, useToast } from "@/shared/ui";
 const columnOf = (status: Status): Column => COLUMNS.find((c) => c.statuses.includes(status)) ?? COLUMNS[0];
 
 function CardBody({ t, team }: { t: TaskSummary; team?: Team }) {
-  const working = team?.state === "active" && team.members.some((m) => m.activity === "working");
   return (
     <>
       <span className="meta">
         <span className="mono">{t.id}</span>
         {t.priority === 0 ? <span className="urgent-tag">срочно</span> : <PriorityIcon priority={t.priority} size={12} />}
         {t.status === "changes_requested" && <span style={{ color: "var(--amber)" }}>доработка</span>}
-        {working && (
-          <span className="team">
-            <span className="spin" style={{ width: 9, height: 9 }} />
-            {team!.id}
-          </span>
-        )}
       </span>
       <span className="t" title={t.title}>
         {t.type === "epic" && (
