@@ -38,6 +38,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::outcome::{self, Outcome};
 use crate::runtime::{self, AgentKey};
 use crate::state::{App, AppError, AppResult};
 
@@ -58,8 +59,6 @@ const LOOP_REPEATS: u32 = 5;
 #[derive(Default)]
 pub struct Registry {
     sessions: Mutex<HashMap<AgentKey, Arc<Session>>>,
-    /// Consecutive failed starts or crashes, and when the agent may start again.
-    backoff: Mutex<HashMap<AgentKey, (u32, Instant)>>,
 }
 
 impl Registry {
@@ -79,27 +78,6 @@ impl Registry {
             m.remove(key);
         }
     }
-    fn failures(&self, key: &AgentKey) -> u32 {
-        self.backoff.lock().unwrap_or_else(|e| e.into_inner()).get(key).map(|b| b.0).unwrap_or(0)
-    }
-    fn may_start(&self, key: &AgentKey) -> bool {
-        self.backoff.lock().unwrap_or_else(|e| e.into_inner()).get(key).is_none_or(|(_, until)| *until <= Instant::now())
-    }
-    fn fail(&self, key: &AgentKey) -> u32 {
-        let mut b = self.backoff.lock().unwrap_or_else(|e| e.into_inner());
-        let n = b.get(key).map(|x| x.0 + 1).unwrap_or(1);
-        b.insert(key.clone(), (n, Instant::now() + backoff_delay(n)));
-        n
-    }
-    fn clear_failures(&self, key: &AgentKey) {
-        self.backoff.lock().unwrap_or_else(|e| e.into_inner()).remove(key);
-    }
-}
-
-/// Wait before retrying after `n` consecutive failures: at once (1s) after the
-/// first, then 10s, 20s, 40s… up to 10 minutes.
-fn backoff_delay(n: u32) -> Duration {
-    if n <= 1 { Duration::from_secs(1) } else { Duration::from_secs((5u64 << (n - 1).min(7)).min(600)) }
 }
 
 /// What a session is doing, as seen from its event stream.
@@ -379,7 +357,7 @@ pub fn resume_after_restart(app: &App, turns: &[Turn]) {
         if note_pending(app, &key) {
             continue;
         }
-        match note_to_self(app, &key, RESTART_NOTE) {
+        match runtime::note_to_self(app, &key, RESTART_NOTE) {
             Ok(()) => told += 1,
             Err(e) => eprintln!("genie runtime: {}: cannot tell {} to continue: {e}", key.project(), key.label()),
         }
@@ -399,8 +377,7 @@ fn note_pending(app: &App, key: &AgentKey) -> bool {
 /// Mail is waiting for `key`: wake its session, or start one.
 pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
     if let Some(s) = app.sessions.get(key) {
-        let (state, failures) = s.with_live(|l| (l.state.clone(), l.failures));
-        if state == "idle" && failures < app.cfg.runtime.max_attempts.max(1) {
+        if s.is("idle") && app.attempts.failures(key) < app.cfg.runtime.max_attempts.max(1) {
             // The orchestrator answers whoever wrote: another person's mail restarts
             // it (the same conversation) with that person's key.
             if let AgentKey::Orchestrator { project } = key {
@@ -415,7 +392,7 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
         }
         return;
     }
-    if !app.sessions.may_start(key) {
+    if !app.attempts.may_start(key) {
         return;
     }
     let live = app.sessions.all();
@@ -430,7 +407,7 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
         Ok(Some(s)) => s.nudge(),
         Ok(None) => {}
         Err(e) => {
-            let n = app.sessions.fail(key);
+            let n = app.attempts.failed_to_start(key);
             eprintln!("genie runtime: {}: cannot start a session for {} (attempt {n}): {e}", key.project(), key.label());
         }
     }
@@ -693,8 +670,7 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
 
 /// A run ended: record it, retry a failed one, then deliver whatever is waiting.
 async fn settled(app: &Arc<App>, s: &Arc<Session>) {
-    let max = app.cfg.runtime.max_attempts.max(1);
-    let (turn, failed, error, failures, log, interrupted, stalled) = s.with_live(|l| {
+    let (turn, failed, error, log, interrupted, stalled) = s.with_live(|l| {
         l.set_state("idle");
         l.tool = None;
         let interrupted = std::mem::take(&mut l.interrupting);
@@ -702,48 +678,22 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
         let we_aborted = interrupted || stalled;
         // A run we aborted (interrupt, stuck step) ends with an error or an abort: not a failure.
         let failed = l.last_stop.as_deref() == Some("error") && !we_aborted;
-        if failed {
-            l.failures += 1;
-        } else {
-            l.failures = 0;
-        }
-        (
-            l.turn.take(),
-            failed,
-            l.last_error.clone(),
-            l.failures,
-            l.recent.iter().cloned().collect::<Vec<_>>().join("\n"),
-            interrupted,
-            stalled,
-        )
+        (l.turn.take(), failed, l.last_error.clone(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n"), interrupted, stalled)
     });
     let (k, task) = (s.key.clone(), s.task.clone());
-    let give_up = failed && failures >= max;
-    let _ = app
+    let verdict = app
         .blocking(move |app| {
             if let Some(turn) = turn {
                 app.with_server(|db| {
                     db.finish_turn(turn, if failed { "failed" } else { "succeeded" }, None, error.as_deref().filter(|_| failed), Some(&log))
                 })?;
             }
-            if give_up {
-                on_member(app, &k, |bus, team, member| bus.member_gave_up(team, member, error.as_deref().unwrap_or("error"), max));
-                tell_orchestrator(
-                    app,
-                    &k,
-                    task.as_deref(),
-                    &format!(
-                        "{} failed {max} runs in a row ({}). Its mail is kept. Restart it (`genie team restart <team> <member>`) or replace it.",
-                        k.label(),
-                        error.as_deref().unwrap_or("error")
-                    ),
-                );
-            } else {
-                on_member(app, &k, |bus, team, member| bus.member_idle(team, member));
-            }
-            Ok(())
+            let outcome = if failed { Outcome::Failed { error: error.as_deref().unwrap_or("error"), log: &log } } else { Outcome::Ran };
+            Ok(outcome::record(app, &k, task.as_deref(), outcome))
         })
-        .await;
+        .await
+        .ok();
+    s.with_live(|l| l.failures = verdict.map(|v| v.failures).unwrap_or_default());
     if s.with_live(|l| std::mem::take(&mut l.reload)) {
         // The next step runs with the new settings; the conversation goes on.
         s.stop("settings changed");
@@ -774,12 +724,12 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
             s.send(json!({ "type": "prompt", "message": "[genie] Your step was interrupted: act on the INTERRUPT message above." }));
         }
     }
-    if failed && !give_up {
+    if let Some(v) = verdict.filter(|v| v.failures > 0 && !v.gave_up) {
         // The mail of the failed run is in the conversation already: ask it to go on.
         let s = s.clone();
         let error = s.with_live(|l| l.last_error.clone()).unwrap_or_default();
         tokio::spawn(async move {
-            tokio::time::sleep(backoff_delay(failures)).await;
+            tokio::time::sleep(v.retry_in).await;
             if s.is("idle") {
                 s.send(json!({
                     "type": "prompt",
@@ -798,25 +748,9 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
     app.sessions.remove(&s.key, s.pid);
     s.replies.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let _ = std::fs::remove_file(s.dir.join("session.pid"));
-    let crashed_at_work = !expected && state == "working";
-    let failures = if expected { 0 } else { app.sessions.fail(&s.key) };
-    if expected {
-        app.sessions.clear_failures(&s.key);
-    } else {
-        // Wake the scheduler when the agent may start again, not at its next periodic pass.
-        let app = app.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(backoff_delay(failures) + Duration::from_millis(50)).await;
-            app.wake_runtime.notify_one();
-        });
-    }
-    let max = app.cfg.runtime.max_attempts.max(1);
     let (k, token, task) = (s.key.clone(), s.token.clone(), s.task.clone());
-    let stderr_tail = std::fs::read_to_string(s.dir.join("stderr.log"))
-        .ok()
-        .map(|e| e.chars().rev().take(600).collect::<Vec<_>>().into_iter().rev().collect::<String>())
-        .unwrap_or_default();
-    let _ = app
+    let stderr = std::fs::read_to_string(s.dir.join("stderr.log")).unwrap_or_default();
+    let verdict = app
         .blocking(move |app| {
             app.with_tracker(k.project(), |t| {
                 let (team, recipient) = mailbox(&k);
@@ -824,33 +758,28 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
             })?;
             if let Some(turn) = turn {
                 app.with_server(|db| {
-                    db.finish_turn(turn, if expected { "succeeded" } else { "failed" }, code.map(i64::from), Some("the session ended"), Some(&log))
+                    db.finish_turn(
+                        turn,
+                        if expected { "succeeded" } else { "failed" },
+                        code.map(i64::from),
+                        Some("the session ended"),
+                        Some(&log),
+                    )
                 })?;
             }
             app.with_server(|db| db.revoke_token(&token))?;
-            if expected {
-                // A member that gave up stays in `error` after its session is stopped.
-                on_member(app, &k, |bus, team, member| bus.member_idle(team, member));
-            } else if failures >= max {
-                on_member(app, &k, |bus, team, member| bus.member_gave_up(team, member, "the session ended unexpectedly", failures));
-                tell_orchestrator(
-                    app,
-                    &k,
-                    task.as_deref(),
-                    &format!(
-                        "The session of {} ended unexpectedly {failures} times in a row (exit {code:?}). Its mail is kept. Restart it (`genie team restart <team> <member>`) or replace it.\n{stderr_tail}",
-                        k.label()
-                    ),
-                );
-            } else if crashed_at_work {
-                // Leave a note in its own mailbox: it restarts with the same conversation and resumes.
-                let _ = note_to_self(app, &k, &format!("[genie] Your session restarted after a crash (exit {code:?}). Continue where you left off."));
-            } else {
-                on_member(app, &k, |bus, team, member| bus.member_idle(team, member));
-            }
-            Ok(())
+            let outcome = if expected { Outcome::Stopped } else { Outcome::Crashed { code, stderr: &stderr, at_work: state == "working" } };
+            Ok(outcome::record(app, &k, task.as_deref(), outcome))
         })
         .await;
+    if let Some(v) = verdict.ok().filter(|v| v.failures > 0) {
+        // Wake the scheduler when the agent may start again, not at its next periodic pass.
+        let app = app.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(v.retry_in + Duration::from_millis(50)).await;
+            app.wake_runtime.notify_one();
+        });
+    }
     app.wake_runtime.notify_one();
 }
 
@@ -868,31 +797,13 @@ fn on_member(app: &App, k: &AgentKey, f: impl FnOnce(&genie_core::team::Bus, &st
     }
 }
 
+/// Tell the orchestrator about an agent (about the orchestrator itself: the server log).
 fn tell_orchestrator(app: &App, k: &AgentKey, task: Option<&str>, text: &str) {
     if matches!(k, AgentKey::Orchestrator { .. }) {
         eprintln!("genie runtime: {}: {text}", k.project());
         return;
     }
-    let _ = app.with_tracker(k.project(), |t| t.bus().notify_orchestrator("genie", "system", "system", text, task));
-}
-
-fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
-    app.with_tracker(k.project(), |t| match k {
-        AgentKey::Member { team, member, .. } => t
-            .bus()
-            .send(genie_core::team::SendMail {
-                team,
-                from: "genie",
-                from_role: "system",
-                to: member,
-                text,
-                level: Some("high"),
-                kind: "system",
-                ..Default::default()
-            })
-            .map(|_| ()),
-        _ => t.bus().notify_orchestrator("genie", "system", "system", text, None),
-    })
+    let _ = runtime::tell_orchestrator(app, k.project(), task, text);
 }
 
 /// Tell the orchestrator (once per streak) that an agent looks stuck.
@@ -1060,7 +971,7 @@ fn report_if_silent(app: &App, slug: &str, q: &QuietTeam) -> AppResult<bool> {
 
 /// Stop the session of `key` (team stopped, member restarted…) and forget its failures.
 pub fn reset(app: &App, key: &AgentKey) {
-    app.sessions.clear_failures(key);
+    app.attempts.clear(key);
     if let Some(s) = app.sessions.get(key) {
         s.stop("restart");
     }
@@ -1068,11 +979,7 @@ pub fn reset(app: &App, key: &AgentKey) {
 
 /// Agents waiting out a backoff may try again at once (someone set their LiteLLM key).
 pub fn retry_now(app: &App) {
-    let now = Instant::now();
-    for b in app.sessions.backoff.lock().unwrap_or_else(|e| e.into_inner()).values_mut() {
-        b.1 = now;
-    }
-    app.sched.retry_now();
+    app.attempts.retry_now();
     app.wake_runtime.notify_one();
 }
 
@@ -1091,11 +998,6 @@ pub fn reload(app: &App, key: &AgentKey) {
 /// Whether a live session holds `key` right now.
 pub fn is_live(app: &App, key: &AgentKey) -> bool {
     app.sessions.get(key).is_some()
-}
-
-/// Consecutive failures recorded for `key` (for the board).
-pub fn failures(app: &App, key: &AgentKey) -> u32 {
-    app.sessions.failures(key)
 }
 
 /// Stop every session (server shutdown).

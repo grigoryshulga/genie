@@ -20,7 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use genie_core::server_db::Project;
 use genie_core::team::{self, Mail, NewMember, NewTeam, ORCHESTRATOR, TeamWorktree};
@@ -33,6 +33,7 @@ use tokio::sync::Semaphore;
 use crate::agent_config::{AgentConfig, FileAccess, MailMode, RelKind, Relation, RoleDef, SpecMember, Stage, TeamSpec, Workspace};
 use crate::config::MemberSpec;
 use crate::ops::{self, AgentKind};
+use crate::outcome::Outcome;
 use crate::sandbox;
 use crate::state::{App, AppError, AppResult};
 
@@ -66,19 +67,11 @@ pub struct Sched(Mutex<SchedState>);
 #[derive(Default)]
 struct SchedState {
     running: HashSet<AgentKey>,
-    /// Consecutive failures and when the agent may run again.
-    backoff: HashMap<AgentKey, (u32, Instant)>,
 }
 
 impl Sched {
     fn with<T>(&self, f: impl FnOnce(&mut SchedState) -> T) -> T {
         f(&mut self.0.lock().unwrap_or_else(|e| e.into_inner()))
-    }
-
-    /// Agents waiting out a backoff may run at once; their failures still count.
-    pub fn retry_now(&self) {
-        let now = Instant::now();
-        self.with(|s| s.backoff.values_mut().for_each(|b| b.1 = now));
     }
 }
 
@@ -205,13 +198,12 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
     if let Err(e) = crate::sessions::watch_silent_teams(app).await {
         eprintln!("genie runtime: silent-team watchdog: {e}");
     }
-    let now = Instant::now();
     for key in candidates {
         if live && !matches!(key, AgentKey::Job { .. }) {
             crate::sessions::deliver(app, &key).await;
             continue;
         }
-        let ready = app.sched.with(|s| !s.running.contains(&key) && s.backoff.get(&key).is_none_or(|(_, until)| *until <= now));
+        let ready = !app.sched.with(|s| s.running.contains(&key)) && app.attempts.may_start(&key);
         if !ready {
             continue;
         }
@@ -219,28 +211,14 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
         app.sched.with(|s| s.running.insert(key.clone()));
         let app = app.clone();
         tokio::spawn(async move {
-            let ok = run_turn(&app, &key).await;
-            app.sched.with(|s| {
-                s.running.remove(&key);
-                if ok {
-                    s.backoff.remove(&key);
-                } else {
-                    let n = s.backoff.get(&key).map(|(n, _)| n + 1).unwrap_or(1);
-                    let delay = Duration::from_secs((5u64 << n.min(7)).min(600));
-                    s.backoff.insert(key.clone(), (n, Instant::now() + delay));
-                }
-            });
+            run_turn(&app, &key).await;
+            app.sched.with(|s| s.running.remove(&key));
             drop(permit);
             app.wake_runtime.notify_one();
             app.wake_engine.notify_one();
         });
     }
     Ok(())
-}
-
-/// Consecutive failures of an agent so far (for the attempt limit).
-fn failures(app: &App, key: &AgentKey) -> u32 {
-    app.sched.with(|s| s.backoff.get(key).map(|(n, _)| *n).unwrap_or(0))
 }
 
 struct Prepared {
@@ -268,19 +246,19 @@ struct Prepared {
 }
 
 /// Run one turn; returns whether it succeeded.
-async fn run_turn(app: &Arc<App>, key: &AgentKey) -> bool {
+async fn run_turn(app: &Arc<App>, key: &AgentKey) {
     let k = key.clone();
     let prepared = app.blocking(move |app| prepare(app, &k)).await;
-    let p = match prepared {
+    let mut p = match prepared {
         Ok(Some(p)) => p,
-        Ok(None) => return true,
+        Ok(None) => return,
         Err(e) => {
-            eprintln!("genie runtime: {}: cannot start {}: {e}", key.project(), key.label());
-            return false;
+            let n = app.attempts.failed_to_start(key);
+            eprintln!("genie runtime: {}: cannot start {} (attempt {n}): {e}", key.project(), key.label());
+            return;
         }
     };
     let turn = p.turn;
-    let mut p = p;
     let ttl = chrono::Duration::seconds(app.cfg.runtime.turn_timeout_secs as i64 + 300);
     let (slug, role, role_id, name, team, job) =
         (key.project().to_string(), p.role, p.role_id.clone(), p.name.clone(), p.team.clone(), p.job);
@@ -290,8 +268,9 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey) -> bool {
     {
         Ok(t) => p.token = t,
         Err(e) => {
+            app.attempts.failed_to_start(key);
             eprintln!("genie runtime: turn {turn}: {e}");
-            return false;
+            return;
         }
     }
     let outcome = execute(app, key, &p).await;
@@ -300,13 +279,10 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey) -> bool {
         Err(e) => (false, None, Some(e), String::new()),
     };
     let k = key.clone();
-    let max_attempts = app.cfg.runtime.max_attempts.max(1);
-    let attempts = failures(app, key) + u32::from(!ok);
-    let res = app.blocking(move |app| finish(app, &k, &p, ok, code, error.as_deref(), &log, attempts >= max_attempts, max_attempts)).await;
+    let res = app.blocking(move |app| finish(app, &k, &p, ok, code, error.as_deref(), &log)).await;
     if let Err(e) = res {
         eprintln!("genie runtime: turn {turn}: {e}");
     }
-    ok
 }
 
 fn project_of(app: &App, slug: &str) -> AppResult<Project> {
@@ -1161,18 +1137,8 @@ fn expand_group(g: &[String], vars: &HashMap<&str, String>, lists: &HashMap<&str
     Some(expanded)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn finish(
-    app: &App,
-    key: &AgentKey,
-    p: &Prepared,
-    ok: bool,
-    code: Option<i32>,
-    error: Option<&str>,
-    log: &str,
-    give_up: bool,
-    max_attempts: u32,
-) -> AppResult<()> {
+/// A turn ended: close its row, its token and its mail lease (or job), then record how it went.
+fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, error: Option<&str>, log: &str) -> AppResult<()> {
     let slug = key.project();
     app.with_server(|db| db.finish_turn(p.turn, if ok { "succeeded" } else { "failed" }, code.map(i64::from), error, Some(log)))?;
     app.with_server(|db| db.revoke_token(&p.token))?;
@@ -1181,45 +1147,15 @@ fn finish(
             let has_output = app.with_server(|db| db.job(*job))?.output.is_some();
             let ok = ok && has_output;
             let err = if !has_output && error.is_none() { Some("the agent finished without `genie job output`") } else { error };
-            app.with_server(|db| db.finish_job(*job, ok, err, i64::from(max_attempts)))?;
+            let max_attempts = i64::from(app.cfg.runtime.max_attempts.max(1));
+            app.with_server(|db| db.finish_job(*job, ok, err, max_attempts))?;
         }
-        AgentKey::Orchestrator { .. } => {
+        AgentKey::Orchestrator { .. } | AgentKey::Member { .. } => {
             app.with_tracker(slug, |t| if ok { t.bus().complete_lease(p.turn) } else { t.bus().release_lease(p.turn) })?;
-            if !ok && give_up {
-                eprintln!(
-                    "genie runtime: {slug}: the orchestrator failed {max_attempts} times in a row; retrying with backoff: {}",
-                    error.unwrap_or("")
-                );
-            }
-        }
-        AgentKey::Member { team, member, .. } => {
-            app.with_tracker(slug, |t| {
-                let bus = t.bus();
-                if ok {
-                    bus.complete_lease(p.turn)?;
-                    bus.member_idle(team, member)
-                } else {
-                    bus.release_lease(p.turn)?;
-                    if give_up {
-                        bus.member_gave_up(team, member, error.unwrap_or("error"), max_attempts)?;
-                        let tail: String = log.chars().rev().take(600).collect::<Vec<_>>().into_iter().rev().collect();
-                        bus.notify_orchestrator(
-                            "genie",
-                            "system",
-                            "system",
-                            &format!(
-                                "Member {member} of team {team} failed {max_attempts} turns in a row ({}). Its mail is kept. Restart it (`genie team restart {team} {member}`) or replace it.\n{tail}",
-                                error.unwrap_or("error")
-                            ),
-                            p.task.as_deref(),
-                        )
-                    } else {
-                        bus.member_idle(team, member)
-                    }
-                }
-            })?;
         }
     }
+    let outcome = if ok { Outcome::Ran } else { Outcome::Failed { error: error.unwrap_or("error"), log } };
+    crate::outcome::record(app, key, p.task.as_deref(), outcome);
     Ok(())
 }
 
@@ -2132,13 +2068,39 @@ pub fn remove_worktree(app: &App, slug: &str, team: &str) -> String {
     }
 }
 
+/// A system notice to the project's orchestrator about `task`; the orchestrator is woken for it.
+pub fn tell_orchestrator(app: &App, project: &str, task: Option<&str>, text: &str) -> AppResult<()> {
+    app.with_tracker(project, |t| t.bus().notify_orchestrator("genie", "system", "system", text, task))?;
+    app.wake_runtime.notify_one();
+    Ok(())
+}
+
+/// A note in the agent's own mailbox (a member's, or the orchestrator's): it reads it on its next step.
+pub fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
+    app.with_tracker(k.project(), |t| match k {
+        AgentKey::Member { team, member, .. } => t
+            .bus()
+            .send(genie_core::team::SendMail {
+                team,
+                from: "genie",
+                from_role: "system",
+                to: member,
+                text,
+                level: Some("high"),
+                kind: "system",
+                ..Default::default()
+            })
+            .map(|_| ()),
+        _ => t.bus().notify_orchestrator("genie", "system", "system", text, None),
+    })?;
+    app.wake_runtime.notify_one();
+    Ok(())
+}
+
 /// Let a member in `error` work again (its kept mail is offered on the next tick).
 pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppResult<()> {
     app.with_tracker(slug, |t| t.bus().member_restarted(team, member))?;
     let key = AgentKey::Member { project: slug.to_string(), team: team.to_string(), member: member.to_string() };
-    app.sched.with(|s| {
-        s.backoff.remove(&key);
-    });
     crate::sessions::reset(app, &key);
     app.wake_runtime.notify_one();
     Ok(())

@@ -75,8 +75,10 @@ pub struct App {
     pub exe: PathBuf,
     /// Live agent sessions (long-running harness processes).
     pub sessions: crate::sessions::Registry,
-    /// The scheduler of agent turns (whose turn is running, who waits after failures).
+    /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
+    /// Failures in a row of each agent, turns and sessions alike, and their backoff.
+    pub attempts: crate::outcome::Attempts,
     /// Roles, team templates, skills and MCP connections (reloaded when their files change).
     agents: RwLock<Arc<AgentConfig>>,
     /// The agents' connections through the MCP gateway.
@@ -108,6 +110,7 @@ impl App {
             exe,
             sessions: Default::default(),
             sched: Default::default(),
+            attempts: Default::default(),
             agents: RwLock::new(Arc::new(agents)),
             mcp: Default::default(),
             git: Default::default(),
