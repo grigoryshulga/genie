@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { DocFileIcon, DocStatusBadge, snippetParts, useDebounced, useDocSearch } from "@/entities/doc";
 import { useSession } from "@/entities/session";
-import { StatusIcon, type ViewId, VIEWS, useTasks } from "@/entities/task";
+import { EpicIcon, type PresetId, PRESETS, StatusIcon, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
 import { Icon, Modal } from "@/shared/ui";
 
@@ -9,8 +9,9 @@ export interface PaletteActions {
   newTask: () => void;
   /** «Новая задача» in the «Обсудить с агентом» mode. */
   newIdea: () => void;
-  go: (view: ViewId) => void;
-  layout: (l: "list" | "board") => void;
+  go: (where: "board" | "tasks" | "epics") => void;
+  /** The task list with a preset's statuses; `mine` keeps the viewer's tasks. */
+  preset: (id: PresetId, mine?: boolean) => void;
   openTask: (id: string) => void;
   openTeam: (id: string) => void;
   openDoc: (path: string) => void;
@@ -50,11 +51,11 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
     const base: Item[] = [
       { key: "new", icon: <Icon.plus />, label: "Новая задача", hint: "C", group: "ДЕЙСТВИЯ", run: actions.newTask },
       { key: "idea", icon: <Icon.plus />, label: "Обсудить идею с агентом", group: "ДЕЙСТВИЯ", run: actions.newIdea },
-      { key: "list", icon: <Icon.list />, label: "Показать списком", group: "ДЕЙСТВИЯ", run: () => actions.layout("list") },
-      { key: "board", icon: <Icon.board />, label: "Показать доской", hint: "B", group: "ДЕЙСТВИЯ", run: () => actions.layout("board") },
-      ...(Object.keys(VIEWS) as ViewId[])
-        .filter((v) => mine || !VIEWS[v].mine)
-        .map((v) => ({ key: `v-${v}`, icon: <Icon.chevron />, label: `Перейти: ${VIEWS[v].name}`, group: "ПЕРЕЙТИ" as const, run: () => actions.go(v) })),
+      { key: "go-board", icon: <Icon.board />, label: "Доска", hint: "G B", group: "ПЕРЕЙТИ", run: () => actions.go("board") },
+      { key: "go-tasks", icon: <Icon.list />, label: "Задачи", hint: "G T", group: "ПЕРЕЙТИ", run: () => actions.go("tasks") },
+      { key: "go-epics", icon: <EpicIcon />, label: "Эпики", hint: "G E", group: "ПЕРЕЙТИ", run: () => actions.go("epics") },
+      ...(mine ? [{ key: "p-mine", icon: <Icon.user />, label: "Задачи: мои", group: "ПЕРЕЙТИ" as const, run: () => actions.preset("open", true) }] : []),
+      ...PRESETS.filter((p) => p.id !== "open").map((p) => ({ key: `p-${p.id}`, icon: <StatusIcon status={p.statuses[0]} />, label: `Задачи: ${p.name.toLowerCase()}`, group: "ПЕРЕЙТИ" as const, run: () => actions.preset(p.id) })),
       { key: "docs", icon: <DocFileIcon />, label: "Документация", hint: "docs/", group: "ПЕРЕЙТИ", run: actions.openDocs },
       ...teams.filter((t) => t.state === "active").map((t) => ({ key: `t-${t.id}`, icon: <span className="spin" />, label: `Команда ${t.id}`, hint: t.taskInfo?.title, group: "КОМАНДЫ" as const, run: () => actions.openTeam(t.id) })),
       ...tasks.map((t) => ({ key: t.id, icon: <StatusIcon status={t.status} />, label: `${t.id}  ${t.title}`, hint: t.labels.join(", "), group: "ЗАДАЧИ" as const, run: () => actions.openTask(t.id) })),

@@ -95,7 +95,7 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
                 sub: `${many(p)}${t.parent ? `эпик ${t.parent}` : "без эпика"}`,
                 extra: modelsText(t.spend),
                 spend: t.spend,
-                to: { project: t.project, path: `/active?task=${encodeURIComponent(t.id)}` },
+                to: { project: t.project, path: `/tasks?task=${encodeURIComponent(t.id)}` },
               };
             })
           : topItems(

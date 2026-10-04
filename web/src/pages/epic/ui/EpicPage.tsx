@@ -49,7 +49,7 @@ export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void })
     return (
       <main className="main">
         <div className="empty">
-          {epic.id} — не эпик. <Link to={`/active?task=${encodeURIComponent(epic.id)}`}>Открыть задачу</Link>
+          {epic.id} — не эпик. <Link to={`/tasks?task=${encodeURIComponent(epic.id)}`}>Открыть задачу</Link>
         </div>
       </main>
     );
@@ -67,7 +67,7 @@ export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void })
           {epic.id}
         </span>
         <span className="grow" />
-        <Link className="btn d-only" to={`/active?layout=board&epic=${encodeURIComponent(epic.id)}`}>
+        <Link className="btn d-only" to={`/board?epic=${encodeURIComponent(epic.id)}`}>
           <Icon.board size={13} />
           Задачи эпика на доске
         </Link>
@@ -92,7 +92,7 @@ export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void })
               <p>{epic.needsOwner.question}</p>
               <div className="actions">
                 <span className="grow" />
-                <Link className="btn amber" to={`/decisions?task=${encodeURIComponent(epic.id)}`}>
+                <Link className="btn amber" to={`/tasks?status=needs_owner&task=${encodeURIComponent(epic.id)}`}>
                   Ответить
                 </Link>
               </div>
@@ -274,7 +274,7 @@ function EpicTasks({
   const sorted = [...tasks].sort((a, b) => order.indexOf(progressOf(a.status)) - order.indexOf(progressOf(b.status)));
   const closed = tasks.filter((t) => progressOf(t.status) === "closed").length;
   const movable = all.filter((t) => t.type !== "epic" && !t.parent && t.status !== "done" && t.status !== "cancelled");
-  const open = (id: string) => navigate(`/active?epic=${encodeURIComponent(epic.id)}&task=${encodeURIComponent(id)}`);
+  const open = (id: string) => navigate(`/tasks?epic=${encodeURIComponent(epic.id)}&task=${encodeURIComponent(id)}`);
 
   return (
     <section className="sec">

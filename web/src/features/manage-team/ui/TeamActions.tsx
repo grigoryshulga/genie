@@ -67,7 +67,7 @@ export function TeamActions({ team }: { team: TeamView }) {
                 onSuccess: () => {
                   toast(`Команда ${team.id} удалена`);
                   close();
-                  navigate("/active");
+                  navigate("/board");
                 },
                 onError: (e) => toast(`Не удалось: ${e.message}`, "error"),
               },

@@ -110,7 +110,7 @@ export function DocView({
                 <span className="doc-related">
                   Задачи
                   {page.related.map((id) => (
-                    <Link key={id} className="epic-chip" to={`/active?task=${encodeURIComponent(id)}`}>
+                    <Link key={id} className="epic-chip" to={`/tasks?task=${encodeURIComponent(id)}`}>
                       {id}
                     </Link>
                   ))}

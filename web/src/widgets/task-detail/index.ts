@@ -1,1 +1,1 @@
-export { TaskDetail } from "./ui/TaskDetail.tsx";
+export { TaskDetail, type TaskTab } from "./ui/TaskDetail.tsx";
