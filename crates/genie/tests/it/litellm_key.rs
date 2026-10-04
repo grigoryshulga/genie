@@ -2,7 +2,7 @@
 //! to the agents started on their behalf; an agent whose person has none does
 //! not start.
 
-mod common;
+use crate::common;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

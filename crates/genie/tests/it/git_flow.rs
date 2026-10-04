@@ -3,7 +3,7 @@
 //! they may not do is refused; a person merges on the host; the watcher tells the
 //! orchestrator, which closes the task.
 
-mod common;
+use crate::common;
 
 use genie_core::{DeliveryState, RequestState};
 use std::path::PathBuf;

@@ -2,7 +2,7 @@
 //! place. While it holds the console only its token takes the orchestrator's
 //! mail; given back (or lapsed), the server's orchestrator carries on.
 
-mod common;
+use crate::common;
 
 use std::path::PathBuf;
 

@@ -4,7 +4,7 @@
 //! process speaking MCP over stdio (`fixtures/fake-mcp-server.mjs`) and an HTTP
 //! endpoint with sessions and event-stream answers.
 
-mod common;
+use crate::common;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

@@ -1,7 +1,7 @@
 //! Repositories of a project: hosts from `git.json`, the project's list, mirrors and
 //! workspaces with several repositories at their mounts.
 
-mod common;
+use crate::common;
 
 use common::githost::{sh, upstream, write_git_json};
 use common::*;

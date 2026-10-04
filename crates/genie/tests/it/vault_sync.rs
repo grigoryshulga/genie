@@ -3,7 +3,7 @@
 //! pages edited in both places are merged and the admins are told; a conflict
 //! git cannot settle leaves the vault as it was.
 
-mod common;
+use crate::common;
 
 use std::path::Path;
 

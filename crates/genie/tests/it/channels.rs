@@ -1,7 +1,7 @@
 //! E-mail delivery through a minimal in-process SMTP server, and retries when
 //! the server is down.
 
-mod common;
+use crate::common;
 
 use std::sync::{Arc, Mutex};
 

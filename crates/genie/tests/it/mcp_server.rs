@@ -2,7 +2,7 @@
 //! a person's own agent and for genie's agents. The token decides which actions
 //! a caller sees, and every call goes through the API with it.
 
-mod common;
+use crate::common;
 
 use std::collections::HashSet;
 
