@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use genie::config::Config;
 use genie_core::Tracker;
@@ -11,6 +12,14 @@ use genie_core::db::SCHEMA_VERSION;
 use genie_core::migrate;
 use genie_core::server_db::{SERVER_SCHEMA_VERSION, ServerDb};
 use rusqlite::Connection;
+
+/// The migration report store is process-wide and the tests of this file run in parallel:
+/// every test holds this lock, so the one that counts reports sees only its own.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Every file under `dir`, by relative path: what "the source is untouched" means.
 fn tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
@@ -75,6 +84,7 @@ fn legacy_tracker(dir: &Path) -> PathBuf {
 
 #[test]
 fn an_old_tracker_migrates_on_a_copy_and_keeps_every_row() {
+    let _serial = serial();
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     let tasks_before = count(&file, "SELECT COUNT(*) FROM tasks");
@@ -101,6 +111,7 @@ fn an_old_tracker_migrates_on_a_copy_and_keeps_every_row() {
 
 #[test]
 fn checking_writes_nothing_to_the_source() {
+    let _serial = serial();
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     let before = tree(dir.path());
@@ -117,6 +128,7 @@ fn checking_writes_nothing_to_the_source() {
 
 #[test]
 fn a_damaged_database_stops_the_update_and_names_the_file() {
+    let _serial = serial();
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     let mut bytes = std::fs::read(&file).unwrap();
@@ -133,6 +145,7 @@ fn a_damaged_database_stops_the_update_and_names_the_file() {
 
 #[test]
 fn data_from_a_newer_genie_is_refused_and_left_alone() {
+    let _serial = serial();
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     set_version(&file, SCHEMA_VERSION + 1);
@@ -157,6 +170,7 @@ fn data_from_a_newer_genie_is_refused_and_left_alone() {
 
 #[test]
 fn a_missing_column_with_a_current_version_is_detected_and_repaired() {
+    let _serial = serial();
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     // An interrupted migration or an old copy: the version says 5, the column is gone.
@@ -176,6 +190,7 @@ fn a_missing_column_with_a_current_version_is_detected_and_repaired() {
 
 #[test]
 fn an_existing_foreign_key_violation_does_not_block_the_update() {
+    let _serial = serial();
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     // A tracker from before genie enforced foreign keys: an orphan comment row (rusqlite's
@@ -200,6 +215,7 @@ fn an_existing_foreign_key_violation_does_not_block_the_update() {
 
 #[test]
 fn a_rehearsal_that_would_break_a_foreign_key_is_refused() {
+    let _serial = serial();
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     let before = std::fs::read(&file).unwrap();
@@ -229,6 +245,7 @@ fn a_rehearsal_that_would_break_a_foreign_key_is_refused() {
 
 #[test]
 fn a_backup_records_its_schemas_and_restore_refuses_a_newer_one() {
+    let _serial = serial();
     let data = tempfile::tempdir().unwrap();
     let server = ServerDb::open(&data.path().join("server.db")).unwrap();
     let tracker_dir = data.path().join("projects/shop");
@@ -254,6 +271,7 @@ fn a_backup_records_its_schemas_and_restore_refuses_a_newer_one() {
 
 #[test]
 fn doctor_reports_the_schema_versions_and_survives_newer_data() {
+    let _serial = serial();
     let data = tempfile::tempdir().unwrap();
     let server = data.path().join("server.db");
     drop(ServerDb::open(&server).unwrap());
