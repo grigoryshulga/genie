@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
 import { Avatar, Avatars } from "@/entities/member";
@@ -41,7 +41,21 @@ import { TaskDelivery } from "./TaskDelivery.tsx";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };
 
-export function TaskDetail({ id, team, onClose }: { id: string; team?: Team; onClose: () => void }) {
+export type TaskTab = "about" | "team";
+
+/**
+ * A task: the preview beside a list or board (`variant="panel"`), or its own page with
+ * tabs (`variant="page"`) — the description with every property, and the team.
+ */
+export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about", teamPane }: {
+  id: string;
+  team?: Team;
+  onClose: () => void;
+  variant?: "panel" | "page";
+  tab?: TaskTab;
+  /** The team tab's content; the page passes it in so this widget stays below the pages. */
+  teamPane?: ReactNode;
+}) {
   useTick();
   const q = useTask(id);
   const toast = useToast();
@@ -73,8 +87,9 @@ export function TaskDetail({ id, team, onClose }: { id: string; team?: Team; onC
   const fail = (e: Error) => toast(`Не удалось: ${e.message}`, "error");
   const viewer = useArtifactViewer(fail);
 
-  if (q.isPending) return <aside className="detail"><div className="empty">Загрузка…</div></aside>;
-  if (q.isError) return <aside className="detail"><div className="empty">{q.error.message}</div></aside>;
+  const Shell = variant === "page" ? "main" : "aside";
+  if (q.isPending) return <Shell className={variant === "page" ? "main" : "detail"}><div className="empty">Загрузка…</div></Shell>;
+  if (q.isError) return <Shell className={variant === "page" ? "main" : "detail"}><div className="empty">{q.error.message}</div></Shell>;
   const t: Task = q.data;
   const isEpic = t.type === "epic";
   const canSpawn = agents.isSuccess && !isEpic && team?.state !== "active" && !["done", "cancelled"].includes(t.status);
@@ -104,143 +119,135 @@ export function TaskDetail({ id, team, onClose }: { id: string; team?: Team; onC
       .map((c) => ({ kind: "comment" as const, at: c.at, c })),
   ].sort((a, b) => a.at.localeCompare(b.at));
 
-  return (
-    <aside className="detail" aria-label={`Задача ${t.id}`}>
-      <header className="topbar">
-        <button type="button" className="icon-btn m-only" onClick={onClose} aria-label="Назад">
-          <Icon.back />
-        </button>
-        <span className="crumbs">
-          {t.parent && (
-            <>
-              {epic ? <Link to={`/epic/${encodeURIComponent(t.parent)}`}>{t.parent}</Link> : t.parent}
-              {" / "}
-            </>
-          )}
-          {t.id}
-        </span>
-        <span className="grow" />
-        {team &&
-          (team.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] ? (
-            // An idea being shaped: back to the conversation with its planner.
-            <Link to={`/team/${encodeURIComponent(team.id)}/${encodeURIComponent(team.members[0].name)}`} style={{ fontSize: 12 }}>
-              Разговор о плане
-            </Link>
-          ) : (
-            <Link to={`/team/${encodeURIComponent(team.id)}`} style={{ fontSize: 12 }}>
-              Команда {team.id}
-            </Link>
+  const page = variant === "page";
+  const pageLink = `/task/${encodeURIComponent(t.id)}`;
+  const last = activity.at(-1);
+
+  const title = (
+    <h2
+      className="title"
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onBlur={(e) => {
+        const title = e.currentTarget.textContent?.trim() ?? "";
+        if (title && title !== t.title) patch.mutate({ id: t.id, patch: { title } }, { onError: fail });
+      }}
+      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
+    >
+      {t.title}
+    </h2>
+  );
+
+  // The page shows every property in its rail; the preview only what a glance needs.
+  const props = (
+    <div className={page ? "props rail" : "props"}>
+      <span className="k">Статус</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <StatusIcon status={t.status} size={13} />
+        <select aria-label="Статус" value={t.status} onChange={(e) => setStatus(e.target.value as Status)}>
+          {(Object.keys(STATUS_NAME) as Status[]).map((s) => (
+            <option key={s} value={s}>
+              {STATUS_NAME[s]}
+            </option>
           ))}
-        {canDelete && (
-          <button type="button" className="icon-btn" onClick={() => setDeleting(true)} aria-label="Удалить задачу" title="Удалить задачу">
-            <Icon.trash />
+        </select>
+      </span>
+      <span className="k">Приоритет</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <PriorityIcon priority={t.priority} size={13} />
+        <select aria-label="Приоритет" value={t.priority} onChange={(e) => patch.mutate({ id: t.id, patch: { priority: Number(e.target.value) } }, { onError: fail })}>
+          {PRIORITY_NAME.map((p, i) => (
+            <option key={p} value={i}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </span>
+      {people.length > 0 && (
+        <>
+          <span className="k">Ответственный</span>
+          <span className="wide" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            {t.assignee && <PersonAvatar login={t.assignee} name={responsibleName} prefix="" />}
+            <select aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Человек, который отвечает за задачу: ему приходят вопросы агентов">
+              <option value="">Не назначен</option>
+              {people.map((p) => (
+                <option key={p.login} value={p.login}>
+                  {p.login === me ? `${p.label} — я` : p.label}
+                </option>
+              ))}
+            </select>
+          </span>
+        </>
+      )}
+      <span className="k">Команда</span>
+      <span className="wide team-cell">
+        {team ? (
+          <>
+            <Avatars members={team.members} max={6} />
+            <Link to={page ? `${pageLink}/team` : teamLink(team)}>{team.state === "active" ? workingText(team.members.filter((m) => m.activity === "working").length) : "остановлена"}</Link>
+          </>
+        ) : (
+          !canSpawn && <span className="muted">не собрана</span>
+        )}
+        {canSpawn && (
+          <button type="button" className="btn ghost" style={{ height: 26 }} onClick={() => setSpawning(true)}>
+            <Icon.userPlus size={12} />
+            Собрать команду
           </button>
         )}
-        <button type="button" className="icon-btn d-only" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </header>
-
-      <div className="detail-body">
-        <h2
-          className="title"
-          contentEditable
-          suppressContentEditableWarning
-          spellCheck={false}
-          onBlur={(e) => {
-            const title = e.currentTarget.textContent?.trim() ?? "";
-            if (title && title !== t.title) patch.mutate({ id: t.id, patch: { title } }, { onError: fail });
-          }}
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
-        >
-          {t.title}
-        </h2>
-
-        <div className="props">
-          <span className="k">Статус</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <StatusIcon status={t.status} size={13} />
-            <select aria-label="Статус" value={t.status} onChange={(e) => setStatus(e.target.value as Status)}>
-              {(Object.keys(STATUS_NAME) as Status[]).map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_NAME[s]}
+      </span>
+      {!isEpic && (
+        <>
+          <span className="k">Эпик</span>
+          <span className="wide" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            <EpicIcon size={13} empty={!epic} />
+            <select
+              aria-label="Эпик"
+              value={epic ? epic.id : ""}
+              onChange={(e) =>
+                patch.mutate(
+                  { id: t.id, patch: { parent: e.target.value || null } },
+                  { onSuccess: () => toast(e.target.value ? `${t.id} теперь в эпике ${e.target.value}` : `${t.id} больше не в эпике`), onError: fail },
+                )
+              }
+            >
+              <option value="">Без эпика</option>
+              {epicChoices.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.id} · {e.title}
                 </option>
               ))}
             </select>
           </span>
-          <span className="k">Приоритет</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <PriorityIcon priority={t.priority} size={13} />
-            <select aria-label="Приоритет" value={t.priority} onChange={(e) => patch.mutate({ id: t.id, patch: { priority: Number(e.target.value) } }, { onError: fail })}>
-              {PRIORITY_NAME.map((p, i) => (
-                <option key={p} value={i}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </span>
-          {people.length > 0 && (
-            <>
-              <span className="k">Ответственный</span>
-              <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                {t.assignee && <PersonAvatar login={t.assignee} name={responsibleName} prefix="" />}
-                <select aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Человек, который отвечает за задачу: ему приходят вопросы агентов">
-                  <option value="">Не назначен</option>
-                  {people.map((p) => (
-                    <option key={p.login} value={p.login}>
-                      {p.login === me ? `${p.label} — я` : p.label}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </>
-          )}
-          <span className="k">Метки</span>
-          <span className={people.length > 0 ? undefined : "wide"}>{t.labels.length ? <Labels labels={t.labels} /> : <span className="muted">нет</span>}</span>
-          <span className="k">Команда</span>
-          <span className="wide team-cell">
-            {team ? (
+        </>
+      )}
+      {(t.deps.length > 0 || (!isEpic && t.children.length > 0)) && (
+        <>
+          <span className="k">Связи</span>
+          <span className="wide muted">
+            {t.deps.length > 0 && (
               <>
-                <Avatars members={team.members} max={6} />
-                <Link to={`/team/${encodeURIComponent(team.id)}`}>{team.id}</Link>
-                <span className="muted">{team.state === "active" ? workingText(team.members.filter((m) => m.activity === "working").length) : "остановлена"}</span>
+                зависит от <TaskLinks ids={t.deps} />
               </>
-            ) : (
-              <span className="muted">не собрана</span>
             )}
-            {canSpawn && (
-              <button type="button" className="btn ghost" style={{ height: 26 }} onClick={() => setSpawning(true)}>
-                <Icon.userPlus size={12} />
-                Собрать команду
-              </button>
+            {t.deps.length > 0 && !isEpic && t.children.length > 0 && " · "}
+            {!isEpic && t.children.length > 0 && (
+              <>
+                подзадачи <TaskLinks ids={t.children} />
+              </>
             )}
           </span>
-          <TaskSpend id={t.id} epic={isEpic} />
-          {!isEpic && (
-            <>
-              <span className="k">Эпик</span>
-              <span className="wide" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                <EpicIcon size={13} empty={!epic} />
-                <select
-                  aria-label="Эпик"
-                  value={epic ? epic.id : ""}
-                  onChange={(e) =>
-                    patch.mutate(
-                      { id: t.id, patch: { parent: e.target.value || null } },
-                      { onSuccess: () => toast(e.target.value ? `${t.id} теперь в эпике ${e.target.value}` : `${t.id} больше не в эпике`), onError: fail },
-                    )
-                  }
-                >
-                  <option value="">Без эпика</option>
-                  {epicChoices.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.id} · {e.title}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </>
-          )}
+        </>
+      )}
+      {(page || t.labels.length > 0) && (
+        <>
+          <span className="k">Метки</span>
+          <span className="wide">{t.labels.length ? <Labels labels={t.labels} /> : <span className="muted">нет</span>}</span>
+        </>
+      )}
+      {page && (
+        <>
           <span className="k">Интеграция</span>
           <span className="wide">
             <input
@@ -255,176 +262,85 @@ export function TaskDetail({ id, team, onClose }: { id: string; team?: Team; onC
           {t.worktree && (
             <>
               <span className="k">Ветка</span>
-              <span className="wide mono" style={{ fontSize: 12 }} title={t.worktree.path}>
+              <span className="wide mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }} title={t.worktree.path}>
                 {t.worktree.branch ?? t.worktree.path}
               </span>
             </>
           )}
-          {(t.deps.length > 0 || (!isEpic && t.children.length > 0)) && (
-            <>
-              <span className="k">Связи</span>
-              <span className="wide muted">
-                {t.deps.length > 0 && `зависит от ${t.deps.join(", ")}`}
-                {t.deps.length > 0 && t.children.length > 0 && " · "}
-                {!isEpic && t.children.length > 0 && `подзадачи ${t.children.join(", ")}`}
-              </span>
-            </>
-          )}
-        </div>
+          <TaskSpend id={t.id} epic={isEpic} />
+        </>
+      )}
+    </div>
+  );
 
-        {isEpic && (
-          <Link className="epic-box link" to={`/epic/${encodeURIComponent(t.id)}`}>
-            <EpicIcon />
-            Это эпик: его задачи, прогресс и общие артефакты — на странице эпика
-            <Icon.chevron size={12} style={{ marginLeft: "auto" }} />
-          </Link>
-        )}
-        {epic && <EpicBox id={epic.id} onArtifact={viewer.show} />}
-        {impactEnabled && <DocsImpactBlock result={impact.data} />}
-
-        <OwnerDecision task={t} />
-
-        <section className="sec">
-          <h3>
-            {isEpic ? "Цель" : "Описание"}
-            {editDesc === undefined ? (
-              <button type="button" className="btn ghost" style={{ height: 24 }} onClick={() => setEditDesc(t.description)}>
-                Изменить
-              </button>
-            ) : null}
-          </h3>
-          {editDesc === undefined ? (
-            <Markdown text={t.description} empty="Описания нет" />
-          ) : (
-            <div className="composer">
-              <textarea aria-label="Описание" rows={8} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
-              <div className="bar">
-                markdown
-                <span className="grow" />
-                <button type="button" className="btn ghost" onClick={() => setEditDesc(undefined)}>
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={() => patch.mutate({ id: t.id, patch: { description: editDesc } }, { onSuccess: () => setEditDesc(undefined), onError: fail })}
-                >
-                  Сохранить
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="sec">
-          <h3>
-            {isEpic ? "Критерии успеха" : "Критерии приёмки"}
-            <span className="n">
-              {t.acceptance.filter((a) => a.done).length} / {t.acceptance.length}
-            </span>
-          </h3>
-          {t.acceptance.length ? (
-            <div className="criteria">
-              {t.acceptance.map((a) => (
-                <label key={a.id} className={a.done ? "done" : ""}>
-                  <input type="checkbox" checked={a.done} onChange={(e) => check.mutate({ id: t.id, n: a.id, done: e.target.checked }, { onError: fail })} />
-                  <span className="t">{a.text}</span>
-                  {a.checkedBy && <span className="by">{a.checkedBy}</span>}
-                </label>
-              ))}
-            </div>
-          ) : (
-            <span className="muted">Оркестратор сформулирует критерии при уточнении</span>
-          )}
-        </section>
-
-        {!isEpic && <TaskDelivery task={t.id} />}
-
-        {t.plan.trim() && (
-          <section className="sec">
-            <h3>{isEpic ? "Дорожная карта" : "План"}</h3>
-            <Markdown text={t.plan} />
-          </section>
-        )}
-        {t.notes.trim() && (
-          <section className="sec">
-            <h3>Заметки</h3>
-            <Markdown text={t.notes} />
-          </section>
-        )}
-
-        {t.artifacts.length > 0 && (
-          <section className="sec">
-            <h3>
-              Артефакты <span className="n">{t.artifacts.length}</span>
-            </h3>
-            <div className="artifacts">
-              {t.artifacts.map((a) => (
-                <button
-                  type="button"
-                  key={a.id}
-                  className="artifact"
-                  onClick={() => viewer.show(t.id, a.id)}
-                >
-                  <ArtifactThumb task={t.id} artifact={a} />
-                  <span className="nm">{a.name}</span>
-                  <span className="who">
-                    {a.kind} · {a.author}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="sec">
-          <h3>Активность</h3>
-          {activity.map((a) =>
-            a.kind === "event" ? (
-              <div key={`h${a.at}${a.h.event}`} className="ev">
-                <i />
-                <span>
-                  <span style={{ color: "var(--text-2)" }}>{a.h.actor}</span> {historyText(a.h, isEpic)} · {timeAgo(a.at)}
-                </span>
-              </div>
-            ) : (
-              <div key={`c${a.c.id}`} className={`comment${a.c.role === "human" ? " mine" : ""}`}>
-                <div className="head">
-                  <Avatar role={a.c.role} name={a.c.author} size="solo" />
-                  <span style={{ fontWeight: 500 }}>{a.c.author}</span>
-                  <span className="k">{KIND_NAME[a.c.kind] ?? a.c.kind}</span>
-                  <span className="when">{timeAgo(a.c.at)}</span>
-                </div>
-                <Markdown text={a.c.text} />
-              </div>
-            ),
-          )}
-          <div className="composer">
-            <textarea
-              aria-label="Комментарий"
-              placeholder="Комментарий для оркестратора и команды"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail });
-              }}
-            />
-            <div className="bar">
-              ⌘↵ отправить · оркестратор получит уведомление
-              <span className="grow" />
-              <button
-                type="button"
-                className="btn primary"
-                disabled={!draft.trim() || comment.isPending}
-                onClick={() => comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
-              >
-                Отправить
-              </button>
-            </div>
+  const description = (
+    <section className="sec">
+      <h3>
+        {isEpic ? "Цель" : "Описание"}
+        {editDesc === undefined ? (
+          <button type="button" className="btn ghost" style={{ height: 24 }} onClick={() => setEditDesc(t.description)}>
+            Изменить
+          </button>
+        ) : null}
+      </h3>
+      {editDesc === undefined ? (
+        <Markdown text={t.description} empty="Описания нет" />
+      ) : (
+        <div className="composer">
+          <textarea aria-label="Описание" rows={8} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+          <div className="bar">
+            markdown
+            <span className="grow" />
+            <button type="button" className="btn ghost" onClick={() => setEditDesc(undefined)}>
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => patch.mutate({ id: t.id, patch: { description: editDesc } }, { onSuccess: () => setEditDesc(undefined), onError: fail })}
+            >
+              Сохранить
+            </button>
           </div>
-        </section>
-      </div>
+        </div>
+      )}
+    </section>
+  );
 
+  const criteria = (
+    <section className="sec">
+      <h3>
+        {isEpic ? "Критерии успеха" : "Критерии приёмки"}
+        <span className="n">
+          {t.acceptance.filter((a) => a.done).length} из {t.acceptance.length}
+        </span>
+      </h3>
+      {t.acceptance.length ? (
+        <div className="criteria">
+          {t.acceptance.map((a) => (
+            <label key={a.id} className={a.done ? "done" : ""}>
+              <input type="checkbox" checked={a.done} onChange={(e) => check.mutate({ id: t.id, n: a.id, done: e.target.checked }, { onError: fail })} />
+              <span className="t">{a.text}</span>
+              {a.checkedBy && <span className="by">{a.checkedBy}</span>}
+            </label>
+          ))}
+        </div>
+      ) : (
+        <span className="muted">Оркестратор сформулирует критерии при уточнении</span>
+      )}
+    </section>
+  );
+
+  const epicLink = isEpic && (
+    <Link className="epic-box link" to={`/epic/${encodeURIComponent(t.id)}`}>
+      <EpicIcon />
+      Это эпик: его задачи, прогресс и общие артефакты — на странице эпика
+      <Icon.chevron size={12} style={{ marginLeft: "auto" }} />
+    </Link>
+  );
+
+  const dialogs = (
+    <>
       {viewer.modal}
       {spawning && <SpawnTeamDialog task={t} onClose={() => setSpawning(false)} />}
       {deleting && (
@@ -453,10 +369,257 @@ export function TaskDetail({ id, team, onClose }: { id: string; team?: Team; onC
           {t.team && " Команда, которая над ней работает, будет остановлена и удалена (ветка git останется)."}
         </ConfirmDialog>
       )}
-    </aside>
+    </>
+  );
+
+  const crumbs = (
+    <span className="crumbs">
+      {page && (
+        <>
+          <Link to="/tasks" className="d-only">
+            Задачи
+          </Link>
+          <span className="d-only"> / </span>
+        </>
+      )}
+      {t.parent && (
+        <>
+          {epic ? <Link to={`/epic/${encodeURIComponent(t.parent)}`}>{t.parent}</Link> : t.parent}
+          {" / "}
+        </>
+      )}
+      <span className="here">{t.id}</span>
+    </span>
+  );
+
+  if (!page)
+    return (
+      <aside className="detail" aria-label={`Задача ${t.id}`}>
+        <header className="topbar">
+          <button type="button" className="icon-btn m-only" onClick={onClose} aria-label="Назад">
+            <Icon.back />
+          </button>
+          {crumbs}
+          <span className="grow" />
+          <Link className="btn" to={pageLink} title="Открыть страницу задачи с командой и активностью">
+            <Icon.external size={12} />
+            Открыть страницу
+          </Link>
+          <button type="button" className="icon-btn d-only" onClick={onClose} aria-label="Закрыть">
+            <Icon.close />
+          </button>
+        </header>
+
+        <div className="detail-body">
+          <div className="detail-head">
+            {title}
+            {props}
+          </div>
+          {epicLink}
+          <OwnerDecision task={t} />
+          {description}
+          {criteria}
+          {!isEpic && <TaskDelivery task={t.id} />}
+          <footer className="detail-more">
+            {last && <span className="muted">Последнее: {last.kind === "event" ? `${last.h.actor} ${historyText(last.h, isEpic)}` : `${last.c.author}, ${KIND_NAME[last.c.kind] ?? last.c.kind}`} · {timeAgo(last.at)}</span>}
+            <span className="grow" />
+            <Link to={pageLink}>Вся задача и активность →</Link>
+          </footer>
+        </div>
+        {dialogs}
+      </aside>
+    );
+
+  return (
+    <main className="main task-page" aria-label={`Задача ${t.id}`}>
+      <header className="topbar">
+        <Link to="/tasks" className="icon-btn m-only" aria-label="Назад">
+          <Icon.back />
+        </Link>
+        {crumbs}
+        <span className="grow" />
+        {team?.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] && (
+          // An idea being shaped: back to the conversation with its planner.
+          <Link to={teamLink(team)} style={{ fontSize: 12 }}>
+            Разговор о плане
+          </Link>
+        )}
+        {canDelete && (
+          <button type="button" className="icon-btn" onClick={() => setDeleting(true)} aria-label="Удалить задачу" title="Удалить задачу">
+            <Icon.trash />
+          </button>
+        )}
+      </header>
+
+      <div className="tp-head">
+        {title}
+        <nav className="tp-tabs" aria-label="Разделы задачи">
+          <Link to={pageLink} className={tab === "about" ? "on" : ""} aria-current={tab === "about" ? "page" : undefined}>
+            {isEpic ? "Цель" : "Описание"}
+          </Link>
+          {!isEpic && (
+            <Link to={`${pageLink}/team`} className={tab === "team" ? "on" : ""} aria-current={tab === "team" ? "page" : undefined}>
+              Команда
+              <TeamState team={team} />
+            </Link>
+          )}
+        </nav>
+      </div>
+
+      {tab === "team" && !isEpic ? (
+        (teamPane ?? (
+          <div className="tp-noteam">
+            <Icon.userPlus size={18} />
+            <b>Команда не собрана</b>
+            <span className="muted">Соберите команду агентов: здесь появятся её почта, схема и участники.</span>
+            {canSpawn && (
+              <button type="button" className="btn primary" onClick={() => setSpawning(true)}>
+                Собрать команду
+              </button>
+            )}
+          </div>
+        ))
+      ) : (
+        <div className="tp-body">
+          <div className="tp-main">
+            {epicLink}
+            {impactEnabled && <DocsImpactBlock result={impact.data} />}
+            <OwnerDecision task={t} />
+            {description}
+            {criteria}
+            {!isEpic && <TaskDelivery task={t.id} />}
+            {t.plan.trim() && (
+              <section className="sec">
+                <h3>{isEpic ? "Дорожная карта" : "План"}</h3>
+                <Markdown text={t.plan} />
+              </section>
+            )}
+            {t.notes.trim() && (
+              <section className="sec notes">
+                <h3>Заметки</h3>
+                <Markdown text={readableStamps(t.notes)} />
+              </section>
+            )}
+            {t.artifacts.length > 0 && (
+              <section className="sec">
+                <h3>
+                  Артефакты <span className="n">{t.artifacts.length}</span>
+                </h3>
+                <div className="artifacts">
+                  {t.artifacts.map((a) => (
+                    <button type="button" key={a.id} className="artifact" onClick={() => viewer.show(t.id, a.id)}>
+                      <ArtifactThumb task={t.id} artifact={a} />
+                      <span className="nm">{a.name}</span>
+                      <span className="who">
+                        {a.kind} · {a.author}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            <section className="sec">
+              <h3>Активность</h3>
+              {activity.map((a) =>
+                a.kind === "event" ? (
+                  <div key={`h${a.at}${a.h.event}`} className="ev">
+                    <i />
+                    <span>
+                      <span style={{ color: "var(--text-2)" }}>{a.h.actor}</span> {historyText(a.h, isEpic)} · {timeAgo(a.at)}
+                    </span>
+                  </div>
+                ) : (
+                  <div key={`c${a.c.id}`} className={`comment${a.c.role === "human" ? " mine" : ""}`}>
+                    <div className="head">
+                      <Avatar role={a.c.role} name={a.c.author} size="solo" />
+                      <span style={{ fontWeight: 500 }}>{a.c.author}</span>
+                      <span className="k">{KIND_NAME[a.c.kind] ?? a.c.kind}</span>
+                      <span className="when">{timeAgo(a.c.at)}</span>
+                    </div>
+                    <Markdown text={a.c.text} />
+                  </div>
+                ),
+              )}
+              <div className="composer">
+                <textarea
+                  aria-label="Комментарий"
+                  placeholder="Комментарий для оркестратора и команды"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail });
+                  }}
+                />
+                <div className="bar">
+                  ⌘↵ отправить · оркестратор получит уведомление
+                  <span className="grow" />
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={!draft.trim() || comment.isPending}
+                    onClick={() => comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
+                  >
+                    Отправить
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+          <aside className="tp-rail" aria-label="Свойства задачи">
+            {props}
+            {epic && <EpicBox id={epic.id} onArtifact={viewer.show} />}
+          </aside>
+        </div>
+      )}
+      {dialogs}
+    </main>
   );
 }
 
+/** Where a team opens: an idea being shaped goes straight to its planner's conversation. */
+function teamLink(team: Team): string {
+  if (team.template === IDEA_TEMPLATE && team.state === "active" && team.members[0]) return `/team/${encodeURIComponent(team.id)}/${encodeURIComponent(team.members[0].name)}`;
+  return `/task/${encodeURIComponent(team.task)}/team`;
+}
+
+/** The team tab's quiet state: who works now, or that there is no team. */
+function TeamState({ team }: { team?: Team }) {
+  if (!team) return <span className="st">не собрана</span>;
+  if (team.state !== "active") return <span className="st">остановлена</span>;
+  const n = team.members.filter((m) => m.activity === "working").length;
+  if (!n) return <span className="st">ждёт</span>;
+  return (
+    <span className="st on">
+      <span className="spin" style={{ width: 8, height: 8 }} />
+      {n} {plural(n, "работает", "работают", "работают")}
+    </span>
+  );
+}
+
+/** Task ids as links to their pages. */
+function TaskLinks({ ids }: { ids: string[] }) {
+  return (
+    <>
+      {ids.map((id, i) => (
+        <Fragment key={id}>
+          {i > 0 && ", "}
+          <Link className="mono" to={`/task/${encodeURIComponent(id)}`}>
+            {id}
+          </Link>
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+/** Notes carry raw ISO stamps (`2026-10-03T14:32:58.935Z`): shown as a short local date and time. */
+function readableStamps(text: string): string {
+  return text.replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z\b/g, (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  });
+}
 
 /** Russian phrasing of the structured impact reasons; matching stays server-side (G-12 lesson). */
 function impactReasonText(reasons: DocsImpactReason[]): string {
@@ -545,39 +708,37 @@ function DocsImpactBlock({ result }: { result: DocsImpact | undefined }) {
 }
 
 
-/** The epic a task belongs to: its goal, progress and the artifacts shared by all its tasks. */
+/** The epic a task belongs to, in the page's rail: its progress, goal and shared artifacts. */
 function EpicBox({ id, onArtifact }: { id: string; onArtifact: (task: string, n: number) => void }) {
   const epic = useTask(id).data;
   const tasks = (useTasks().data ?? []).filter((x) => x.parent === id);
   if (!epic) return null;
   const goal = epic.description.trim().split(/\n\s*\n/)[0];
+  const closed = tasks.filter((x) => x.status === "done" || x.status === "cancelled").length;
+  // The same file attached twice shows once.
+  const artifacts = epic.artifacts.filter((a, i, all) => all.findIndex((b) => b.name === a.name) === i);
   return (
     <section className="epic-box" aria-label={`Эпик ${epic.id}`}>
-      <div className="h">
-        <EpicIcon />
-        <span className="kind">Эпик</span>
-        <Link to={`/epic/${encodeURIComponent(epic.id)}`} className="nm">
-          {epic.id} · {epic.title}
-        </Link>
-        {tasks.length > 0 && (
-          <span className="mini">
-            <EpicProgress tasks={tasks} />
-            {tasks.filter((x) => x.status === "done" || x.status === "cancelled").length} из {tasks.length}
-          </span>
-        )}
-      </div>
-      {goal ? <Markdown text={goal} /> : <span className="muted">Цель эпика ещё не записана</span>}
-      {epic.artifacts.length > 0 && (
-        <div className="shared">
-          <span className="lbl">Общие артефакты эпика</span>
-          <div className="files">
-            {epic.artifacts.map((a) => (
-              <button type="button" key={a.id} className="artifact small" onClick={() => onArtifact(epic.id, a.id)} title={a.note ?? `${a.kind} · ${a.author}`}>
-                <Icon.file size={13} />
-                <span className="nm">{a.name}</span>
-              </button>
-            ))}
-          </div>
+      <Link to={`/epic/${encodeURIComponent(epic.id)}`} className="h">
+        <EpicIcon size={12} />
+        <span className="kind mono">{epic.id}</span>
+        <span className="nm">{epic.title}</span>
+      </Link>
+      {tasks.length > 0 && (
+        <span className="mini">
+          <EpicProgress tasks={tasks} compact />
+          {closed} из {tasks.length} закрыто
+        </span>
+      )}
+      {goal && <div className="goal">{goal}</div>}
+      {artifacts.length > 0 && (
+        <div className="files">
+          {artifacts.map((a) => (
+            <button type="button" key={a.id} className="artifact small" onClick={() => onArtifact(epic.id, a.id)} title={a.note ?? `${a.kind} · ${a.author}`}>
+              <Icon.file size={13} />
+              <span className="nm">{a.name}</span>
+            </button>
+          ))}
         </div>
       )}
     </section>
