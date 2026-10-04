@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 use genie_core::db::now;
 use genie_core::team::{ORCHESTRATOR, QuietTeam};
 use genie_core::work::Turn;
-use genie_core::{Role, Status};
+use genie_core::{CheckState, RequestState, Role, Status};
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -909,7 +909,7 @@ fn report_if_silent(app: &App, slug: &str, q: &QuietTeam) -> AppResult<bool> {
         let delivery = db
             .task_repos(slug, &q.task)?
             .iter()
-            .any(|r| matches!(r.ci_state.as_deref(), Some("pending" | "stalled")) || r.cr_state.as_deref() == Some("open"));
+            .any(|r| matches!(r.ci_state, Some(CheckState::Pending | CheckState::Stalled)) || r.cr_state == Some(RequestState::Open));
         Ok(people > 0 || jobs > 0 || delivery)
     })?;
     if held {

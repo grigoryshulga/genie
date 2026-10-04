@@ -404,7 +404,7 @@ fn owner_action(app: &App, project: &str, task: &str, action: OwnerAction) -> Ap
     let OwnerAction::AskForMergePr { repo, .. } = action else { return Ok(action) };
     let task = app.with_tracker(project, |t| t.normalize_id(task))?;
     let rows = app.with_server(|db| db.task_repos(project, &task))?;
-    let open: Vec<_> = rows.into_iter().filter(|r| r.cr_number.is_some() && r.cr_state.as_deref() == Some("open")).collect();
+    let open: Vec<_> = rows.into_iter().filter(|r| r.cr_number.is_some() && r.cr_state == Some(genie_core::RequestState::Open)).collect();
     let names = || open.iter().map(|r| r.repo.as_str()).collect::<Vec<_>>().join(", ");
     let invalid = AppError::Bad;
     let row = match repo.trim() {
