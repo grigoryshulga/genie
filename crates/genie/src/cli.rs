@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser, Subcommand};
 use genie_core::Tracker;
-use genie_core::server_db::ServerDb;
+use genie_core::db::SCHEMA_VERSION;
+use genie_core::server_db::{SERVER_SCHEMA_VERSION, ServerDb};
 
 use crate::config::Config;
 use crate::ops::{self, Auth, Cx, InProcess, Remote};
@@ -80,6 +81,12 @@ enum Command {
         /// Replace what the data directory already holds.
         #[arg(long)]
         force: bool,
+    },
+    /// Check and apply the database migrations of a data directory (server.db and every project's tracker).
+    Migrate {
+        /// Only check: read what every database records and rehearse a pending migration on a copy, writing nothing (the server may keep running).
+        #[arg(long)]
+        check: bool,
     },
     /// What happened over the last days, for reviewing a pilot: tasks, decisions, reviews, agent runs, knowledge (--project: one project only).
     Stats {
@@ -193,6 +200,7 @@ pub async fn run() -> Result<(), String> {
                 cfg.runtime.enabled = false;
             }
             let app = App::open(&data, cfg, web).map_err(|e| e.to_string())?;
+            report_migrations(&data);
             match (crate::http::web::resolve(app.web_root.as_deref()), &app.web_root) {
                 (crate::http::web::WebUi::BuiltIn, Some(dir)) => {
                     eprintln!("genie: no web UI in {}: serving the one built into genie", dir.display())
@@ -226,6 +234,14 @@ pub async fn run() -> Result<(), String> {
         }
         Command::Restore { backup: dir, force } => {
             println!("{}", restore(&data, &dir, force)?);
+        }
+        Command::Migrate { check } => {
+            let reports = migrate_command(&data, check)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&reports).map_err(|e| e.to_string())?);
+            } else {
+                println!("{}", migrate_text(&data, &reports, check));
+            }
         }
         Command::Backup { dir, keep, with_secrets } => {
             let cfg = Config::load(&data)?;
@@ -335,6 +351,66 @@ pub async fn run() -> Result<(), String> {
     Ok(())
 }
 
+/// `genie migrate`: check every database of a data directory without writing, or apply
+/// the pending migrations (server stopped). Returns the reports, in the order they were read.
+fn migrate_command(data: &Path, check: bool) -> Result<Vec<genie_core::migrate::Report>, String> {
+    let server = data.join("server.db");
+    if !server.exists() {
+        return Err(format!("no genie server data in {}: pass --data, or start the server once", data.display()));
+    }
+    genie_core::migrate::clear_reports();
+    let mut out = Vec::new();
+    if check {
+        out.push(genie_core::migrate::check_server(&server).map_err(|e| e.to_string())?);
+        for (slug, tracker) in genie_core::migrate::trackers(data) {
+            if !tracker.exists() {
+                continue; // a project without a tracker: `doctor` and `backup` report it
+            }
+            out.push(genie_core::migrate::check_tracker(&tracker).map_err(|e| format!("{slug}: {e}"))?);
+        }
+    } else {
+        // The same path the server and the CLI take on every open: preflight, then the migration.
+        let db = ServerDb::open(&server).map_err(|e| e.to_string())?;
+        out.extend(genie_core::migrate::take_reports());
+        for p in db.projects().map_err(|e| e.to_string())? {
+            if !Path::new(&p.tracker_dir).join("genie.db").exists() {
+                continue;
+            }
+            Tracker::open(&p.tracker_dir).map_err(|e| format!("{}: {e}", p.slug))?;
+            out.extend(genie_core::migrate::take_reports());
+        }
+    }
+    Ok(out)
+}
+
+/// The text of `genie migrate`.
+fn migrate_text(data: &Path, reports: &[genie_core::migrate::Report], check: bool) -> String {
+    let mut lines = vec![format!("genie data {} (genie {})", data.display(), env!("CARGO_PKG_VERSION"))];
+    lines.extend(reports.iter().map(|r| format!("  {}", genie_core::migrate::line(r, data))));
+    let pending = reports.iter().filter(|r| r.pending()).count();
+    if check {
+        lines.push(match pending {
+            0 => "  nothing to migrate".into(),
+            n => format!("  {n} database(s) to migrate — stop the server, then `genie migrate`"),
+        });
+        lines.push("  caches not checked: vault-index.db (`genie vault reindex` rebuilds it)".into());
+    } else {
+        lines.push(match pending {
+            0 => "  nothing to migrate".into(),
+            n => format!("  migrated {n} database(s)"),
+        });
+    }
+    lines.join("\n")
+}
+
+/// Log what opening a database migrated: one line per database to stderr. `serve` calls this
+/// at startup and whenever it opens a project's tracker, so `journalctl -u genie` shows the update.
+pub fn report_migrations(data: &Path) {
+    for report in genie_core::migrate::take_reports() {
+        eprintln!("genie: migrated {}", genie_core::migrate::line(&report, data));
+    }
+}
+
 /// `VACUUM INTO` gives a consistent copy of a live SQLite database (WAL included)
 /// without stopping the server; the vault is bundled with git. The server's
 /// configuration (`config.json` with the channel secrets, roles, templates,
@@ -360,13 +436,21 @@ pub fn backup_with(data: &std::path::Path, cfg: &Config, dir: &std::path::Path, 
         Ok(())
     };
     let mut lines = Vec::new();
+    let mut schemas = serde_json::Map::new();
     snapshot(&data.join("server.db"), &out.join("server.db"))?;
     lines.push("server.db".to_string());
+    if let Ok(Some(v)) = genie_core::migrate::version(&out.join("server.db")) {
+        schemas.insert("server.db".into(), v.into());
+    }
     let db = ServerDb::open(&data.join("server.db")).map_err(|e| e.to_string())?;
     for p in db.projects().map_err(|e| e.to_string())? {
         let src = std::path::Path::new(&p.tracker_dir).join("genie.db");
-        snapshot(&src, &out.join("projects").join(format!("{}.db", p.slug)))?;
+        let dst = out.join("projects").join(format!("{}.db", p.slug));
+        snapshot(&src, &dst)?;
         lines.push(format!("projects/{}.db ({})", p.slug, src.display()));
+        if let Ok(Some(v)) = genie_core::migrate::version(&dst) {
+            schemas.insert(format!("projects/{}.db", p.slug), v.into());
+        }
     }
     let vault = cfg.vault_path(data);
     if vault.join(".git").exists() {
@@ -396,7 +480,12 @@ pub fn backup_with(data: &std::path::Path, cfg: &Config, dir: &std::path::Path, 
         lines.push(format!("config/: {}", config.join(", ")));
     }
     // Where the server lived: a restore elsewhere moves the trackers that were under this directory.
-    let manifest = serde_json::json!({ "data": data.to_string_lossy(), "version": env!("CARGO_PKG_VERSION"), "made": chrono::Utc::now().to_rfc3339() });
+    let manifest = serde_json::json!({
+        "data": data.to_string_lossy(),
+        "version": env!("CARGO_PKG_VERSION"),
+        "made": chrono::Utc::now().to_rfc3339(),
+        "schemas": schemas,
+    });
     std::fs::write(out.join("MANIFEST.json"), serde_json::to_string_pretty(&manifest).unwrap_or_default()).map_err(|e| e.to_string())?;
     let key = data.join("secrets.key");
     if with_secrets && key.exists() {
@@ -441,6 +530,23 @@ pub fn restore(data: &std::path::Path, backup: &std::path::Path, force: bool) ->
         }
     }
     let target_db = data.join("server.db");
+    // Data written by a newer genie cannot be opened by this one: refuse before writing anything.
+    if let Ok(Some(v)) = genie_core::migrate::version(&server_db)
+        && v > SERVER_SCHEMA_VERSION
+    {
+        return Err(format!(
+            "the backup was made by a newer genie: server.db records schema {v}, this genie understands {SERVER_SCHEMA_VERSION} — restore a backup made before that update, or run the newer genie"
+        ));
+    }
+    for (slug, path) in &trackers {
+        if let Ok(Some(v)) = genie_core::migrate::version(path)
+            && v > SCHEMA_VERSION
+        {
+            return Err(format!(
+                "the backup was made by a newer genie: the tracker of {slug} records schema {v}, this genie understands {SCHEMA_VERSION} — restore a backup made before that update, or run the newer genie"
+            ));
+        }
+    }
     if target_db.exists() && !force {
         return Err(format!(
             "{} already holds a server (server.db): restore into an empty directory, or pass --force to replace it",

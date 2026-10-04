@@ -25,6 +25,7 @@ use chrono::{DateTime, Utc};
 use crate::db::now;
 use crate::error::{GenieError, Result};
 use crate::events;
+use crate::model::{Activity, MemberState, TeamState};
 use crate::tracker::Tracker;
 
 pub const ORCHESTRATOR: &str = "orchestrator";
@@ -61,12 +62,8 @@ pub struct Member {
     pub instructions: Option<String>,
     pub status: String,
     pub status_at: String,
-    /// `active` | `paused` | `stopped` | `error`
-    #[ts(type = r#""active" | "paused" | "stopped" | "error""#)]
-    pub state: String,
-    /// `idle` | `working` | `error`
-    #[ts(type = r#""idle" | "working" | "error""#)]
-    pub activity: String,
+    pub state: MemberState,
+    pub activity: Activity,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activity_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -89,8 +86,7 @@ pub struct Team {
     pub cwd: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree: Option<TeamWorktree>,
-    #[ts(type = r#""active" | "stopped""#)]
-    pub state: String,
+    pub state: TeamState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
     pub created: String,
@@ -279,6 +275,12 @@ fn valid_member_name(name: &str) -> bool {
 }
 
 /// Team registry and mailboxes on top of a project tracker.
+/// SQL (members `m`, teams `t`): the member may run — an active member of an active team.
+const RUNNABLE: &str = "t.state = 'active' AND m.state = 'active'";
+/// SQL (members `m`, teams `t`): the member's mail waits for it — paused and gave-up members
+/// keep theirs; a stopped one (with its team) does not.
+const KEEPS_MAIL: &str = "t.state = 'active' AND m.state <> 'stopped'";
+
 pub struct Bus<'a> {
     t: &'a Tracker,
 }
@@ -299,7 +301,7 @@ impl Bus<'_> {
     }
 
     pub fn get(&self, team: &str) -> Result<Team> {
-        type Row = (String, String, Option<String>, String, Option<String>, String, Option<String>, String, String, Option<String>);
+        type Row = (String, String, Option<String>, String, Option<String>, TeamState, Option<String>, String, String, Option<String>);
         let row: Row = self
             .conn()
             .query_row(
@@ -547,14 +549,15 @@ impl Bus<'_> {
     }
 
     /// Stop (`stopped`, with a reason) or reactivate (`active`) a team.
-    pub fn set_state(&self, team: &str, state: &str, reason: Option<&str>, actor: &str) -> Result<()> {
+    pub fn set_state(&self, team: &str, state: TeamState, reason: Option<&str>, actor: &str) -> Result<()> {
+        let stopped = state == TeamState::Stopped;
         self.t.tx(|| {
             let task: String = self
                 .conn()
                 .query_row("SELECT task FROM teams WHERE id = ?1", [team], |r| r.get(0))
                 .optional()?
                 .ok_or_else(|| GenieError::not_found(format!("team {team} not found")))?;
-            let reason = (state == "stopped").then(|| reason.unwrap_or("orchestrator"));
+            let reason = stopped.then(|| reason.unwrap_or("orchestrator"));
             self.conn().execute(
                 "UPDATE teams SET state = ?1, stop_reason = ?2, updated = ?3 WHERE id = ?4",
                 params![state, reason, now(), team],
@@ -564,13 +567,13 @@ impl Bus<'_> {
             {
                 self.conn().execute("UPDATE members SET state = 'stopped', activity = 'idle' WHERE team = ?1", [team])?;
             }
-            if state == "active" {
+            if !stopped {
                 self.conn().execute("UPDATE members SET state = 'active' WHERE team = ?1 AND state = 'stopped'", [team])?;
             }
-            self.log(team, if state == "stopped" { "team_stopped" } else { "team_started" }, json!({ "reason": reason, "by": actor }))?;
+            self.log(team, if stopped { "team_stopped" } else { "team_started" }, json!({ "reason": reason, "by": actor }))?;
             events::append(
                 self.conn(),
-                if state == "stopped" { "team.stopped" } else { "team.started" },
+                if stopped { "team.stopped" } else { "team.started" },
                 Some(&task),
                 actor,
                 "system",
@@ -624,7 +627,6 @@ impl Bus<'_> {
         })
     }
 
-    /// Runtime bookkeeping: `working` while a turn runs, `idle` after, `error` when it failed for good.
     /// Pause (`paused`) or resume (`active`) a member: a paused member keeps its mail
     /// but gets no deliveries and its session is stopped.
     pub fn set_paused(&self, team: &str, member: &str, paused: bool, by: &str) -> Result<()> {
@@ -648,26 +650,75 @@ impl Bus<'_> {
         })
     }
 
-    pub fn set_activity(&self, team: &str, member: &str, activity: &str, runtime: Option<Value>) -> Result<()> {
-        let at = now();
+    // --- a member's run: the only ways its state and activity change at runtime -------
+
+    /// A run started (`runtime` says which: a turn or a session, its pid).
+    pub fn member_working(&self, team: &str, member: &str, runtime: Value) -> Result<()> {
         self.conn().execute(
-            "UPDATE members SET activity = ?1, activity_at = ?2, heartbeat_at = ?2, runtime = COALESCE(?3, runtime),
-             state = CASE WHEN ?1 = 'error' THEN 'error' WHEN state = 'error' THEN 'active' ELSE state END
-             WHERE team = ?4 AND name = ?5",
-            params![activity, at, runtime.map(|r| r.to_string()), team, member],
+            "UPDATE members SET activity = 'working', activity_at = ?1, heartbeat_at = ?1, runtime = ?2 WHERE team = ?3 AND name = ?4",
+            params![now(), runtime.to_string(), team, member],
         )?;
         Ok(())
     }
 
-    /// The member's session ended as planned: it is idle, unless it gave up (`error`) —
-    /// that stays until someone restarts it.
-    pub fn set_idle_keeping_error(&self, team: &str, member: &str) -> Result<()> {
-        let at = now();
+    /// A run ended or its session stopped: the member is idle — unless it gave up, which
+    /// stays on the board until someone restarts it.
+    pub fn member_idle(&self, team: &str, member: &str) -> Result<()> {
         self.conn().execute(
             "UPDATE members SET activity = 'idle', activity_at = ?1, heartbeat_at = ?1 WHERE team = ?2 AND name = ?3 AND state != 'error'",
-            params![at, team, member],
+            params![now(), team, member],
         )?;
         Ok(())
+    }
+
+    /// The member failed `attempts` runs in a row and stops trying: `error`, with the reason
+    /// as its status line (not the line it set when it started) and in the team log.
+    pub fn member_gave_up(&self, team: &str, member: &str, error: &str, attempts: u32) -> Result<()> {
+        self.t.tx(|| {
+            let at = now();
+            let why: String = error.chars().take(200).collect();
+            self.conn().execute(
+                "UPDATE members SET state = 'error', activity = 'error', activity_at = ?1, heartbeat_at = ?1, status = ?2, status_at = ?1
+                 WHERE team = ?3 AND name = ?4",
+                params![at, format!("stopped: {why}"), team, member],
+            )?;
+            self.conn().execute("UPDATE teams SET updated = ?1 WHERE id = ?2", params![at, team])?;
+            self.log(team, "agent_error", json!({ "member": member, "error": error, "attempts": attempts }))
+        })
+    }
+
+    /// Let a member that gave up work again (its kept mail is offered next).
+    pub fn member_restarted(&self, team: &str, member: &str) -> Result<()> {
+        self.t.tx(|| {
+            self.conn().execute(
+                "UPDATE members SET state = 'active', activity = 'idle', activity_at = ?1 WHERE team = ?2 AND name = ?3 AND state = 'error'",
+                params![now(), team, member],
+            )?;
+            self.log(team, "member_restarted", json!({ "member": member }))
+        })
+    }
+
+    /// Whether the member may run now: an active member of an active team.
+    pub fn runnable(&self, team: &str, member: &str) -> Result<bool> {
+        Ok(self
+            .conn()
+            .query_row(
+                &format!("SELECT 1 FROM members m JOIN teams t ON t.id = m.team WHERE m.team = ?1 AND m.name = ?2 AND {RUNNABLE}"),
+                params![team, member],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
+    /// The team working on a task: the task's team, if it is active.
+    pub fn active_team_of(&self, task: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row("SELECT t.id FROM tasks k JOIN teams t ON t.id = k.team WHERE k.id = ?1 AND t.state = 'active'", [task], |r| {
+                r.get(0)
+            })
+            .optional()?)
     }
 
     /// Deliver a message. `to` is a member name, `orchestrator` or `all` (everyone but the sender).
@@ -837,9 +888,11 @@ impl Bus<'_> {
     /// Mail addressed to a member that cannot run (removed, stopped team): drop it quietly.
     pub fn close_undeliverable(&self) -> Result<usize> {
         Ok(self.conn().execute(
-            "UPDATE mail SET delivered_at = ?1 WHERE delivered_at IS NULL AND recipient <> 'orchestrator' AND team IS NOT NULL
-             AND NOT EXISTS (SELECT 1 FROM members m JOIN teams t ON t.id = m.team
-                             WHERE m.team = mail.team AND m.name = mail.recipient AND t.state = 'active' AND m.state <> 'stopped')",
+            &format!(
+                "UPDATE mail SET delivered_at = ?1 WHERE delivered_at IS NULL AND recipient <> 'orchestrator' AND team IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM members m JOIN teams t ON t.id = m.team
+                                 WHERE m.team = mail.team AND m.name = mail.recipient AND {KEEPS_MAIL})"
+            ),
             [now()],
         )?)
     }
@@ -848,11 +901,11 @@ impl Bus<'_> {
     pub fn mailboxes_with_mail(&self) -> Result<Vec<Mailbox>> {
         self.close_undeliverable()?;
         let mut out = Vec::new();
-        let mut stmt = self.conn().prepare(
-            "SELECT DISTINCT m.team, m.recipient FROM mail m JOIN members x ON x.team = m.team AND x.name = m.recipient
-             JOIN teams t ON t.id = m.team
-             WHERE m.delivered_at IS NULL AND m.lease IS NULL AND m.delivery IS NULL AND t.state = 'active' AND x.state = 'active'",
-        )?;
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT DISTINCT x.team, x.recipient FROM mail x JOIN members m ON m.team = x.team AND m.name = x.recipient
+             JOIN teams t ON t.id = x.team
+             WHERE x.delivered_at IS NULL AND x.lease IS NULL AND x.delivery IS NULL AND {RUNNABLE}"
+        ))?;
         for r in stmt.query_map([], |r| Ok(Mailbox { team: r.get(0)?, recipient: r.get(1)? }))? {
             out.push(r?);
         }
@@ -1437,7 +1490,7 @@ mod tests {
         bus.send(send("bender", "yoda", "review please")).unwrap();
         bus.remove_member("G-1", "yoda").unwrap();
         assert!(bus.pending(Some("G-1"), "yoda").unwrap().is_empty());
-        bus.set_state("G-1", "stopped", Some("task_closed"), "genie").unwrap();
+        bus.set_state("G-1", TeamState::Stopped, Some("task_closed"), "genie").unwrap();
         bus.send(send("bender", "orchestrator", "late")).unwrap();
         assert!(bus.pending(None, ORCHESTRATOR).unwrap().is_empty(), "a team stopped on purpose is silenced");
         assert!(bus.mailboxes_with_mail().unwrap().is_empty());
@@ -1504,15 +1557,52 @@ mod tests {
         assert_eq!((quiet[0].id.as_str(), quiet[0].task.as_str(), quiet[0].members), ("G-1", "G-1", 3));
         assert!(quiet[0].idle_secs >= 7200, "{}", quiet[0].idle_secs);
 
-        bus.set_activity("G-1", "bender", "working", None).unwrap();
+        bus.member_working("G-1", "bender", json!({ "kind": "turn" })).unwrap();
         assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a member at work is not silence");
 
-        bus.set_activity("G-1", "bender", "error", None).unwrap();
+        bus.member_gave_up("G-1", "bender", "model error", 3).unwrap();
         assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a member that gave up is G-80's news, not silence");
 
-        bus.set_activity("G-1", "bender", "idle", None).unwrap();
+        bus.member_restarted("G-1", "bender").unwrap();
         bus.set_paused("G-1", "bender", true, "owner").unwrap();
         assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a member held by a person is not silence");
+    }
+
+    #[test]
+    fn a_member_that_gave_up_stays_in_error_until_restarted() {
+        let (_d, t) = fresh();
+        team(&t);
+        let bus = t.bus();
+        let bender = |bus: &Bus| bus.get("G-1").unwrap().members.into_iter().find(|m| m.name == "bender").unwrap();
+        assert!(bus.runnable("G-1", "bender").unwrap());
+
+        bus.member_working("G-1", "bender", json!({ "kind": "session" })).unwrap();
+        bus.member_gave_up("G-1", "bender", "model error: overloaded", 3).unwrap();
+        let m = bender(&bus);
+        assert_eq!((m.state, m.activity, m.status.as_str()), (MemberState::Error, Activity::Error, "stopped: model error: overloaded"));
+        assert!(!bus.runnable("G-1", "bender").unwrap());
+
+        // Its session ends afterwards — planned or not: it does not come back by itself.
+        bus.member_idle("G-1", "bender").unwrap();
+        assert_eq!(bender(&bus).state, MemberState::Error);
+
+        bus.member_restarted("G-1", "bender").unwrap();
+        let m = bender(&bus);
+        assert_eq!((m.state, m.activity), (MemberState::Active, Activity::Idle));
+        assert!(bus.runnable("G-1", "bender").unwrap());
+    }
+
+    #[test]
+    fn a_task_has_an_active_team_until_the_team_stops() {
+        let (_d, t) = fresh();
+        team(&t);
+        let bus = t.bus();
+        assert_eq!(bus.active_team_of("G-1").unwrap(), None, "a team on the task is not the task's team until assigned");
+        t.assign_team(&Actor::new("genie", Role::Orchestrator), "G-1", Some("G-1"), None, None).unwrap();
+        assert_eq!(bus.active_team_of("G-1").unwrap().as_deref(), Some("G-1"));
+        bus.set_state("G-1", TeamState::Stopped, Some("owner"), "anna").unwrap();
+        assert_eq!(bus.active_team_of("G-1").unwrap(), None);
+        assert!(!bus.runnable("G-1", "bender").unwrap(), "a member of a stopped team does not run");
     }
 
     #[test]

@@ -34,13 +34,12 @@ use axum::routing::{get, post};
 use base64::Engine;
 use futures_util::StreamExt;
 use genie_core::events;
-use genie_core::repos::{Delivery, ProjectRepo};
+use genie_core::repos::{BranchPush, ProjectRepo};
 use genie_core::server_db::Principal;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::io::AsyncReadExt;
 
-use crate::git::delivery::watching;
 use crate::git::policy::{Effective, Push, glob_match};
 use crate::git::service::{self, AgentId};
 use crate::git::store::{self, ZERO_SHA};
@@ -687,27 +686,13 @@ fn record_pushed(app: &App, project: &str, t: &Target, who: &str, ok: &[&Command
             matches!(eff.policy.push, Push::Branches | Push::Direct).then(|| ())?;
             ok.iter().filter(|c| !c.delete()).find(|c| branch_of(c).is_some_and(|b| allowed.iter().any(|a| glob_match(a, &b))))
         });
+        // The pushed branch is the delivery when it is the task's own, or when nothing was named
+        // yet (without requests the agent picks the branch name itself).
         if let Some(c) = pushed
-            && let Ok(Some(row)) = app.with_server(|db| db.task_repo(project, &task, &t.repo.name))
-            && matches!(row.state.as_str(), "pending" | "published")
+            && let Some(branch) = c.branch()
         {
-            let _ = app.with_server(|db| {
-                let mut d = Delivery {
-                    state: Some("published".into()),
-                    head_sha: Some(c.new.clone()),
-                    branch: Some(row.branch.clone()),
-                    ..Default::default()
-                };
-                if let Some(branch) = c.branch() {
-                    watching(&mut d, branch, &c.new);
-                    // The pushed branch is the delivery when it is the task's own, or when nothing
-                    // was named yet (without requests the agent picks the branch name itself).
-                    if task_branch.as_deref() == Some(branch) || row.branch.is_empty() {
-                        d.branch = Some(branch.to_string());
-                    }
-                }
-                db.update_delivery(project, &task, &t.repo.name, d).map(|_| ())
-            });
+            let push = BranchPush { branch, sha: &c.new, delivers: task_branch.as_deref() == Some(branch) };
+            let _ = app.with_server(|db| db.branch_pushed(project, &task, &t.repo.name, push));
         }
     }
 }

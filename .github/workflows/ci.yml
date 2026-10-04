@@ -9,9 +9,67 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  rust:
-    name: Rust server
+  # What a change touches: a docs-only change runs nothing heavy, a web-only change skips Rust.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - "crates/**"
+              - "Cargo.*"
+              - ".cargo/**"
+              - "rustfmt.toml"
+              - "agents/**"
+              - "config/**"
+              - "package.json"
+              - "package-lock.json"
+              - "web/src/shared/api/generated/**"
+              - ".github/workflows/ci.yml"
+            web:
+              - "web/**"
+              - "test/**"
+              - "bench/**"
+              - "crates/genie/pi/**"
+              - "package.json"
+              - "package-lock.json"
+              - "tsconfig.json"
+              - ".github/workflows/ci.yml"
+
+  lint:
+    name: Rust format and lint
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Pull requests reuse main's cache and do not write their own (no eviction churn).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Rust tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,24 +80,20 @@ jobs:
       # The live-session tests drive the real pi harness from node_modules.
       - run: npm ci
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # The agent sandbox: bubblewrap, with the unprivileged user namespaces Ubuntu restricts by default.
       - name: Sandbox
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q bubblewrap
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Test
-        # The live-session tests run the real pi harness inside the sandbox too.
+        # The live-session tests run the real pi harness inside the sandbox too. No doc tests: there are none.
         env:
           GENIE_REQUIRE_SANDBOX: 1
           GENIE_TEST_SANDBOX: bwrap
-        run: cargo test --workspace
+        run: cargo test --workspace --lib --bins --tests
       # `cargo test` writes the API types for the web from the Rust structs (ts-rs).
       - name: API types for the web are committed
         run: |
@@ -52,6 +106,8 @@ jobs:
 
   web:
     name: TypeScript tools and web UI
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

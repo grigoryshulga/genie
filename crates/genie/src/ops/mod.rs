@@ -119,6 +119,11 @@ impl Cx {
         self.api.call(method, path, body).await
     }
 
+    /// Call with a typed request body (the server reads the same struct).
+    pub async fn send<B: serde::Serialize>(&self, method: &str, path: &str, body: &B) -> Result<Value, String> {
+        self.call(method, path, Some(serde_json::to_value(body).map_err(|e| e.to_string())?)).await
+    }
+
     /// A request whose body is a file's bytes.
     pub async fn upload(&self, method: &str, path: &str, bytes: Vec<u8>) -> Result<Value, String> {
         self.api.request(method, path, Payload::Bytes(bytes)).await

@@ -3,7 +3,15 @@ resolver = "3"
 members = ["crates/genie-core", "crates/genie"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT"
 publish = false
+
+# Debug builds keep line numbers (backtraces, panics) but not full debug info: test binaries
+# were hundreds of megabytes each, and linking them was disk-bound.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

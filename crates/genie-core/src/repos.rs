@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::db::now;
 use crate::error::{GenieError, Result};
+use crate::model::{CheckState, DeliveryState, RequestState};
 use crate::server_db::ServerDb;
 
 /// A repository attached to a project.
@@ -50,25 +51,25 @@ impl ProjectRepo {
     }
 }
 
-/// A task's use of a repository and how its delivery stands.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// A task's use of a repository and how its delivery stands. It changes only through the
+/// transitions below (a push, a request opened, a look at the request or at the checks).
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub struct TaskRepo {
     pub project: String,
     pub task: String,
     pub repo: String,
     /// `read` or `write`.
+    #[ts(type = r#""read" | "write""#)]
     pub access: String,
     /// The task's branch in this repository (set when it is first needed).
     pub branch: String,
-    /// `pending` → `published` (a branch was pushed) → `merged`; `abandoned` for a request closed unmerged.
-    pub state: String,
+    pub state: DeliveryState,
     pub cr_number: Option<i64>,
     pub cr_url: Option<String>,
-    /// `open`, `merged` or `closed`.
-    pub cr_state: Option<String>,
-    /// `pending`, `passed`, `failed`, `none` or `stalled`.
-    pub ci_state: Option<String>,
+    pub cr_state: Option<RequestState>,
+    pub ci_state: Option<CheckState>,
     /// The ref whose checks are watched (empty: none is).
     pub ci_ref: String,
     /// The commit those checks belong to.
@@ -135,30 +136,105 @@ pub struct RepoPatch {
     pub token: Option<crate::secrets::Secret>,
 }
 
-/// Delivery fields to change (`None` keeps a field).
+/// Delivery fields to change (`None` keeps a field); private to the transitions below.
 #[derive(Debug, Clone, Default)]
-pub struct Delivery {
-    pub branch: Option<String>,
-    pub state: Option<String>,
-    pub cr_number: Option<i64>,
-    pub cr_url: Option<String>,
-    pub cr_state: Option<String>,
-    pub ci_state: Option<String>,
+struct Patch {
+    branch: Option<String>,
+    state: Option<DeliveryState>,
+    cr_number: Option<i64>,
+    cr_url: Option<String>,
+    cr_state: Option<RequestState>,
+    ci_state: Option<CheckState>,
     /// The ref to watch from now on, and the commit to watch.
-    pub ci_ref: Option<String>,
-    pub ci_sha: Option<String>,
+    ci_ref: Option<String>,
+    ci_sha: Option<String>,
     /// When waiting for these checks began; `Some("")` clears it (they settled).
-    pub ci_since: Option<String>,
+    ci_since: Option<String>,
     /// Start the watch over, or end it: drop the recorded `ci_state`/`ci_since` and take the given
-    /// ref, commit, start time and state instead of keeping what is there (a new push, a requeue,
-    /// nothing left to watch). `None` alone cannot clear a column.
-    pub reset_ci: bool,
+    /// ref, commit, start time and state instead of keeping what is there.
+    reset_ci: bool,
     /// The commit whose checks were rerun, and the rerun count of this delivery. History: unlike
     /// `ci_state`/`ci_since` they survive a `reset_ci`.
-    pub ci_rerun_sha: Option<String>,
-    pub ci_reruns: Option<i64>,
-    pub head_sha: Option<String>,
+    ci_rerun_sha: Option<String>,
+    ci_reruns: Option<i64>,
+    head_sha: Option<String>,
+    seen_at: Option<String>,
+}
+
+impl Patch {
+    /// Arm the watch of one ref: its checks are looked at from now on. The waiting clock starts
+    /// with the first look that finds them running.
+    fn watch(mut self, r#ref: &str, sha: &str) -> Patch {
+        self.ci_ref = Some(r#ref.to_string());
+        self.ci_sha = Some(sha.to_string());
+        self.ci_since = Some(String::new());
+        self.reset_ci = true;
+        self
+    }
+}
+
+/// A push of a branch through the server's proxy.
+#[derive(Debug, Clone)]
+pub struct BranchPush<'a> {
+    pub branch: &'a str,
+    pub sha: &'a str,
+    /// The pushed branch is the delivery: the task's own branch (or, without requests, the one
+    /// the agent picked when none was named yet).
+    pub delivers: bool,
+}
+
+/// A request just opened on the host for the task's branch.
+#[derive(Debug, Clone)]
+pub struct Opened<'a> {
+    pub branch: &'a str,
+    pub number: i64,
+    pub url: &'a str,
+    pub state: RequestState,
+    pub head_sha: Option<&'a str>,
+    /// The host's answer about the checks of its head.
+    pub checks: CheckState,
+    /// The newest comment on it already (it is not news later), for the first opening.
     pub seen_at: Option<String>,
+}
+
+/// What a look at the task's request found on the host.
+#[derive(Debug, Clone)]
+pub struct RequestLook<'a> {
+    pub state: RequestState,
+    /// The source branch and its commit.
+    pub head: &'a str,
+    pub head_sha: Option<&'a str>,
+    /// The target branch and, once merged, the commit that landed on it.
+    pub base: &'a str,
+    pub merge_sha: Option<&'a str>,
+    /// The newest comment passed on to the task by this look, if any.
+    pub seen_at: Option<String>,
+}
+
+/// A rerun counted before the host is asked: what the delivery had, to give back on a refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reservation {
+    pub previous_sha: String,
+    pub previous_count: i64,
+}
+
+/// The delivery after a look at its request.
+#[derive(Debug, Clone)]
+pub struct RequestChange {
+    pub row: TaskRepo,
+    /// The request was merged / closed unmerged since the last look.
+    pub merged: bool,
+    pub abandoned: bool,
+}
+
+/// The delivery after a look at its checks.
+#[derive(Debug, Clone)]
+pub struct ChecksChange {
+    pub row: TaskRepo,
+    /// What is recorded now (the host's answer, or `stalled`).
+    pub checks: CheckState,
+    /// It differs from what was recorded: the event and the letters follow.
+    pub changed: bool,
 }
 
 /// A repository alias: lowercase letters, digits, dashes and underscores.
@@ -356,7 +432,7 @@ impl ServerDb {
         }
         for have in self.task_repos(project, task)? {
             if !wanted.iter().any(|(n, _)| *n == have.repo) {
-                if have.state != "pending" {
+                if have.state != DeliveryState::Pending {
                     return Err(GenieError::invalid(format!(
                         "{} already has a delivery in {} ({}); it cannot be dropped",
                         task, have.repo, have.state
@@ -376,7 +452,7 @@ impl ServerDb {
         self.task_repos(project, task)
     }
 
-    pub fn update_delivery(&self, project: &str, task: &str, repo: &str, d: Delivery) -> Result<TaskRepo> {
+    fn patch(&self, project: &str, task: &str, repo: &str, d: Patch) -> Result<TaskRepo> {
         if self.task_repo(project, task, repo)?.is_none() {
             return Err(GenieError::not_found(format!("{task} has no repository {repo}")));
         }
@@ -422,6 +498,175 @@ impl ServerDb {
         Ok(stmt.query_map([], TaskRepo::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
+    // --- transitions -----------------------------------------------------------------
+
+    /// The task's branch in the repository is named (a workspace was assembled for it).
+    pub fn name_branch(&self, project: &str, task: &str, repo: &str, branch: &str) -> Result<TaskRepo> {
+        self.patch(project, task, repo, Patch { branch: Some(branch.into()), ..Default::default() })
+    }
+
+    /// A branch went through the proxy: the delivery is published and the pushed commit's checks
+    /// are watched. A delivery that is merged or abandoned already stays as it is (`None`).
+    pub fn branch_pushed(&self, project: &str, task: &str, repo: &str, push: BranchPush) -> Result<Option<TaskRepo>> {
+        let Some(row) = self.task_repo(project, task, repo)? else { return Ok(None) };
+        if !matches!(row.state, DeliveryState::Pending | DeliveryState::Published) {
+            return Ok(None);
+        }
+        let d = Patch {
+            state: Some(DeliveryState::Published),
+            head_sha: Some(push.sha.into()),
+            branch: Some(if push.delivers || row.branch.is_empty() { push.branch.into() } else { row.branch }),
+            ..Default::default()
+        };
+        self.patch(project, task, repo, d.watch(push.branch, push.sha)).map(Some)
+    }
+
+    /// A request was opened for the task's branch: from here its head's checks are watched — a
+    /// check that fails after it was opened must reach the team, and the review gate reads it.
+    pub fn request_opened(&self, project: &str, task: &str, repo: &str, o: Opened) -> Result<TaskRepo> {
+        let mut d = Patch {
+            branch: Some(o.branch.into()),
+            state: Some(DeliveryState::Published),
+            cr_number: Some(o.number),
+            cr_url: Some(o.url.into()),
+            cr_state: Some(o.state),
+            ci_state: Some(o.checks),
+            head_sha: o.head_sha.map(str::to_string),
+            seen_at: o.seen_at,
+            ..Default::default()
+        };
+        if let Some(sha) = o.head_sha {
+            d = d.watch(o.branch, sha);
+            d.ci_state = Some(o.checks);
+            d.ci_since = Some(if o.checks == CheckState::Pending { now() } else { String::new() });
+        }
+        self.patch(project, task, repo, d)
+    }
+
+    /// A look at the task's request. A request that ended watches something else: a merge hands
+    /// the watch to the commit that landed on the target branch (a person may have merged past
+    /// the checks), a closure watches nothing. While it is open, the checks that matter are those
+    /// of its head: a row never armed (it predates the watch) or a branch that moved under us (a
+    /// push past the proxy) is armed with the head — keeping what the host said last.
+    pub fn request_looked(&self, row: &TaskRepo, look: RequestLook) -> Result<RequestChange> {
+        let ended_now = row.cr_state != Some(look.state);
+        let merged = ended_now && look.state == RequestState::Merged;
+        let abandoned = ended_now && look.state == RequestState::Closed;
+        let mut d = Patch {
+            state: match look.state {
+                RequestState::Merged => Some(DeliveryState::Merged),
+                RequestState::Closed => Some(DeliveryState::Abandoned),
+                RequestState::Open => None,
+            },
+            cr_state: Some(look.state),
+            head_sha: look.head_sha.map(str::to_string),
+            seen_at: look.seen_at,
+            ..Default::default()
+        };
+        if merged || abandoned {
+            d.reset_ci = true;
+            if let (true, Some(sha)) = (merged, look.merge_sha) {
+                d = d.watch(look.base, sha);
+            }
+        } else if look.state == RequestState::Open
+            && let Some(sha) = look.head_sha
+            && row.ci_sha.as_deref() != Some(sha)
+        {
+            d.ci_ref = Some(look.head.into());
+            d.ci_sha = Some(sha.into());
+            if row.ci_sha.is_some() {
+                d.ci_since = Some(String::new());
+            }
+        }
+        let row = self.patch(&row.project, &row.task, &row.repo, d)?;
+        Ok(RequestChange { row, merged, abandoned })
+    }
+
+    /// A look at the checks of the watched commit. Checks that stay `pending` longer than
+    /// `pending_limit_secs` (0: never) become `stalled` once, and `stalled` stands until the host
+    /// says something else. Waiting begins with the first look that finds them running and ends
+    /// when they settle; a second look that still finds no checks ends the watch (a repository
+    /// without CI must not be polled for the life of the row).
+    pub fn checks_looked(&self, row: &TaskRepo, host: CheckState, pending_limit_secs: u64) -> Result<ChecksChange> {
+        let checks = settle(row, host, pending_limit_secs);
+        let changed = row.ci_state != Some(checks);
+        let none_settled = checks == CheckState::None && row.ci_state == Some(CheckState::None);
+        let began = checks == CheckState::Pending && (row.ci_since.is_empty() || row.ci_state != Some(CheckState::Pending));
+        if !changed && !began && !none_settled {
+            return Ok(ChecksChange { row: row.clone(), checks, changed });
+        }
+        let (ci_since, reset_ci) = match checks {
+            CheckState::Pending if began => (Some(now()), false),
+            // `stalled` keeps the moment it began: the record is what the team was told about.
+            CheckState::Pending | CheckState::Stalled => (None, false),
+            CheckState::None if none_settled => (Some(String::new()), true),
+            CheckState::None => (Some(now()), false),
+            CheckState::Passed | CheckState::Failed => (Some(String::new()), false),
+        };
+        let d = Patch { ci_state: Some(checks), ci_since, reset_ci, ..Default::default() };
+        let row = self.patch(&row.project, &row.task, &row.repo, d)?;
+        Ok(ChecksChange { row, checks, changed })
+    }
+
+    /// Reserve a rerun of the failed checks of `sha` before the host is asked, in one transaction
+    /// (two concurrent calls cannot both pass): one rerun per commit, `per_request` for this
+    /// delivery and `per_task` over all the task's repositories; 0 switches reruns off. Returns
+    /// what to give back with [`ServerDb::release_rerun`] when the host refuses.
+    pub fn reserve_rerun(&self, project: &str, task: &str, repo: &str, sha: &str, per_request: u32, per_task: u32) -> Result<Reservation> {
+        self.tx(|| {
+            let row =
+                self.task_repo(project, task, repo)?.ok_or_else(|| GenieError::not_found(format!("{task} has no repository {repo}")))?;
+            if per_request == 0 || per_task == 0 {
+                let key = if per_request == 0 { "ciRerunsPerRequest" } else { "ciRerunsPerTask" };
+                return Err(GenieError::invalid(format!("reruns are switched off (`runtime.{key}: 0`)")));
+            }
+            let watched = if row.ci_ref.is_empty() { &row.branch } else { &row.ci_ref };
+            if row.ci_rerun_sha == sha {
+                return Err(GenieError::invalid(format!(
+                    "the checks of `{watched}` in {repo} were already rerun once: fix and push a new commit instead"
+                )));
+            }
+            if row.ci_reruns as u32 >= per_request {
+                return Err(GenieError::invalid(format!(
+                    "{repo} already used {} of {per_request} reruns for this request (`runtime.ciRerunsPerRequest`)",
+                    row.ci_reruns
+                )));
+            }
+            let total: i64 = self.task_repos(project, task)?.iter().map(|r| r.ci_reruns).sum();
+            if total as u32 >= per_task {
+                return Err(GenieError::invalid(format!("the task used {total} of {per_task} reruns (`runtime.ciRerunsPerTask`)")));
+            }
+            let d = Patch { ci_rerun_sha: Some(sha.into()), ci_reruns: Some(row.ci_reruns + 1), ..Default::default() };
+            self.patch(project, task, repo, d)?;
+            Ok(Reservation { previous_sha: row.ci_rerun_sha, previous_count: row.ci_reruns })
+        })
+    }
+
+    /// The host refused the rerun: it does not count.
+    pub fn release_rerun(&self, project: &str, task: &str, repo: &str, r: Reservation) -> Result<TaskRepo> {
+        self.patch(
+            project,
+            task,
+            repo,
+            Patch { ci_rerun_sha: Some(r.previous_sha), ci_reruns: Some(r.previous_count), ..Default::default() },
+        )
+    }
+
+    /// The host restarted the failed checks of `sha` on `ref`: the watch is armed again as `pending`
+    /// with a fresh clock, so the restarted run is followed (a `failed` row is not watched) and does
+    /// not look stalled at once. The rerun history stays.
+    pub fn rerun_started(&self, project: &str, task: &str, repo: &str, r#ref: &str, sha: &str) -> Result<TaskRepo> {
+        let mut d = Patch::default().watch(r#ref, sha);
+        d.ci_state = Some(CheckState::Pending);
+        d.ci_since = Some(now());
+        self.patch(project, task, repo, d)
+    }
+
+    /// Nothing to look at any more (a plain git server has no API to ask): the watch ends.
+    pub fn stop_watching(&self, project: &str, task: &str, repo: &str) -> Result<TaskRepo> {
+        self.patch(project, task, repo, Patch { reset_ci: true, ..Default::default() })
+    }
+
     /// Deliveries the poller looks at: an open request, or a watched ref whose checks are not
     /// settled yet (`none` stays in: a fresh push may have no checks for the first moments).
     pub fn watched_deliveries(&self) -> Result<Vec<TaskRepo>> {
@@ -433,6 +678,19 @@ impl ServerDb {
         )?;
         Ok(stmt.query_map([], TaskRepo::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
+}
+
+/// What to record for a look at the checks: the host's answer, or `stalled` (see `checks_looked`).
+fn settle(row: &TaskRepo, host: CheckState, limit_secs: u64) -> CheckState {
+    if row.ci_state == Some(CheckState::Stalled) && host == CheckState::Pending {
+        return CheckState::Stalled;
+    }
+    if host != CheckState::Pending || limit_secs == 0 {
+        return host;
+    }
+    let Ok(since) = chrono::DateTime::parse_from_rfc3339(&row.ci_since) else { return host };
+    let waited = chrono::Utc::now().signed_duration_since(since.with_timezone(&chrono::Utc)).num_seconds();
+    if waited >= limit_secs as i64 { CheckState::Stalled } else { host }
 }
 
 #[cfg(test)]
@@ -494,13 +752,16 @@ mod tests {
         assert!(db.set_task_repos("shop", "S-1", &[("docs".into(), "write".into())]).is_err(), "the project allows read only");
         let rows = db.set_task_repos("shop", "S-1", &[("docs".into(), "read".into()), ("api".into(), "write".into())]).unwrap();
         assert_eq!(rows.len(), 2);
-        db.update_delivery(
-            "shop",
-            "S-1",
-            "api",
-            Delivery { state: Some("published".into()), cr_state: Some("open".into()), cr_number: Some(7), ..Default::default() },
-        )
-        .unwrap();
+        let opened = Opened {
+            branch: "genie/S-1",
+            number: 7,
+            url: "https://h/acme/api/pull/7",
+            state: RequestState::Open,
+            head_sha: None,
+            checks: CheckState::None,
+            seen_at: None,
+        };
+        db.request_opened("shop", "S-1", "api", opened).unwrap();
         assert!(db.set_task_repos("shop", "S-1", &[("docs".into(), "read".into())]).is_err(), "a delivered repository stays");
         let kept = db.set_task_repos("shop", "S-1", &[("docs".into(), "read".into()), ("api".into(), "read".into())]).unwrap();
         assert_eq!(kept.iter().find(|r| r.repo == "api").unwrap().cr_number, Some(7), "delivery survives an access change");
@@ -508,97 +769,170 @@ mod tests {
         assert!(db.remove_repo("shop", "api").is_err(), "an unmerged delivery blocks removal");
     }
 
-    #[test]
-    fn the_watch_follows_a_published_branch_and_a_merge_commit() {
-        let (_d, db) = db();
+    fn delivery(db: &ServerDb) -> TaskRepo {
+        db.task_repo("shop", "S-1", "api").unwrap().unwrap()
+    }
+
+    fn pushed(db: &ServerDb, sha: &str) -> TaskRepo {
+        db.branch_pushed("shop", "S-1", "api", BranchPush { branch: "genie/S-1", sha, delivers: true }).unwrap().unwrap()
+    }
+
+    fn task_with_api() -> (tempfile::TempDir, ServerDb) {
+        let (d, db) = db();
         db.add_repo("shop", new("api", "acme/api", "api")).unwrap();
         db.set_task_repos("shop", "S-1", &[("api".into(), "write".into())]).unwrap();
-        assert!(db.watched_deliveries().unwrap().is_empty(), "nothing is watched until a commit is named");
-
-        // A pushed branch: armed with its commit, no request at all.
-        db.update_delivery(
-            "shop",
-            "S-1",
-            "api",
-            Delivery {
-                state: Some("published".into()),
-                ci_ref: Some("genie/S-1".into()),
-                ci_sha: Some("aaa".into()),
-                ci_since: Some(now()),
-                reset_ci: true,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        let rows = db.watched_deliveries().unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!((rows[0].ci_ref.as_str(), rows[0].ci_sha.as_deref(), rows[0].ci_state.as_deref()), ("genie/S-1", Some("aaa"), None));
-
-        // Settled: the row leaves the watch, and a new push arms it again with the new commit.
-        db.update_delivery("shop", "S-1", "api", Delivery { ci_state: Some("failed".into()), ..Default::default() }).unwrap();
-        assert!(db.watched_deliveries().unwrap().is_empty());
-        let row = db
-            .update_delivery(
-                "shop",
-                "S-1",
-                "api",
-                Delivery { ci_sha: Some("bbb".into()), ci_since: Some(now()), reset_ci: true, ..Default::default() },
-            )
-            .unwrap();
-        assert_eq!(row.ci_state, None, "reset_ci drops the recorded state");
-        assert_ne!(row.ci_since, "");
-        assert_eq!(db.watched_deliveries().unwrap().len(), 1);
-
-        // A merge commit without a request: the target branch is watched.
-        db.update_delivery(
-            "shop",
-            "S-1",
-            "api",
-            Delivery {
-                state: Some("merged".into()),
-                cr_state: Some("merged".into()),
-                ci_ref: Some("main".into()),
-                ci_sha: Some("ccc".into()),
-                ci_since: Some(now()),
-                reset_ci: true,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        let rows = db.watched_deliveries().unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].ci_ref, "main");
+        (d, db)
     }
 
     #[test]
-    fn a_delivery_remembers_the_rerun_and_a_re_arm_does_not_erase_it() {
-        let (_d, db) = db();
-        db.add_repo("shop", new("api", "acme/api", "api")).unwrap();
-        db.set_task_repos("shop", "S-1", &[("api".into(), "write".into())]).unwrap();
-        let fresh = db.task_repo("shop", "S-1", "api").unwrap().unwrap();
+    fn the_watch_follows_a_published_branch_and_a_merge_commit() {
+        let (_d, db) = task_with_api();
+        assert!(db.watched_deliveries().unwrap().is_empty(), "nothing is watched until a commit is named");
+
+        // A pushed branch: armed with its commit, no request at all.
+        let row = pushed(&db, "aaa");
+        assert_eq!((row.state, row.branch.as_str()), (DeliveryState::Published, "genie/S-1"));
+        let rows = db.watched_deliveries().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].ci_ref.as_str(), rows[0].ci_sha.as_deref(), rows[0].ci_state), ("genie/S-1", Some("aaa"), None));
+
+        // Settled: the row leaves the watch, and a new push arms it again with the new commit.
+        db.checks_looked(&row, CheckState::Failed, 0).unwrap();
+        assert!(db.watched_deliveries().unwrap().is_empty());
+        let row = pushed(&db, "bbb");
+        assert_eq!(row.ci_state, None, "a push drops the recorded state");
+        assert_eq!(db.watched_deliveries().unwrap().len(), 1);
+
+        // Its request is merged: the target branch's merge commit is watched.
+        let look =
+            |state| RequestLook { state, head: "genie/S-1", head_sha: Some("bbb"), base: "main", merge_sha: Some("ccc"), seen_at: None };
+        db.request_opened(
+            "shop",
+            "S-1",
+            "api",
+            Opened {
+                branch: "genie/S-1",
+                number: 7,
+                url: "u",
+                state: RequestState::Open,
+                head_sha: Some("bbb"),
+                checks: CheckState::Pending,
+                seen_at: None,
+            },
+        )
+        .unwrap();
+        let change = db.request_looked(&delivery(&db), look(RequestState::Merged)).unwrap();
+        assert!(change.merged && !change.abandoned);
+        assert_eq!(
+            (change.row.state, change.row.ci_ref.as_str(), change.row.ci_sha.as_deref()),
+            (DeliveryState::Merged, "main", Some("ccc"))
+        );
+        assert_eq!(change.row.ci_state, None, "the merge commit has not been looked at yet");
+        assert!(
+            db.branch_pushed("shop", "S-1", "api", BranchPush { branch: "genie/S-1", sha: "ddd", delivers: true }).unwrap().is_none(),
+            "a merged delivery stays"
+        );
+    }
+
+    #[test]
+    fn an_open_request_whose_branch_moved_is_watched_at_its_new_head() {
+        let (_d, db) = task_with_api();
+        let opened = Opened {
+            branch: "genie/S-1",
+            number: 7,
+            url: "u",
+            state: RequestState::Open,
+            head_sha: Some("aaa"),
+            checks: CheckState::Failed,
+            seen_at: None,
+        };
+        let row = db.request_opened("shop", "S-1", "api", opened).unwrap();
+        assert_eq!((row.ci_sha.as_deref(), row.ci_state, row.ci_since.as_str()), (Some("aaa"), Some(CheckState::Failed), ""));
+        let look = RequestLook {
+            state: RequestState::Open,
+            head: "genie/S-1",
+            head_sha: Some("bbb"),
+            base: "main",
+            merge_sha: None,
+            seen_at: None,
+        };
+        let change = db.request_looked(&row, look).unwrap();
+        assert!(!change.merged && !change.abandoned);
+        assert_eq!(change.row.ci_sha.as_deref(), Some("bbb"));
+        assert_eq!(change.row.ci_state, Some(CheckState::Failed), "what the host said last stays until the next look");
+        // Closed unmerged: nothing is watched.
+        let look = RequestLook {
+            state: RequestState::Closed,
+            head: "genie/S-1",
+            head_sha: Some("bbb"),
+            base: "main",
+            merge_sha: None,
+            seen_at: None,
+        };
+        let change = db.request_looked(&change.row, look).unwrap();
+        assert!(change.abandoned);
+        assert_eq!((change.row.state, change.row.ci_sha.as_deref(), change.row.ci_state), (DeliveryState::Abandoned, None, None));
+    }
+
+    #[test]
+    fn checks_start_a_clock_stall_once_and_a_repository_without_ci_is_left_alone() {
+        let (_d, db) = task_with_api();
+        let row = pushed(&db, "aaa");
+
+        let look = db.checks_looked(&row, CheckState::Pending, 1800).unwrap();
+        assert!(look.changed);
+        assert_ne!(look.row.ci_since, "", "waiting begins with the first look that finds them running");
+        let again = db.checks_looked(&look.row, CheckState::Pending, 1800).unwrap();
+        assert!(!again.changed);
+        assert_eq!(again.row.ci_since, look.row.ci_since, "the clock is not restarted");
+
+        // Running for longer than the limit: `stalled`, once, and it stands while the host says `pending`.
+        db.conn().execute("UPDATE task_repos SET ci_since = '2020-01-01T00:00:00Z'", []).unwrap();
+        let stalled = db.checks_looked(&delivery(&db), CheckState::Pending, 1800).unwrap();
+        assert_eq!((stalled.checks, stalled.changed), (CheckState::Stalled, true));
+        let still = db.checks_looked(&stalled.row, CheckState::Pending, 1800).unwrap();
+        assert_eq!((still.checks, still.changed), (CheckState::Stalled, false));
+        assert!(db.watched_deliveries().unwrap().is_empty(), "stalled is terminal for the watcher");
+        let passed = db.checks_looked(&still.row, CheckState::Passed, 1800).unwrap();
+        assert_eq!((passed.checks, passed.changed, passed.row.ci_since.as_str()), (CheckState::Passed, true, ""));
+
+        // No checks: one more look, then the watch ends.
+        let row = pushed(&db, "bbb");
+        let first = db.checks_looked(&row, CheckState::None, 1800).unwrap();
+        assert_eq!(db.watched_deliveries().unwrap().len(), 1, "checks may start a moment after the push");
+        let second = db.checks_looked(&first.row, CheckState::None, 1800).unwrap();
+        assert!(!second.changed);
+        assert!(second.row.ci_sha.is_none() && db.watched_deliveries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_rerun_is_reserved_within_its_limits_and_survives_a_new_push() {
+        let (_d, db) = task_with_api();
+        let fresh = delivery(&db);
         assert_eq!((fresh.ci_rerun_sha.as_str(), fresh.ci_reruns), ("", 0), "a new row has no rerun history");
+        assert!(db.reserve_rerun("shop", "S-1", "api", "aaa", 0, 3).unwrap_err().to_string().contains("switched off"));
 
-        let row = db
-            .update_delivery(
-                "shop",
-                "S-1",
-                "api",
-                Delivery { ci_rerun_sha: Some("aaa".into()), ci_reruns: Some(1), ci_state: Some("pending".into()), ..Default::default() },
-            )
-            .unwrap();
-        assert_eq!((row.ci_rerun_sha.as_str(), row.ci_reruns), ("aaa", 1));
+        let r = db.reserve_rerun("shop", "S-1", "api", "aaa", 2, 3).unwrap();
+        assert_eq!(r, Reservation { previous_sha: String::new(), previous_count: 0 });
+        let e = db.reserve_rerun("shop", "S-1", "api", "aaa", 2, 3).unwrap_err().to_string();
+        assert!(e.contains("already rerun once"), "one rerun per commit: {e}");
+        let row = db.rerun_started("shop", "S-1", "api", "genie/S-1", "aaa").unwrap();
+        assert_eq!((row.ci_state, row.ci_sha.as_deref(), row.ci_reruns), (Some(CheckState::Pending), Some("aaa"), 1));
+        assert_ne!(row.ci_since, "", "the clock starts over");
 
-        // A new push re-arms the watch with `reset_ci`; the rerun history has to survive it, or a
-        // later push would hand the delivery its rerun allowance back.
-        let rearmed = db
-            .update_delivery(
-                "shop",
-                "S-1",
-                "api",
-                Delivery { ci_sha: Some("bbb".into()), reset_ci: true, ci_state: Some("none".into()), ..Default::default() },
-            )
-            .unwrap();
-        assert_eq!(rearmed.ci_state.as_deref(), Some("none"));
-        assert_eq!((rearmed.ci_rerun_sha.as_str(), rearmed.ci_reruns), ("aaa", 1), "reset_ci leaves the counters alone");
+        // A new push re-arms the watch; the rerun history has to survive it, or a later push would
+        // hand the delivery its rerun allowance back.
+        let row = pushed(&db, "bbb");
+        assert_eq!((row.ci_rerun_sha.as_str(), row.ci_reruns, row.ci_state), ("aaa", 1, None));
+
+        // A refused rerun gives the reservation back; the per-request limit counts.
+        let r = db.reserve_rerun("shop", "S-1", "api", "bbb", 2, 3).unwrap();
+        db.release_rerun("shop", "S-1", "api", r).unwrap();
+        assert_eq!((delivery(&db).ci_rerun_sha.as_str(), delivery(&db).ci_reruns), ("aaa", 1));
+        db.reserve_rerun("shop", "S-1", "api", "bbb", 2, 3).unwrap();
+        let e = db.reserve_rerun("shop", "S-1", "api", "ccc", 2, 3).unwrap_err().to_string();
+        assert!(e.contains("2 of 2 reruns for this request"), "{e}");
+        let e = db.reserve_rerun("shop", "S-1", "api", "ccc", 5, 2).unwrap_err().to_string();
+        assert!(e.contains("the task used 2 of 2"), "{e}");
     }
 }

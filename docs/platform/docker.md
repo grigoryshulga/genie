@@ -300,14 +300,30 @@ docker compose up -d && docker compose exec -u genie genie genie doctor
 
 Копия не содержит `~/.pi/agent`, `~/.ssh` и репозитории в `/workspace`: их сохраняйте отдельно (снимок тома или `docker run --rm -v genie_genie-data:/d -v "$PWD":/b alpine tar czf /b/genie-data.tgz -C /d .`).
 
-Обновление:
+Обновление (данные на томах сохраняются; схему баз сервер мигрирует при старте, но сначала проверяет её на копии):
 
 ```bash
+# 1. копия до обновления — откат делается только из неё
+docker compose exec -u genie genie genie backup /data/backups --keep 7
+
+# 2. новый образ, но старый сервер ещё работает: проверка миграций на копии данных
 git pull
-docker compose up -d --build
+docker compose build          # или: docker compose pull (готовый образ)
+docker compose run --rm --no-deps genie migrate --check
+
+# 3. применение и запуск новой версии
+docker compose stop genie
+docker compose up -d
+docker compose exec -u genie genie genie doctor
+
+# 4. откат: прежний образ плюс данные из копии
+docker compose stop genie
+docker compose run --rm --no-deps genie restore /data/backups/genie-<время> --force
+GENIE_IMAGE=<прежний тег> docker compose up -d
+docker compose exec -u genie genie genie doctor
 ```
 
-Данные на томах сохраняются; схема баз мигрирует сервером при старте.
+`migrate --check` читает версии схем и прогоняет будущие миграции на копии каждой базы (`VACUUM INTO`) — каталог данных не меняется, сервер может работать. Без `--check` команда применяет миграции (сервис должен быть остановлен); сервер делает то же самое при старте и пишет по строке на базу в `docker compose logs genie`. Миграции назад не откатываются: откат — это шаг 4. Порядок и оговорки — [[platform/getting-started#Обновление и откат]].
 
 ## Что нужно знать о безопасности
 

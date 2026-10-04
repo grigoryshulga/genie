@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .genie/
 .design/
 web/dist/
@@ -8,3 +8,4 @@ migration/
 secrets/
 .env
 .claude/worktrees/
+docker-compose.local.yml

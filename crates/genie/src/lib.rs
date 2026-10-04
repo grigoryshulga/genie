@@ -19,6 +19,7 @@ pub mod mcp_gateway;
 pub mod notify;
 pub mod ops;
 pub mod orchestrate;
+pub mod outcome;
 pub mod questions;
 pub mod runtime;
 pub mod sandbox;
@@ -26,6 +27,7 @@ pub mod sessions;
 pub mod spend;
 pub mod state;
 pub mod stats;
+pub mod tasks;
 pub mod vault_sync;
 
 use std::net::SocketAddr;

@@ -5,7 +5,6 @@
 
 use chrono::Duration as ChronoDuration;
 use genie_core::inbox::{NewQuestion, Questionnaire};
-use genie_core::{Actor, CommentKind, Role};
 use serde_json::json;
 
 use crate::notify::{self, Message};
@@ -129,10 +128,12 @@ fn record(app: &App, qn: &Questionnaire) -> AppResult<()> {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    app.with_tracker(&qn.project, |t| {
-        t.comment(&Actor::new(user.login.clone(), Role::Human), task, &text, CommentKind::Owner).map(|_| ())
-    })?;
-    app.wake_runtime.notify_one();
+    crate::tasks::comment(
+        app,
+        &crate::tasks::Caller::person(&qn.project, &user.login),
+        task,
+        crate::tasks::CommentBody { text, kind: None },
+    )?;
     Ok(())
 }
 

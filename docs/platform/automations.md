@@ -49,10 +49,10 @@ verified: 2026-10-01
 
 | Шаг | Что делает | Выход |
 |---|---|---|
-| `task.status` | `{to, note, force, task}` — от имени `automation:<правило>:<запуск>`, с проверками DoR/DoD | `{task, status}` |
-| `task.comment` | `{text, kind, task}` | `{task}` |
-| `task.create` | `{title, description, acceptance, type, parent, labels, inbox}` | `{id}` |
-| `task.update` | `{description, plan, appendNotes, addAcceptance, labels, priority, task}` | `{task}` |
+| `task.status` | `{to, note, force, task}` — от имени `automation:<правило>:<запуск>` по правилам оркестратора: DoR/DoD, в проекте `assisted` не закрывает, `review`/`done` — только при порядке в доставке (запрос открыт, проверки не упали) | `{task, status}` |
+| `task.comment` | `{text, kind, task}`; `@login` уведомляет человека проекта | `{task}` |
+| `task.create` | `{title, description, acceptance, type, parent, labels, priority, deps, plan, inbox}` | `{id}` |
+| `task.update` | поля `PATCH /api/tasks/<id>` (`description`, `plan`, `appendNotes`, `addAcceptance`, `labels`, `priority`…) и `task`; неизвестное поле — ошибка шага | `{task}` |
 | `task.get` | текущее состояние задачи | задача |
 | `task.ready` | `{task}` — задачу и те, что от неё зависят, из `draft`/`refining` в `ready`, если их ничего не держит: нет блока, зависимости закрыты, нет `needs_owner`, открытых вопросов, идущих заданий и работающей команды, выполнен DoR | `{moved: [id], held: [{task, holds}]}` |
 | `notify` | `{to, title, text, link, channels}` — веб-центр + Telegram или почта | `{recipients, queued}` |

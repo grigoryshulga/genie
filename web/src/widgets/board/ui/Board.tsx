@@ -12,29 +12,21 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { useState } from "react";
-import { Link } from "react-router";
-import { Avatar, Avatars, memberLabel } from "@/entities/member";
+import { Avatars } from "@/entities/member";
 import { PersonAvatar } from "@/entities/project";
 import { COLUMNS, type Column, EpicChip, EpicIcon, Labels, PriorityIcon, type Status, STATUS_NAME, StatusIcon, type TaskSummary, useMoveTask } from "@/entities/task";
 import type { Team } from "@/entities/team";
-import { Icon, Modal, useToast } from "@/shared/ui";
+import { Modal, useToast } from "@/shared/ui";
 
 const columnOf = (status: Status): Column => COLUMNS.find((c) => c.statuses.includes(status)) ?? COLUMNS[0];
 
 function CardBody({ t, team }: { t: TaskSummary; team?: Team }) {
-  const working = team?.state === "active" && team.members.some((m) => m.activity === "working");
   return (
     <>
       <span className="meta">
         <span className="mono">{t.id}</span>
         {t.priority === 0 ? <span className="urgent-tag">срочно</span> : <PriorityIcon priority={t.priority} size={12} />}
         {t.status === "changes_requested" && <span style={{ color: "var(--amber)" }}>доработка</span>}
-        {working && (
-          <span className="team">
-            <span className="spin" style={{ width: 9, height: 9 }} />
-            {team!.id}
-          </span>
-        )}
       </span>
       <span className="t" title={t.title}>
         {t.type === "epic" && (
@@ -54,9 +46,11 @@ function CardBody({ t, team }: { t: TaskSummary; team?: Team }) {
       )}
       <span className="foot">
         <EpicChip id={t.parent} text />
-        <Labels labels={t.labels} />
+        {/* Two labels at most: the rest is a count, so the footer never wraps. */}
+        <Labels labels={t.labels.slice(0, 2)} />
+        {t.labels.length > 2 && <span className="more">+{t.labels.length - 2}</span>}
         {t.acceptanceTotal > 0 && (
-          <span className="muted" style={{ fontSize: 11 }}>
+          <span className="ac">
             ✓ {t.acceptanceDone}/{t.acceptanceTotal}
           </span>
         )}
@@ -117,69 +111,17 @@ function BoardColumn({ col, tasks, teams, selected, onSelect, collapsed, onExpan
   );
 }
 
-function Peek({ t, team, onClose, onOpen, onMove }: { t: TaskSummary; team?: Team; onClose: () => void; onOpen: () => void; onMove: (s: Status) => void }) {
-  return (
-    <aside className="peek" aria-label={`Задача ${t.id}`}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="mono muted" style={{ fontSize: 12 }}>
-          {t.id}
-        </span>
-        <span className="grow" />
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </div>
-      <h2>{t.title}</h2>
-      <label className="field">
-        Статус
-        <select value={t.status} onChange={(e) => onMove(e.target.value as Status)}>
-          {(Object.keys(STATUS_NAME) as Status[]).map((s) => (
-            <option key={s} value={s}>
-              {STATUS_NAME[s]}
-            </option>
-          ))}
-        </select>
-      </label>
-      {t.needsOwner && (
-        <div className="owner-box" style={{ padding: "10px 12px", fontSize: 12.5 }}>
-          {t.needsOwner.question}
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <span className="nav-section" style={{ margin: 0 }}>
-          Команда {team?.id ?? ""}
-        </span>
-        {team ? (
-          team.members.map((m) => (
-            <span key={m.name} className="member-line">
-              <Avatar role={m.role} name={m.name} activity={m.activity} state={m.state} size="solo" />
-              {memberLabel(m.name, m.role)}
-              <span className="st">{m.activity === "working" ? "работает" : m.activity === "error" || m.state === "error" ? "ошибка" : m.state === "stopped" ? "остановлен" : "ждёт"}</span>
-            </span>
-          ))
-        ) : (
-          <span className="muted">Команда не назначена</span>
-        )}
-      </div>
-      <span className="grow" />
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" className="btn primary grow" style={{ justifyContent: "center", height: 34 }} onClick={onOpen}>
-          Открыть задачу
-        </button>
-        {team && (
-          <Link className="btn" style={{ height: 34 }} to={`/team/${encodeURIComponent(team.id)}`}>
-            Чат команды
-          </Link>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-export function Board({ tasks, teams, showDone, onShowDone, onOpen }: { tasks: TaskSummary[]; teams: Map<string, Team>; showDone: boolean; onShowDone: () => void; onOpen: (id: string) => void }) {
+/** A card click opens the task's preview beside the board (`?task=`), like a row in the list. */
+export function Board({ tasks, teams, selected, showDone, onShowDone, onOpen }: {
+  tasks: TaskSummary[];
+  teams: Map<string, Team>;
+  selected?: string;
+  showDone: boolean;
+  onShowDone: () => void;
+  onOpen: (id: string) => void;
+}) {
   const move = useMoveTask();
   const toast = useToast();
-  const [selected, setSelected] = useState<string | undefined>();
   const [dragging, setDragging] = useState<string | undefined>();
   const [ask, setAsk] = useState<{ id: string; note: string } | undefined>();
   const sensors = useSensors(
@@ -210,7 +152,6 @@ export function Board({ tasks, teams, showDone, onShowDone, onOpen }: { tasks: T
     else doMove(id, col.target);
   };
 
-  const sel = tasks.find((t) => t.id === selected);
   const draggingTask = tasks.find((t) => t.id === dragging);
 
   return (
@@ -223,7 +164,7 @@ export function Board({ tasks, teams, showDone, onShowDone, onOpen }: { tasks: T
             tasks={tasks.filter((t) => columnOf(t.status).id === col.id)}
             teams={teams}
             selected={selected}
-            onSelect={(id) => setSelected((cur) => (cur === id ? undefined : id))}
+            onSelect={onOpen}
             collapsed={col.id === "done" && !showDone}
             onExpand={onShowDone}
           />
@@ -236,15 +177,6 @@ export function Board({ tasks, teams, showDone, onShowDone, onOpen }: { tasks: T
           </div>
         )}
       </DragOverlay>
-      {sel && (
-        <Peek
-          t={sel}
-          team={sel.team ? teams.get(sel.team) : undefined}
-          onClose={() => setSelected(undefined)}
-          onOpen={() => onOpen(sel.id)}
-          onMove={(s) => (s === "needs_owner" ? setAsk({ id: sel.id, note: "" }) : doMove(sel.id, s))}
-        />
-      )}
       {ask && (
         <Modal label="Вопрос к владельцу" onClose={() => setAsk(undefined)}>
           <div className="mh">

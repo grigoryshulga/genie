@@ -136,6 +136,65 @@ str_enum!(
     }
 );
 
+str_enum!(
+    /// Whether a team works. A stopped team keeps its roster, mail and log.
+    TeamState("team state") {
+        Active => "active",
+        Stopped => "stopped",
+    }
+);
+
+str_enum!(
+    /// Whether a team member may run. Only an `active` member of an active team runs;
+    /// `paused` and `error` keep their mail, `stopped` (with its team) does not.
+    MemberState("member state") {
+        Active => "active",
+        Paused => "paused",     // a person holds it
+        Stopped => "stopped",   // its team was stopped on purpose
+        Error => "error",       // it gave up; someone restarts it
+    }
+);
+
+str_enum!(
+    /// What a member is doing right now (runtime bookkeeping, shown on the board).
+    Activity("activity") {
+        Idle => "idle",
+        Working => "working",
+        Error => "error",
+    }
+);
+
+str_enum!(
+    /// How a task's delivery to a repository stands.
+    DeliveryState("delivery state") {
+        Pending => "pending",       // nothing pushed yet
+        Published => "published",   // a branch was pushed (and maybe a request opened)
+        Merged => "merged",
+        Abandoned => "abandoned",   // its request was closed unmerged
+    }
+);
+
+str_enum!(
+    /// A pull/merge request on the host.
+    RequestState("request state") {
+        Open => "open",
+        Merged => "merged",
+        Closed => "closed",
+    }
+);
+
+str_enum!(
+    /// The checks (CI) of a watched commit as the watcher records them: the host's answer, or
+    /// `stalled` — they stayed `pending` past `runtime.ciPendingSecs` and the team was told.
+    CheckState("checks state") {
+        None => "none",         // the host shows no checks
+        Pending => "pending",
+        Passed => "passed",
+        Failed => "failed",
+        Stalled => "stalled",
+    }
+);
+
 pub const CLOSED: &[Status] = &[Status::Done, Status::Cancelled];
 
 /// Statuses that mean a team is actually working on a task (they start its epic).

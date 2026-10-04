@@ -37,6 +37,7 @@ pub struct CreateInput {
     /// `None` inherits the parent's labels when splitting.
     pub labels: Option<Vec<String>>,
     pub merge_strategy: Option<String>,
+    pub plan: Option<String>,
     /// Initial status: `Inbox` for owner submissions, `Draft` otherwise.
     pub status: Option<Status>,
     /// Do not tell the orchestrator: the owner is still shaping the task
@@ -619,6 +620,10 @@ impl Tracker {
             return Err(GenieError::invalid("title is required"));
         }
         let task_type = input.task_type.unwrap_or(TaskType::Task);
+        let plan = input.plan.clone().filter(|p| !p.trim().is_empty());
+        if plan.is_some() {
+            require_cap(actor, "write the plan", Capability::TaskPlan)?;
+        }
         let status = if input.status == Some(Status::Inbox) { Status::Inbox } else { Status::Draft };
         let id = self.db.tx(|| {
             let parent = input.parent.as_deref().map(|p| self.normalize_id(p)).transpose()?;
@@ -641,8 +646,8 @@ impl Tracker {
             let tid = format!("{}-{seq}", self.meta_value("prefix")?);
             let at = now();
             self.conn().execute(
-                "INSERT INTO tasks(id, seq, title, type, status, priority, description, parent, labels, merge_strategy, created, updated)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO tasks(id, seq, title, type, status, priority, description, parent, labels, merge_strategy, plan, created, updated)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     tid,
                     seq,
@@ -654,6 +659,7 @@ impl Tracker {
                     parent,
                     serde_json::to_string(&input.labels.clone().unwrap_or_default())?,
                     input.merge_strategy.clone().unwrap_or_default(),
+                    plan.unwrap_or_default(),
                     at,
                     at,
                 ],
@@ -1124,6 +1130,12 @@ impl Tracker {
             self.event(events::TASK_UNBLOCKED, &r.id, actor, json!({}))
         })?;
         self.get(&r.id)
+    }
+
+    /// A person's login changed: the tasks they are responsible for follow the new one.
+    pub fn rename_assignee(&self, before: &str, after: &str) -> Result<()> {
+        self.conn().execute("UPDATE tasks SET assignee = ?1 WHERE assignee = ?2", params![after, before])?;
+        Ok(())
     }
 
     /// What deleting a task removes: the task, its subtasks (all levels) and the

@@ -53,24 +53,10 @@ pub(crate) fn tail(text: &str) -> String {
     if n <= DETAIL_CHARS { clean.to_string() } else { format!("…{}", clean.chars().skip(n - DETAIL_CHARS).collect::<String>()) }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CrState {
-    Open,
-    Merged,
-    Closed,
-}
+/// The state of a request, as the delivery records it.
+pub type CrState = genie_core::RequestState;
 
-impl CrState {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CrState::Open => "open",
-            CrState::Merged => "merged",
-            CrState::Closed => "closed",
-        }
-    }
-}
-
+/// The host's answer about the checks of a commit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Ci {
@@ -79,20 +65,15 @@ pub enum Ci {
     Pending,
     Passed,
     Failed,
-    /// Not the host's answer: the checks stayed `pending` longer than `runtime.ciPendingSecs`
-    /// and the team was told. Terminal for the watcher (it stops looking), a wait for the
-    /// team still — see the silent-team watchdog.
-    Stalled,
 }
 
-impl Ci {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Ci::None => "none",
-            Ci::Pending => "pending",
-            Ci::Passed => "passed",
-            Ci::Failed => "failed",
-            Ci::Stalled => "stalled",
+impl From<Ci> for genie_core::CheckState {
+    fn from(ci: Ci) -> Self {
+        match ci {
+            Ci::None => genie_core::CheckState::None,
+            Ci::Pending => genie_core::CheckState::Pending,
+            Ci::Passed => genie_core::CheckState::Passed,
+            Ci::Failed => genie_core::CheckState::Failed,
         }
     }
 }

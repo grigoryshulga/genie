@@ -10,12 +10,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use genie_core::db::now;
 use genie_core::events;
-use genie_core::repos::{Delivery, ProjectRepo, TaskRepo};
+use genie_core::repos::{Opened, ProjectRepo, RequestLook, TaskRepo};
 use genie_core::team::SendMail;
 use genie_core::tracker::Tracker;
-use genie_core::{Actor, CommentKind, Role, Status};
+use genie_core::{Actor, CheckState, CommentKind, DeliveryState, RequestState, Role, Status};
 use serde_json::{Value, json};
 
 use super::hosts::Host;
@@ -112,7 +111,7 @@ fn api(t: &Target) -> DResult<Api> {
     Ok(Api::new(&t.host)?)
 }
 
-fn cr_json(row: &TaskRepo, cr: &ChangeRequest, ci: Ci) -> Value {
+fn cr_json(row: &TaskRepo, cr: &ChangeRequest, ci: CheckState) -> Value {
     json!({ "repo": row.repo, "branch": row.branch, "request": cr, "ci": ci, "delivery": row })
 }
 
@@ -182,26 +181,16 @@ pub async fn open_request(app: &Arc<App>, project: &str, task: &str, repo: &str,
     let cr2 = cr.clone();
     let row = app
         .blocking(move |app| {
-            let row = app.with_server(|db| {
-                let mut d = Delivery {
-                    branch: Some(head.clone()),
-                    state: Some("published".into()),
-                    cr_number: Some(cr2.number),
-                    cr_url: Some(cr2.url.clone()),
-                    cr_state: Some(cr2.state.as_str().into()),
-                    ci_state: Some(ci.as_str().into()),
-                    head_sha: cr2.head_sha.clone(),
-                    seen_at: first.then_some(seen).flatten(),
-                    ..Default::default()
-                };
-                // The request's branch is watched from here: a check that fails after it was
-                // opened must reach the team, and the review gate reads it.
-                if let Some(sha) = cr2.head_sha.clone() {
-                    watching(&mut d, &head, &sha);
-                    d.ci_since = Some(if ci == Ci::Pending { now() } else { String::new() });
-                }
-                db.update_delivery(&p, &tk, &rp, d)
-            })?;
+            let opened = Opened {
+                branch: &head,
+                number: cr2.number,
+                url: &cr2.url,
+                state: cr2.state,
+                head_sha: cr2.head_sha.as_deref(),
+                checks: ci.into(),
+                seen_at: first.then_some(seen).flatten(),
+            };
+            let row = app.with_server(|db| db.request_opened(&p, &tk, &rp, opened))?;
             if first {
                 let actor = Actor::new(c.name.clone(), c.role);
                 let payload = json!({ "task": tk, "repo": rp, "number": cr2.number, "url": cr2.url, "by": c.name });
@@ -224,7 +213,7 @@ pub async fn open_request(app: &Arc<App>, project: &str, task: &str, repo: &str,
             Ok(row)
         })
         .await?;
-    Ok(cr_json(&row, &cr, ci))
+    Ok(cr_json(&row, &cr, ci.into()))
 }
 
 fn to_app(e: DeliveryError) -> AppError {
@@ -291,8 +280,8 @@ pub async fn rerun(app: &Arc<App>, project: &str, task: &str, repo: &str, caller
     // The host's live answer decides: restarting a running pipeline would be wrong, and a `stalled`
     // watch keeps its own letter (nothing may restart a run nobody is waiting for).
     let api = api(&t)?;
-    let ci = api.ci(&t.record.remote, Some(&sha)).await?;
-    if ci != Ci::Failed {
+    let ci = CheckState::from(api.ci(&t.record.remote, Some(&sha)).await?);
+    if ci != CheckState::Failed {
         return Err(DeliveryError::Invalid(format!(
             "the checks of `{}` in {repo} are {}, not failed: a rerun is possible only after they fail",
             watched_name(&t.row),
@@ -302,62 +291,14 @@ pub async fn rerun(app: &Arc<App>, project: &str, task: &str, repo: &str, caller
     // Reserve the limit and count the rerun in one transaction.
     let (per_request, per_task) = rerun_limits(app);
     let (p, tk, rp, sha2) = (project.to_string(), task.to_string(), repo.to_string(), sha.clone());
-    let (_reserved, previous_sha, previous_count) = app
-        .blocking(move |app| {
-            app.with_server(|db| {
-                let row =
-                    db.task_repo(&p, &tk, &rp)?.ok_or_else(|| genie_core::GenieError::not_found(format!("{tk} has no repository {rp}")))?;
-                if per_request == 0 || per_task == 0 {
-                    let key = if per_request == 0 { "ciRerunsPerRequest" } else { "ciRerunsPerTask" };
-                    return Err(genie_core::GenieError::invalid(format!("reruns are switched off (`runtime.{key}: 0`)")));
-                }
-                if row.ci_rerun_sha == sha2 {
-                    return Err(genie_core::GenieError::invalid(format!(
-                        "the checks of `{}` in {rp} were already rerun once: fix and push a new commit instead",
-                        watched_name(&row)
-                    )));
-                }
-                if row.ci_reruns as u32 >= per_request {
-                    return Err(genie_core::GenieError::invalid(format!(
-                        "{rp} already used {} of {per_request} reruns for this request (`runtime.ciRerunsPerRequest`)",
-                        row.ci_reruns
-                    )));
-                }
-                let total: i64 = db.task_repos(&p, &tk)?.iter().map(|r| r.ci_reruns).sum();
-                if total as u32 >= per_task {
-                    return Err(genie_core::GenieError::invalid(format!(
-                        "the task used {total} of {per_task} reruns (`runtime.ciRerunsPerTask`)"
-                    )));
-                }
-                let updated = db.update_delivery(
-                    &p,
-                    &tk,
-                    &rp,
-                    Delivery { ci_rerun_sha: Some(sha2.clone()), ci_reruns: Some(row.ci_reruns + 1), ..Default::default() },
-                )?;
-                Ok((updated, row.ci_rerun_sha.clone(), row.ci_reruns))
-            })
-        })
-        .await?;
+    let reservation = app.blocking(move |app| app.with_server(|db| db.reserve_rerun(&p, &tk, &rp, &sha2, per_request, per_task))).await?;
     // The host is asked to restart the failed runs.
     let runs = match api.rerun_failed(&t.record.remote, Some(&sha)).await {
         Ok(n) => n,
         Err(e) => {
             // The refusal must not eat a rerun: give the reservation back.
             let (p, tk, rp) = (project.to_string(), task.to_string(), repo.to_string());
-            let _ = app
-                .blocking(move |app| {
-                    app.with_server(|db| {
-                        db.update_delivery(
-                            &p,
-                            &tk,
-                            &rp,
-                            Delivery { ci_rerun_sha: Some(previous_sha), ci_reruns: Some(previous_count), ..Default::default() },
-                        )?;
-                        Ok(())
-                    })
-                })
-                .await;
+            let _ = app.blocking(move |app| app.with_server(|db| db.release_rerun(&p, &tk, &rp, reservation))).await;
             return Err(e.into());
         }
     };
@@ -367,21 +308,7 @@ pub async fn rerun(app: &Arc<App>, project: &str, task: &str, repo: &str, caller
         (project.to_string(), task.to_string(), repo.to_string(), sha.clone(), watched_name(&t.row), (caller.name.clone(), caller.role));
     let row = app
         .blocking(move |app| {
-            let row = app.with_server(|db| {
-                db.update_delivery(
-                    &p,
-                    &tk,
-                    &rp,
-                    Delivery {
-                        ci_state: Some("pending".into()),
-                        ci_ref: Some(ref2.clone()),
-                        ci_sha: Some(sha2.clone()),
-                        ci_since: Some(now()),
-                        reset_ci: true,
-                        ..Default::default()
-                    },
-                )
-            })?;
+            let row = app.with_server(|db| db.rerun_started(&p, &tk, &rp, &ref2, &sha2))?;
             let payload = json!({
                 "task": tk, "repo": rp, "ref": ref2, "sha": sha2, "runs": runs,
                 "reruns": row.ci_reruns, "by": actor.0,
@@ -480,7 +407,7 @@ async fn do_merge(app: &Arc<App>, project: &str, task: &str, t: &Target, strictn
             match api.ci(&t.record.remote, cr.head_sha.as_deref()).await? {
                 Ci::Failed => return Err(DeliveryError::Invalid(format!("the checks of #{number} failed"))),
                 Ci::Pending => return Err(DeliveryError::Invalid(format!("the checks of #{number} are still running"))),
-                Ci::Passed | Ci::None | Ci::Stalled => {}
+                Ci::Passed | Ci::None => {}
             }
         }
     }
@@ -491,7 +418,7 @@ async fn do_merge(app: &Arc<App>, project: &str, task: &str, t: &Target, strictn
 }
 
 /// Read the request and its checks from the host, record what changed, and announce it.
-pub async fn sync_row(app: &Arc<App>, row: &TaskRepo) -> DResult<(ChangeRequest, Ci, TaskRepo)> {
+pub async fn sync_row(app: &Arc<App>, row: &TaskRepo) -> DResult<(ChangeRequest, CheckState, TaskRepo)> {
     let number = row.cr_number.ok_or_else(|| DeliveryError::Invalid("no request yet".into()))?;
     let (p, r) = (row.project.clone(), row.repo.clone());
     let (record, host) = app
@@ -504,14 +431,14 @@ pub async fn sync_row(app: &Arc<App>, row: &TaskRepo) -> DResult<(ChangeRequest,
     let api = Api::new(&host)?;
     let cr = api.get(&record.remote, number).await?;
     let ci = if cr.state == CrState::Open {
-        api.ci(&record.remote, cr.head_sha.as_deref()).await?
+        api.ci(&record.remote, cr.head_sha.as_deref()).await?.into()
     } else {
-        row.ci_state.as_deref().map(parse_ci).unwrap_or(Ci::None)
+        row.ci_state.unwrap_or(CheckState::None)
     };
     // What people wrote on an open request (a failure to read it must not hide the rest).
     let comments = if cr.state == CrState::Open { api.comments(&record.remote, number).await.unwrap_or_default() } else { Vec::new() };
     // A check that just failed: which one and why, for the team (a host that says nothing leaves it empty).
-    let failures = if ci == Ci::Failed && row.ci_state.as_deref() != Some("failed") {
+    let failures = if ci == CheckState::Failed && row.ci_state != Some(CheckState::Failed) {
         api.ci_failures(&record.remote, cr.head_sha.as_deref()).await.unwrap_or_default()
     } else {
         Vec::new()
@@ -521,31 +448,6 @@ pub async fn sync_row(app: &Arc<App>, row: &TaskRepo) -> DResult<(ChangeRequest,
     Ok((cr, ci, row))
 }
 
-fn parse_ci(s: &str) -> Ci {
-    match s {
-        "pending" => Ci::Pending,
-        "passed" => Ci::Passed,
-        "failed" => Ci::Failed,
-        "stalled" => Ci::Stalled,
-        _ => Ci::None,
-    }
-}
-
-/// Arm the watch of one ref on a delivery: its checks are looked at from now on. The waiting clock
-/// starts with the first look that finds them running.
-pub(crate) fn watching(d: &mut Delivery, r#ref: &str, sha: &str) {
-    d.ci_ref = Some(r#ref.to_string());
-    d.ci_sha = Some(sha.to_string());
-    d.ci_since = Some(String::new());
-    d.reset_ci = true;
-}
-
-/// Stop watching the ref of a delivery (nothing to look at, or nothing left to watch: the checks
-/// are recorded once more, then the row leaves the watch set).
-fn stop_watching(ci_state: Option<&str>) -> Delivery {
-    Delivery { ci_state: ci_state.map(str::to_string), reset_ci: true, ..Default::default() }
-}
-
 /// Store the host's state and, for what changed, the event, the note on the task and the message to
 /// whoever acts on it. The checks are recorded by [`record_ci`] — of the request's branch while the
 /// request is open, of the target branch once it was merged.
@@ -553,54 +455,25 @@ fn record_changes(
     app: &App,
     row: &TaskRepo,
     cr: &ChangeRequest,
-    ci: Ci,
+    ci: CheckState,
     comments: &[Comment],
     failures: &[CiFailure],
 ) -> Result<TaskRepo, AppError> {
     let (p, task, repo) = (row.project.as_str(), row.task.as_str(), row.repo.as_str());
     let host_actor = Actor::new("git-host", Role::Human);
-    let state_now = cr.state.as_str();
-    let state_changed = row.cr_state.as_deref() != Some(state_now);
-    let merged_now = state_changed && cr.state == CrState::Merged;
-    let abandoned_now = state_changed && cr.state == CrState::Closed;
-    let delivery = match cr.state {
-        CrState::Merged => Some("merged"),
-        CrState::Closed => Some("abandoned"),
-        CrState::Open => None,
-    };
     // Comments of people that are new since the last look (ours carry a signature and are not echoed).
     let fresh: Vec<&Comment> =
         comments.iter().filter(|c| c.at > row.seen_at && !c.body.trim().is_empty() && !c.body.contains(" through genie")).collect();
-    let seen_at = fresh.iter().map(|c| c.at.clone()).max();
-    let mut d = Delivery {
-        state: delivery.map(str::to_string),
-        cr_state: Some(state_now.into()),
-        head_sha: cr.head_sha.clone(),
-        seen_at,
-        ..Default::default()
+    let look = RequestLook {
+        state: cr.state,
+        head: &cr.head,
+        head_sha: cr.head_sha.as_deref(),
+        base: &cr.base,
+        merge_sha: cr.merge_sha.as_deref(),
+        seen_at: fresh.iter().map(|c| c.at.clone()).max(),
     };
-    // A request that ended watches something else: a merge hands the watch to the commit that landed
-    // on the target branch (a person may have merged past the checks), a closure watches nothing.
-    if merged_now || abandoned_now {
-        d.reset_ci = true;
-        if merged_now && let Some(sha) = cr.merge_sha.clone() {
-            watching(&mut d, &cr.base, &sha);
-        }
-    } else if cr.state == CrState::Open
-        && let Some(sha) = cr.head_sha.clone()
-        && row.ci_sha.as_deref() != Some(sha.as_str())
-    {
-        // While the request is open, the checks that matter are those of its head: either the row was
-        // never armed (it predates the watch, or its host named no commit when the request was opened)
-        // or the branch moved under us (a push that did not go through the proxy). The recorded state
-        // stays — it is what the host said last — and the clock starts again for the new commit.
-        d.ci_ref = Some(cr.head.clone());
-        d.ci_sha = Some(sha);
-        if row.ci_sha.is_some() {
-            d.ci_since = Some(String::new());
-        }
-    }
-    let updated = app.with_server(|db| db.update_delivery(p, task, repo, d))?;
+    let change = app.with_server(|db| db.request_looked(row, look))?;
+    let (updated, merged_now, abandoned_now) = (change.row, change.merged, change.abandoned);
     if !fresh.is_empty() {
         let text: String = fresh
             .iter()
@@ -627,7 +500,7 @@ fn record_changes(
             Ok(())
         })?;
     }
-    if state_changed {
+    if merged_now || abandoned_now {
         let payload = json!({ "task": task, "repo": repo, "number": cr.number, "url": cr.url, "ci": ci });
         app.with_tracker(p, |t| {
             if merged_now {
@@ -656,62 +529,22 @@ fn record_changes(
 
 /// The team of a task when that team is active: a letter means something only then.
 fn active_team(t: &Tracker, task: &str) -> Option<String> {
-    let team = t.get(task).ok()?.team?;
-    t.bus().get(&team).ok().filter(|x| x.state == "active").map(|_| team)
-}
-
-/// What to store for a look: the host's answer, unless the checks have stayed `pending` for longer
-/// than `runtime.ciPendingSecs` — then `stalled` once (terminal for the watcher).
-fn settle(app: &App, row: &TaskRepo, ci: Ci) -> Ci {
-    // `stalled` stands until the host says something else: a later look that still sees `pending`
-    // neither repeats the letter nor pretends the checks are running.
-    if row.ci_state.as_deref() == Some("stalled") && ci == Ci::Pending {
-        return Ci::Stalled;
-    }
-    let limit = app.cfg.runtime.ci_pending_secs;
-    if ci != Ci::Pending || limit == 0 {
-        return ci;
-    }
-    let Ok(since) = chrono::DateTime::parse_from_rfc3339(&row.ci_since) else { return ci };
-    if chrono::Utc::now().signed_duration_since(since.with_timezone(&chrono::Utc)).num_seconds() >= limit as i64 { Ci::Stalled } else { ci }
+    t.bus().active_team_of(task).ok().flatten()
 }
 
 /// The checks of one watched ref: store them and, for what changed, the event, the letter or the note.
 /// `cr` names the request whose branch the checks belong to; without it the watched ref is named.
-fn record_ci(app: &App, row: &TaskRepo, ci: Ci, failures: &[CiFailure], cr: Option<&ChangeRequest>) -> Result<TaskRepo, AppError> {
+fn record_ci(app: &App, row: &TaskRepo, ci: CheckState, failures: &[CiFailure], cr: Option<&ChangeRequest>) -> Result<TaskRepo, AppError> {
     let (p, task, repo) = (row.project.as_str(), row.task.as_str(), row.repo.as_str());
-    let ci = settle(app, row, ci);
-    let changed = row.ci_state.as_deref() != Some(ci.as_str());
-    // A second look that still finds no checks ends the watch: a repository without CI, or one whose
-    // checks never start, must not be polled for the life of the row.
-    let none_settled = ci == Ci::None && row.ci_state.as_deref() == Some("none");
-    // Waiting begins with the first look that finds the checks running (a `none` in between does not
-    // start the clock) and ends when they settle.
-    let began = ci == Ci::Pending && (row.ci_since.is_empty() || row.ci_state.as_deref() != Some("pending"));
-    if !changed && !began && !none_settled {
-        return Ok(row.clone());
+    let change = app.with_server(|db| db.checks_looked(row, ci, app.cfg.runtime.ci_pending_secs))?;
+    if !change.changed {
+        return Ok(change.row);
     }
-    let (ci_since, reset) = match ci {
-        Ci::Pending if began => (Some(now()), false),
-        Ci::Pending => (None, false),
-        // `stalled` keeps the moment it began: the record is what the team was told about.
-        Ci::Stalled => (None, false),
-        // The first `none` gets one more look (checks may start a moment after the push), the second
-        // one stops the watch.
-        Ci::None if none_settled => (Some(String::new()), true),
-        Ci::None => (Some(now()), false),
-        Ci::Passed | Ci::Failed => (Some(String::new()), false),
-    };
-    let updated = app.with_server(|db| {
-        db.update_delivery(p, task, repo, Delivery { ci_state: Some(ci.as_str().into()), ci_since, reset_ci: reset, ..Default::default() })
-    })?;
-    if !changed {
-        return Ok(updated);
-    }
+    let (ci, updated) = (change.checks, change.row);
     let payload = json!({ "task": task, "repo": repo, "ref": row.ci_ref, "sha": row.ci_sha, "number": cr.map(|c| c.number), "ci": ci });
     app.with_tracker(p, |t| {
         match ci {
-            Ci::Failed => {
+            CheckState::Failed => {
                 let mut payload = payload.clone();
                 payload["failures"] = json!(failures);
                 events::append(t.conn(), events::CI_FAILED, Some(task), "git-host", "human", payload)?;
@@ -742,10 +575,10 @@ fn record_ci(app: &App, row: &TaskRepo, ci: Ci, failures: &[CiFailure], cr: Opti
                     });
                 }
             }
-            Ci::Passed => {
+            CheckState::Passed => {
                 events::append(t.conn(), events::CI_PASSED, Some(task), "git-host", "human", payload)?;
             }
-            Ci::Stalled => {
+            CheckState::Stalled => {
                 events::append(t.conn(), events::CI_STALLED, Some(task), "git-host", "human", payload)?;
                 let subject = match cr {
                     Some(cr) => format!("the request #{} in {repo} ({})", cr.number, cr.url),
@@ -777,7 +610,7 @@ fn record_ci(app: &App, row: &TaskRepo, ci: Ci, failures: &[CiFailure], cr: Opti
                     }
                 }
             }
-            Ci::Pending | Ci::None => {}
+            CheckState::Pending | CheckState::None => {}
         }
         Ok(())
     })?;
@@ -789,7 +622,8 @@ fn record_ci(app: &App, row: &TaskRepo, ci: Ci, failures: &[CiFailure], cr: Opti
 /// A status change an agent asks for, checked against the task's delivery. `review` needs a
 /// request for every pushed branch whose policy calls for one and needs the watched checks not to
 /// have failed; `done` needs none left open. (People are not held to it: their moves are authoritative.)
-pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Result<(), String> {
+/// Blocking: the host is asked about the checks.
+pub fn gate(app: &App, project: &str, task: &str, to: Status) -> Result<(), String> {
     if !matches!(to, Status::Review | Status::Done) {
         return Ok(());
     }
@@ -797,7 +631,7 @@ pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Resu
     let rows = app.with_server(|db| db.task_repos(project, &task)).map_err(|e| e.to_string())?;
     for row in rows.iter().filter(|r| r.access == "write") {
         if to == Status::Done {
-            if row.cr_state.as_deref() == Some("open") {
+            if row.cr_state == Some(RequestState::Open) {
                 return Err(format!(
                     "the request #{} of {1} is not merged yet: it is merged by a person (move the task to needs_owner with `--action ask-for-merge-pr --repo {1}`) or by you (`genie pr merge --repo {1}`) when the policy allows",
                     row.cr_number.unwrap_or_default(),
@@ -807,7 +641,7 @@ pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Resu
             continue;
         }
         // `review`: a pushed branch whose policy calls for a request needs one.
-        if row.state == "published" && row.cr_number.is_none() {
+        if row.state == DeliveryState::Published && row.cr_number.is_none() {
             let wants_request = app
                 .with_server(|db| db.repo(project, &row.repo))
                 .ok()
@@ -823,7 +657,7 @@ pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Resu
         // A failed check is in the way: the agent fixes and pushes, and a push restarts the watch.
         // `pending` deliberately does not block (nothing wakes a session when checks turn green),
         // and `stalled` is not a failure.
-        if let Some(reason) = failed_checks(app, project, row).await {
+        if let Some(reason) = failed_checks(app, project, row) {
             return Err(reason);
         }
     }
@@ -834,19 +668,17 @@ pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Resu
 /// for a delivery that was never armed, about the request's head — and the recorded state decides
 /// when there is no commit to ask about and when the host cannot be reached: an outage must not block
 /// work, and a delivery that predates the watch must not slip past a red CI either.
-async fn failed_checks(app: &Arc<App>, project: &str, row: &TaskRepo) -> Option<String> {
-    let stored = || row.ci_state.as_deref().map(parse_ci).unwrap_or(Ci::None);
-    let ci = match row.ci_sha.as_deref().or(row.head_sha.as_deref()) {
-        Some(sha) => match repo_and_host(app, project, &row.repo).await {
-            Ok((record, host)) => match Api::new(&host) {
-                Ok(api) => api.ci(&record.remote, Some(sha)).await.unwrap_or_else(|_| stored()),
-                Err(_) => stored(),
-            },
-            Err(_) => stored(),
-        },
-        None => stored(),
+fn failed_checks(app: &App, project: &str, row: &TaskRepo) -> Option<String> {
+    let stored = || row.ci_state.unwrap_or(CheckState::None);
+    let live = |sha: &str| -> Option<CheckState> {
+        let record = app.with_server(|db| db.repo(project, &row.repo)).ok()?;
+        let host = store::host_of(app, &record).ok()?;
+        let record = store::resolved(app, &record);
+        let api = Api::new(&host).ok()?;
+        crate::state::block_on(api.ci(&record.remote, Some(sha))).ok().map(CheckState::from)
     };
-    (ci == Ci::Failed).then(|| {
+    let ci = row.ci_sha.as_deref().or(row.head_sha.as_deref()).and_then(live).unwrap_or_else(stored);
+    (ci == CheckState::Failed).then(|| {
         let what = if row.ci_ref.is_empty() { row.branch.clone() } else { row.ci_ref.clone() };
         format!("the checks of `{what}` in {} failed: fix them and push, then move the task to review", row.repo)
     })
@@ -908,7 +740,7 @@ pub fn spawn_poller(app: Arc<App>) {
 /// One look at one watched delivery: an open request (its state, its checks, and a merge when the
 /// policy says `auto`) or a branch watched on its own (the checks of its commit).
 pub async fn watch_one(app: &Arc<App>, row: &TaskRepo) -> DResult<()> {
-    if row.cr_state.as_deref() != Some("open") {
+    if row.cr_state != Some(RequestState::Open) {
         return sync_ref_ci(app, row).await;
     }
     let (cr, ci, row) = sync_row(app, row).await?;
@@ -926,7 +758,7 @@ pub async fn watch_one(app: &Arc<App>, row: &TaskRepo) -> DResult<()> {
         })
         .await?;
     if let Some(t) = auto
-        && ci != Ci::Failed
+        && ci != CheckState::Failed
     {
         match do_merge(app, &row.project, &row.task, &t, Strictness::Agent).await {
             Ok(_) => crate::http::tasks::changed(app),
@@ -948,13 +780,13 @@ pub async fn sync_ref_ci(app: &Arc<App>, row: &TaskRepo) -> DResult<()> {
         // A plain git server has no API to ask: stop watching instead of asking forever.
         Err(ApiError::Unsupported(_)) => {
             let (p, task, repo) = (row.project.clone(), row.task.clone(), row.repo.clone());
-            app.blocking(move |app| app.with_server(|db| db.update_delivery(&p, &task, &repo, stop_watching(None))).map(|_| ())).await?;
+            app.blocking(move |app| app.with_server(|db| db.stop_watching(&p, &task, &repo)).map(|_| ())).await?;
             return Ok(());
         }
         Err(e) => return Err(e.into()),
     };
-    let ci = api.ci(&record.remote, Some(&sha)).await?;
-    let failures = if ci == Ci::Failed && row.ci_state.as_deref() != Some("failed") {
+    let ci = CheckState::from(api.ci(&record.remote, Some(&sha)).await?);
+    let failures = if ci == CheckState::Failed && row.ci_state != Some(CheckState::Failed) {
         api.ci_failures(&record.remote, Some(&sha)).await.unwrap_or_default()
     } else {
         Vec::new()

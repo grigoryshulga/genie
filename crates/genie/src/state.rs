@@ -16,6 +16,12 @@ use crate::config::Config;
 #[derive(Debug)]
 pub enum AppError {
     Genie(GenieError),
+    /// The request itself is wrong (names someone who is not there, a malformed field).
+    Bad(String),
+    /// The caller may not do this here (an agent outside its task).
+    Forbidden(String),
+    /// The request is fine but the state of things is in the way (an open request, the project's autonomy).
+    Conflict(String),
     Internal(String),
 }
 
@@ -29,12 +35,26 @@ impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppError::Genie(e) => write!(f, "{e}"),
-            AppError::Internal(e) => write!(f, "{e}"),
+            AppError::Bad(e) | AppError::Forbidden(e) | AppError::Conflict(e) | AppError::Internal(e) => write!(f, "{e}"),
         }
     }
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+/// Run a future to its end from synchronous code — a worker of [`App::blocking`], the engine's
+/// tick, a test — on a thread of its own, so it never nests in the caller's runtime.
+pub fn block_on<F>(f: F) -> F::Output
+where
+    F: std::future::Future + Send,
+    F::Output: Send,
+{
+    std::thread::scope(|s| {
+        s.spawn(|| tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime").block_on(f))
+            .join()
+            .unwrap_or_else(|e| std::panic::resume_unwind(e))
+    })
+}
 
 pub struct App {
     pub data: PathBuf,
@@ -55,8 +75,10 @@ pub struct App {
     pub exe: PathBuf,
     /// Live agent sessions (long-running harness processes).
     pub sessions: crate::sessions::Registry,
-    /// The scheduler of agent turns (whose turn is running, who waits after failures).
+    /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
+    /// Failures in a row of each agent, turns and sessions alike, and their backoff.
+    pub attempts: crate::outcome::Attempts,
     /// Roles, team templates, skills and MCP connections (reloaded when their files change).
     agents: RwLock<Arc<AgentConfig>>,
     /// The agents' connections through the MCP gateway.
@@ -88,6 +110,7 @@ impl App {
             exe,
             sessions: Default::default(),
             sched: Default::default(),
+            attempts: Default::default(),
             agents: RwLock::new(Arc::new(agents)),
             mcp: Default::default(),
             git: Default::default(),
@@ -137,6 +160,8 @@ impl App {
         }
         let project = self.with_server(|db| db.project(slug))?;
         let tracker = Arc::new(Mutex::new(Tracker::open(&project.tracker_dir)?));
+        // Opening a tracker may have migrated it: log it, like the server's start-up does.
+        crate::cli::report_migrations(&self.data);
         let mut map = self.projects.write().map_err(|_| AppError::Internal("registry poisoned".into()))?;
         Ok(map.entry(slug.to_string()).or_insert(tracker).clone())
     }

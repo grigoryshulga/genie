@@ -323,7 +323,7 @@ CREATE TABLE IF NOT EXISTS consoles (
 "#;
 
 /// Columns added after the first server release; applied to existing databases on open.
-const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
+pub const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     // Agent tokens name the configured role the agent acts in.
     ("api_tokens", "role_id", "ALTER TABLE api_tokens ADD COLUMN role_id TEXT"),
     // How a project's finished work gets integrated unless a task says otherwise.
@@ -346,6 +346,11 @@ const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
 ];
 
 pub const SESSION_DAYS: i64 = 30;
+
+/// The schema version this binary understands for `server.db`. It is recorded in `meta`
+/// like a tracker's, so an update, a rollback of the binary and a restore can all tell
+/// what the file holds.
+pub const SERVER_SCHEMA_VERSION: i64 = 2;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -576,28 +581,24 @@ pub struct ServerDb {
     pub(crate) secrets_key: std::path::PathBuf,
 }
 
+/// Open `server.db` with its schema, its column migrations and the current version
+/// recorded — without the preflight, which rehearses this exact path on a copy.
+pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
+    let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
+    db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
+    db.add_columns(SERVER_COLUMN_MIGRATIONS)?;
+    db.record_version(SERVER_SCHEMA_VERSION)?;
+    Ok(db)
+}
+
 impl ServerDb {
     pub fn open(path: &Path) -> Result<ServerDb> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
-        db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
-        db.conn().execute("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema', '1')", [])?;
-        for (table, column, ddl) in SERVER_COLUMN_MIGRATIONS {
-            let has = db
-                .conn()
-                .prepare(&format!("PRAGMA table_info({table})"))?
-                .query_map([], |r| r.get::<_, String>(1))?
-                .filter_map(|c| c.ok())
-                .any(|c| c == *column);
-            if !has
-                && let Err(e) = db.conn().execute_batch(ddl)
-                && !e.to_string().contains("duplicate column")
-            {
-                return Err(e.into());
-            }
-        }
+        // A pending migration is rehearsed on a copy before this file is touched.
+        crate::migrate::preflight(path, SERVER_SCHEMA_VERSION, SERVER_COLUMN_MIGRATIONS, &|p| open_migrated(p).map(|_| ()))?;
+        let db = open_migrated(path)?;
         Ok(ServerDb { db, secrets_key: crate::secrets::key_path(path) })
     }
 
@@ -1184,6 +1185,25 @@ impl ServerDb {
             .query_row("SELECT holder FROM locks WHERE name = ?1 AND expires > ?2", params![name, now()], |r| r.get(0))
             .optional()?)
     }
+
+    /// A task deleted from its tracker leaves nothing behind here: queued and running jobs for it
+    /// are cancelled, open questionnaires about it are closed, its notifications go and its
+    /// repositories are no longer watched (branches and requests stay on the host). Agent turns
+    /// and doc proposals keep their history. A new table keyed by task belongs here too.
+    pub fn forget_task(&self, project: &str, task: &str) -> Result<()> {
+        let at = now();
+        self.conn().execute(
+            "UPDATE agent_jobs SET status = 'cancelled', finished = ?1 WHERE project = ?2 AND task = ?3 AND status IN ('queued', 'running')",
+            params![at, project, task],
+        )?;
+        self.conn().execute(
+            "UPDATE questionnaires SET status = 'cancelled', closed = ?1 WHERE project = ?2 AND task = ?3 AND status = 'open'",
+            params![at, project, task],
+        )?;
+        self.conn().execute("DELETE FROM notifications WHERE project = ?1 AND task = ?2", params![project, task])?;
+        self.conn().execute("DELETE FROM task_repos WHERE project = ?1 AND task = ?2", params![project, task])?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1223,6 +1243,47 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = ServerDb::open(&dir.path().join("server.db")).unwrap();
         (dir, db)
+    }
+
+    #[test]
+    fn a_forgotten_task_leaves_nothing_open_on_the_server() {
+        let (_d, db) = db();
+        db.create_project("shop", "Shop", "/tmp/shop", None, None).unwrap();
+        let anna = db.create_user("anna", "Anna", None, Some("secret-pass"), false).unwrap();
+        let job = |task: &str| {
+            db.create_job(crate::work::NewJob {
+                project: "shop".into(),
+                task: Some(task.into()),
+                role: "analyst".into(),
+                goal: "Find out".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+            .unwrap()
+            .id
+        };
+        let (gone, kept) = (job("S-1"), job("S-2"));
+        db.add_notification(anna.id, Some("shop"), Some("S-1"), "mention", "t", "b", None, None).unwrap();
+        db.add_notification(anna.id, Some("shop"), Some("S-2"), "mention", "t", "b", None, None).unwrap();
+        let ask = |task: &str| {
+            let q = crate::inbox::NewQuestion { text: "Which format?".into(), why: String::new(), options: vec![] };
+            db.create_questionnaire("shop", Some(task), "analyst", anna.id, "web", &[q], None, None, None).unwrap().0.id
+        };
+        let (asked, still_asked) = (ask("S-1"), ask("S-2"));
+        for task in ["S-1", "S-2"] {
+            db.conn().execute("INSERT INTO task_repos(project, task, repo, updated) VALUES ('shop', ?1, 'app', '')", [task]).unwrap();
+        }
+
+        db.forget_task("shop", "S-1").unwrap();
+
+        assert_eq!(db.job(gone).unwrap().status, "cancelled");
+        assert_eq!(db.job(kept).unwrap().status, "queued");
+        let tasks: Vec<Option<String>> = db.notifications(anna.id, false, 10).unwrap().into_iter().map(|n| n.task).collect();
+        assert_eq!(tasks, vec![Some("S-2".to_string())]);
+        assert_eq!(db.questionnaire(asked).unwrap().status, "cancelled");
+        assert_eq!(db.questionnaire(still_asked).unwrap().status, "open");
+        assert!(db.task_repos("shop", "S-1").unwrap().is_empty());
+        assert_eq!(db.task_repos("shop", "S-2").unwrap().len(), 1);
     }
 
     #[test]

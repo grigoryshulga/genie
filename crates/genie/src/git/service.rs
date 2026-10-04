@@ -130,10 +130,7 @@ pub fn task_workspace(app: &App, project: &str, name: &str, task: Option<&str>) 
         if let (Some(b), Some(t)) = (&branch, task)
             && row.is_some()
         {
-            app.with_server(|db| {
-                db.update_delivery(project, t, &repo.name, genie_core::repos::Delivery { branch: Some(b.clone()), ..Default::default() })
-                    .map(|_| ())
-            })?;
+            app.with_server(|db| db.name_branch(project, t, &repo.name, b).map(|_| ()))?;
         }
         wants.push(Want { repo, branch });
     }

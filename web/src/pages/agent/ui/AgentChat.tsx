@@ -218,9 +218,9 @@ export function AgentChat() {
             <Icon.back />
           </Link>
           <nav className="crumbs d-only" aria-label="Путь">
-            <Link to="/active">Задачи</Link>
+            <Link to="/tasks">Задачи</Link>
             <span>/</span>
-            <Link to={`/active?task=${encodeURIComponent(team.task)}`} className="mono">
+            <Link to={`/tasks?task=${encodeURIComponent(team.task)}`} className="mono">
               {team.task}
             </Link>
             <span>/</span>

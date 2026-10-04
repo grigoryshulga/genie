@@ -23,30 +23,153 @@ export const STATUS_ORDER: Status[] = ["needs_owner", "review", "changes_request
 
 export const ACTIVE: Status[] = ["draft", "refining", "ready", "in_progress", "review", "changes_requested", "approved", "needs_owner"];
 
-export type ViewId = "mine" | "inbox" | "decisions" | "active" | "prep" | "done";
+/** Open = not finished: what the task list shows unless asked otherwise. */
+export const OPEN: Status[] = ["inbox", ...ACTIVE];
 
-/** Task views; `mine` keeps the tasks the viewer is responsible for. */
-export const VIEWS: Record<ViewId, { name: string; statuses: Status[]; mine?: boolean }> = {
-  mine: { name: "Мои задачи", statuses: ["inbox", ...ACTIVE, "done"], mine: true },
-  inbox: { name: "Входящие", statuses: ["inbox"] },
-  decisions: { name: "Нужно решение", statuses: ["needs_owner"] },
-  active: { name: "Все активные", statuses: ACTIVE },
-  prep: { name: "Подготовка", statuses: ["draft", "refining", "ready"] },
-  done: { name: "Завершённые", statuses: ["done", "cancelled"] },
+export type PresetId = "open" | "decisions" | "inbox" | "working" | "prep" | "done";
+
+/** Quick status sets above the task list. */
+export const PRESETS: { id: PresetId; name: string; statuses: Status[] }[] = [
+  { id: "open", name: "Открытые", statuses: OPEN },
+  { id: "decisions", name: "Нужно решение", statuses: ["needs_owner"] },
+  { id: "inbox", name: "Входящие", statuses: ["inbox"] },
+  { id: "working", name: "В работе", statuses: ["in_progress", "changes_requested", "review", "approved"] },
+  { id: "prep", name: "Подготовка", statuses: ["draft", "refining", "ready"] },
+  { id: "done", name: "Завершённые", statuses: ["done", "cancelled"] },
+];
+
+/** How far a task is through its acceptance criteria. */
+export type Readiness = "none" | "zero" | "partial" | "full";
+export type TimeRange = "today" | "7d" | "30d" | "stale7" | "stale30";
+export type TaskSort = "priority" | "updated" | "created" | "id";
+
+export const READINESS_NAME: Record<Readiness, string> = { none: "без критериев", zero: "не начата", partial: "в процессе", full: "все выполнены" };
+export const TIME_NAME: Record<TimeRange, string> = { today: "сегодня", "7d": "за 7 дней", "30d": "за 30 дней", stale7: "больше 7 дней назад", stale30: "больше 30 дней назад" };
+export const SORT_NAME: Record<TaskSort, string> = { priority: "по приоритету", updated: "сначала обновлённые", created: "сначала новые", id: "по номеру" };
+
+/** The task list's search and filters; they live in the page's address, so a link keeps them. */
+export interface TaskFilter {
+  q: string;
+  statuses: Status[];
+  ready?: Readiness;
+  time?: TimeRange;
+  /** Which date `time` looks at. */
+  by: "updated" | "created";
+  priorities: number[];
+  /** An epic's id, or "none" for tasks outside epics. */
+  epic?: string;
+  /** "me", "none" (nobody responsible) or a person's login. */
+  who?: string;
+  sort: TaskSort;
+  grouped: boolean;
+}
+
+const STATUSES = Object.keys(STATUS_NAME) as Status[];
+const oneOf = <T extends string>(v: string | null, all: readonly T[]): T | undefined => (v && (all as readonly string[]).includes(v) ? (v as T) : undefined);
+
+export function parseFilter(sp: URLSearchParams): TaskFilter {
+  const statuses = (sp.get("status") ?? "").split(",").filter((s): s is Status => STATUSES.includes(s as Status));
+  return {
+    q: sp.get("q") ?? "",
+    statuses: statuses.length ? statuses : OPEN,
+    ready: oneOf(sp.get("ready"), ["none", "zero", "partial", "full"] as const),
+    time: oneOf(sp.get("time"), ["today", "7d", "30d", "stale7", "stale30"] as const),
+    by: sp.get("by") === "created" ? "created" : "updated",
+    priorities: (sp.get("prio") ?? "").split(",").filter((p) => /^[0-4]$/.test(p)).map(Number),
+    epic: sp.get("epic") || undefined,
+    who: sp.get("who") || undefined,
+    sort: oneOf(sp.get("sort"), ["priority", "updated", "created", "id"] as const) ?? "priority",
+    grouped: sp.get("group") !== "none",
+  };
+}
+
+/** Writes a filter into the address, keeping its other parameters (the open task); defaults stay out. */
+export function writeFilter(f: TaskFilter, base: URLSearchParams): URLSearchParams {
+  const sp = new URLSearchParams(base);
+  const put = (k: string, v: string | undefined) => (v ? sp.set(k, v) : sp.delete(k));
+  put("q", f.q.trim() ? f.q : undefined);
+  put("status", sameSet(f.statuses, OPEN) ? undefined : f.statuses.join(","));
+  put("ready", f.ready);
+  put("time", f.time);
+  put("by", f.time && f.by === "created" ? "created" : undefined);
+  put("prio", f.priorities.length ? [...f.priorities].sort().join(",") : undefined);
+  put("epic", f.epic);
+  put("who", f.who);
+  put("sort", f.sort === "priority" ? undefined : f.sort);
+  put("group", f.grouped ? undefined : "none");
+  return sp;
+}
+
+export function sameSet<T>(a: readonly T[], b: readonly T[]): boolean {
+  return a.length === b.length && a.every((x) => b.includes(x));
+}
+
+/** Whether the filter narrows anything beyond the default open tasks. */
+export function isFiltered(f: TaskFilter): boolean {
+  return !!f.q.trim() || !sameSet(f.statuses, OPEN) || !!f.ready || !!f.time || f.priorities.length > 0 || !!f.epic || !!f.who;
+}
+
+export function readinessOf(t: Pick<TaskSummary, "acceptanceDone" | "acceptanceTotal">): Readiness {
+  if (!t.acceptanceTotal) return "none";
+  if (!t.acceptanceDone) return "zero";
+  return t.acceptanceDone >= t.acceptanceTotal ? "full" : "partial";
+}
+
+const DAY = 86_400_000;
+
+function inRange(iso: string, range: TimeRange, now: number): boolean {
+  const at = Date.parse(iso);
+  if (range === "today") {
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    return at >= midnight.getTime();
+  }
+  const days = { "7d": 7, "30d": 30, stale7: 7, stale30: 30 }[range];
+  return range.startsWith("stale") ? now - at > days * DAY : now - at <= days * DAY;
+}
+
+/**
+ * Whether a task passes every filter but the status one: the status presets count with it.
+ * Epics show up only while someone has to act on them, unless the list is narrowed to one epic.
+ */
+export function matchesBesidesStatus(t: TaskSummary, f: TaskFilter, login?: string, now = Date.now()): boolean {
+  if (f.epic && f.epic !== "none" ? t.parent !== f.epic : !inTaskViews(t)) return false;
+  if (f.epic === "none" && t.parent) return false;
+  const q = f.q.trim().toLowerCase();
+  if (q && ![t.id, t.title, t.needsOwner?.question ?? "", ...t.labels].some((s) => s.toLowerCase().includes(q))) return false;
+  if (f.ready && readinessOf(t) !== f.ready) return false;
+  if (f.time && !inRange(f.by === "created" ? t.created : t.updated, f.time, now)) return false;
+  if (f.priorities.length && !f.priorities.includes(t.priority)) return false;
+  if (f.who === "me" ? !login || t.assignee !== login : f.who === "none" ? !!t.assignee : f.who ? t.assignee !== f.who : false) return false;
+  return true;
+}
+
+export function matchesFilter(t: TaskSummary, f: TaskFilter, login?: string, now = Date.now()): boolean {
+  return f.statuses.includes(t.status) && matchesBesidesStatus(t, f, login, now);
+}
+
+const seqOf = (id: string) => Number(/(\d+)$/.exec(id)?.[1] ?? 0);
+
+/** Orders a list; the server's own order is priority, then creation. */
+export function sortTasks(tasks: TaskSummary[], sort: TaskSort): TaskSummary[] {
+  const by: Record<TaskSort, (a: TaskSummary, b: TaskSummary) => number> = {
+    priority: (a, b) => a.priority - b.priority || Date.parse(a.created) - Date.parse(b.created),
+    updated: (a, b) => Date.parse(b.updated) - Date.parse(a.updated),
+    created: (a, b) => Date.parse(b.created) - Date.parse(a.created),
+    id: (a, b) => seqOf(a.id) - seqOf(b.id),
+  };
+  return [...tasks].sort(by[sort]);
+}
+
+/** Old addresses (`/inbox`, `/decisions`, …) as the task list's filters, so saved links keep working. */
+export const LEGACY_VIEWS: Record<string, { statuses?: Status[]; who?: string }> = {
+  mine: { who: "me" },
+  inbox: { statuses: ["inbox"] },
+  decisions: { statuses: ["needs_owner"] },
+  active: {},
+  prep: { statuses: ["draft", "refining", "ready"] },
+  done: { statuses: ["done", "cancelled"] },
 };
-
-export function isView(v: string | undefined): v is ViewId {
-  return !!v && v in VIEWS;
-}
-
-/** Whether a task belongs in a view; "mine" needs the viewer's login. Finished tasks stay in "mine" for a week. */
-export function inViewOf(t: TaskSummary, view: ViewId, login?: string, now = Date.now()): boolean {
-  const v = VIEWS[view];
-  if (!v.statuses.includes(t.status)) return false;
-  if (!v.mine) return true;
-  if (!login || t.assignee !== login) return false;
-  return t.status !== "done" || now - Date.parse(t.updated) < 7 * 86_400_000;
-}
 
 export interface Column {
   id: string;
