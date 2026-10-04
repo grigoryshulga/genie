@@ -153,6 +153,11 @@ fn schemas(out: &mut Out, data: &Path) {
             format!("server.db records schema {v}; this genie understands {SERVER_SCHEMA_VERSION}"),
             "restore a backup made before the update, or run the newer genie",
         ),
+        Ok(Some(v)) if v < SERVER_SCHEMA_VERSION => out.warn(
+            "data",
+            format!("server.db schema {v} (this genie: {SERVER_SCHEMA_VERSION})"),
+            "opening the server migrates it; `genie migrate --check` shows what will change",
+        ),
         Ok(Some(v)) => out.ok("data", format!("server.db schema {v} (this genie: {SERVER_SCHEMA_VERSION})")),
         Err(e) => out.fail("data", format!("server.db: {e}"), "restore server.db from a backup if it is damaged"),
     }

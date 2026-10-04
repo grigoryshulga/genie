@@ -14,10 +14,11 @@
 //!
 //! The rehearsal is meant to be honest, not strict for its own sake: a migration that
 //! deletes or merges rows must say so here, since the check refuses a changed row count
-//! (no migration today moves rows), and a foreign-key violation that the database already
-//! had does not block the update — only a new one does.
+//! (no migration today moves rows), and a foreign-key violation the database already had
+//! does not block the update — only one the migration *adds* does (the copy's violations
+//! must be a subset of the source's, compared row by row, not by count).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -97,7 +98,7 @@ pub fn check(path: &Path, target: i64, columns: &[Column], apply: &dyn Fn(&Path)
     let rows = row_counts(&conn, &before.tables).map_err(|e| context(path, e))?;
     let foreign = foreign_key_violations(&conn).map_err(|e| context(path, e))?;
     drop(conn);
-    let (tables, rows) = rehearse(path, target, columns, apply, &rows, foreign)?;
+    let (tables, rows) = rehearse(path, target, columns, apply, &rows, &foreign)?;
     Ok(Report {
         path: path.to_path_buf(),
         from: before.version,
@@ -242,14 +243,20 @@ fn row_counts(conn: &Connection, tables: &[String]) -> Result<BTreeMap<String, i
     Ok(out)
 }
 
-fn foreign_key_violations(conn: &Connection) -> Result<usize> {
+fn foreign_key_violations(conn: &Connection) -> Result<BTreeSet<String>> {
     let mut stmt = conn.prepare("PRAGMA foreign_key_check")?;
     let mut rows = stmt.query([])?;
-    let mut n = 0;
-    while rows.next()?.is_some() {
-        n += 1;
+    let mut out = BTreeSet::new();
+    while let Some(row) = rows.next()? {
+        // table, rowid, parent table, index of the foreign key.
+        let table: String = row.get(0)?;
+        let rowid: Option<i64> = row.get(1)?;
+        let parent: String = row.get(2)?;
+        let fk: Option<i64> = row.get(3)?;
+        let row = rowid.map_or_else(|| "?".to_string(), |r| r.to_string());
+        out.insert(format!("{table} #{row} → {parent} (fk {})", fk.unwrap_or(-1)));
     }
-    Ok(n)
+    Ok(out)
 }
 
 /// Rehearse the migration on a copy of the database and check the copy. The copy is
@@ -260,7 +267,7 @@ fn rehearse(
     columns: &[Column],
     apply: &dyn Fn(&Path) -> Result<()>,
     rows_before: &BTreeMap<String, i64>,
-    foreign_before: usize,
+    foreign_before: &BTreeSet<String>,
 ) -> Result<(usize, u64)> {
     let dir = std::env::temp_dir().join(format!("genie-migrate-{}-{}", std::process::id(), unique()));
     std::fs::create_dir_all(&dir).map_err(|e| {
@@ -298,11 +305,14 @@ fn rehearse(
         )));
     }
     let foreign_after = foreign_key_violations(&conn).map_err(|e| context(path, e))?;
-    if foreign_after > foreign_before {
+    let new: Vec<&String> = foreign_after.difference(foreign_before).collect();
+    if !new.is_empty() {
+        let shown: Vec<&str> = new.iter().take(3).map(|v| v.as_str()).collect();
         return Err(GenieError::invalid(format!(
-            "{}: the rehearsal would break {} foreign key reference(s); the database was not touched",
+            "{}: the rehearsal would break {} foreign key reference(s) ({}); the database was not touched",
             path.display(),
-            foreign_after - foreign_before
+            new.len(),
+            shown.join(", ")
         )));
     }
     let rows_after = row_counts(&conn, &after.tables).map_err(|e| context(path, e))?;
@@ -328,12 +338,12 @@ impl Drop for Copy {
     }
 }
 
-/// Open a database for reading without changing the directory it lives in. With no `-wal`
-/// beside it the file is complete, so it is opened *immutable*: SQLite then creates neither
-/// `-shm` nor `-wal`, which a `--check` promises (it must leave the data directory as it was).
-/// With a WAL beside it — a running server or an unclean stop — it is opened read-only the
-/// ordinary way, so the committed WAL is read too, and the sidecar files the server itself
-/// already uses may be created.
+/// Open a database for reading without writing anything: the command must not touch the data
+/// directory (the drill asserts it is byte-identical afterwards). With no `-wal` beside it the
+/// file is complete, so it is opened *immutable*: SQLite then creates neither `-shm` nor `-wal`.
+/// With a WAL beside it — a running server, or an unclean stop — the ordinary read-only open is
+/// used, so the committed WAL is read as well; the sidecar files the server itself uses may then
+/// be created, and a `-wal` without its `-shm` can fail with a recovery error instead of a report.
 fn read_only(path: &Path) -> Result<Connection> {
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY;
     let conn = if sibling(path, "-wal").exists() {

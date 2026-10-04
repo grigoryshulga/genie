@@ -11,7 +11,8 @@
 #
 #   deploy/rollback-drill.sh [--old <bin>] [--new <bin>] [--work <dir>] [--backup <genie-…>] [--keep]
 #
-#   --old     the binary of the previous release (default: the main checkout's release build)
+#   --old     the binary of the previous release (default: $GENIE_OLD, else the installed
+#             /opt/genie/bin/genie — install the new release after the drill, not before)
 #   --new     the binary under test (default: this checkout's target/release/genie)
 #   --work    where the copies go (default: a fresh mktemp -d; --keep leaves it behind)
 #   --backup  a `genie backup` of real data instead of the seeded fixture (one human command
@@ -24,8 +25,11 @@
 
 set -eu
 
-OLD=/home/gshulga/projects/personal/genie/target/release/genie
-NEW=$(cd "$(dirname "$0")/.." && pwd)/target/release/genie
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# The previous release's binary: $GENIE_OLD, else the installed release. Nothing is guessed from
+# the checkout layout — pass --old when the previous release does not live in either place.
+OLD=${GENIE_OLD:-/opt/genie/bin/genie}
+NEW=$ROOT/target/release/genie
 WORK=
 PRE=
 KEEP=0
@@ -117,7 +121,7 @@ conn.close()
 PY
 }
 
-[ -x "$OLD" ] || fail "no binary at $OLD (--old); the previous release's build"
+[ -x "$OLD" ] || fail "no binary at $OLD: pass --old <the previous release's genie>, or set GENIE_OLD"
 [ -x "$NEW" ] || fail "no binary at $NEW: build it (cargo build --release -p genie) or pass --new"
 
 if [ -n "$PRE" ]; then
@@ -204,11 +208,22 @@ fi
 note "every row count survived the migration"
 
 step "6. roll back: the pre-update backup with the previous binary"
-run "$NEW" --data "$WORK/rollback" restore "$PRE"
+# The runbook's rollback: the previous release restores its own backup, and the new binary
+# restores the same backup into a second directory (a rollback is not a one-way step).
+run "$OLD" --data "$WORK/rollback" restore "$PRE"
 run "$OLD" --data "$WORK/rollback" doctor
 if [ "$SEEDED" = 1 ]; then
-  run "$OLD" --data "$WORK/rollback" --project shop task list
+  run "$OLD" --data "$WORK/rollback" --project shop task list > "$WORK/rollback-tasks.txt" 2>&1
+  cat "$WORK/rollback-tasks.txt"
+  grep_out "Export the price list" "$WORK/rollback-tasks.txt"
 fi
+run "$NEW" --data "$WORK/rollback-new" restore "$PRE"
+run "$NEW" --data "$WORK/rollback-new" migrate --check > "$WORK/rollback-new-check.txt" 2>&1
+cat "$WORK/rollback-new-check.txt"
+# `restore` opens what it restored, so the new binary migrates it on the way — hence the runbook
+# rolls back with the previous binary.
+grep_out "nothing to migrate" "$WORK/rollback-new-check.txt"
+note "the new binary restores the same backup and leaves nothing pending"
 
 step "7. the guard: data written by a newer genie is refused"
 run cp -r "$DATA" "$WORK/newer"

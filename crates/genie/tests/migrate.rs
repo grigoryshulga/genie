@@ -175,6 +175,59 @@ fn a_missing_column_with_a_current_version_is_detected_and_repaired() {
 }
 
 #[test]
+fn an_existing_foreign_key_violation_does_not_block_the_update() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = legacy_tracker(&dir.path().join("tracker"));
+    // A tracker from before genie enforced foreign keys: an orphan comment row (rusqlite's
+    // bundled SQLite enables the constraint, so it is switched off for this one write).
+    let conn = Connection::open(&file).unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = OFF").unwrap();
+    conn.execute(
+        "INSERT INTO comments(task, at, author, role, kind, text) VALUES ('T-404', '2026-01-01T00:00:00.000Z', 'someone', 'owner', 'note', 'orphan')",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+
+    let report = migrate::check_tracker(&file).unwrap();
+    assert!(report.rehearsed, "the update is rehearsed anyway: {report:?}");
+    drop(Tracker::open(file.parent().unwrap()).unwrap());
+    assert_eq!(migrate::version(&file).unwrap(), Some(SCHEMA_VERSION));
+    let violations: i64 =
+        Connection::open(&file).unwrap().query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get(0)).unwrap();
+    assert_eq!(violations, 1, "the violation was there before and is neither hidden nor doubled");
+}
+
+#[test]
+fn a_rehearsal_that_would_break_a_foreign_key_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = legacy_tracker(&dir.path().join("tracker"));
+    let before = std::fs::read(&file).unwrap();
+
+    // Stands in for a migration that touches rows: this one migrates the copy and orphans a
+    // comment on the way. `check` must notice and refuse, leaving the source alone.
+    let apply = |copy: &Path| -> genie_core::Result<()> {
+        let conn = Connection::open(copy).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = OFF").unwrap();
+        conn.execute_batch(&format!(
+            "ALTER TABLE tasks ADD COLUMN assignee TEXT NOT NULL DEFAULT '';
+             UPDATE meta SET value = '{SCHEMA_VERSION}' WHERE key = 'schema';"
+        ))
+        .unwrap();
+        conn.execute(
+            "INSERT INTO comments(task, at, author, role, kind, text) VALUES ('T-404', '2026-01-01T00:00:00.000Z', 'x', 'owner', 'note', 'orphan')",
+            [],
+        )
+        .unwrap();
+        Ok(())
+    };
+
+    let err = migrate::check(&file, SCHEMA_VERSION, genie_core::db::COLUMN_MIGRATIONS, &apply).unwrap_err().to_string();
+    assert!(err.contains("would break 1 foreign key reference"), "{err}");
+    assert_eq!(std::fs::read(&file).unwrap(), before, "the source was written to");
+}
+
+#[test]
 fn a_backup_records_its_schemas_and_restore_refuses_a_newer_one() {
     let data = tempfile::tempdir().unwrap();
     let server = ServerDb::open(&data.path().join("server.db")).unwrap();
@@ -209,6 +262,11 @@ fn doctor_reports_the_schema_versions_and_survives_newer_data() {
 
     let (text, _) = genie::doctor::print(&genie::doctor::run(data.path(), &cfg, &agents, None));
     assert!(text.contains(&format!("server.db schema {SERVER_SCHEMA_VERSION}")), "{text}");
+
+    // A server.db behind the binary is reported the way a tracker behind it is: a warning.
+    set_version(&server, SERVER_SCHEMA_VERSION - 1);
+    let (text, _) = genie::doctor::print(&genie::doctor::run(data.path(), &cfg, &agents, None));
+    assert!(text.contains(&format!("warn {:<9} server.db schema {}", "data", SERVER_SCHEMA_VERSION - 1)), "{text}");
 
     set_version(&server, SERVER_SCHEMA_VERSION + 1);
     let (text, failed) = genie::doctor::print(&genie::doctor::run(data.path(), &cfg, &agents, None));
