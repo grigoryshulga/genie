@@ -223,19 +223,42 @@ impl Db {
     /// Open a tracker database and migrate it, without the preflight (`migrate` rehearses
     /// this exact path on a copy).
     pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
-        let db = Db::open_with_schema(path, SCHEMA)?;
+        let db = Db::connect(path, SCHEMA)?;
         db.migrate()?;
+        // The migrations changed the schema, so their statistics are gathered after them.
+        db.optimize_stats()?;
         Ok(db)
     }
 
     /// Open any genie SQLite file: WAL, busy timeout, foreign keys, then `schema`.
     pub fn open_with_schema(path: &Path, schema: &str) -> Result<Db> {
+        let db = Db::connect(path, schema)?;
+        db.optimize_stats()?;
+        Ok(db)
+    }
+
+    /// A connection with the pragmas every genie database is opened with, then `schema`.
+    fn connect(path: &Path, schema: &str) -> Result<Db> {
         let conn = Connection::open(path)?;
         conn.busy_timeout(Duration::from_secs(10))?;
         conn.pragma_update_and_check(None, "journal_mode", "WAL", |r| r.get::<_, String>(0))?;
-        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")?;
+        conn.execute_batch(
+            // Sorting and grouping build their temporary b-trees in RAM instead of in temp
+            // files, and 64 MiB of memory-mapped reads is address space, not resident memory.
+            "PRAGMA foreign_keys = ON;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA temp_store = MEMORY;
+             PRAGMA mmap_size = 67108864;",
+        )?;
         conn.execute_batch(schema)?;
         Ok(Db { conn, depth: Cell::new(0) })
+    }
+
+    /// What SQLite recommends for a long-lived connection, once per open: analyse only what
+    /// lacks statistics (0x2), under a work limit (0x10000), so opening stays cheap.
+    fn optimize_stats(&self) -> Result<()> {
+        self.conn.execute_batch("PRAGMA optimize = 0x10002;")?;
+        Ok(())
     }
 
     pub fn conn(&self) -> &Connection {
@@ -297,5 +320,30 @@ impl Db {
                 Err(e)
             }
         }
+    }
+}
+
+impl Drop for Db {
+    fn drop(&mut self) {
+        // Closing is the last chance to store the statistics this connection gathered;
+        // it is an optimisation, so a failure (a locked database, say) is not an error.
+        let _ = self.conn.execute_batch("PRAGMA optimize;");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every genie database is opened with its temporary b-trees in memory (2)
+    /// and 64 MiB of memory-mapped reads.
+    #[test]
+    fn open_keeps_temporary_tables_in_memory_and_maps_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_with_schema(&dir.path().join("genie.db"), SCHEMA).unwrap();
+        let temp_store: i64 = db.conn().query_row("PRAGMA temp_store", [], |r| r.get(0)).unwrap();
+        let mmap_size: i64 = db.conn().query_row("PRAGMA mmap_size", [], |r| r.get(0)).unwrap();
+        assert_eq!(temp_store, 2, "PRAGMA temp_store = MEMORY");
+        assert_eq!(mmap_size, 67_108_864, "PRAGMA mmap_size = 64 MiB");
     }
 }
