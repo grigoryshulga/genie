@@ -1,0 +1,3 @@
+# A round is a throwaway copy of the fixture plus the round's own data; the
+# results carry the evidence and `bench/results/example.json` is the shape.
+runs/

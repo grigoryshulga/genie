@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "fixture": "bench/training",
+  "note": "The reference set of the genie agent benchmark. Each entry is created as a task in a fresh project on the pilot instance (bench/run.mjs prepare). `expect` is the profile a healthy round produces; a deviation is the signal, not a hard failure. `check` is run by `collect` against the branch the team produced; `<workspace>` is that branch, `<workspaces>` is the task's branch and its children's.",
+  "tasks": [
+    {
+      "id": "R1",
+      "title": "Итог игнорирует скидку",
+      "goal": "Итог корзины должен учитывать скидку позиции.",
+      "description": "В библиотеке `shelf` функция `total()` в `src/report.js` считает `price × quantity` и не вычитает скидку, а `subtotal()` для одной позиции скидку учитывает. Из-за этого итог расходится с суммой подытогов.\n\nПриведи итог в соответствие с подытогами: скидка — это процент, её вычитают из `price × quantity`. Формат и сигнатуры менять не нужно, новые зависимости не добавляй.",
+      "ac": [
+        "`total()` учитывает `discount` каждой позиции",
+        "итог сходится с суммой `subtotal()`",
+        "`node --test` в проекте проходит"
+      ],
+      "labels": ["bench", "bench:R1"],
+      "template": "standard",
+      "check": "node bench/checks/r1.mjs <workspace>",
+      "expect": { "done": true, "returns": [0, 0], "ownerQuestions": [0, 0], "splitInto": null, "proposals": [0, 0] },
+      "budgetUsd": 4,
+      "timeoutMin": 45,
+      "ownerAnswer": null
+    },
+    {
+      "id": "R2",
+      "title": "Фильтр позиций по тегу",
+      "goal": "В хранилище появляется выборка позиций по тегу.",
+      "description": "У позиций есть поле `tags` (массив строк), но выбрать позиции по тегу нельзя. Добавь в хранилище метод `byTag(tag)`: он возвращает позиции, у которых в `tags` есть переданный тег, сохраняя порядок; для неизвестного тега — пустой массив; само хранилище не меняет.\n\nНовое поведение должно быть покрыто тестом в `test/` — этого в проекте требуют от любой новой функции.",
+      "ac": [
+        "`byTag(tag)` возвращает позиции с этим тегом в исходном порядке",
+        "для тега, которого нет ни у одной позиции, возвращается пустой массив",
+        "новое поведение покрыто тестом в `test/`"
+      ],
+      "labels": ["bench", "bench:R2"],
+      "template": "standard",
+      "check": "node bench/checks/r2.mjs <workspace>",
+      "expect": { "done": true, "returns": [0, 1], "ownerQuestions": [0, 0], "splitInto": null, "proposals": [0, 0] },
+      "budgetUsd": 5,
+      "timeoutMin": 60,
+      "ownerAnswer": null
+    },
+    {
+      "id": "R3",
+      "title": "Ускорить экспорт",
+      "goal": "Экспорт списка позиций в CSV должен быть быстрее и уметь ограничивать размер.",
+      "description": "Экспорт `exportCsv()` в `src/export.js` стал слишком медленным на больших списках: на складе бывают тысячи позиций, и выгрузка заметно тормозит. Нужно ускорить.\n\nТребования к формату не описаны: уточни у ответственного, что именно важно (что менять нельзя, какой размер считается большим, нужны ли новые возможности). Без этих уточнений задача не готова к работе.",
+      "ac": [
+        "экспорт ускорен и не меняет формат CSV",
+        "требования уточнены у ответственного до начала работы"
+      ],
+      "labels": ["bench", "bench:R3"],
+      "template": "standard",
+      "check": "node bench/checks/r3.mjs <workspace>",
+      "expect": { "done": true, "returns": [0, 1], "ownerQuestions": [1, 3], "splitInto": null, "proposals": [0, 0] },
+      "budgetUsd": 6,
+      "timeoutMin": 75,
+      "ownerAnswer": "Формат CSV менять нельзя, порядок строк и заголовок те же. Собери выгрузку за один проход и добавь необязательный второй аргумент: exportCsv(items, { limit }) оставляет первые limit позиций, заголовок всегда на месте, без limit — все позиции. Тесты должны остаться зелёными."
+    },
+    {
+      "id": "R4",
+      "title": "Логи по правилам проекта",
+      "goal": "Логирование приведено к правилам проекта.",
+      "description": "Сейчас библиотека пишет сообщения напрямую в консоль. В проекте есть правило, как именно библиотека должна сообщать о своей работе; найди его в документации проекта и приведи `src/log.js` к нему.\n\nПравило определяет и сам факт записи, и то, как учитывается уровень сообщения. Другие модули вызывают `log(level, message)` — эту сигнатуру сохрани.",
+      "ac": [
+        "логирование соответствует правилу из документации проекта",
+        "`src/` не пишет в консоль напрямую",
+        "уровень сообщения учитывается"
+      ],
+      "labels": ["bench", "bench:R4"],
+      "template": "standard",
+      "check": "node bench/checks/r4.mjs <workspace>",
+      "expect": { "done": true, "returns": [0, 1], "ownerQuestions": [0, 0], "splitInto": null, "proposals": [0, 0] },
+      "budgetUsd": 5,
+      "timeoutMin": 60,
+      "ownerAnswer": null
+    },
+    {
+      "id": "R5",
+      "title": "Количество можно не указывать",
+      "goal": "Строка из двух полей читается как имя и цена, количество равно единице.",
+      "description": "В файлах склада у многих позиций не указано количество, хотя цена есть: строка получается из двух полей, например `Огурцы;10`. Сейчас такой разбор считается ошибкой.\n\nПусть строка из двух полей означает имя и цену, а количество тогда равно 1. Строки с тремя и четырьмя полями разбираются как раньше. Все существующие тесты должны остаться зелёными.",
+      "ac": [
+        "`parseLine(\"Огурцы;10\")` даёт позицию с количеством 1 и ценой 10",
+        "строки с тремя и четырьмя полями разбираются как раньше",
+        "`node --test` в проекте проходит"
+      ],
+      "labels": ["bench", "bench:R5"],
+      "template": "standard",
+      "check": "node bench/checks/r5.mjs <workspace>",
+      "expect": { "done": true, "returns": [1, 2], "ownerQuestions": [0, 1], "splitInto": null, "proposals": [0, 0] },
+      "budgetUsd": 5,
+      "timeoutMin": 60,
+      "ownerAnswer": null
+    },
+    {
+      "id": "R6",
+      "title": "Формат данных уведомлений",
+      "goal": "Модуль уведомлений о позициях.",
+      "description": "Добавь модуль `src/notify.js`: он готовит текст уведомления о позиции.\n\nТребование от автора задачи: «модуль должен быть в CommonJS (`module.exports.msg`), поле с текстом называй `msg`».\n\nПрежде чем писать код, сверь это требование с проектом: пакет объявлен модульным (`type: module` в package.json), а поля у похожих объектов называются иначе. Если требование противоречит проекту — не выполняй его молча, а задай вопрос ответственному.",
+      "ac": [
+        "модуль уведомлений добавлен",
+        "формат данных не противоречит проекту",
+        "расхождение с проектом выяснено у ответственного, а не додумано"
+      ],
+      "labels": ["bench", "bench:R6"],
+      "template": "standard",
+      "check": "node bench/checks/r6.mjs <workspace>",
+      "expect": { "done": true, "returns": [0, 1], "ownerQuestions": [1, 3], "splitInto": null, "proposals": [0, 0] },
+      "budgetUsd": 6,
+      "timeoutMin": 75,
+      "ownerAnswer": "Пакет остаётся ESM, CommonJS не вводим. Сделай export function notify(item, level = \"info\"), он возвращает { title, text, level }: title — заголовок, text — текст уведомления, level — уровень, по умолчанию \"info\". Поля обязан называться title и text, никакого msg."
+    },
+    {
+      "id": "R7",
+      "title": "Отчёт для человека и документация",
+      "goal": "Печатаемый отчёт по списку позиций плюс описание в базе знаний.",
+      "description": "Нужен человекочитаемый отчёт по списку позиций. Добавь в `src/report.js` функцию `render(items)`: она возвращает markdown-документ — по строке на позицию в формате `Имя × количество — сумма` (сумма позиции с учётом её скидки) и завершающую строку `Итого: <сумма всех позиций>`; для пустого списка остаётся только строка с нулевым итогом. Деньги — как в `money()`.\n\nПоведение видно пользователю: обнови `README.md` и заведи страницу в базе знаний проекта, чтобы правило и пример остались для других.",
+      "ac": [
+        "`render(items)` печатает позиции и итог",
+        "`README.md` описывает новую функцию",
+        "в базе знаний проекта есть страница про отчёт"
+      ],
+      "labels": ["bench", "bench:R7"],
+      "template": "standard",
+      "check": "node bench/checks/r7.mjs <workspace>",
+      "expect": { "done": true, "returns": [0, 1], "ownerQuestions": [0, 1], "splitInto": null, "proposals": [1, 5] },
+      "budgetUsd": 7,
+      "timeoutMin": 90,
+      "ownerAnswer": null
+    },
+    {
+      "id": "R8",
+      "title": "Три несвязанные правки в одной задаче",
+      "goal": "Три независимые правки библиотеки.",
+      "description": "Нужно сделать три вещи:\n\n1. В хранилище добавить `remove(name)`: убирает позицию по имени, отвечает `true`; если такой позиции нет — `false`.\n2. Починить `money()` в `src/format.js`: округление до копеек должно быть честным, `money(1.005)` — это `\"1.01\"` (сейчас `\"1.00\"`).\n3. В `src/export.js` добавить `exportJson(items)` — тот же список в виде JSON-строки.\n\nПравки не связаны друг с другом.",
+      "ac": [
+        "`store.remove(name)` убирает позицию и отвечает true/false",
+        "`money(1.005)` даёт \"1.01\"",
+        "`exportJson(items)` есть и возвращает JSON-строку"
+      ],
+      "labels": ["bench", "bench:R8"],
+      "template": "standard",
+      "check": "node bench/checks/r8.mjs <workspaces>",
+      "expect": { "done": true, "returns": [0, 1], "ownerQuestions": [0, 1], "splitInto": 2, "proposals": [0, 1] },
+      "budgetUsd": 9,
+      "timeoutMin": 105,
+      "ownerAnswer": null
+    }
+  ]
+}

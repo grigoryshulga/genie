@@ -1,0 +1,15 @@
+{
+  "note": "The pass/fail rule of `bench/run.mjs compare`: a change passes only if none of these is broken. Values are defaults from analysis artifact #1 (gap 1 in docs/platform/proposals.md).",
+  "doneRate": {
+    "maxDrop": 0.1,
+    "description": "The share of tasks that reached done must not fall by more than this."
+  },
+  "returnsPerTask": {
+    "maxIncrease": 1,
+    "description": "Review returns per task must not grow by more than this."
+  },
+  "costPerDoneTask": {
+    "maxIncreasePct": 25,
+    "description": "The models' cost per done task must not grow by more than this per cent."
+  }
+}

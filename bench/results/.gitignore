@@ -1,0 +1,5 @@
+# ── Round snapshots ──────────────────────────────────────────────────────────
+# `collect` writes one JSON per round; they are evidence, not source. Only the
+# synthetic example (a shape to compare against) is kept in the repository.
+*.json
+!example.json
