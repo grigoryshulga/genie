@@ -96,6 +96,8 @@ const EVENT_TEXT: Record<string, (e: Record<string, unknown>) => string> = {
   team_recovered: () => "связь с командой восстановлена",
   team_restarted: (e) => `перезапущены: ${(e.members as string[]).map(displayName).join(", ")}`,
   member_restarted: (e) => `${displayName(String(e.member))} перезапущен`,
+  team_silent: (e) =>
+    `команда ничего не делает ${Math.round(Number(e.idleSecs ?? 0) / 60)} мин — оркестратору отправлено письмо`,
   launch_failed: () => "не удалось запустить участников",
 };
 

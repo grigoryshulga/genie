@@ -18,6 +18,9 @@
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
 
 use crate::db::now;
 use crate::error::{GenieError, Result};
@@ -233,6 +236,23 @@ pub struct Mailbox {
     pub recipient: String,
 }
 
+/// A team that has gone quiet: nobody is working, nothing is waiting to be delivered
+/// and the last sign of life is older than the watch threshold. Deliberate states
+/// (`paused`, `stopped`, `error`) are not silence, and neither is a task waiting for a
+/// person or CI — the server filters those out, since it holds the delivery side.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuietTeam {
+    pub id: String,
+    pub task: String,
+    /// How many members the team has; every one of them is active and idle.
+    pub members: i64,
+    /// The last sign of life — a letter, a member's step or the team's creation (RFC 3339).
+    pub since: String,
+    /// How long the silence has lasted, in seconds.
+    pub idle_secs: i64,
+}
+
 fn member_from_row(r: &Row<'_>) -> rusqlite::Result<Member> {
     let runtime: Option<String> = r.get("runtime")?;
     Ok(Member {
@@ -328,6 +348,57 @@ impl Bus<'_> {
             [epic],
             |r| r.get(0),
         )?)
+    }
+
+    /// Active teams where nobody is working, nothing is waiting to be delivered and the
+    /// last sign of life is older than `stall`. A team waiting for a person or CI is left
+    /// to the caller: questionnaires, jobs and deliveries live on the server's side.
+    pub fn quiet_teams(&self, stall: Duration) -> Result<Vec<QuietTeam>> {
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT t.id, t.task, COUNT(m.name) AS members,
+                    MAX(COALESCE(m.activity_at, m.heartbeat_at, t.created)) AS member_at,
+                    (SELECT MAX(x.at) FROM mail x WHERE x.team = t.id) AS mail_at,
+                    t.created
+               FROM teams t JOIN members m ON m.team = t.id
+              WHERE t.state = 'active'
+              GROUP BY t.id
+             HAVING SUM(CASE WHEN m.state = 'active' AND m.activity = 'idle' THEN 1 ELSE 0 END) = COUNT(*)
+                AND NOT EXISTS (SELECT 1 FROM mail x WHERE x.team = t.id AND x.delivered_at IS NULL)",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, String>(5)?,
+            ))
+        })?;
+        let now = Utc::now();
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, task, members, member_at, mail_at, created) = row?;
+            // The last sign of life: a letter, a member's step, or the team's own creation.
+            let since = match (member_at, mail_at) {
+                (Some(member), Some(mail)) => std::cmp::max(member, mail),
+                (Some(member), None) => member,
+                (None, Some(mail)) => mail,
+                (None, None) => created,
+            };
+            let Ok(at) = DateTime::parse_from_rfc3339(&since) else { continue };
+            let idle_secs = (now - at.with_timezone(&Utc)).num_seconds().max(0);
+            if (idle_secs as u64) < stall.as_secs() {
+                continue;
+            }
+            out.push(QuietTeam { id, task, members, since, idle_secs });
+        }
+        Ok(out)
+    }
+
+    /// When `event` last happened in a team's journal (`None` if it never did).
+    pub fn last_event_at(&self, team: &str, event: &str) -> Result<Option<String>> {
+        Ok(self.conn().query_row("SELECT MAX(at) FROM log WHERE team = ?1 AND event = ?2", params![team, event], |r| r.get(0))?)
     }
 
     /// A free team id derived from the task id: G-7, G-7b, G-7c…
@@ -1412,5 +1483,63 @@ mod tests {
         assert_eq!(display_name("big-bird"), "Big Bird");
         let mut all: std::collections::HashSet<String> = name_pool("tester").iter().map(|s| s.to_string()).collect();
         assert_eq!(pick_name("tester", &mut all), "murphy2");
+    }
+
+    /// Move every sign of life two hours into the past: the team has been quiet since then.
+    fn aged(t: &Tracker) {
+        let old = (Utc::now() - chrono::Duration::hours(2)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        t.conn().execute("UPDATE teams SET created = ?1, updated = ?1", [&old]).unwrap();
+        t.conn().execute("UPDATE members SET activity_at = NULL, heartbeat_at = NULL", []).unwrap();
+    }
+
+    #[test]
+    fn a_quiet_team_is_found_and_a_working_one_is_not() {
+        let (_d, t) = fresh();
+        team(&t);
+        let bus = t.bus();
+        assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a team just created is not silent yet");
+        aged(&t);
+        let quiet = bus.quiet_teams(Duration::from_secs(3600)).unwrap();
+        assert_eq!(quiet.len(), 1);
+        assert_eq!((quiet[0].id.as_str(), quiet[0].task.as_str(), quiet[0].members), ("G-1", "G-1", 3));
+        assert!(quiet[0].idle_secs >= 7200, "{}", quiet[0].idle_secs);
+
+        bus.set_activity("G-1", "bender", "working", None).unwrap();
+        assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a member at work is not silence");
+
+        bus.set_activity("G-1", "bender", "error", None).unwrap();
+        assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a member that gave up is G-80's news, not silence");
+
+        bus.set_activity("G-1", "bender", "idle", None).unwrap();
+        bus.set_paused("G-1", "bender", true, "owner").unwrap();
+        assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a member held by a person is not silence");
+    }
+
+    #[test]
+    fn mail_revives_a_team_and_undelivered_mail_is_not_silence() {
+        let (_d, t) = fresh();
+        team(&t);
+        aged(&t);
+        let bus = t.bus();
+        assert_eq!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().len(), 1);
+
+        bus.send(send("sherlock", "bender", "hello")).unwrap();
+        assert!(bus.quiet_teams(Duration::from_secs(0)).unwrap().is_empty(), "mail the session has not picked up is not silence");
+        bus.lease(Some("G-1"), "bender", 1).unwrap();
+        bus.complete_lease(1).unwrap();
+        assert!(bus.quiet_teams(Duration::from_secs(3600)).unwrap().is_empty(), "a delivered letter is a fresh sign of life");
+    }
+
+    #[test]
+    fn the_journal_marker_is_found_by_event() {
+        let (_d, t) = fresh();
+        team(&t);
+        let bus = t.bus();
+        assert!(bus.last_event_at("G-1", "team_silent").unwrap().is_none(), "nothing written yet");
+        bus.log("G-1", "team_silent", json!({ "idleSecs": 900 })).unwrap();
+        let at = bus.last_event_at("G-1", "team_silent").unwrap().unwrap();
+        assert!(DateTime::parse_from_rfc3339(&at).is_ok(), "{at}");
+        assert!(bus.last_event_at("G-1", "team_created").unwrap().is_some());
+        assert!(bus.last_event_at("G-9", "team_silent").unwrap().is_none(), "another team's journal is not the marker");
     }
 }

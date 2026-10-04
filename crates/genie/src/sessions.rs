@@ -29,10 +29,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use genie_core::Role;
 use genie_core::db::now;
-use genie_core::team::ORCHESTRATOR;
+use genie_core::team::{ORCHESTRATOR, QuietTeam};
 use genie_core::work::Turn;
+use genie_core::{Role, Status};
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -991,6 +991,79 @@ pub async fn sweep(app: &Arc<App>) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+/// The silent-team watchdog: an active team on a task in progress where nobody is working,
+/// no mail is pending and nothing is waited for is reported to the orchestrator — once per
+/// silence streak. The step and loop watchdogs watch one `working` session; this one catches
+/// the team that read its last letter, answered it and stopped, leaving the task open.
+/// Waiting for a person (blocked, `needs_owner`, a questionnaire, a job) or for CI/delivery
+/// (checks running, a request waiting for review or merge) is not silence.
+pub async fn watch_silent_teams(app: &Arc<App>) -> AppResult<()> {
+    let stall = app.cfg.runtime.stall_secs;
+    if stall == 0 {
+        return Ok(());
+    }
+    let projects = app.blocking(|app| app.with_server(|db| db.projects())).await?;
+    for p in projects {
+        let slug = p.slug.clone();
+        let quiet = match app.blocking(move |app| app.with_tracker(&slug, |t| t.bus().quiet_teams(Duration::from_secs(stall)))).await {
+            Ok(q) => q,
+            Err(e) => {
+                eprintln!("genie runtime: {}: silent-team watchdog: {e}", p.slug);
+                continue;
+            }
+        };
+        for q in quiet {
+            match report_if_silent(app, &p.slug, &q) {
+                Ok(true) => println!("genie runtime: {}: team {} is silent for {}s — the orchestrator was told", p.slug, q.id, q.idle_secs),
+                Ok(false) => {}
+                Err(e) => eprintln!("genie runtime: {}: silent-team watchdog: {e}", p.slug),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One quiet candidate: is the task really waited on, has the streak already been reported,
+/// and if not — a letter to the orchestrator and a `team_silent` marker in the journal.
+fn report_if_silent(app: &App, slug: &str, q: &QuietTeam) -> AppResult<bool> {
+    // Only a task in progress: a task in review is the reviewer's business, and a task the
+    // owner has to decide on is a wait, not silence.
+    let Ok(task) = app.with_tracker(slug, |t| t.get(&q.task)) else { return Ok(false) };
+    if task.status != Status::InProgress || task.blocked.is_some() || task.needs_owner.is_some() {
+        return Ok(false);
+    }
+    // Questionnaire, agent job or delivery: someone or something is expected to answer.
+    let held = app.with_server(|db| {
+        let people = db.open_questionnaires_for_task(slug, &q.task)?;
+        let jobs = db.open_jobs_for_task(slug, &q.task)?;
+        let delivery =
+            db.task_repos(slug, &q.task)?.iter().any(|r| r.ci_state.as_deref() == Some("pending") || r.cr_state.as_deref() == Some("open"));
+        Ok(people > 0 || jobs > 0 || delivery)
+    })?;
+    if held {
+        return Ok(false);
+    }
+    // One letter per streak: the journal survives a restart, an in-memory flag would not.
+    let told = app.with_tracker(slug, |t| t.bus().last_event_at(&q.id, "team_silent"))?;
+    if told.as_deref().is_some_and(|at| at > q.since.as_str()) {
+        return Ok(false);
+    }
+    let text = format!(
+        "Watchdog: team {} on {} has been silent for {} min — every member is idle, no mail is pending, and the task \
+         waits on neither a person nor CI. Nothing will move it by itself: look at the board (`genie team board`, \
+         `genie team peek {} <member>`), then steer or restart a member, or stop the team and take the task over.",
+        q.id,
+        q.task,
+        q.idle_secs / 60,
+        q.id
+    );
+    app.with_tracker(slug, |t| {
+        t.bus().notify_orchestrator("genie", "system", "system", &text, Some(&q.task))?;
+        t.bus().log(&q.id, "team_silent", json!({ "task": q.task, "members": q.members, "idleSecs": q.idle_secs }))
+    })?;
+    Ok(true)
 }
 
 /// Stop the session of `key` (team stopped, member restarted…) and forget its failures.
