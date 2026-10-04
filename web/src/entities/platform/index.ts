@@ -78,8 +78,17 @@ export const usePlaybooks = () => useQuery({ queryKey: ["playbooks"], queryFn: (
 export const useRuns = (automation?: number) =>
   useQuery({ queryKey: ["runs", automation ?? 0], queryFn: () => request<Run[]>("GET", `/api/runs${automation ? `?automation=${automation}` : ""}`), refetchInterval: 5000 });
 
+/** Statuses a run does not leave (`set_run_status` stamps `finished` for them). */
+const RUN_ENDED = new Set(["succeeded", "failed", "cancelled", "skipped"]);
+
 export const useRun = (id?: number) =>
-  useQuery({ queryKey: ["run", id ?? 0], queryFn: () => request<Run & { steps: RunStep[] }>("GET", `/api/runs/${id}`), enabled: !!id, refetchInterval: 4000 });
+  useQuery({
+    queryKey: ["run", id ?? 0],
+    queryFn: () => request<Run & { steps: RunStep[] }>("GET", `/api/runs/${id}`),
+    enabled: !!id,
+    // Runs live in server.db, outside the journal the live stream reads: poll while one is going, never after it ended.
+    refetchInterval: (q) => (RUN_ENDED.has(q.state.data?.status ?? "") ? false : 4000),
+  });
 
 export const useProposals = (status = "open") =>
   useQuery({ queryKey: ["proposals", status], queryFn: () => request<Proposal[]>("GET", `/api/docs/proposals?status=${status}`), refetchInterval: 30_000 });
