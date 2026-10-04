@@ -8,6 +8,14 @@
 //   GENIE_ALLOW_HOSTS  comma-separated Host header values accepted besides localhost:<port>
 //   GENIE_SANDBOX      runtime.sandbox.mode: auto | bwrap | off (see docker-compose.sandbox.yml)
 //
+// With a Rust toolchain in the image (build argument RUST_TOOLCHAIN) agents share one build cache,
+// <data>/cache: cargo's downloads and one target directory for everyone (dependencies are built once,
+// and builds of several agents take turns on the disk instead of all linking at once), mold as the
+// linker and a bounded number of build jobs. Each value is a default: set it in runtime.env to
+// override it, or GENIE_AGENT_CACHE=0 to leave the agents' build settings alone.
+//
+//   GENIE_AGENT_BUILD_JOBS  CARGO_BUILD_JOBS of agents (default 8)
+//
 // Everything else in config.json is left alone. The script also registers pi-mcp-adapter
 // (shipped in the image) in pi's settings so roles with MCP connections work; opt out with
 // GENIE_MCP_ADAPTER=0.
@@ -84,6 +92,25 @@ if (sandbox) {
   const runtime = config.runtime && typeof config.runtime === "object" ? config.runtime : {};
   const box = runtime.sandbox && typeof runtime.sandbox === "object" ? runtime.sandbox : {};
   config.runtime = { ...runtime, sandbox: { ...box, mode: sandbox } };
+}
+
+if (existsSync(env.GENIE_RUST_DIR || "/opt/rust") && env.GENIE_AGENT_CACHE !== "0") {
+  const cache = join(data, "cache");
+  mkdirSync(join(cache, "cargo"), { recursive: true });
+  const runtime = config.runtime && typeof config.runtime === "object" ? config.runtime : {};
+  const agentEnv = runtime.env && typeof runtime.env === "object" ? { ...runtime.env } : {};
+  const defaults = {
+    CARGO_HOME: join(cache, "cargo"),
+    CARGO_TARGET_DIR: join(cache, "cargo-target"),
+    CARGO_BUILD_JOBS: (env.GENIE_AGENT_BUILD_JOBS || "8").trim(),
+  };
+  const triple = { x64: "X86_64", arm64: "AARCH64" }[process.arch];
+  if (triple && existsSync("/usr/bin/mold")) defaults[`CARGO_TARGET_${triple}_UNKNOWN_LINUX_GNU_RUSTFLAGS`] = "-C link-arg=-fuse-ld=mold";
+  for (const [k, v] of Object.entries(defaults)) if (agentEnv[k] === undefined) agentEnv[k] = v;
+  // The data directory is hidden from sandboxed agents; the cache shows through, writable.
+  const box = runtime.sandbox && typeof runtime.sandbox === "object" ? runtime.sandbox : {};
+  const writable = Array.isArray(box.writable) ? box.writable : [];
+  config.runtime = { ...runtime, env: agentEnv, sandbox: { ...box, writable: writable.includes(cache) ? writable : [...writable, cache] } };
 }
 
 if (JSON.stringify(config) !== before || fresh) {

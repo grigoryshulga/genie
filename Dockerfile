@@ -10,6 +10,9 @@
 #   PI_VERSION                 pi release; keep it at the version genie's tests run against (package-lock.json)
 #   PI_MCP_ADAPTER_VERSION     pi-mcp-adapter release, shipped for roles with MCP connections
 #   EXTRA_APT_PACKAGES         toolchains your agents need, e.g. "python3 python3-venv build-essential"
+#   RUST_TOOLCHAIN             a Rust toolchain for agents on Rust projects ("stable", "1.94"): rustup's
+#                              toolchain with clippy and rustfmt, a C compiler and the mold linker; the
+#                              agents share one build cache under /data/cache (docker/configure.mjs)
 
 ARG NODE_VERSION=24
 ARG RUST_VERSION=1.94
@@ -48,6 +51,7 @@ FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim AS runtime
 ARG PI_VERSION=0.87.1
 ARG PI_MCP_ADAPTER_VERSION=3.2.0
 ARG EXTRA_APT_PACKAGES=""
+ARG RUST_TOOLCHAIN=""
 
 # What agents (pi and the shell commands it runs) and the server itself need:
 #   tini            PID 1 (after the privilege drop): reaps processes agents leave behind, forwards signals
@@ -61,6 +65,20 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash bubblewrap ca-certificates curl git jq less openssh-client procps ripgrep tini tzdata ${EXTRA_APT_PACKAGES} \
  && rm -rf /var/lib/apt/lists/*
+
+# A Rust toolchain for agents (RUST_TOOLCHAIN): read-only under /opt/rust, its binaries on PATH without
+# rustup's proxies, so it works for any user and HOME. Without it agents would install their own.
+RUN if [ -n "$RUST_TOOLCHAIN" ]; then \
+      apt-get update \
+   && apt-get install -y --no-install-recommends build-essential pkg-config mold \
+   && rm -rf /var/lib/apt/lists/* \
+   && curl -fsSL https://sh.rustup.rs | RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo \
+        sh -s -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" -c clippy,rustfmt \
+   && ln -s /opt/rust/rustup/toolchains/*/bin/* /usr/local/bin/ \
+   && rm -rf /opt/rust/cargo /opt/rust/rustup/downloads /opt/rust/rustup/tmp \
+   && chmod -R a+rX /opt/rust \
+   && cargo --version; \
+    fi
 
 # The service user. Its ids are remapped at start (GENIE_UID / GENIE_GID) to match mounted repositories.
 # The base image's `node` user owns uid 1000; replace it.
