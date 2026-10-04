@@ -50,6 +50,12 @@ function parseArgs(argv) {
   return { command, flags };
 }
 
+/**
+ * The call that moves one task to a status. The CLI takes the status first and
+ * the task as an option: `genie task status <STATUS> --task <id>`.
+ */
+const statusCall = (status, id) => ["task", "status", status, "--task", id];
+
 const usage = `bench/run.mjs — the genie agent benchmark
 
   list [--json]                         the reference set
@@ -218,7 +224,7 @@ function prepare(flags) {
     note("would run:");
     const shown = (args) => args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ");
     for (const args of plan) note(`  ${GENIE} --project ${slug} ${shown(args)} --json`);
-    if (flags.start) note(`  ${GENIE} --project ${slug} task status <id> inbox --json   (for each created task)`);
+    if (flags.start) note(`  ${GENIE} --project ${slug} ${shown(statusCall("inbox", "<id>"))} --json   (for each created task)`);
     note("");
     note("recommended answers for the owner:");
     for (const task of tasks.filter((t) => t.ownerAnswer)) note(`  ${task.id}: ${task.ownerAnswer}`);
@@ -226,12 +232,16 @@ function prepare(flags) {
   }
 
   // A parked round is released later with `prepare --run <id> --start`: it is
-  // already prepared, only the tasks are still drafts.
+  // already prepared, only the tasks are still drafts. Releasing twice would
+  // move finished tasks back to the inbox, so it needs --force.
   if (existsSync(runFile(runId)) && flags.start && !flags.force) {
     const parked = JSON.parse(readFileSync(runFile(runId), "utf8"));
+    if (parked.released) {
+      die(`round ${runId} is already released: collect it, or pass --force to release it again (tasks that are already done would go back to the inbox)`);
+    }
     const releaseUrl = targetUrl(flags);
     const releaseSecret = token();
-    for (const task of parked.tasks) genieCall(["task", "status", task.id, "inbox"], parked.project, releaseUrl, releaseSecret);
+    for (const task of parked.tasks) genieCall(statusCall("inbox", task.id), parked.project, releaseUrl, releaseSecret);
     parked.released = true;
     writeFileSync(runFile(runId), `${JSON.stringify(parked, null, 2)}\n`);
     note(`released ${parked.tasks.length} task(s) of round ${runId} to the orchestrator`);
@@ -261,7 +271,7 @@ function prepare(flags) {
   }
 
   if (flags.start) {
-    for (const task of created) genieCall(["task", "status", task.id, "inbox"], slug, url, secret);
+    for (const task of created) genieCall(statusCall("inbox", task.id), slug, url, secret);
     note(`released ${created.length} task(s) to the orchestrator`);
   }
 
@@ -275,6 +285,10 @@ function prepare(flags) {
     startedAt,
     released: Boolean(flags.start),
     template: tasks[0]?.template ?? "standard",
+    // The hashes below are the runner's own checkout: prepare and collect from
+    // the instance's checkout and binary, or the "only one thing changed"
+    // guarantee does not hold (see bench/README.md).
+    preparedFrom: { checkout: GENIE_ROOT, binary: GENIE },
     tasks: created,
     recommendedAnswers: Object.fromEntries(tasks.filter((t) => t.ownerAnswer).map((t) => [t.id, t.ownerAnswer])),
     hashes: environmentHashes(),

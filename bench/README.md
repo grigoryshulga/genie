@@ -88,13 +88,26 @@ node bench/run.mjs compare bench/results/before.json bench/results/after.json
 
 `prepare` prints the round, the tasks and the recommended answers for R3/R6;
 `--dry-run` prints the plan and touches nothing (no server, no token needed).
+Releasing a round twice is refused — a released round is collected, not released
+again (`--force` exists for the odd case, and moves finished tasks back to the
+inbox).
+
 `collect` is a **snapshot**: tasks still open are recorded as not done, and the
-person stops the round before running it.
+person stops the round before running it. Stopping means **accepting the
+finished tasks** (moving them to `done` in the web or with
+`genie task accept <id> --note "…"`):
+with the default `assisted` autonomy agents leave tasks in `review` or
+`approved`, and a `collect` taken then has `doneRate` 0 in both rounds and
+`compare` says nothing. Close the round, then collect.
 
 Between two rounds only the thing under test may change. `run.json` records a
 hash of `agents/*.md`, `config/teams/*.json`, `config/default.json` (with the
 role models) and the `genie` version, plus the fixture hash — so a diff that
-mixed two changes is visible.
+mixed two changes is visible. Those hashes are the **runner's own checkout**
+(`preparedFrom` in `run.json` says which): prepare and collect from the
+instance's checkout with the instance's binary, otherwise the guarantee holds
+for the wrong tree. What the server actually runs is not exposed by the API —
+if a round ever looks mixed, compare `preparedFrom` with the instance's install.
 
 ## Thresholds (`bench/thresholds.json`)
 
@@ -118,16 +131,12 @@ node bench/run.mjs prepare --run prova --dry-run
 
 The tests cover the pure logic (`bench/lib`) on canned payloads, the invariants
 of the reference set, the exact `genie` calls `prepare` makes (a stub `genie` on
-`PATH`), the refusal of port 7420 and the `compare` exit codes. They also assert
-that **every check fails on the shipped fixture**.
-
-The other direction — every check passes once the task is done — is verified by
-hand: copy `bench/training` somewhere, satisfy each task's acceptance criteria in
-that copy, then
-
-```sh
-for n in 1 2 3 4 5 6 7 8; do node bench/checks/r$n.mjs /tmp/solved-training; done
-```
+`PATH`, plus a grammar probe against the real binary when it is on `PATH`), the
+refusal of port 7420, the `compare` exit codes, and both directions of the
+checks: **every check fails on the shipped fixture** and **every check passes on
+a copy where the tasks are solved** (`bench/solutions/`, overlaid onto a copy of
+the fixture in a temp directory). Anything a check cannot satisfy, or a check
+that starts passing by itself, fails `npm test`.
 
 A real round on the pilot instance is the evidence of the round itself, not of
 this code.
@@ -137,9 +146,12 @@ this code.
 1. add the shape to `bench/training/` (and keep `node --test` there green);
 2. add `bench/checks/rN.mjs`, using `bench/checks/util.mjs`; make it fail on the
    shipped fixture;
-3. add the entry to `bench/reference/tasks.json` with its `check`, `expect`,
+3. solve the task in `bench/solutions/` (same paths; `README.md` there explains
+   it) so the check's other direction stays covered;
+4. add the entry to `bench/reference/tasks.json` with its `check`, `expect`,
    budget and timeout;
-4. `npm test` — the set's invariants and the red-on-baseline test cover it.
+5. `npm test` — the set's invariants, the red-on-fixture and the
+   green-on-solved tests cover it.
 
 The benchmark does not grow the `genie` CLI: a number the API does not return
 becomes a task of its own, not a new command here.

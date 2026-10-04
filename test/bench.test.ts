@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -70,6 +70,35 @@ test("every check fails on the fixture as shipped, so a green check means work w
     assert.notEqual(out.status, 0, `${task.id} passes on the shipped fixture: ${out.stdout}${out.stderr}`);
   }
 });
+
+test("every check passes on a copy where the tasks are solved", () => {
+  const solved = mkdtempSync(path.join(os.tmpdir(), "bench-solved-"));
+  cpSync(TRAINING, solved, { recursive: true });
+  overlay(path.join(ROOT, "bench", "solutions"), solved);
+
+  const green = spawnSync(process.execPath, ["--test"], { cwd: solved, encoding: "utf8" });
+  assert.equal(green.status, 0, `${green.stdout}\n${green.stderr}`);
+  for (const task of TASKS) {
+    const command = task.check.replaceAll("<workspaces>", solved).replaceAll("<workspace>", solved);
+    const out = spawnSync(command, { shell: true, cwd: ROOT, encoding: "utf8" });
+    assert.equal(out.status, 0, `${task.id} fails on the solved copy: ${out.stdout}${out.stderr}`);
+  }
+});
+
+/** Copy the solution tree over a copy of the fixture, leaving its README out. */
+function overlay(from: string, to: string) {
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    if (entry.name === "README.md") continue;
+    const src = path.join(from, entry.name);
+    const dst = path.join(to, entry.name);
+    if (entry.isDirectory()) {
+      overlay(src, dst);
+      continue;
+    }
+    mkdirSync(path.dirname(dst), { recursive: true });
+    copyFileSync(src, dst);
+  }
+}
 
 // ── metrics ──────────────────────────────────────────────────────────────────
 
@@ -280,7 +309,7 @@ test("prepare registers the project, creates the eight parked tasks and releases
   const released = calls.filter((c) => c.includes("status") && c.includes("inbox"));
   assert.equal(released.length, 8, "every task is released to the orchestrator");
   for (let i = 1; i <= 8; i += 1) {
-    assert.deepEqual(released[i - 1], ["--project", "bench-smoke", "task", "status", `B-${i}`, "inbox", "--json"]);
+    assert.deepEqual(released[i - 1], ["--project", "bench-smoke", "task", "status", "inbox", "--task", `B-${i}`, "--json"]);
   }
 
   const run = JSON.parse(readFileSync(path.join(runs, "smoke", "run.json"), "utf8"));
@@ -290,11 +319,41 @@ test("prepare registers the project, creates the eight parked tasks and releases
   assert.equal(run.tasks.length, 8);
   assert.match(run.fixtureHash, /^[0-9a-f]{64}$/);
   assert.match(run.baselineSha, /^[0-9a-f]{40}$/);
+  assert.equal(run.preparedFrom.checkout, ROOT, "the checkout the hashes come from is recorded");
   assert.ok(Object.keys(run.hashes.files).some((f) => f.startsWith("agents/")), "the role prompts are hashed");
   assert.ok(Object.keys(run.hashes.files).some((f) => f.startsWith("config/teams/")), "the team templates are hashed");
   assert.deepEqual(Object.keys(run.recommendedAnswers), ["R3", "R6"]);
   assert.equal(existsSync(path.join(repo, ".git")), true, "the fixture is a git repository with a baseline commit");
   assert.equal(existsSync(path.join(repo, "src", "report.js")), true, "the fixture is complete");
+});
+
+test("the release call follows the CLI's grammar, checked against the real binary when it is there", (t) => {
+  const wrongGrammar = /unexpected argument|Usage: genie task status/;
+
+  const probe = spawnSync("genie", ["--version"], { encoding: "utf8" });
+  if (probe.error) {
+    t.skip("genie is not on PATH: the grammar is asserted against the stub only");
+    return;
+  }
+  // An empty data directory: the command must fail on the missing server, not on
+  // the arguments. No GENIE_URL/GENIE_TOKEN, so no running server is reached.
+  const env = { ...process.env, GENIE_URL: "", GENIE_TOKEN: "" };
+  const data = mkdtempSync(path.join(os.tmpdir(), "bench-data-"));
+  const right = spawnSync("genie", ["--data", data, "task", "status", "inbox", "--task", "B-1"], { encoding: "utf8", env });
+  assert.doesNotMatch(`${right.stdout}${right.stderr}`, wrongGrammar, "`task status <STATUS> --task <id>` must parse");
+  const wrong = spawnSync("genie", ["--data", data, "task", "status", "B-1", "inbox"], { encoding: "utf8", env });
+  assert.match(`${wrong.stdout}${wrong.stderr}`, wrongGrammar, "the old argument order really is refused by the CLI");
+});
+
+test("releasing a round twice is refused instead of moving done tasks back to the inbox", () => {
+  const { log, env } = stubEnv();
+  assert.equal(runCli(["prepare", "--run", "twice", "--start"], env).status, 0);
+  const before = readFileSync(log, "utf8").trim().split("\n").length;
+
+  const again = runCli(["prepare", "--run", "twice", "--start"], env);
+  assert.equal(again.status, 2);
+  assert.match(again.stderr, /already released/);
+  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, before, "no task was moved");
 });
 
 test("prepare without --start parks the tasks in draft and writes the round", () => {
