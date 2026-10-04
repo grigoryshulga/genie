@@ -23,8 +23,18 @@ const taskPage = (e: JournalEvent): KeyPrefix[] => [e.subject ? ["task", e.subje
  */
 const taskRelations = (): KeyPrefix[] => [["task"], ...TASK_LISTS, ["meta"], ["teams"], ["team"], USAGE_OF_TASKS];
 
-/** A team's state: rosters and mail counters, the task's team and worktree, the agent's live session. */
-const teamState = (): KeyPrefix[] => [["teams"], ["team"], ["peek"], ...TASK_LISTS, ["task"]];
+/**
+ * Teams and their agents: rosters, mail counters and live sessions. A mutation
+ * that only changes those (a member added, removed, paused or restarted writes a
+ * team log line, not a journal event) passes this itself: no event refetches it.
+ */
+export const teamKeys = (): KeyPrefix[] => [["teams"], ["team"], ["peek"]];
+
+/**
+ * The same plus where a team shows elsewhere: the task cards and pages. A team
+ * that appears or goes away (`team.spawned`, stopped, deleted) touches these.
+ */
+export const teamState = (): KeyPrefix[] => [...teamKeys(), ...TASK_LISTS, ["task"]];
 
 /** Delivery of a task's branch; `task-repos` is also polled, the host's checks have no event while they run. */
 const delivery = (e: JournalEvent): KeyPrefix[] => [["task-repos"], e.subject ? ["task", e.subject] : ["task"]];
@@ -51,7 +61,7 @@ export function keysFor(e: JournalEvent): KeyPrefix[] | null {
     case "task.unblocked":
       return taskPage(e);
     case "mail.sent":
-      return [["teams"], ["team"], ["peek"]];
+      return teamKeys();
     case "team.spawned":
     case "team.started":
     case "team.stopped":

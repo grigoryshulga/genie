@@ -1,4 +1,5 @@
 import { QueryClient, useMutation, useQueryClient } from "@tanstack/react-query";
+import { type KeyPrefix, matchesAny } from "./invalidation.ts";
 
 export class ApiError extends Error {
   constructor(
@@ -40,7 +41,19 @@ export const keys = {
   team: (id: string) => ["team", id] as const,
 };
 
-export function useInvalidating<V, R>(fn: (v: V) => Promise<R>) {
+/**
+ * Refetch the queries the prefixes match; `null` (an event type the client does
+ * not know) has no name for what changed, so everything is refetched.
+ */
+export function invalidateKeys(qc: QueryClient, prefixes: readonly KeyPrefix[] | null) {
+  return prefixes ? qc.invalidateQueries({ predicate: (q) => matchesAny(prefixes, q.queryKey) }) : qc.invalidateQueries();
+}
+
+/**
+ * A mutation that refetches after it settles. Pass the key prefixes of what it
+ * makes stale; without them every query is refetched, as before.
+ */
+export function useInvalidating<V, R>(fn: (v: V) => Promise<R>, prefixes?: readonly KeyPrefix[] | null) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: fn, onSettled: () => qc.invalidateQueries() });
+  return useMutation({ mutationFn: fn, onSettled: () => invalidateKeys(qc, prefixes ?? null) });
 }

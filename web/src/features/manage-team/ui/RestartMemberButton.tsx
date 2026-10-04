@@ -1,5 +1,5 @@
 import { displayName } from "@/entities/member";
-import { request, useInvalidating } from "@/shared/api";
+import { request, teamKeys, useInvalidating } from "@/shared/api";
 import { Icon, useToast } from "@/shared/ui";
 
 /**
@@ -9,7 +9,10 @@ import { Icon, useToast } from "@/shared/ui";
  */
 export function RestartMemberButton({ team, name }: { team: string; name: string }) {
   const toast = useToast();
-  const restart = useInvalidating(() => request("POST", `/api/teams/${encodeURIComponent(team)}/members/${encodeURIComponent(name)}/restart`, {}));
+  const restart = useInvalidating(
+    () => request("POST", `/api/teams/${encodeURIComponent(team)}/members/${encodeURIComponent(name)}/restart`, {}),
+    teamKeys(),
+  );
   return (
     <button
       type="button"
