@@ -572,7 +572,7 @@ async fn people_rename_themselves_set_a_photo_and_manage_their_tokens() {
     let r = &h.remote;
     let (_, _, cookies) = call(r, "POST", "/api/auth/login").json(json!({ "login": "anna", "password": "password-1" })).send().await;
     let session = cookies[0].clone();
-    let (_, t, _) = call(r, "POST", "/api/tasks").cookie(&session).json(json!({ "title": "Экспорт", "assignee": "anna" })).send().await;
+    let (_, t, _) = call(r, "POST", "/api/tasks").cookie(&session).json(json!({ "title": "Экспорт" })).send().await;
     let task = format!("/api/tasks/{}", t["id"].as_str().unwrap());
     call(r, "PATCH", &task).cookie(&session).json(json!({ "assignee": "anna" })).send().await;
 

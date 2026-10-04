@@ -62,6 +62,9 @@ impl From<AppError> for ApiError {
                 ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, m)
             }
             AppError::Genie(other) => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, other.to_string()),
+            AppError::Bad(m) => ApiError::bad(m),
+            AppError::Forbidden(m) => ApiError::new(StatusCode::FORBIDDEN, m),
+            AppError::Conflict(m) => ApiError::new(StatusCode::CONFLICT, m),
             AppError::Internal(m) => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, m),
         }
     }
@@ -80,6 +83,19 @@ impl IntoResponse for ApiError {
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
+
+/// A JSON request body of a known shape: a malformed one, or one with a key nobody knows, is
+/// refused with `{ "error": … }` like any other bad request.
+pub struct Body<T>(pub T);
+
+impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequest<S> for Body<T> {
+    type Rejection = ApiError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, ApiError> {
+        let Json(v) = Json::<serde_json::Value>::from_request(req, state).await.map_err(|e| ApiError::bad(e.body_text()))?;
+        serde_json::from_value(v).map(Body).map_err(|e| ApiError::bad(e.to_string()))
+    }
+}
 
 pub fn router(app: Arc<App>) -> Router {
     let api = Router::new()

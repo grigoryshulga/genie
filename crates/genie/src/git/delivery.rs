@@ -640,7 +640,8 @@ fn record_ci(app: &App, row: &TaskRepo, ci: Ci, failures: &[CiFailure], cr: Opti
 /// A status change an agent asks for, checked against the task's delivery. `review` needs a
 /// request for every pushed branch whose policy calls for one and needs the watched checks not to
 /// have failed; `done` needs none left open. (People are not held to it: their moves are authoritative.)
-pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Result<(), String> {
+/// Blocking: the host is asked about the checks.
+pub fn gate(app: &App, project: &str, task: &str, to: Status) -> Result<(), String> {
     if !matches!(to, Status::Review | Status::Done) {
         return Ok(());
     }
@@ -674,7 +675,7 @@ pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Resu
         // A failed check is in the way: the agent fixes and pushes, and a push restarts the watch.
         // `pending` deliberately does not block (nothing wakes a session when checks turn green),
         // and `stalled` is not a failure.
-        if let Some(reason) = failed_checks(app, project, row).await {
+        if let Some(reason) = failed_checks(app, project, row) {
             return Err(reason);
         }
     }
@@ -685,18 +686,16 @@ pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Resu
 /// for a delivery that was never armed, about the request's head — and the recorded state decides
 /// when there is no commit to ask about and when the host cannot be reached: an outage must not block
 /// work, and a delivery that predates the watch must not slip past a red CI either.
-async fn failed_checks(app: &Arc<App>, project: &str, row: &TaskRepo) -> Option<String> {
+fn failed_checks(app: &App, project: &str, row: &TaskRepo) -> Option<String> {
     let stored = || row.ci_state.as_deref().map(parse_ci).unwrap_or(Ci::None);
-    let ci = match row.ci_sha.as_deref().or(row.head_sha.as_deref()) {
-        Some(sha) => match repo_and_host(app, project, &row.repo).await {
-            Ok((record, host)) => match Api::new(&host) {
-                Ok(api) => api.ci(&record.remote, Some(sha)).await.unwrap_or_else(|_| stored()),
-                Err(_) => stored(),
-            },
-            Err(_) => stored(),
-        },
-        None => stored(),
+    let live = |sha: &str| -> Option<Ci> {
+        let record = app.with_server(|db| db.repo(project, &row.repo)).ok()?;
+        let host = store::host_of(app, &record).ok()?;
+        let record = store::resolved(app, &record);
+        let api = Api::new(&host).ok()?;
+        crate::state::block_on(api.ci(&record.remote, Some(sha))).ok()
     };
+    let ci = row.ci_sha.as_deref().or(row.head_sha.as_deref()).and_then(live).unwrap_or_else(stored);
     (ci == Ci::Failed).then(|| {
         let what = if row.ci_ref.is_empty() { row.branch.clone() } else { row.ci_ref.clone() };
         format!("the checks of `{what}` in {} failed: fix them and push, then move the task to review", row.repo)

@@ -23,12 +23,13 @@ use genie_core::automation::{self, Automation, Run, StepState};
 use genie_core::events::Event;
 use genie_core::inbox::NewQuestion;
 use genie_core::work::NewJob;
-use genie_core::{Actor, CommentKind, CreateInput, GenieError, Role, Status, StatusOptions, UpdateInput};
+use genie_core::{Actor, GenieError, Role, Status};
 use serde_json::{Value, json};
 
 use crate::notify::{self, Message};
 use crate::runtime::{self, SpawnRequest};
 use crate::state::{App, AppError, AppResult};
+use crate::tasks::{self, Caller, StatusBody};
 
 const CURSOR: &str = "automations";
 const NOTIFY_CURSOR: &str = "notifier";
@@ -323,56 +324,29 @@ fn execute(app: &App, run: &Run, step: &Value, kind: &str, input: &Value, state:
     app.with_server(|db| db.update_step(state.id, "running", Some(input), None, None, None))?;
     let project = run.project.as_str();
     let actor = automation_actor(run);
+    let caller = Caller::automation(project, actor.clone());
     let need_task = || task_of(input, run).ok_or_else(|| invalid("no task: pass `task` or trigger on a task event"));
     match kind {
         "task.status" => {
             let task = need_task()?;
-            let to: Status = input["to"].as_str().unwrap_or_default().parse().map_err(AppError::Genie)?;
-            let opts = StatusOptions {
-                note: input["note"].as_str().map(str::to_string),
-                force: input["force"] == json!(true),
-                ..Default::default()
-            };
-            let t = app.with_tracker(project, |t| t.set_status(&actor, &task, to, opts))?;
-            if genie_core::CLOSED.contains(&to) {
-                let _ = crate::runtime::reap_closed_blocking(app, project);
-            }
+            let to = input["to"].as_str().unwrap_or_default().parse().map_err(AppError::Genie)?;
+            let note = input["note"].as_str().map(str::to_string);
+            let body = StatusBody { force: Some(input["force"] == json!(true)), ..StatusBody::to(to, note) };
+            let t = tasks::set_status(app, &caller, &task, body)?;
             Ok(Outcome::Done(json!({ "task": t.id, "status": t.status })))
         }
         "task.comment" => {
             let task = need_task()?;
-            let text = input["text"].as_str().unwrap_or_default().to_string();
-            let ck: CommentKind = input["kind"].as_str().unwrap_or("note").parse().map_err(AppError::Genie)?;
-            app.with_tracker(project, |t| t.comment(&actor, &task, &text, ck))?;
-            Ok(Outcome::Done(json!({ "task": task })))
+            let t = tasks::comment(app, &caller, &task, tasks::from_step(input, &[])?)?;
+            Ok(Outcome::Done(json!({ "task": t.id })))
         }
         "task.create" => {
-            let ci = CreateInput {
-                title: input["title"].as_str().unwrap_or_default().to_string(),
-                task_type: input["type"].as_str().and_then(|t| t.parse().ok()),
-                description: input["description"].as_str().map(str::to_string),
-                acceptance: strings(&input["acceptance"]),
-                priority: input["priority"].as_i64(),
-                parent: input["parent"].as_str().filter(|s| !s.is_empty()).map(str::to_string),
-                labels: input.get("labels").map(strings),
-                status: (input["inbox"] == json!(true)).then_some(Status::Inbox),
-                ..Default::default()
-            };
-            let t = app.with_tracker(project, |t| t.create(&actor, ci))?;
+            let t = tasks::create(app, &caller, tasks::from_step(input, &[])?)?;
             Ok(Outcome::Done(json!({ "id": t.id })))
         }
         "task.update" => {
             let task = need_task()?;
-            let ui = UpdateInput {
-                description: input["description"].as_str().map(str::to_string),
-                plan: input["plan"].as_str().map(str::to_string),
-                append_notes: input["appendNotes"].as_str().map(str::to_string),
-                add_acceptance: strings(&input["addAcceptance"]),
-                labels: input.get("labels").map(strings),
-                priority: input["priority"].as_i64(),
-                ..Default::default()
-            };
-            let t = app.with_tracker(project, |t| t.update(&actor, &task, ui))?;
+            let t = tasks::update(app, &caller, &task, tasks::from_step(input, &[])?)?;
             Ok(Outcome::Done(json!({ "task": t.id })))
         }
         "task.get" => {
@@ -398,9 +372,7 @@ fn execute(app: &App, run: &Run, step: &Value, kind: &str, input: &Value, state:
                 }
                 let note =
                     "Nothing holds it: no block, dependencies done, no open questions or jobs; moved to ready automatically".to_string();
-                app.with_tracker(project, |tr| {
-                    tr.set_status(&actor, &t.id, Status::Ready, StatusOptions { note: Some(note), force: false, ..Default::default() })
-                })?;
+                tasks::set_status(app, &caller, &t.id, StatusBody::to(Status::Ready, Some(note)))?;
                 moved.push(t.id);
             }
             Ok(Outcome::Done(json!({ "moved": moved, "held": held })))
@@ -644,15 +616,8 @@ fn poll(app: &App, run: &Run, step: &Value, state: &StepState) -> AppResult<Outc
                         if let Some(task) = &qn.task {
                             let open: Vec<String> = qn.questions.iter().filter(|q| q.answer.is_none()).map(|q| q.text.clone()).collect();
                             let note = format!("Нет ответа на вопросы: {}", open.join("; "));
-                            let actor = automation_actor(run);
-                            let _ = app.with_tracker(&run.project, |t| {
-                                t.set_status(
-                                    &actor,
-                                    task,
-                                    Status::NeedsOwner,
-                                    StatusOptions { note: Some(note), force: false, ..Default::default() },
-                                )
-                            });
+                            let caller = Caller::automation(&run.project, automation_actor(run));
+                            let _ = tasks::set_status(app, &caller, task, StatusBody::to(Status::NeedsOwner, Some(note)));
                         }
                         Ok(Outcome::Done(json!({ "answers": genie_core::inbox::answers_json(&qn), "expired": true })))
                     }

@@ -83,6 +83,15 @@ impl Access {
     pub fn is_human(&self) -> bool {
         self.actor.role == Role::Human
     }
+    /// The caller of a task command.
+    pub fn caller(&self) -> crate::tasks::Caller {
+        let kind = if self.agent {
+            crate::tasks::Kind::Agent { team: self.agent_team.clone(), job: self.agent_job }
+        } else {
+            crate::tasks::Kind::Person
+        };
+        crate::tasks::Caller { project: self.project.clone(), actor: self.actor.clone(), kind }
+    }
     /// An agent needs the permission in its role; people and the orchestrator hold them all.
     pub fn can(&self, cap: Capability) -> Result<(), ApiError> {
         if !self.agent || self.actor.can(cap) {
