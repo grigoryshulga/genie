@@ -8,6 +8,7 @@ pub mod db;
 pub mod error;
 pub mod events;
 pub mod inbox;
+pub mod migrate;
 pub mod model;
 pub mod repos;
 pub mod secrets;

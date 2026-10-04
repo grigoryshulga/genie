@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use genie_core::server_db::ServerDb;
+use genie_core::db::SCHEMA_VERSION;
+use genie_core::server_db::{SERVER_SCHEMA_VERSION, ServerDb};
 use serde::Serialize;
 
 use crate::agent_config::AgentConfig;
@@ -55,6 +56,7 @@ impl Out {
 pub fn run(data: &Path, cfg: &Config, agents: &AgentConfig, web: Option<&Path>) -> Vec<Check> {
     let mut out = Out(Vec::new());
     storage(&mut out, data);
+    schemas(&mut out, data);
     match (crate::http::web::resolve(web), web) {
         (crate::http::web::WebUi::BuiltIn, Some(dir)) => out.warn(
             "web",
@@ -137,6 +139,56 @@ fn storage(out: &mut Out, data: &Path) {
         } else {
             out.ok("data", format!("{gb:.0} GB free on the data disk"));
         }
+    }
+}
+
+/// The schema versions the data directory holds: what the last update migrated, and whether
+/// the data is newer than this binary (a binary rolled back without a restore).
+fn schemas(out: &mut Out, data: &Path) {
+    let server = data.join("server.db");
+    match genie_core::migrate::version(&server) {
+        Ok(None) => {}
+        Ok(Some(v)) if v > SERVER_SCHEMA_VERSION => out.fail(
+            "data",
+            format!("server.db records schema {v}; this genie understands {SERVER_SCHEMA_VERSION}"),
+            "restore a backup made before the update, or run the newer genie",
+        ),
+        Ok(Some(v)) if v < SERVER_SCHEMA_VERSION => out.warn(
+            "data",
+            format!("server.db schema {v} (this genie: {SERVER_SCHEMA_VERSION})"),
+            "opening the server migrates it; `genie migrate --check` shows what will change",
+        ),
+        Ok(Some(v)) => out.ok("data", format!("server.db schema {v} (this genie: {SERVER_SCHEMA_VERSION})")),
+        Err(e) => out.fail("data", format!("server.db: {e}"), "restore server.db from a backup if it is damaged"),
+    }
+    let mut current = 0;
+    let mut pending = Vec::new();
+    for (slug, tracker) in genie_core::migrate::trackers(data) {
+        match genie_core::migrate::version(&tracker) {
+            Ok(None) => {}
+            Ok(Some(v)) if v > SCHEMA_VERSION => out.fail(
+                "data",
+                format!("{slug}: genie.db records schema {v}; this genie understands {SCHEMA_VERSION}"),
+                "restore the project's genie.db from a backup, or run the newer genie",
+            ),
+            Ok(Some(v)) if v < SCHEMA_VERSION => pending.push(format!("{slug} (schema {v})")),
+            Ok(Some(_)) => current += 1,
+            Err(e) => out.fail(
+                "data",
+                format!("{slug}: tracker {}: {e}", tracker.display()),
+                "restore the project's genie.db from a backup if it is damaged",
+            ),
+        }
+    }
+    if current > 0 {
+        out.ok("data", format!("{current} tracker(s) at schema {SCHEMA_VERSION}"));
+    }
+    if !pending.is_empty() {
+        out.warn(
+            "data",
+            format!("tracker(s) behind schema {SCHEMA_VERSION}: {}", pending.join(", ")),
+            "opening a project migrates it; `genie migrate` applies every one of them",
+        );
     }
 }
 

@@ -182,7 +182,7 @@ CREATE INDEX IF NOT EXISTS usage_agent ON usage(agent);
 "#;
 
 /// Columns added after the first release; applied to existing databases on open.
-const COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
+pub const COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     ("members", "heartbeat_at", "ALTER TABLE members ADD COLUMN heartbeat_at TEXT"),
     ("teams", "stop_reason", "ALTER TABLE teams ADD COLUMN stop_reason TEXT"),
     ("mail", "level", "ALTER TABLE mail ADD COLUMN level TEXT NOT NULL DEFAULT 'normal'"),
@@ -213,8 +213,16 @@ pub struct Db {
 }
 
 impl Db {
-    /// Open the task tracker database: tracker schema plus column migrations.
+    /// Open the task tracker database: the preflight checks a pending migration on a copy
+    /// before this file is touched, then the schema and the column migrations are applied.
     pub fn open(path: &Path) -> Result<Db> {
+        crate::migrate::preflight(path, SCHEMA_VERSION, COLUMN_MIGRATIONS, &|p| Db::open_migrated(p).map(|_| ()))?;
+        Db::open_migrated(path)
+    }
+
+    /// Open a tracker database and migrate it, without the preflight (`migrate` rehearses
+    /// this exact path on a copy).
+    pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
         let db = Db::open_with_schema(path, SCHEMA)?;
         db.migrate()?;
         Ok(db)
@@ -235,17 +243,7 @@ impl Db {
     }
 
     fn migrate(&self) -> Result<()> {
-        for (table, column, ddl) in COLUMN_MIGRATIONS {
-            let mut stmt = self.conn.prepare(&format!("PRAGMA table_info({table})"))?;
-            let has = stmt.query_map([], |r| r.get::<_, String>(1))?.filter_map(|c| c.ok()).any(|c| c == *column);
-            // A "duplicate column" error means another process migrated concurrently.
-            if !has
-                && let Err(err) = self.conn.execute_batch(ddl)
-                && !err.to_string().contains("duplicate column")
-            {
-                return Err(err.into());
-            }
-        }
+        self.add_columns(COLUMN_MIGRATIONS)?;
         // Indexes on migrated columns (an old database gets the columns just above).
         self.conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS mail_delivery ON mail(delivery);
@@ -253,7 +251,29 @@ impl Db {
         )?;
         // Legacy rows only knew `urgent`; normalise them to the level vocabulary.
         self.conn.execute("UPDATE mail SET level = 'high' WHERE urgent = 1 AND level <> 'high'", [])?;
-        self.conn.execute("UPDATE meta SET value = ?1 WHERE key = 'schema' AND CAST(value AS INTEGER) < ?1", [SCHEMA_VERSION])?;
+        self.record_version(SCHEMA_VERSION)
+    }
+
+    /// Add the columns of `columns` this database lacks; a "duplicate column" error means
+    /// another process migrated concurrently.
+    pub(crate) fn add_columns(&self, columns: &[(&str, &str, &str)]) -> Result<()> {
+        for (table, column, ddl) in columns {
+            let mut stmt = self.conn.prepare(&format!("PRAGMA table_info({table})"))?;
+            let has = stmt.query_map([], |r| r.get::<_, String>(1))?.filter_map(|c| c.ok()).any(|c| c == *column);
+            if !has
+                && let Err(err) = self.conn.execute_batch(ddl)
+                && !err.to_string().contains("duplicate column")
+            {
+                return Err(err.into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Record the schema version this binary understands; the version only moves upwards.
+    pub(crate) fn record_version(&self, version: i64) -> Result<()> {
+        self.conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema', ?1)", [version])?;
+        self.conn.execute("UPDATE meta SET value = ?1 WHERE key = 'schema' AND CAST(value AS INTEGER) < ?1", [version])?;
         Ok(())
     }
 
