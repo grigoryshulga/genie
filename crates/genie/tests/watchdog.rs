@@ -287,11 +287,11 @@ fn repo(name: &str) -> NewRepo {
 async fn a_working_member_is_not_silence() {
     let r = rig(900, Status::InProgress);
     r.quieten(7200);
-    r.h.app.with_tracker("shop", |t| t.bus().set_activity(&r.team, "bender", "working", None)).unwrap();
+    r.h.app.with_tracker("shop", |t| t.bus().member_working(&r.team, "bender", serde_json::json!({ "kind": "turn" }))).unwrap();
     r.watch().await;
     assert!(r.letters().is_empty(), "a member at work is not silence");
 
-    r.h.app.with_tracker("shop", |t| t.bus().set_activity(&r.team, "bender", "error", None)).unwrap();
+    r.h.app.with_tracker("shop", |t| t.bus().member_gave_up(&r.team, "bender", "model error", 3)).unwrap();
     r.h.app.with_tracker("shop", |t| Ok(t.conn().execute("UPDATE members SET activity_at = NULL, heartbeat_at = NULL", [])?)).unwrap();
     r.watch().await;
     assert!(r.letters().is_empty(), "an error is the agent watchdog's news, not this one's");

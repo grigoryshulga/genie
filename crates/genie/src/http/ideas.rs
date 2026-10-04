@@ -222,11 +222,9 @@ fn apply_plan(app: &App, slug: &str, actor: &Actor, id: &str, plan: Plan) -> App
     if !idea.labels.iter().any(|l| l == IDEA_LABEL) || CLOSED.contains(&idea.status) {
         return Err(GenieError::invalid(format!("{} is not an open idea", idea.id)).into());
     }
-    if let Some(team) = &idea.team
-        && app.with_tracker(slug, |t| Ok(t.bus().exists(team)? && t.bus().get(team)?.state == "active"))?
-    {
+    if let Some(team) = app.with_tracker(slug, |t| t.bus().active_team_of(&idea.id))? {
         // Not "owner": the orchestrator hears about the plan once, below.
-        runtime::stop_team(app, slug, team, "planned", &actor.name)?;
+        runtime::stop_team(app, slug, &team, "planned", &actor.name)?;
     }
     let out = app.with_tracker(slug, |t| {
         let idea = t.get(id)?;

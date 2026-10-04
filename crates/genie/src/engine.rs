@@ -575,9 +575,7 @@ fn holds(app: &App, project: &str, task: &genie_core::Task) -> AppResult<Vec<Str
     if app.with_server(|db| db.open_jobs_for_task(project, &task.id))? > 0 {
         out.push("an agent job on it is still going".into());
     }
-    if let Some(team) = &task.team
-        && app.with_tracker(project, |t| t.bus().get(team)).is_ok_and(|t| t.state == "active")
-    {
+    if let Some(team) = app.with_tracker(project, |t| t.bus().active_team_of(&task.id))? {
         out.push(format!("team {team} is working on it"));
     }
     let known = task.deps.iter().filter(|d| app.with_tracker(project, |t| t.exists(d)).unwrap_or(false)).cloned().collect();
@@ -664,7 +662,7 @@ fn flow_intake(app: &App, project: &str) -> AppResult<()> {
             let team = t.bus().get(&team_id)?;
             // Teams assembled before relations were stored keep their old kickoffs.
             let Some(spec) = team.spec.as_ref().and_then(TeamSpec::from_value) else { return Ok(false) };
-            if team.state != "active" || e.at < team.created {
+            if team.state != genie_core::TeamState::Active || e.at < team.created {
                 return Ok(false);
             }
             let actor = spec.by_name(&e.actor).map(|m| genie_core::team::display_name(&m.name)).unwrap_or_else(|| e.actor.clone());
@@ -674,7 +672,7 @@ fn flow_intake(app: &App, project: &str) -> AppResult<()> {
                 let what = r.note.as_deref().map(|n| format!(" ({n})")).unwrap_or_default();
                 for key in &r.to {
                     let Some(m) = spec.by_key(key) else { continue };
-                    let active = team.members.iter().any(|x| x.name == m.name && x.state == "active");
+                    let active = team.members.iter().any(|x| x.name == m.name && x.state == genie_core::MemberState::Active);
                     if !active || m.name == e.actor {
                         continue;
                     }

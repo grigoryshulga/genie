@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use genie_core::server_db::Project;
 use genie_core::team::{self, Mail, NewMember, NewTeam, ORCHESTRATOR, TeamWorktree};
 use genie_core::work::Job;
-use genie_core::{Actor, CLOSED, Capability, GenieError, Role, Status, StatusOptions, Task};
+use genie_core::{Actor, CLOSED, Capability, GenieError, Role, Status, StatusOptions, Task, TeamState};
 use serde_json::json;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
@@ -435,7 +435,7 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
             let (model, thinking) = role_model(app, &def, m.model.clone(), m.thinking.clone());
             let initiator = crate::llm_key::team_initiator(app, slug, team);
             let llm = turn_key(app, slug, turn, &label, initiator.as_deref(), model.as_deref())?;
-            app.with_tracker(slug, |t| t.bus().set_activity(team, member, "working", Some(json!({ "kind": "turn", "turn": turn }))))?;
+            app.with_tracker(slug, |t| t.bus().member_working(team, member, json!({ "kind": "turn", "turn": turn })))?;
             let cwd = member_workspace(app, &project, &def, &t.cwd, team, member);
             Ok(Some(Prepared {
                 turn,
@@ -1055,9 +1055,11 @@ pub(crate) fn session_spec(app: &App, key: &AgentKey) -> AppResult<Option<Spec>>
             }))
         }
         AgentKey::Member { project: slug, team, member } => {
-            let Ok(t) = app.with_tracker(slug, |t| t.bus().get(team)) else { return Ok(None) };
+            let Ok((t, runnable)) = app.with_tracker(slug, |t| Ok((t.bus().get(team)?, t.bus().runnable(team, member)?))) else {
+                return Ok(None);
+            };
             let Some(m) = t.members.iter().find(|m| &m.name == member).cloned() else { return Ok(None) };
-            if t.state != "active" || m.state != "active" {
+            if !runnable {
                 return Ok(None);
             }
             let agents = app.agents();
@@ -1195,12 +1197,11 @@ fn finish(
                 let bus = t.bus();
                 if ok {
                     bus.complete_lease(p.turn)?;
-                    bus.set_activity(team, member, "idle", None)
+                    bus.member_idle(team, member)
                 } else {
                     bus.release_lease(p.turn)?;
                     if give_up {
-                        bus.set_activity(team, member, "error", None)?;
-                        bus.log(team, "agent_error", json!({ "member": member, "error": error, "attempts": max_attempts }))?;
+                        bus.member_gave_up(team, member, error.unwrap_or("error"), max_attempts)?;
                         let tail: String = log.chars().rev().take(600).collect::<Vec<_>>().into_iter().rev().collect();
                         bus.notify_orchestrator(
                             "genie",
@@ -1213,7 +1214,7 @@ fn finish(
                             p.task.as_deref(),
                         )
                     } else {
-                        bus.set_activity(team, member, "idle", None)
+                        bus.member_idle(team, member)
                     }
                 }
             })?;
@@ -1588,9 +1589,7 @@ pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_c
         ))
         .into());
     }
-    if let Some(team) = &task.team
-        && app.with_tracker(slug, |t| Ok(t.bus().exists(team)? && t.bus().get(team)?.state == "active"))?
-    {
+    if let Some(team) = app.with_tracker(slug, |t| t.bus().active_team_of(&task.id))? {
         return Err(GenieError::invalid(format!("{} already has an active team {team}", task.id)).into());
     }
     let active = app.with_tracker(slug, |t| t.bus().active_count())?;
@@ -1761,7 +1760,7 @@ pub fn add_member(app: &App, slug: &str, team_id: &str, m: MemberSpec, by: &str)
     let docs = app.with_tracker(slug, |t| t.get(&task_id)).ok().and_then(|task| crate::context::l1(app, slug, &task));
     app.with_tracker(slug, |t| {
         let team = t.bus().get(team_id)?;
-        if team.state != "active" {
+        if team.state != TeamState::Active {
             return Err(GenieError::invalid(format!("team {team_id} is stopped")));
         }
         if team.members.len() >= max {
@@ -2065,7 +2064,7 @@ pub fn stop_team(app: &App, slug: &str, team: &str, reason: &str, by: &str) -> A
     let mut report = Vec::new();
     app.with_tracker(slug, |t| {
         let tm = t.bus().get(team)?;
-        t.bus().set_state(team, "stopped", Some(reason), by)?;
+        t.bus().set_state(team, TeamState::Stopped, Some(reason), by)?;
         report.push(format!("team {team} stopped ({reason})"));
         if let Ok(task) = t.get(&tm.task)
             && task.team.as_deref() == Some(team)
@@ -2135,10 +2134,7 @@ pub fn remove_worktree(app: &App, slug: &str, team: &str) -> String {
 
 /// Let a member in `error` work again (its kept mail is offered on the next tick).
 pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppResult<()> {
-    app.with_tracker(slug, |t| {
-        t.bus().set_activity(team, member, "idle", None)?;
-        t.bus().log(team, "member_restarted", json!({ "member": member }))
-    })?;
+    app.with_tracker(slug, |t| t.bus().member_restarted(team, member))?;
     let key = AgentKey::Member { project: slug.to_string(), team: team.to_string(), member: member.to_string() };
     app.sched.with(|s| {
         s.backoff.remove(&key);

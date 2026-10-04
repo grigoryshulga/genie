@@ -507,8 +507,7 @@ fn record_changes(
 
 /// The team of a task when that team is active: a letter means something only then.
 fn active_team(t: &Tracker, task: &str) -> Option<String> {
-    let team = t.get(task).ok()?.team?;
-    t.bus().get(&team).ok().filter(|x| x.state == "active").map(|_| team)
+    t.bus().active_team_of(task).ok().flatten()
 }
 
 /// What to store for a look: the host's answer, unless the checks have stayed `pending` for longer

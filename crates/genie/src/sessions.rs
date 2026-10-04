@@ -373,7 +373,7 @@ pub fn resume_after_restart(app: &App, turns: &[Turn]) {
         // The board must not report an agent without a process as busy. `error` is kept: a member
         // that gave up stays given up until someone restarts it.
         if let AgentKey::Member { project, team, member } = &key {
-            let _ = app.with_tracker(project, |t| t.bus().set_idle_keeping_error(team, member));
+            let _ = app.with_tracker(project, |t| t.bus().member_idle(team, member));
         }
         // An earlier crash note nobody read is enough: a server restarted in a loop adds none.
         if note_pending(app, &key) {
@@ -608,7 +608,9 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
                         let turn =
                             app.with_server(|db| db.start_turn(k.project(), &k.label(), team.as_deref(), member.as_deref(), None))?;
                         app.with_server(|db| db.set_turn_pid(turn, pid))?;
-                        set_activity(app, &k, "working", Some(json!({ "kind": "session", "pid": pid, "turn": turn })));
+                        on_member(app, &k, |bus, team, member| {
+                            bus.member_working(team, member, json!({ "kind": "session", "pid": pid, "turn": turn }))
+                        });
                         Ok(turn)
                     })
                     .await
@@ -725,15 +727,7 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
                 })?;
             }
             if give_up {
-                set_activity(app, &k, "error", None);
-                // The board shows why the agent stopped, not the line it set when it started.
-                if let AgentKey::Member { project, team, member } = &k {
-                    let why = clip(error.as_deref().unwrap_or("error"), 200);
-                    let _ = app.with_tracker(project, |t| {
-                        t.bus().set_member_status(team, member, &format!("stopped: {why}"))?;
-                        t.bus().log(team, "agent_error", json!({ "member": member, "error": error, "attempts": max }))
-                    });
-                }
+                on_member(app, &k, |bus, team, member| bus.member_gave_up(team, member, error.as_deref().unwrap_or("error"), max));
                 tell_orchestrator(
                     app,
                     &k,
@@ -745,7 +739,7 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
                     ),
                 );
             } else {
-                set_activity(app, &k, "idle", None);
+                on_member(app, &k, |bus, team, member| bus.member_idle(team, member));
             }
             Ok(())
         })
@@ -836,16 +830,9 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
             app.with_server(|db| db.revoke_token(&token))?;
             if expected {
                 // A member that gave up stays in `error` after its session is stopped.
-                if let AgentKey::Member { project, team, member } = &k {
-                    app.with_tracker(project, |t| t.bus().set_idle_keeping_error(team, member))?;
-                }
+                on_member(app, &k, |bus, team, member| bus.member_idle(team, member));
             } else if failures >= max {
-                set_activity(app, &k, "error", None);
-                if let AgentKey::Member { project, team, member } = &k {
-                    let _ = app.with_tracker(project, |t| {
-                        t.bus().log(team, "agent_error", json!({ "member": member, "error": "the session ended unexpectedly", "attempts": failures }))
-                    });
-                }
+                on_member(app, &k, |bus, team, member| bus.member_gave_up(team, member, "the session ended unexpectedly", failures));
                 tell_orchestrator(
                     app,
                     &k,
@@ -859,7 +846,7 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
                 // Leave a note in its own mailbox: it restarts with the same conversation and resumes.
                 let _ = note_to_self(app, &k, &format!("[genie] Your session restarted after a crash (exit {code:?}). Continue where you left off."));
             } else {
-                set_activity(app, &k, "idle", None);
+                on_member(app, &k, |bus, team, member| bus.member_idle(team, member));
             }
             Ok(())
         })
@@ -874,9 +861,10 @@ fn mailbox(k: &AgentKey) -> (Option<String>, String) {
     }
 }
 
-fn set_activity(app: &App, k: &AgentKey, activity: &str, runtime: Option<Value>) {
+/// A change on the board for a team member (the orchestrator has no row there).
+fn on_member(app: &App, k: &AgentKey, f: impl FnOnce(&genie_core::team::Bus, &str, &str) -> genie_core::Result<()>) {
     if let AgentKey::Member { project, team, member } = k {
-        let _ = app.with_tracker(project, |t| t.bus().set_activity(team, member, activity, runtime));
+        let _ = app.with_tracker(project, |t| f(&t.bus(), team, member));
     }
 }
 

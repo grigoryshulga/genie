@@ -462,7 +462,7 @@ pub fn delete(app: &App, caller: &Caller, id: &str, cascade: bool) -> AppResult<
     let plan = app.with_tracker(slug, |t| t.delete_plan(id, cascade))?;
     let mut report = Vec::new();
     for team in &plan.teams {
-        if app.with_tracker(slug, |t| Ok(t.bus().get(team)?.state == "active"))? {
+        if app.with_tracker(slug, |t| Ok(t.bus().get(team)?.state == genie_core::TeamState::Active))? {
             report.extend(crate::runtime::stop_team(app, slug, team, "owner", &caller.actor.name)?);
         }
         report.push(crate::runtime::remove_worktree(app, slug, team));

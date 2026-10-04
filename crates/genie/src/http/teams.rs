@@ -208,7 +208,7 @@ async fn remove(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Q
     let remove = q.remove_worktree.as_deref() == Some("1");
     let report = app
         .blocking(move |app| {
-            let active = app.with_tracker(&slug, |t| Ok(t.bus().get(&id)?.state == "active"))?;
+            let active = app.with_tracker(&slug, |t| Ok(t.bus().get(&id)?.state == genie_core::TeamState::Active))?;
             let mut r = if active { runtime::stop_team(app, &slug, &id, "owner", &by)? } else { Vec::new() };
             if remove {
                 r.push(crate::runtime::remove_worktree(app, &slug, &id));

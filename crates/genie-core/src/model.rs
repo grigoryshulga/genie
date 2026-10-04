@@ -136,6 +136,34 @@ str_enum!(
     }
 );
 
+str_enum!(
+    /// Whether a team works. A stopped team keeps its roster, mail and log.
+    TeamState("team state") {
+        Active => "active",
+        Stopped => "stopped",
+    }
+);
+
+str_enum!(
+    /// Whether a team member may run. Only an `active` member of an active team runs;
+    /// `paused` and `error` keep their mail, `stopped` (with its team) does not.
+    MemberState("member state") {
+        Active => "active",
+        Paused => "paused",     // a person holds it
+        Stopped => "stopped",   // its team was stopped on purpose
+        Error => "error",       // it gave up; someone restarts it
+    }
+);
+
+str_enum!(
+    /// What a member is doing right now (runtime bookkeeping, shown on the board).
+    Activity("activity") {
+        Idle => "idle",
+        Working => "working",
+        Error => "error",
+    }
+);
+
 pub const CLOSED: &[Status] = &[Status::Done, Status::Cancelled];
 
 /// Statuses that mean a team is actually working on a task (they start its epic).

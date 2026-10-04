@@ -2,8 +2,8 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{Harness, call};
-use genie_core::Role;
 use genie_core::server_db::ProjectRole;
+use genie_core::{Role, TeamState};
 use serde_json::json;
 
 #[tokio::test]
@@ -779,7 +779,7 @@ async fn a_budget_used_up_stops_the_teams_it_covers_and_keeps_new_ones_away() {
     assert_eq!(s, StatusCode::CREATED, "{ta}");
     let (team_a, member_a) = (ta["id"].as_str().unwrap().to_string(), ta["members"][0]["name"].as_str().unwrap().to_string());
     assert_eq!(report(team_a.clone(), member_a.clone(), 500).await, StatusCode::OK);
-    assert_eq!(state(&team_a).state, "active", "half the budget is not the budget");
+    assert_eq!(state(&team_a).state, TeamState::Active, "half the budget is not the budget");
 
     // The task's budget is used up: its team stops, and another one for it does not start.
     assert_eq!(report(team_a.clone(), member_a.clone(), 600).await, StatusCode::OK);
@@ -797,10 +797,10 @@ async fn a_budget_used_up_stops_the_teams_it_covers_and_keeps_new_ones_away() {
     assert_eq!(report(team_b.clone(), member_b.clone(), 990).await, StatusCode::OK);
     let (_, tc, _) = spawn(c.clone()).await;
     let (team_c, member_c) = (tc["id"].as_str().unwrap().to_string(), tc["members"][0]["name"].as_str().unwrap().to_string());
-    assert_eq!(state(&team_b).state, "active");
+    assert_eq!(state(&team_b).state, TeamState::Active);
     assert_eq!(report(team_c.clone(), member_c, 990).await, StatusCode::OK);
-    assert_eq!(state(&team_c).state, "stopped", "the epic is over its budget");
-    assert_eq!(state(&team_b).state, "stopped", "and so are the other teams of the epic");
+    assert_eq!(state(&team_c).state, TeamState::Stopped, "the epic is over its budget");
+    assert_eq!(state(&team_b).state, TeamState::Stopped, "and so are the other teams of the epic");
 }
 
 /// G-81: the day's budget covers every team of the project.
