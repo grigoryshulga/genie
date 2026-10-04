@@ -313,7 +313,7 @@ CREATE TABLE IF NOT EXISTS consoles (
 "#;
 
 /// Columns added after the first server release; applied to existing databases on open.
-const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
+pub const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     // Agent tokens name the configured role the agent acts in.
     ("api_tokens", "role_id", "ALTER TABLE api_tokens ADD COLUMN role_id TEXT"),
     // How a project's finished work gets integrated unless a task says otherwise.
@@ -329,6 +329,11 @@ const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
 ];
 
 pub const SESSION_DAYS: i64 = 30;
+
+/// The schema version this binary understands for `server.db`. It is recorded in `meta`
+/// like a tracker's, so an update, a rollback of the binary and a restore can all tell
+/// what the file holds.
+pub const SERVER_SCHEMA_VERSION: i64 = 2;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -559,28 +564,24 @@ pub struct ServerDb {
     pub(crate) secrets_key: std::path::PathBuf,
 }
 
+/// Open `server.db` with its schema, its column migrations and the current version
+/// recorded — without the preflight, which rehearses this exact path on a copy.
+pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
+    let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
+    db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
+    db.add_columns(SERVER_COLUMN_MIGRATIONS)?;
+    db.record_version(SERVER_SCHEMA_VERSION)?;
+    Ok(db)
+}
+
 impl ServerDb {
     pub fn open(path: &Path) -> Result<ServerDb> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
-        db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
-        db.conn().execute("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema', '1')", [])?;
-        for (table, column, ddl) in SERVER_COLUMN_MIGRATIONS {
-            let has = db
-                .conn()
-                .prepare(&format!("PRAGMA table_info({table})"))?
-                .query_map([], |r| r.get::<_, String>(1))?
-                .filter_map(|c| c.ok())
-                .any(|c| c == *column);
-            if !has
-                && let Err(e) = db.conn().execute_batch(ddl)
-                && !e.to_string().contains("duplicate column")
-            {
-                return Err(e.into());
-            }
-        }
+        // A pending migration is rehearsed on a copy before this file is touched.
+        crate::migrate::preflight(path, SERVER_SCHEMA_VERSION, SERVER_COLUMN_MIGRATIONS, &|p| open_migrated(p).map(|_| ()))?;
+        let db = open_migrated(path)?;
         Ok(ServerDb { db, secrets_key: crate::secrets::key_path(path) })
     }
 

@@ -137,6 +137,8 @@ impl App {
         }
         let project = self.with_server(|db| db.project(slug))?;
         let tracker = Arc::new(Mutex::new(Tracker::open(&project.tracker_dir)?));
+        // Opening a tracker may have migrated it: log it, like the server's start-up does.
+        crate::cli::report_migrations(&self.data);
         let mut map = self.projects.write().map_err(|_| AppError::Internal("registry poisoned".into()))?;
         Ok(map.entry(slug.to_string()).or_insert(tracker).clone())
     }
