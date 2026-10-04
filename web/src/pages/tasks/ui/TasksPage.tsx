@@ -158,7 +158,7 @@ export function TasksPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
       ) : tasksQ.isError ? (
         <div className="empty">Не удалось загрузить задачи: {tasksQ.error.message}</div>
       ) : layout === "board" ? (
-        <Board tasks={boardTasks} teams={teams} showDone={showDone} onShowDone={() => setShowDone(true)} onOpen={open} />
+        <Board tasks={boardTasks} teams={teams} selected={selected} showDone={showDone} onShowDone={() => setShowDone(true)} onOpen={open} />
       ) : (
         <div className="scroll">
           <TaskList tasks={ordered} statuses={VIEWS[view].statuses} teams={teams} people={people} focused={focused} selected={selected} onOpen={open} onFocus={setFocused} />

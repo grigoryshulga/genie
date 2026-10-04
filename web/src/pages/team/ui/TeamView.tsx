@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, Navigate, useParams } from "react-router";
 import { type LiveState, liveTeam, MAIL_TITLE, useAgentConfig } from "@/entities/agent-config";
 import { Avatar, displayName, ROLE_TITLE_RU } from "@/entities/member";
 import { RemoveMemberButton, RestartMemberButton, TeamActions } from "@/features/manage-team";
@@ -99,9 +99,14 @@ const EVENT_TEXT: Record<string, (e: Record<string, unknown>) => string> = {
   launch_failed: () => "не удалось запустить участников",
 };
 
-export function TeamView() {
+/**
+ * A task's team: its stages, scheme, mail and members. It lives on the task page's
+ * «Команда» tab; `/team/:teamId` only redirects there.
+ */
+export function TeamView({ teamId: embedded }: { teamId?: string }) {
   useTick(15_000);
-  const { teamId } = useParams();
+  const params = useParams();
+  const teamId = embedded ?? params.teamId;
   const q = useTeam(teamId);
   const cfg = useAgentConfig().data;
   const send = useSendMail();
@@ -126,8 +131,9 @@ export function TeamView() {
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [entries.length, teamId]);
 
-  if (q.isPending) return <main className="main"><div className="empty">Загрузка…</div></main>;
-  if (q.isError || !team) return <main className="main"><div className="empty">Команда не найдена</div></main>;
+  if (q.isPending) return <div className="empty">Загрузка…</div>;
+  if (q.isError || !team) return <div className="empty">Команда не найдена</div>;
+  if (!embedded) return <Navigate to={`/task/${encodeURIComponent(team.task)}/team`} replace />;
 
   const status = team.taskInfo?.status;
   const stage = status ? stageOf(status) : 0;
@@ -148,30 +154,10 @@ export function TeamView() {
   let lastDay = "";
 
   return (
-    <>
-      <main className="main">
-        <header className="topbar team-top">
-          <Link to="/active" className="icon-btn m-only" aria-label="Назад">
-            <Icon.back />
-          </Link>
-          <nav className="crumbs" aria-label="Путь">
-            <Link to="/active" className="d-only">
-              Задачи
-            </Link>
-            <span className="d-only">/</span>
-            <Link to={`/active?task=${encodeURIComponent(team.task)}`} className="mono">
-              {team.task}
-            </Link>
-            <span>/</span>
-            <span className="here">Команда</span>
-          </nav>
-          <span className="grow" />
-          <TeamActions team={team} />
-        </header>
-
+    <div className="task-team">
+      <section className="team-main" aria-label="Команда">
         <div className="team-title">
-          <h1>{team.taskInfo?.title ?? `Команда ${team.id}`}</h1>
-          <p className="sub">
+          <div className="sub">
             {spec &&
               (spec.title ? (
                 <span>
@@ -188,7 +174,11 @@ export function TeamView() {
             )}
             {active ? <span>работает {timeAgo(team.created) === "сейчас" ? "меньше минуты" : timeAgo(team.created)}</span> : <span>{STOPPED[team.stopReason ?? ""] ?? "остановлена"}</span>}
             {active && status === "needs_owner" && <span className="amber">нужно решение владельца</span>}
-          </p>
+            <i className="grow" />
+            <span className="team-acts">
+              <TeamActions team={team} />
+            </span>
+          </div>
           <StageBars stage={stage} big amber={status === "needs_owner"} />
           <div className="stage-labels d-only">
             {STAGES.map((s, i) => (
@@ -315,7 +305,7 @@ export function TeamView() {
             </button>
           </form>
         )}
-      </main>
+      </section>
 
       <aside className="team-aside" aria-label="Участники и журнал">
         <div className="hd">Участники</div>
@@ -346,7 +336,7 @@ export function TeamView() {
             ))}
         </ol>
       </aside>
-    </>
+    </div>
   );
 }
 
