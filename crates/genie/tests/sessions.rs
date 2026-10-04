@@ -57,6 +57,11 @@ fn decide(messages: &[(String, String)]) -> Value {
     if role == "tool" {
         return json!({ "content": "done" });
     }
+    // The server-restart note carries no instruction: the agent continues its own work, so the
+    // scripted model writes the follow-up file itself.
+    if text.contains("The genie server restarted after a crash") {
+        return json!({ "tool": "bash", "args": { "command": "echo second > a2" } });
+    }
     if let Some(i) = text.rfind("RUN: ") {
         let cmd = text[i + 5..].lines().next().unwrap_or_default().trim().to_string();
         return json!({ "tool": "bash", "args": { "command": cmd } });
@@ -679,4 +684,72 @@ async fn an_agent_whose_provider_refuses_stays_in_error_with_the_reason() {
 
     genie::runtime::restart_member(app, "shop", "SHOP-1", "bender").unwrap();
     assert_eq!(bender().state, "active", "a restart lets the agent work again");
+}
+
+/// G-132: the server is killed mid-step, so the session process goes with it. Its mail was
+/// acknowledged (it is in the conversation), nothing is pending — without a note the agent would
+/// sit there for ever. `runtime::recover` must tell it to continue, and the note must be what
+/// starts the new run: no letter from a person, no duplicate of the acknowledged one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        eprintln!("skipped: pi is not installed (npm ci)");
+        return;
+    };
+    let l = live(pi, |_| {}).await;
+    let (app, log) = (&l.app, &l.log);
+    install_dump(app, log);
+    let work = app.data.join("work");
+
+    // A first step runs and its letter is acknowledged while the turn runs.
+    mail(app, "anna", "human", "bender", "RUN: echo first > a1", None);
+    until("the step and its letter to settle", 60, || {
+        let idle = session_state(app, "bender").is_some_and(|s| s.0 == "idle");
+        let empty = app.with_tracker("shop", |t| t.bus().pending(Some("SHOP-1"), "bender")).unwrap().is_empty();
+        (idle && empty).then_some(())
+    })
+    .await;
+    assert!(work.join("a1").exists(), "the first step ran");
+
+    // The server dies: its process table goes, the session with it; the DB keeps the turn
+    // `running` and the letter `delivered`, and the member stays `working`.
+    let pid = session_state(app, "bender").map(|s| s.2);
+    let activity = || {
+        app.with_tracker("shop", |t| Ok(t.bus().get("SHOP-1")?.members.into_iter().find(|m| m.name == "bender").unwrap().activity)).unwrap()
+    };
+    genie::sessions::stop_all(app);
+    // The shutdown path writes the activity too: wait for it, so the state fabricated below is the
+    // last word — exactly what a kill -9 leaves.
+    until("the session and its shutdown to settle", 30, || {
+        (app.sessions.get(&member("bender")).is_none() && activity() == "idle").then_some(())
+    })
+    .await;
+    let turn = app
+        .with_server(|db| {
+            let t = db.start_turn("shop", "SHOP-1/bender", Some("SHOP-1"), Some("bender"), None)?;
+            if let Some(pid) = pid {
+                db.set_turn_pid(t, pid)?;
+            }
+            Ok::<_, genie_core::GenieError>(t)
+        })
+        .unwrap();
+    app.with_tracker("shop", |t| t.bus().set_activity("SHOP-1", "bender", "working", None)).unwrap();
+
+    // A restart: the turn is interrupted, the stray process is gone, and the agent is told to go on.
+    let crashed = Instant::now();
+    genie::runtime::recover(app).unwrap();
+    genie::sessions::recover(app);
+    assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "interrupted");
+    assert_eq!(activity(), "idle", "the board must not show a busy agent without a process");
+
+    // Nobody writes to the agent: the note alone starts the run, and the letter it had
+    // acknowledged is in the resumed conversation exactly once.
+    let req =
+        until("the restart note in a model request", 120, || request_with(log, "executor", "The genie server restarted after a crash"))
+            .await;
+    eprintln!("latency: after a server crash mid-turn, the agent was told to continue after {:?}", req.at - crashed);
+    assert_eq!(req.count("RUN: echo first"), 1, "the acknowledged letter is not injected twice");
+    until("the agent to continue its own work", 60, || work.join("a2").exists().then_some(())).await;
+    eprintln!("a server crash mid-turn: the agent resumed by itself and wrote a2");
 }

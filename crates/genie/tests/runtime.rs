@@ -7,7 +7,10 @@ use std::time::{Duration, Instant};
 
 use genie::config::Config;
 use genie::state::App;
+use genie_core::team::{NewMember, NewTeam, SendMail};
+use genie_core::work::NewJob;
 use genie_core::{Actor, CreateInput, Role, Status};
+use serde_json::json;
 
 struct Live {
     _dir: tempfile::TempDir,
@@ -148,6 +151,128 @@ async fn the_servers_orchestrator_waits_while_a_person_holds_the_console() {
     l.app.with_server(|db| db.release_console("shop", Some(&token))).unwrap();
     l.app.wake_runtime.notify_one();
     wait_for(&l.app, "the orchestrator refines the task", Duration::from_secs(60), |app| status(app) != Status::Inbox).await;
+}
+
+#[test]
+fn a_server_restart_tells_the_interrupted_agents_to_continue() {
+    // What a killed server leaves in live-session mode: a letter the agent already acknowledged
+    // (delivered) inside a turn that was still running, so `release_all_leases` has nothing to
+    // offer again and the scheduler sees no pending mail to start a session for.
+    let dir = tempfile::tempdir().unwrap();
+    let app = app_with_team("sessions", dir.path());
+    app.with_tracker("shop", |t| {
+        t.bus().send(SendMail {
+            team: "G-1",
+            from: "anna",
+            from_role: "human",
+            to: "bender",
+            text: "ACKED: write a1",
+            kind: "owner",
+            ..Default::default()
+        })?;
+        let d = t.bus().lease_delivery(Some("G-1"), "bender", &[], 10_000)?.expect("the letter is leased");
+        t.bus().ack_delivery(d.id, "bender")?;
+        t.bus().set_activity("G-1", "bender", "working", None)?;
+        Ok(())
+    })
+    .unwrap();
+    let turn = app.with_server(|db| db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)).unwrap();
+    let pending = || app.with_tracker("shop", |t| t.bus().pending(Some("G-1"), "bender")).unwrap();
+    let activity = || {
+        app.with_tracker("shop", |t| Ok(t.bus().get("G-1")?.members.into_iter().find(|m| m.name == "bender").unwrap().activity)).unwrap()
+    };
+
+    genie::runtime::recover(&app).unwrap();
+
+    assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "interrupted");
+    let notes: Vec<_> = pending().into_iter().filter(|m| m.kind == "system").collect();
+    assert_eq!(notes.len(), 1, "one note per stranded agent: {:?}", pending());
+    assert!(notes[0].text.contains("server restarted"), "{}", notes[0].text);
+    assert!(!pending().iter().any(|m| m.text.starts_with("ACKED")), "the acknowledged letter is not offered twice");
+    let delivered: i64 = app
+        .with_tracker("shop", |t| {
+            Ok(t.conn().query_row("SELECT COUNT(*) FROM mail WHERE text LIKE 'ACKED%' AND delivered_at IS NOT NULL", [], |r| r.get(0))?)
+        })
+        .unwrap();
+    assert_eq!(delivered, 1, "the letter the agent saw is still delivered, not lost");
+    assert_eq!(activity(), "idle", "the board does not show a busy agent without a process");
+
+    // A server restarted in a loop adds no second note while the first one is unread.
+    app.with_server(|db| db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)).unwrap();
+    genie::runtime::recover(&app).unwrap();
+    assert_eq!(pending().iter().filter(|m| m.kind == "system").count(), 1, "an unread note is enough: {:?}", pending());
+
+    // An interrupted job is skipped: `requeue_running_jobs` re-runs it.
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                role: "executor".into(),
+                goal: "audit the export".into(),
+                inputs: json!({}),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    app.with_server(|db| db.start_job(job.id)).unwrap();
+    app.with_server(|db| db.start_turn("shop", &format!("job/{}", job.id), None, None, Some(job.id))).unwrap();
+    genie::runtime::recover(&app).unwrap();
+    let to_orchestrator = app.with_tracker("shop", |t| t.bus().pending(None, "orchestrator")).unwrap();
+    assert!(to_orchestrator.iter().all(|m| m.kind != "system"), "a job turn gets no note: {to_orchestrator:?}");
+
+    // `turns` mode: the interrupted turn released its lease, so its mail runs again — no note.
+    let dir = tempfile::tempdir().unwrap();
+    let app = app_with_team("turns", dir.path());
+    let turn = app.with_server(|db| db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)).unwrap();
+    app.with_tracker("shop", |t| {
+        t.bus().send(SendMail {
+            team: "G-1",
+            from: "anna",
+            from_role: "human",
+            to: "bender",
+            text: "LEASED: write a1",
+            kind: "owner",
+            ..Default::default()
+        })?;
+        t.bus().lease(Some("G-1"), "bender", turn)?;
+        Ok(())
+    })
+    .unwrap();
+    genie::runtime::recover(&app).unwrap();
+    let pending = app.with_tracker("shop", |t| t.bus().pending(Some("G-1"), "bender")).unwrap();
+    assert_eq!(pending.len(), 1, "the leased letter is offered again: {pending:?}");
+    assert_eq!(pending[0].text, "LEASED: write a1");
+    assert!(pending.iter().all(|m| m.kind != "system"), "turns mode needs no note");
+}
+
+/// An app in `mode` with project `shop`, task `G-1` and a one-member team (`bender`); the
+/// runtime is disabled so no scheduler runs while a test drives recovery by hand.
+fn app_with_team(mode: &str, dir: &std::path::Path) -> Arc<App> {
+    let mut cfg = Config::load(dir).unwrap();
+    // Test files live in the data directory, which a sandboxed agent does not see.
+    cfg.runtime.sandbox.mode = "off".into();
+    cfg.runtime.mode = mode.into();
+    cfg.runtime.enabled = false;
+    let app = App::open(dir, cfg, PathBuf::from("/nonexistent")).unwrap();
+    app.create_project("shop", "Shop", None, None, None).unwrap();
+    app.with_tracker("shop", |t| {
+        t.create(&Actor::new("anna", Role::Human), CreateInput { title: "CSV export".into(), ..Default::default() })?;
+        t.bus().create(
+            "anna",
+            "human",
+            NewTeam {
+                id: "G-1".into(),
+                task: "G-1".into(),
+                cwd: ".".into(),
+                members: vec![NewMember { name: "bender".into(), role: "executor".into(), ..Default::default() }],
+                ..Default::default()
+            },
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    app
 }
 
 #[test]

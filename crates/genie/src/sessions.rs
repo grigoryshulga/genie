@@ -15,7 +15,10 @@
 //!   with the same conversation; a failed run is retried with backoff and after
 //!   `maxAttempts` the agent is put in `error` and the orchestrator is told. A
 //!   step without any sign of life for `turnTimeoutSecs` is aborted; an idle
-//!   session is stopped after `idleStopSecs` and resumed on its next mail.
+//!   session is stopped after `idleStopSecs` and resumed on its next mail. After a
+//!   server restart the interrupted turns' agents are told to continue
+//!   (`resume_after_restart`): their mail was acknowledged in the lost step, so
+//!   nothing is pending and no new run would start by itself.
 //! - **Runs** (agent start → settled) are recorded as turns, so history and logs
 //!   look the same as for turn-based harnesses.
 
@@ -29,6 +32,7 @@ use std::time::{Duration, Instant};
 use genie_core::Role;
 use genie_core::db::now;
 use genie_core::team::ORCHESTRATOR;
+use genie_core::work::Turn;
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -336,6 +340,60 @@ pub fn recover(app: &App) {
             let _ = std::fs::remove_file(pid_file);
         }
     }
+}
+
+/// The note a restarted server leaves its stranded agents. Same wording family as the note the
+/// agent-crash path writes (`on_exit`): a letter is what starts a run.
+const RESTART_NOTE: &str = "[genie] The genie server restarted after a crash. Continue where you left off.";
+
+/// After a restart, resume the agents whose turns were interrupted by a server crash.
+///
+/// The extension acknowledges a delivery at the request where the model is about to see it, so a
+/// `kill -9` of the server leaves the mail `delivered` while its turn is still running
+/// (`release_all_leases` then finds nothing to offer again). The scheduler starts a session only
+/// for a mailbox with *pending* mail, and mail the session already holds is settled rather than
+/// injected — so nothing would ever start the agent again and the board would show a `working`
+/// member without a process. One letter fixes both: the same note the agent-crash path writes.
+///
+/// No-op in `turns` mode: there the interrupted turn released its lease and its mail runs again.
+/// Jobs are skipped — `requeue_running_jobs` already re-runs them.
+///
+/// The already acknowledged mail is *not* offered again: it is in the resumed conversation, and
+/// re-delivering it would duplicate it (requirement 2 of G-132).
+pub fn resume_after_restart(app: &App, turns: &[Turn]) {
+    if !app.cfg.runtime.live_sessions() {
+        return;
+    }
+    let mut told = 0;
+    for t in turns.iter().filter(|t| t.job.is_none()) {
+        let key = match (&t.member, &t.team) {
+            (Some(member), Some(team)) => AgentKey::Member { project: t.project.clone(), team: team.clone(), member: member.clone() },
+            _ => AgentKey::Orchestrator { project: t.project.clone() },
+        };
+        // The board must not report an agent without a process as busy. `error` is kept: a member
+        // that gave up stays given up until someone restarts it.
+        if let AgentKey::Member { project, team, member } = &key {
+            let _ = app.with_tracker(project, |t| t.bus().set_idle_keeping_error(team, member));
+        }
+        // An earlier crash note nobody read is enough: a server restarted in a loop adds none.
+        if note_pending(app, &key) {
+            continue;
+        }
+        match note_to_self(app, &key, RESTART_NOTE) {
+            Ok(()) => told += 1,
+            Err(e) => eprintln!("genie runtime: {}: cannot tell {} to continue: {e}", key.project(), key.label()),
+        }
+    }
+    if told > 0 {
+        println!("genie runtime: {told} agent(s) told to continue after the restart");
+    }
+}
+
+/// Does the mailbox already hold an unread letter from a system (an earlier restart note)?
+fn note_pending(app: &App, key: &AgentKey) -> bool {
+    let (team, recipient) = mailbox(key);
+    app.with_tracker(key.project(), |t| Ok(t.bus().pending(team.as_deref(), &recipient)?.iter().any(|m| m.kind == "system")))
+        .unwrap_or(false)
 }
 
 /// Mail is waiting for `key`: wake its session, or start one.
@@ -799,7 +857,7 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
                 );
             } else if crashed_at_work {
                 // Leave a note in its own mailbox: it restarts with the same conversation and resumes.
-                note_to_self(app, &k, &format!("[genie] Your session restarted after a crash (exit {code:?}). Continue where you left off."));
+                let _ = note_to_self(app, &k, &format!("[genie] Your session restarted after a crash (exit {code:?}). Continue where you left off."));
             } else {
                 set_activity(app, &k, "idle", None);
             }
@@ -830,8 +888,8 @@ fn tell_orchestrator(app: &App, k: &AgentKey, task: Option<&str>, text: &str) {
     let _ = app.with_tracker(k.project(), |t| t.bus().notify_orchestrator("genie", "system", "system", text, task));
 }
 
-fn note_to_self(app: &App, k: &AgentKey, text: &str) {
-    let _ = app.with_tracker(k.project(), |t| match k {
+fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
+    app.with_tracker(k.project(), |t| match k {
         AgentKey::Member { team, member, .. } => t
             .bus()
             .send(genie_core::team::SendMail {
@@ -846,7 +904,7 @@ fn note_to_self(app: &App, k: &AgentKey, text: &str) {
             })
             .map(|_| ()),
         _ => t.bus().notify_orchestrator("genie", "system", "system", text, None),
-    });
+    })
 }
 
 /// Tell the orchestrator (once per streak) that an agent looks stuck.
