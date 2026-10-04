@@ -376,7 +376,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     <span className="crumbs">
       {page && (
         <>
-          <Link to="/active" className="d-only">
+          <Link to="/tasks" className="d-only">
             Задачи
           </Link>
           <span className="d-only"> / </span>
@@ -433,7 +433,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   return (
     <main className="main task-page" aria-label={`Задача ${t.id}`}>
       <header className="topbar">
-        <Link to="/active" className="icon-btn m-only" aria-label="Назад">
+        <Link to="/tasks" className="icon-btn m-only" aria-label="Назад">
           <Icon.back />
         </Link>
         {crumbs}

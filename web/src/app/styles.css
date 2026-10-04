@@ -966,6 +966,55 @@ body:has(.auth-page) { overflow: auto; }
 }
 
 
+/* ------------------------------------------------------------ task list filters and board filters */
+.search.wide { width: 360px; }
+.presets { flex: none; display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 28px 0 22px; overflow-x: auto; }
+.presets .fsel { margin-left: 12px; }
+.presets button { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; }
+.presets button:hover { color: var(--text); }
+.presets button.on { background: var(--bg-active); color: var(--text); }
+.presets button .n { color: var(--off); }
+.presets button.on .n { color: var(--muted); }
+.presets button.amber, .presets button.amber .n { color: var(--amber); }
+.filters { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; padding: 8px 28px; box-sizing: border-box; border-bottom: 1px solid var(--line); }
+.fmenu { position: relative; flex: none; }
+.fbtn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: none; color: var(--text); font-size: 12px; white-space: nowrap; }
+.fbtn .k { color: var(--muted); }
+.fbtn svg { color: var(--muted); flex: none; }
+.fbtn:hover, .fbtn.open { background: var(--bg-active); }
+.fbtn.on { background: #1b1d33; border-color: #3a3f7a; color: #c3c8fa; }
+.fbtn.on svg { color: #c3c8fa; }
+.fbtn.select { position: relative; }
+.fbtn.select select { field-sizing: content; appearance: none; border: 0; background: none; color: inherit; font: inherit; padding: 0 2px; max-width: 220px; outline: 0; cursor: pointer; }
+.fbtn.select select option { background: var(--bg-card); color: var(--text); }
+.fpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 240px; max-width: 340px; max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 6px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-card); box-shadow: var(--shadow); }
+.fpop .fhead { padding: 6px 8px 4px; font-size: 11px; color: var(--muted); }
+.fpop .seg.full { margin: 2px 2px 6px; }
+.fpop .seg.full button { flex: 1; justify-content: center; }
+.fopt { display: flex; align-items: center; gap: 9px; min-height: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.fopt:hover { background: var(--bg-hover); }
+.fopt input { margin: 0; accent-color: var(--accent); }
+.fopt .grow { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fopt .hint { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.fsel { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.fsel select { field-sizing: content; height: 28px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--bg-panel); color: var(--text); font-size: 12px; }
+.btn.sm { height: 28px; padding: 0 8px; font-size: 12px; }
+.row .tags .ac { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.row .tags .ac.full { color: var(--green); }
+.m-nav a { flex: none; display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--line); color: var(--text-2); font-size: 13px; text-decoration: none; }
+.m-nav a.on { background: var(--bg-active); border-color: var(--bg-active); color: var(--text); }
+.m-nav a.amber { background: var(--amber-bg); border-color: var(--amber-line); color: var(--amber); }
+.app.with-detail .main .search.wide { width: 220px; }
+.app.with-detail .main .fsel { display: none; }
+@media (max-width: 900px) {
+  .search.wide { width: 100%; }
+  .presets { padding: 0 12px; }
+  .m-nav { padding-top: 12px; }
+  .filters { flex-wrap: nowrap; overflow-x: auto; padding: 8px 16px; }
+  .fpop { position: fixed; top: auto; left: 0; right: 0; bottom: 0; max-width: none; max-height: 70vh; border-radius: 16px 16px 0 0; }
+  .fbtn { min-height: 36px; }
+}
+
 /* ------------------------------------------------------------ task: preview and page */
 /* The preview beside a list or board: what a glance needs, then a way to the page. */
 .detail-head { display: flex; flex-direction: column; gap: 16px; }

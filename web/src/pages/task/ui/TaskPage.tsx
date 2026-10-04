@@ -20,7 +20,7 @@ export function TaskPage() {
       tab={current}
       team={team}
       teamPane={team && current === "team" ? <TeamView teamId={team.id} /> : undefined}
-      onClose={() => navigate("/active")}
+      onClose={() => navigate("/tasks")}
     />
   );
 }
