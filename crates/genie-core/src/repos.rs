@@ -75,6 +75,10 @@ pub struct TaskRepo {
     pub ci_sha: Option<String>,
     /// When waiting for this commit's checks began; empty once they settled.
     pub ci_since: String,
+    /// The commit whose failed checks were last rerun (empty: none was).
+    pub ci_rerun_sha: String,
+    /// How many reruns of failed checks this delivery has started.
+    pub ci_reruns: i64,
     pub head_sha: Option<String>,
     /// The host's timestamp of the newest comment already passed on to the task.
     pub seen_at: String,
@@ -97,6 +101,8 @@ impl TaskRepo {
             ci_ref: r.get("ci_ref")?,
             ci_sha: r.get("ci_sha")?,
             ci_since: r.get("ci_since")?,
+            ci_rerun_sha: r.get("ci_rerun_sha")?,
+            ci_reruns: r.get("ci_reruns")?,
             head_sha: r.get("head_sha")?,
             seen_at: r.get("seen_at")?,
             updated: r.get("updated")?,
@@ -147,6 +153,10 @@ pub struct Delivery {
     /// ref, commit, start time and state instead of keeping what is there (a new push, a requeue,
     /// nothing left to watch). `None` alone cannot clear a column.
     pub reset_ci: bool,
+    /// The commit whose checks were rerun, and the rerun count of this delivery. History: unlike
+    /// `ci_state`/`ci_since` they survive a `reset_ci`.
+    pub ci_rerun_sha: Option<String>,
+    pub ci_reruns: Option<i64>,
     pub head_sha: Option<String>,
     pub seen_at: Option<String>,
 }
@@ -378,6 +388,8 @@ impl ServerDb {
                ci_ref = CASE WHEN ?9 THEN COALESCE(?11, '') ELSE COALESCE(?11, ci_ref) END,
                ci_sha = CASE WHEN ?9 THEN ?12 ELSE COALESCE(?12, ci_sha) END,
                ci_since = CASE WHEN ?9 THEN COALESCE(?13, '') ELSE COALESCE(?13, ci_since) END,
+               ci_rerun_sha = COALESCE(?17, ci_rerun_sha),
+               ci_reruns = COALESCE(?18, ci_reruns),
                head_sha = COALESCE(?14, head_sha), seen_at = COALESCE(?15, seen_at), updated = ?16
              WHERE project = ?1 AND task = ?2 AND repo = ?3",
             params![
@@ -396,7 +408,9 @@ impl ServerDb {
                 d.ci_since,
                 d.head_sha,
                 d.seen_at,
-                now()
+                now(),
+                d.ci_rerun_sha,
+                d.ci_reruns
             ],
         )?;
         Ok(self.task_repo(project, task, repo)?.expect("row exists"))
@@ -554,5 +568,37 @@ mod tests {
         let rows = db.watched_deliveries().unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].ci_ref, "main");
+    }
+
+    #[test]
+    fn a_delivery_remembers_the_rerun_and_a_re_arm_does_not_erase_it() {
+        let (_d, db) = db();
+        db.add_repo("shop", new("api", "acme/api", "api")).unwrap();
+        db.set_task_repos("shop", "S-1", &[("api".into(), "write".into())]).unwrap();
+        let fresh = db.task_repo("shop", "S-1", "api").unwrap().unwrap();
+        assert_eq!((fresh.ci_rerun_sha.as_str(), fresh.ci_reruns), ("", 0), "a new row has no rerun history");
+
+        let row = db
+            .update_delivery(
+                "shop",
+                "S-1",
+                "api",
+                Delivery { ci_rerun_sha: Some("aaa".into()), ci_reruns: Some(1), ci_state: Some("pending".into()), ..Default::default() },
+            )
+            .unwrap();
+        assert_eq!((row.ci_rerun_sha.as_str(), row.ci_reruns), ("aaa", 1));
+
+        // A new push re-arms the watch with `reset_ci`; the rerun history has to survive it, or a
+        // later push would hand the delivery its rerun allowance back.
+        let rearmed = db
+            .update_delivery(
+                "shop",
+                "S-1",
+                "api",
+                Delivery { ci_sha: Some("bbb".into()), reset_ci: true, ci_state: Some("none".into()), ..Default::default() },
+            )
+            .unwrap();
+        assert_eq!(rearmed.ci_state.as_deref(), Some("none"));
+        assert_eq!((rearmed.ci_rerun_sha.as_str(), rearmed.ci_reruns), ("aaa", 1), "reset_ci leaves the counters alone");
     }
 }

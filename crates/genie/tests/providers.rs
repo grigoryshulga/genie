@@ -77,6 +77,17 @@ async fn scenario(kind: &'static str) {
     fake.lock().ci = "passed".into();
     assert_eq!(api.ci("acme/api", None).await.unwrap(), Ci::None, "{kind}");
 
+    // A rerun restarts the failed run of the commit: a GitHub Actions run, a GitLab pipeline. It
+    // flips the checks back to running, and a commit with nothing failed has nothing to rerun.
+    fake.lock().ci = "failed".into();
+    assert_eq!(api.rerun_failed("acme/api", got.head_sha.as_deref()).await.unwrap(), 1, "{kind}");
+    assert_eq!(fake.lock().reruns, 1, "{kind}");
+    assert_eq!(api.ci("acme/api", got.head_sha.as_deref()).await.unwrap(), Ci::Pending, "{kind}: the restarted run is running");
+    fake.lock().ci = "none".into();
+    assert!(matches!(api.rerun_failed("acme/api", got.head_sha.as_deref()).await, Err(ApiError::Unsupported(_))), "{kind}");
+    assert_eq!(fake.lock().reruns, 1, "{kind}: nothing failed, nothing restarted");
+    assert!(matches!(api.rerun_failed("acme/api", None).await, Err(ApiError::Unsupported(_))), "{kind}");
+
     // A merge the host refuses says why; then it goes through, and the merge commit is named.
     fake.lock().refuse_merge = Some("Pull Request is not mergeable".into());
     assert!(

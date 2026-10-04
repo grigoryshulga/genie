@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use super::{Cx, Entry, Listed, Need, Op, Out, enc, opt_json_text, register};
 
 pub fn register(all: &mut Vec<Entry>) {
-    register!(all, Hosts, List, Use, Add, Set, Remove, Sync, Check, PrOpen, PrShow, PrComments, PrComment, PrMerge);
+    register!(all, Hosts, List, Use, Add, Set, Remove, Sync, Check, PrOpen, PrShow, PrComments, PrComment, PrMerge, PrRerun);
 }
 
 fn s<'a>(v: &'a Value, k: &str) -> &'a str {
@@ -542,6 +542,42 @@ impl Op for PrMerge {
     }
 }
 
+/// Restart the failed checks of the task's request or branch on the host, within the repository's
+/// rerun limits (one per commit, `runtime.ciRerunsPerRequest`, `runtime.ciRerunsPerTask`).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct PrRerun {
+    #[arg(long)]
+    pub repo: Option<String>,
+    #[arg(long)]
+    pub task: Option<String>,
+}
+
+impl Op for PrRerun {
+    const GROUP: &'static str = "pr";
+    const NAME: &'static str = "rerun";
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::StatusSubmit, Capability::StatusRework];
+    const LISTED: Listed = Listed::Agents;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let task = cx.task(self.task)?;
+        let repo = pick(cx, &task, self.repo).await?;
+        let v = cx.call("POST", &format!("/tasks/{}/repos/{}/cr/rerun", enc(&task), enc(&repo)), Some(json!({}))).await?;
+        let sha = s(&v, "sha");
+        let short = if sha.chars().count() > 8 { format!("{}…", sha.chars().take(8).collect::<String>()) } else { sha.to_string() };
+        let text = format!(
+            "restarted {} failed run(s) of {} in {} ({short}); reruns: request {}/{}, task {}/{}",
+            v["runs"],
+            s(&v, "ref"),
+            s(&v, "repo"),
+            v["used"]["request"],
+            v["limits"]["request"],
+            v["used"]["task"],
+            v["limits"]["task"],
+        );
+        Ok(Out::new(text, v))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{AgentKind, command_table};
@@ -557,6 +593,7 @@ mod tests {
         let executor = table(AgentKind::Member, Role::Executor);
         assert!(executor.contains("| `genie_pr` open | `genie pr open [--repo …] [--title …]"), "{executor}");
         assert!(executor.contains("`genie_pr` merge") && executor.contains("`genie_repos` list"), "{executor}");
+        assert!(executor.contains("`genie_pr` rerun"), "the executor may rerun failed checks: {executor}");
         assert!(
             !executor.contains("genie repos add") && !executor.contains("genie repos hosts"),
             "administration is for people: {executor}"
@@ -570,6 +607,7 @@ mod tests {
             !reviewer.contains("genie pr open") && !reviewer.contains("genie pr merge"),
             "a reviewer has nothing to deliver: {reviewer}"
         );
+        assert!(!reviewer.contains("genie pr rerun"), "a rerun belongs to the executor: {reviewer}");
 
         let orchestrator = command_table(AgentKind::Orchestrator, &|_| true);
         assert!(orchestrator.contains("`genie repos use <REPOS>...") || orchestrator.contains("genie repos use"), "{orchestrator}");

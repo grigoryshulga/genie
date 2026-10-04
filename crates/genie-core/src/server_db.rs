@@ -302,6 +302,10 @@ CREATE TABLE IF NOT EXISTS task_repos (
   ci_ref TEXT NOT NULL DEFAULT '',
   ci_sha TEXT,
   ci_since TEXT NOT NULL DEFAULT '',
+  -- The commit whose failed checks were last rerun, and how many reruns were started for this
+  -- row. They are history: a re-arm (`reset_ci`) must not clear them.
+  ci_rerun_sha TEXT NOT NULL DEFAULT '',
+  ci_reruns INTEGER NOT NULL DEFAULT 0,
   head_sha TEXT,
   -- The host's timestamp of the newest comment already passed on to the task.
   seen_at TEXT NOT NULL DEFAULT '',
@@ -336,6 +340,9 @@ const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     ("task_repos", "ci_ref", "ALTER TABLE task_repos ADD COLUMN ci_ref TEXT NOT NULL DEFAULT ''"),
     ("task_repos", "ci_sha", "ALTER TABLE task_repos ADD COLUMN ci_sha TEXT"),
     ("task_repos", "ci_since", "ALTER TABLE task_repos ADD COLUMN ci_since TEXT NOT NULL DEFAULT ''"),
+    // The commit whose checks were last rerun and how many reruns this delivery has used.
+    ("task_repos", "ci_rerun_sha", "ALTER TABLE task_repos ADD COLUMN ci_rerun_sha TEXT NOT NULL DEFAULT ''"),
+    ("task_repos", "ci_reruns", "ALTER TABLE task_repos ADD COLUMN ci_reruns INTEGER NOT NULL DEFAULT 0"),
 ];
 
 pub const SESSION_DAYS: i64 = 30;

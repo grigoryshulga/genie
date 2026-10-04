@@ -36,6 +36,13 @@ pub struct Fake {
     pub changes_requested: bool,
     /// `none`, `pending`, `passed` or `failed`.
     pub ci: String,
+    /// How many rerun calls the host accepted (a rerun flips `ci` back to `pending`).
+    pub reruns: u32,
+    /// The next rerun is refused with this message (403: a token without `actions:write`).
+    pub refuse_rerun: Option<String>,
+    /// Whether GitHub reports Actions workflow runs (`false`: the failure is a commit status or
+    /// another app's check run, which has no rerun API).
+    pub action_runs: bool,
     pub mergeable: bool,
     /// The next merge is refused with this message.
     pub refuse_merge: Option<String>,
@@ -74,6 +81,9 @@ pub async fn spawn(kind: &'static str, token: &str) -> FakeHost {
         approvals: 0,
         changes_requested: false,
         ci: "none".into(),
+        reruns: 0,
+        refuse_rerun: None,
+        action_runs: true,
         mergeable: true,
         refuse_merge: None,
         rate_limited: 0,
@@ -252,7 +262,31 @@ fn github(s: Shared) -> Router {
                 Vec::new()
             };
             axum::Json(json!({ "check_runs": runs })).into_response()
-        }));
+        }))
+        .route("/repos/{o}/{r}/actions/runs", get(|State(s): State<Shared>, h: HeaderMap, Query(q): Q| async move {
+            check!(s, h, "runs", true);
+            let f = s.lock().unwrap();
+            let head = q.get("head_sha").cloned();
+            let runs = if f.ci == "failed" && f.action_runs {
+                vec![json!({ "id": 9, "status": "completed", "conclusion": "failure", "head_sha": head })]
+            } else {
+                Vec::new()
+            };
+            axum::Json(json!({ "total_count": runs.len(), "workflow_runs": runs })).into_response()
+        }))
+        .route(
+            "/repos/{o}/{r}/actions/runs/{id}/rerun-failed-jobs",
+            post(|State(s): State<Shared>, h: HeaderMap, Path((_, _, _)): Path<(String, String, i64)>| async move {
+                check!(s, h, "rerun", false);
+                let mut f = s.lock().unwrap();
+                if let Some(m) = f.refuse_rerun.take() {
+                    return (StatusCode::FORBIDDEN, axum::Json(json!({ "message": m }))).into_response();
+                }
+                f.reruns += 1;
+                f.ci = "pending".into();
+                (StatusCode::CREATED, axum::Json(json!({}))).into_response()
+            }),
+        );
     Router::new().nest("/api/v3", api).with_state(s)
 }
 
@@ -373,6 +407,19 @@ fn gitlab(s: Shared) -> Router {
         .route("/projects/{pid}/jobs/{id}/trace", get(|State(s): State<Shared>, h: HeaderMap| async move {
             check!(s, h, "trace", true);
             "\u{1b}[31mrunning cargo test\u{1b}[0m\r\ntest export::csv ... FAILED\nassertion failed: left == right".into_response()
-        }));
+        }))
+        .route(
+            "/projects/{pid}/pipelines/{id}/retry",
+            post(|State(s): State<Shared>, h: HeaderMap, Path((_, _)): Path<(String, i64)>| async move {
+                check!(s, h, "rerun", false);
+                let mut f = s.lock().unwrap();
+                if let Some(m) = f.refuse_rerun.take() {
+                    return (StatusCode::FORBIDDEN, axum::Json(json!({ "message": m }))).into_response();
+                }
+                f.reruns += 1;
+                f.ci = "pending".into();
+                (StatusCode::CREATED, axum::Json(json!({ "id": 8, "status": "pending" }))).into_response()
+            }),
+        );
     Router::new().nest("/api/v4", api).with_state(s)
 }

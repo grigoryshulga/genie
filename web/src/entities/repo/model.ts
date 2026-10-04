@@ -207,6 +207,10 @@ export interface TaskRepo {
   ciState?: "none" | "pending" | "passed" | "failed" | "stalled" | null;
   ciRef?: string | null;
   ciSha?: string | null;
+  /** The commit whose failed checks were last rerun (`genie pr rerun`); empty when none was. */
+  ciRerunSha?: string | null;
+  /** How many reruns of failed checks this delivery has started. */
+  ciReruns?: number;
   headSha?: string | null;
   updated: string;
 }

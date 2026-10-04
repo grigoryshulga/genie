@@ -44,6 +44,8 @@ pub const CI_FAILED: &str = "ci.failed";
 pub const CI_PASSED: &str = "ci.passed";
 /// The checks of a watched ref stayed `pending` longer than `runtime.ciPendingSecs`.
 pub const CI_STALLED: &str = "ci.stalled";
+/// The failed checks of a watched ref were rerun on the host (`genie pr rerun`).
+pub const CI_RERUN: &str = "ci.rerun";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
