@@ -971,7 +971,7 @@ impl ServerDb {
     }
 
     pub fn projects(&self) -> Result<Vec<Project>> {
-        let mut stmt = self.conn().prepare("SELECT * FROM projects ORDER BY created, slug")?;
+        let mut stmt = self.conn().prepare_cached("SELECT * FROM projects ORDER BY created, slug")?;
         Ok(stmt.query_map([], Project::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 

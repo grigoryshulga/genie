@@ -492,7 +492,8 @@ impl ServerDb {
 
     /// Runs the engine should advance.
     pub fn active_runs(&self) -> Result<Vec<Run>> {
-        let mut stmt = self.conn().prepare("SELECT * FROM automation_runs WHERE status IN ('queued', 'running', 'waiting') ORDER BY id")?;
+        let mut stmt =
+            self.conn().prepare_cached("SELECT * FROM automation_runs WHERE status IN ('queued', 'running', 'waiting') ORDER BY id")?;
         Ok(stmt.query_map([], Run::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 

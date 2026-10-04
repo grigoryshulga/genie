@@ -108,12 +108,16 @@ pub fn latest_of(conn: &Connection, kind: &str, limit: usize) -> Result<Vec<Even
 
 /// Id of the newest event, 0 when the journal is empty.
 pub fn last_id(conn: &Connection) -> Result<i64> {
-    Ok(conn.query_row("SELECT COALESCE(MAX(id), 0) FROM events", [], |r| r.get(0))?)
+    Ok(conn.prepare_cached("SELECT COALESCE(MAX(id), 0) FROM events")?.query_row([], |r| r.get(0))?)
 }
 
 /// Last acknowledged event id of a subscriber, 0 for a new subscriber.
 pub fn cursor(conn: &Connection, subscriber: &str) -> Result<i64> {
-    Ok(conn.query_row("SELECT last_id FROM event_cursors WHERE subscriber = ?1", [subscriber], |r| r.get(0)).optional()?.unwrap_or(0))
+    Ok(conn
+        .prepare_cached("SELECT last_id FROM event_cursors WHERE subscriber = ?1")?
+        .query_row([subscriber], |r| r.get(0))
+        .optional()?
+        .unwrap_or(0))
 }
 
 /// Move a subscriber's cursor forward. Never moves it back, so a late or
