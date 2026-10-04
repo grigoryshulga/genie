@@ -8,3 +8,4 @@ migration/
 secrets/
 .env
 .claude/worktrees/
+docker-compose.local.yml
