@@ -1,0 +1,10 @@
+{
+  "name": "shelf-training",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A tiny zero-dependency library the genie benchmark reference tasks are run against.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

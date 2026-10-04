@@ -5,11 +5,12 @@
     "moduleResolution": "nodenext",
     "strict": true,
     "noEmit": true,
+    "allowJs": true,
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": false,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["test/**/*.ts", "crates/genie/pi/**/*.ts"]
+  "include": ["test/**/*.ts", "crates/genie/pi/**/*.ts", "bench/**/*.mjs"]
 }

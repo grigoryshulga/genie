@@ -1,0 +1,230 @@
+{
+  "runId": "example",
+  "project": "bench-example",
+  "repo": "/srv/genie/bench/runs/example/training",
+  "baselineSha": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "fixtureHash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "startedAt": "2026-10-04T09:00:00.000Z",
+  "collectedAt": "2026-10-05T13:00:00.000Z",
+  "note": "a synthetic before round: not a real run, it only shows the shape of a result file",
+  "hashes": {
+    "genie": "genie 0.3.0",
+    "files": {
+      "agents/analyst.md": "aaaa000000000000000000000000000000000000000000000000000000000000",
+      "agents/executor.md": "bbbb000000000000000000000000000000000000000000000000000000000000",
+      "agents/reviewer.md": "cccc000000000000000000000000000000000000000000000000000000000000",
+      "config/teams/standard.json": "dddd000000000000000000000000000000000000000000000000000000000000"
+    },
+    "roleModels": {
+      "analyst": {
+        "model": "litellm/example",
+        "thinking": "high"
+      }
+    }
+  },
+  "run": {
+    "started": 8,
+    "done": 8,
+    "closed": 8,
+    "open": 0,
+    "doneRate": 1,
+    "returns": 4,
+    "returnsPerTask": 0.5,
+    "ownerQuestions": 2,
+    "costUsd": 6.65,
+    "costPerDoneTask": 0.8313,
+    "runs": 96,
+    "runsFailed": 4,
+    "proposals": 1,
+    "proposalsApproved": 0,
+    "answerHoursMedian": 2.5
+  },
+  "tasks": [
+    {
+      "id": "B-1",
+      "ref": "R1",
+      "title": "Итог игнорирует скидку",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 0,
+      "ownerQuestions": 0,
+      "answerMinutes": null,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 0.42,
+      "tokens": 160000,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "id": "B-2",
+      "ref": "R2",
+      "title": "Фильтр позиций по тегу",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 1,
+      "ownerQuestions": 0,
+      "answerMinutes": null,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 0.68,
+      "tokens": 262500,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "id": "B-3",
+      "ref": "R3",
+      "title": "Ускорить экспорт",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 0,
+      "ownerQuestions": 1,
+      "answerMinutes": 840,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 0.74,
+      "tokens": 290000,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "id": "B-4",
+      "ref": "R4",
+      "title": "Логи по правилам проекта",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 0,
+      "ownerQuestions": 0,
+      "answerMinutes": null,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 0.51,
+      "tokens": 195000,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "id": "B-5",
+      "ref": "R5",
+      "title": "Количество можно не указывать",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 2,
+      "ownerQuestions": 0,
+      "answerMinutes": null,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 0.93,
+      "tokens": 358750,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "id": "B-6",
+      "ref": "R6",
+      "title": "Формат данных уведомлений",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 1,
+      "ownerQuestions": 1,
+      "answerMinutes": 840,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 0.81,
+      "tokens": 313750,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "id": "B-7",
+      "ref": "R7",
+      "title": "Отчёт для человека и документация",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 0,
+      "ownerQuestions": 0,
+      "answerMinutes": null,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 1.12,
+      "tokens": 430000,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": true,
+        "problems": []
+      }
+    },
+    {
+      "id": "B-8",
+      "ref": "R8",
+      "title": "Три несвязанные правки в одной задаче",
+      "status": "done",
+      "done": true,
+      "closed": true,
+      "returns": 0,
+      "ownerQuestions": 0,
+      "answerMinutes": null,
+      "children": 0,
+      "checkPassed": true,
+      "checkOutput": "PASS",
+      "costUsd": 1.44,
+      "tokens": 538750,
+      "wallMinutes": 1620,
+      "failedRuns": null,
+      "proposals": 1,
+      "verdict": {
+        "ok": false,
+        "problems": [
+          "children is 0, expected at least 2"
+        ]
+      }
+    }
+  ]
+}
