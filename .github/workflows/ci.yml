@@ -59,6 +59,9 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
+          # rust-cache keys on the dependencies and the toolchain, not on [profile]: a profile change
+          # would keep restoring the old build, which is never replaced (a key is written once).
+          key: ${{ hashFiles('Cargo.toml') }}
           # Pull requests reuse main's cache and do not write their own (no eviction churn).
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
@@ -82,6 +85,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ hashFiles('Cargo.toml') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # mold links the test binaries several times faster than the default linker.
       - uses: rui314/setup-mold@v1
