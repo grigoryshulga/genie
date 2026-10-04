@@ -14,10 +14,12 @@ use genie_core::*;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::Body;
 use super::ctx::{Access, Ctx};
 use super::images::image_mime;
 use super::{ApiError, ApiResult};
 use crate::state::App;
+use crate::tasks::{CommentBody, CreateBody, StatusBody, UpdateBody};
 
 pub fn routes() -> Router<Arc<App>> {
     Router::new()
@@ -47,57 +49,12 @@ pub async fn tracker<T: Send + 'static>(
     Ok(out)
 }
 
-/// What an agent does to a task: change it, or only leave a note (comment, artifact).
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Touch {
-    Edit,
-    Note,
-}
+pub use crate::tasks::{Touch, changed};
 
-/// Agents act within their assignment: a team member (or job) changes only its
-/// own task and its subtasks, and may leave notes on that task's epic. The
-/// orchestrator and people are not limited here (the workflow rules still apply).
+/// An agent acts within its assignment (see [`crate::tasks::authorize`]).
 pub async fn in_scope(app: &Arc<App>, access: &Access, id: &str, touch: Touch) -> ApiResult<()> {
-    if !access.agent || access.actor.role == Role::Orchestrator {
-        return Ok(());
-    }
-    let (slug, team, job, id) = (access.project.clone(), access.agent_team.clone(), access.agent_job, id.to_string());
-    let verdict = app
-        .blocking(move |app| {
-            let home = match (&team, job) {
-                (Some(t), _) => Some(app.with_tracker(&slug, |tr| Ok(tr.bus().get(t)?.task))?),
-                (None, Some(j)) => app.with_server(|db| db.job(j))?.task,
-                _ => None,
-            };
-            let Some(home) = home else { return Ok(Err("this agent has no task to work on".to_string())) };
-            app.with_tracker(&slug, |t| {
-                let target = t.normalize_id(&id)?;
-                let home = t.normalize_id(&home)?;
-                // The task itself or one of its descendants.
-                let mut cur = Some(target.clone());
-                for _ in 0..10 {
-                    match cur {
-                        Some(c) if c == home => return Ok(Ok(())),
-                        Some(c) => cur = t.get(&c).ok().and_then(|x| x.parent),
-                        None => break,
-                    }
-                }
-                if touch == Touch::Note && t.epic_of(&home)?.as_deref() == Some(target.as_str()) {
-                    return Ok(Ok(()));
-                }
-                Ok(Err(format!(
-                    "agents change only their own task ({home}) and its subtasks, and leave notes on its epic; {target} is outside"
-                )))
-            })
-        })
-        .await?;
-    verdict.map_err(|m| ApiError::new(StatusCode::FORBIDDEN, m))
-}
-
-/// Something changed in a project: wake the workers that react to it.
-pub fn changed(app: &App) {
-    app.wake_engine.notify_one();
-    app.wake_runtime.notify_one();
+    let (caller, id) = (access.caller(), id.to_string());
+    Ok(app.blocking(move |app| crate::tasks::authorize(app, &caller, &id, touch)).await?)
 }
 
 fn to_json<T: serde::Serialize>(v: T) -> Json<Value> {
@@ -192,141 +149,20 @@ fn strings(v: &Value) -> Option<Vec<String>> {
     })
 }
 
-fn text(v: &Value) -> Option<String> {
-    match v {
-        Value::String(s) => Some(s.clone()),
-        Value::Null => None,
-        other => Some(other.to_string()),
-    }
-}
-
-async fn create(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<Value>) -> ApiResult<impl IntoResponse> {
+async fn create(State(app): State<Arc<App>>, ctx: Ctx, Body(b): Body<CreateBody>) -> ApiResult<impl IntoResponse> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
-    if access.agent && access.actor.role != Role::Orchestrator {
-        let parent = b["parent"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| ApiError::new(StatusCode::FORBIDDEN, "agents create only subtasks of their own task (pass parent)"))?;
-        in_scope(&app, &access, parent, Touch::Edit).await?;
-    }
-    let input = CreateInput {
-        title: b["title"].as_str().unwrap_or_default().to_string(),
-        task_type: b["type"].as_str().and_then(|t| t.parse().ok()),
-        description: b.get("description").and_then(text).filter(|s| !s.is_empty()),
-        acceptance: strings(&b["acceptance"]).unwrap_or_default(),
-        priority: b["priority"].as_i64(),
-        parent: b["parent"].as_str().filter(|s| !s.is_empty()).map(str::to_string),
-        deps: strings(&b["deps"]).unwrap_or_default(),
-        labels: strings(&b["labels"]),
-        merge_strategy: b["mergeStrategy"].as_str().map(str::to_string),
-        // People submit to the inbox (the orchestrator takes it from there); agents create drafts.
-        status: if access.is_human() && b["draft"] != json!(true) { Some(Status::Inbox) } else { None },
-        quiet: false,
-    };
-    let actor = access.actor.clone();
-    let task = tracker(&app, &access, move |t| t.create(&actor, input)).await?;
-    changed(&app);
+    let caller = access.caller();
+    let task = app.blocking(move |app| crate::tasks::create(app, &caller, b)).await?;
     Ok((StatusCode::CREATED, to_json(task)))
 }
 
-async fn update(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Json(b): Json<Value>) -> ApiResult<Json<Value>> {
+async fn update(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Body(b): Body<UpdateBody>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
-    in_scope(&app, &access, &id, Touch::Edit).await?;
-    let input = UpdateInput {
-        title: b.get("title").and_then(text),
-        task_type: b["type"].as_str().and_then(|t| t.parse().ok()),
-        description: b.get("description").and_then(text),
-        plan: b.get("plan").and_then(text),
-        append_notes: b.get("appendNotes").and_then(text),
-        notes: b.get("notes").and_then(text),
-        priority: b["priority"].as_i64().or_else(|| b["priority"].as_str().and_then(|p| p.parse().ok())),
-        labels: strings(&b["labels"]),
-        assignees: strings(&b["assignees"]),
-        merge_strategy: b.get("mergeStrategy").and_then(text),
-        assignee: b.get("assignee").map(|v| v.as_str().map(|s| s.trim().trim_start_matches('@').to_lowercase()).filter(|s| !s.is_empty())),
-        add_acceptance: strings(&b["addAcceptance"]).unwrap_or_default(),
-        remove_acceptance: b["removeAcceptance"].as_array().map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default(),
-        add_deps: strings(&b["addDeps"]).unwrap_or_default(),
-        remove_deps: strings(&b["removeDeps"]).unwrap_or_default(),
-        parent: match b.get("parent") {
-            None => None,
-            Some(Value::Null) => Some(None),
-            Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).map(str::to_string)),
-        },
-    };
-    // The person responsible is someone who works in the project.
-    let assigned = input.assignee.clone().flatten();
-    if let Some(login) = assigned.clone() {
-        let project = access.project.clone();
-        let member = app
-            .blocking(move |app| {
-                app.with_server(|db| match db.user_by_login(&login)? {
-                    Some(u) if !u.disabled => Ok(db.project_role(&project, &u)?.is_some()),
-                    _ => Ok(false),
-                })
-            })
-            .await?;
-        if !member {
-            return Err(ApiError::bad(format!("{} is not a member of this project", assigned.unwrap_or_default())));
-        }
-    }
-    let before = match assigned {
-        Some(_) => {
-            tracker(&app, &access, {
-                let id = id.clone();
-                move |t| t.get(&id)
-            })
-            .await?
-            .assignee
-        }
-        None => None,
-    };
-    let actor = access.actor.clone();
-    let task = tracker(&app, &access, move |t| t.update(&actor, &id, input)).await?;
-    // A new person responsible hears of it (not when they assign themselves).
-    if let Some(login) = task.assignee.clone().filter(|l| before.as_ref() != Some(l) && *l != access.actor.name) {
-        let (project, id, title, by) = (access.project.clone(), task.id.clone(), task.title.clone(), access.actor.name.clone());
-        app.blocking(move |app| {
-            let users = crate::notify::resolve(app, &project, &[format!("@{login}")], &json!({}))?;
-            let msg = crate::notify::Message {
-                kind: "assigned".into(),
-                title: format!("{id}: вы ответственный"),
-                body: format!("{title}\n\nНазначил(а): {by}"),
-                project: Some(project.clone()),
-                task: Some(id.clone()),
-                link: Some(format!("/mine?task={id}")),
-                ..Default::default()
-            };
-            crate::notify::send(app, &users, &msg, None).map(|_| ())
-        })
-        .await?;
-    }
-    changed(&app);
+    let caller = access.caller();
+    let task = app.blocking(move |app| crate::tasks::update(app, &caller, &id, b)).await?;
     Ok(to_json(task))
-}
-
-/// People named `@login` in a text who work in the project.
-fn mentioned(app: &App, project: &str, text: &str) -> crate::state::AppResult<Vec<i64>> {
-    let logins: std::collections::BTreeSet<String> = text
-        .split(|c: char| c.is_whitespace() || ",;:!?()[]<>\"'«»".contains(c))
-        .filter_map(|w| w.strip_prefix('@'))
-        .map(|w| w.trim_end_matches(['.', '-']).to_lowercase())
-        .filter(|w| !w.is_empty() && w.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)))
-        .collect();
-    app.with_server(|db| {
-        let mut out = Vec::new();
-        for login in logins {
-            if let Some(u) = db.user_by_login(&login)?
-                && !u.disabled
-                && db.project_role(project, &u)?.is_some()
-            {
-                out.push(u.id);
-            }
-        }
-        Ok(out)
-    })
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -335,9 +171,7 @@ struct DeleteQuery {
     cascade: Option<String>,
 }
 
-/// Delete a task for good: teams working on it are stopped and removed (with their
-/// worktrees; the branches stay), queued jobs are cancelled, notifications about it go.
-/// Project admins only — agents, the orchestrator included, never delete tasks.
+/// Delete a task for good (see [`crate::tasks::delete`]). Project admins only.
 async fn delete_task(
     State(app): State<Arc<App>>,
     ctx: Ctx,
@@ -347,139 +181,29 @@ async fn delete_task(
     let access = ctx.access(&app, None).await?;
     access.admin()?;
     let cascade = q.cascade.as_deref() == Some("1");
-    let (slug, actor) = (access.project.clone(), access.actor.clone());
-    let (plan, report) = app
-        .blocking(move |app| {
-            let plan = app.with_tracker(&slug, |t| t.delete_plan(&id, cascade))?;
-            let mut report = Vec::new();
-            for team in &plan.teams {
-                if app.with_tracker(&slug, |t| Ok(t.bus().get(team)?.state == "active"))? {
-                    report.extend(crate::runtime::stop_team(app, &slug, team, "owner", &actor.name)?);
-                }
-                report.push(super::teams::remove_worktree(app, &slug, team));
-                app.with_tracker(&slug, |t| t.bus().delete(team))?;
-            }
-            let plan = app.with_tracker(&slug, |t| t.delete_tasks(&actor, &id, cascade))?;
-            app.with_server(|db| {
-                for (task, _) in &plan.tasks {
-                    db.conn().execute(
-                        "UPDATE agent_jobs SET status = 'cancelled', finished = ?1 WHERE project = ?2 AND task = ?3 AND status IN ('queued', 'running')",
-                        rusqlite::params![genie_core::db::now(), slug, task],
-                    )?;
-                    db.conn().execute("DELETE FROM notifications WHERE project = ?1 AND task = ?2", rusqlite::params![slug, task])?;
-                    // Its repositories and their requests are no longer watched (the branches and requests stay on the host).
-                    db.conn().execute("DELETE FROM task_repos WHERE project = ?1 AND task = ?2", rusqlite::params![slug, task])?;
-                }
-                Ok(())
-            })?;
-            Ok((plan, report))
-        })
-        .await?;
-    changed(&app);
-    let ids: Vec<&String> = plan.tasks.iter().map(|(id, _)| id).collect();
-    Ok(Json(json!({ "ok": true, "deleted": ids, "report": report })))
+    let caller = access.caller();
+    let deleted = app.blocking(move |app| crate::tasks::delete(app, &caller, &id, cascade)).await?;
+    Ok(Json(json!({ "ok": true, "deleted": deleted.ids, "report": deleted.report })))
 }
 
-async fn status(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Json(b): Json<Value>) -> ApiResult<Json<Value>> {
+async fn status(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Body(b): Body<StatusBody>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
-    in_scope(&app, &access, &id, Touch::Edit).await?;
-    let to_raw = b["status"].as_str().unwrap_or_default().to_string();
-    let to: Status = to_raw.parse().map_err(|_| ApiError::bad(format!("unknown status {to_raw}")))?;
-    // The owner's moves in the web UI are authoritative (as in the TypeScript server);
-    // agents follow the workflow and may only force as orchestrator when asked to.
-    // In an `assisted` project people close tasks; the orchestrator asks one instead.
-    if !access.is_human() && access.actor.role == Role::Orchestrator && CLOSED.contains(&to) {
-        let slug = access.project.clone();
-        let autonomy = app.blocking(move |app| app.with_server(|db| db.project(&slug)).map(|p| p.autonomy)).await?;
-        if autonomy == "assisted" {
-            return Err(ApiError::new(
-                StatusCode::CONFLICT,
-                "people close tasks in this project (assisted): move the task to needs_owner with a short summary of the result and what to check",
-            ));
-        }
-    }
-    // What the task delivers to its repositories must be in order before review and close (people decide for themselves).
-    if !access.is_human() && matches!(to, Status::Review | Status::Done) {
-        let (slug, task_id) = (access.project.clone(), id.clone());
-        crate::git::delivery::gate(&app, &slug, &task_id, to).await.map_err(|m| ApiError::new(StatusCode::CONFLICT, m))?;
-    }
-    let force = access.is_human() || (access.actor.role == Role::Orchestrator && b["force"] == json!(true));
-    let action = match b.get("action").filter(|a| !a.is_null()) {
-        Some(a) => Some(owner_action(&app, &access.project, &id, OwnerAction::parse(a)?).await?),
-        None => None,
-    };
-    let opts = StatusOptions { note: b.get("note").and_then(text).filter(|n| !n.is_empty()), force, action };
-    let actor = access.actor.clone();
-    let task = tracker(&app, &access, move |t| t.set_status(&actor, &id, to, opts)).await?;
-    if CLOSED.contains(&to) {
-        crate::runtime::reap_closed(&app, &access.project).await;
-    }
-    changed(&app);
+    let caller = access.caller();
+    let task = app.blocking(move |app| crate::tasks::set_status(app, &caller, &id, b)).await?;
     Ok(to_json(task))
 }
 
-/// An owner action as the task will keep it: a merge request names the task's open
-/// request (the only one when no repository is named) with its number and page.
-async fn owner_action(app: &Arc<App>, project: &str, task: &str, action: OwnerAction) -> ApiResult<OwnerAction> {
-    let OwnerAction::AskForMergePr { repo, .. } = action else { return Ok(action) };
-    let (slug, raw) = (project.to_string(), task.to_string());
-    let rows = app
-        .blocking(move |app| {
-            let task = app.with_tracker(&slug, |t| t.normalize_id(&raw))?;
-            app.with_server(|db| db.task_repos(&slug, &task))
-        })
-        .await?;
-    let open: Vec<_> = rows.into_iter().filter(|r| r.cr_number.is_some() && r.cr_state.as_deref() == Some("open")).collect();
-    let names = || open.iter().map(|r| r.repo.as_str()).collect::<Vec<_>>().join(", ");
-    let row = match repo.trim() {
-        "" if open.len() == 1 => &open[0],
-        "" if open.is_empty() => return Err(ApiError::bad(format!("ask-for-merge-pr: {task} has no open request to merge"))),
-        "" => return Err(ApiError::bad(format!("ask-for-merge-pr: name the repository (open requests in {})", names()))),
-        name => open.iter().find(|r| r.repo == name).ok_or_else(|| {
-            ApiError::bad(format!(
-                "ask-for-merge-pr: {task} has no open request in {name}{}",
-                if open.is_empty() { String::new() } else { format!(" (open in {})", names()) }
-            ))
-        })?,
-    };
-    Ok(OwnerAction::AskForMergePr { repo: row.repo.clone(), number: row.cr_number, url: row.cr_url.clone() })
-}
-
-async fn comment(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Json(b): Json<Value>) -> ApiResult<impl IntoResponse> {
+async fn comment(
+    State(app): State<Arc<App>>,
+    ctx: Ctx,
+    Path(id): Path<String>,
+    Body(b): Body<CommentBody>,
+) -> ApiResult<impl IntoResponse> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
-    in_scope(&app, &access, &id, Touch::Note).await?;
-    let text = b["text"].as_str().unwrap_or_default().to_string();
-    let kind =
-        if access.is_human() { CommentKind::Owner } else { b["kind"].as_str().and_then(|k| k.parse().ok()).unwrap_or(CommentKind::Note) };
-    let actor = access.actor.clone();
-    let said = text.clone();
-    let task = tracker(&app, &access, move |t| t.comment(&actor, &id, &text, kind)).await?;
-    // People named with `@login` hear of it — from people and agents alike.
-    if said.contains('@') {
-        let (project, id, title, by) = (access.project.clone(), task.id.clone(), task.title.clone(), access.actor.name.clone());
-        app.blocking(move |app| {
-            let me = app.with_server(|db| db.user_by_login(&by))?.map(|u| u.id);
-            let users: Vec<i64> = mentioned(app, &project, &said)?.into_iter().filter(|u| Some(*u) != me).collect();
-            if users.is_empty() {
-                return Ok(());
-            }
-            let excerpt: String = said.chars().take(500).collect();
-            let msg = crate::notify::Message {
-                kind: "mention".into(),
-                title: format!("Вас упомянули в {id}"),
-                body: format!("{by}: {excerpt}\n\n{title}"),
-                project: Some(project.clone()),
-                task: Some(id.clone()),
-                link: Some(format!("/active?task={id}")),
-                ..Default::default()
-            };
-            crate::notify::send(app, &users, &msg, None).map(|_| ())
-        })
-        .await?;
-    }
-    changed(&app);
+    let caller = access.caller();
+    let task = app.blocking(move |app| crate::tasks::comment(app, &caller, &id, b)).await?;
     Ok((StatusCode::CREATED, to_json(task)))
 }
 

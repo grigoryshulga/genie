@@ -193,23 +193,8 @@ export function repoNameFrom(remote: string): string {
     .replace(/^[-_]+|-+$/g, "");
 }
 
-/** A task's delivery in one repository (`task_repos`). */
-export interface TaskRepo {
-  project: string;
-  task: string;
-  repo: string;
-  access: "read" | "write";
-  branch: string;
-  state: "pending" | "published" | "merged" | "abandoned";
-  crNumber?: number | null;
-  crUrl?: string | null;
-  crState?: "open" | "merged" | "closed" | null;
-  ciState?: "none" | "pending" | "passed" | "failed" | "stalled" | null;
-  ciRef?: string | null;
-  ciSha?: string | null;
-  headSha?: string | null;
-  updated: string;
-}
+/** A task's delivery in one repository (`task_repos`), as the server's type. */
+export type { TaskRepo } from "../../shared/api/types.ts";
 
 export const CI_NAME: Record<string, string> = {
   none: "проверок нет",

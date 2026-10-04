@@ -1178,6 +1178,25 @@ impl ServerDb {
             .query_row("SELECT holder FROM locks WHERE name = ?1 AND expires > ?2", params![name, now()], |r| r.get(0))
             .optional()?)
     }
+
+    /// A task deleted from its tracker leaves nothing behind here: queued and running jobs for it
+    /// are cancelled, open questionnaires about it are closed, its notifications go and its
+    /// repositories are no longer watched (branches and requests stay on the host). Agent turns
+    /// and doc proposals keep their history. A new table keyed by task belongs here too.
+    pub fn forget_task(&self, project: &str, task: &str) -> Result<()> {
+        let at = now();
+        self.conn().execute(
+            "UPDATE agent_jobs SET status = 'cancelled', finished = ?1 WHERE project = ?2 AND task = ?3 AND status IN ('queued', 'running')",
+            params![at, project, task],
+        )?;
+        self.conn().execute(
+            "UPDATE questionnaires SET status = 'cancelled', closed = ?1 WHERE project = ?2 AND task = ?3 AND status = 'open'",
+            params![at, project, task],
+        )?;
+        self.conn().execute("DELETE FROM notifications WHERE project = ?1 AND task = ?2", params![project, task])?;
+        self.conn().execute("DELETE FROM task_repos WHERE project = ?1 AND task = ?2", params![project, task])?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1217,6 +1236,47 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = ServerDb::open(&dir.path().join("server.db")).unwrap();
         (dir, db)
+    }
+
+    #[test]
+    fn a_forgotten_task_leaves_nothing_open_on_the_server() {
+        let (_d, db) = db();
+        db.create_project("shop", "Shop", "/tmp/shop", None, None).unwrap();
+        let anna = db.create_user("anna", "Anna", None, Some("secret-pass"), false).unwrap();
+        let job = |task: &str| {
+            db.create_job(crate::work::NewJob {
+                project: "shop".into(),
+                task: Some(task.into()),
+                role: "analyst".into(),
+                goal: "Find out".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+            .unwrap()
+            .id
+        };
+        let (gone, kept) = (job("S-1"), job("S-2"));
+        db.add_notification(anna.id, Some("shop"), Some("S-1"), "mention", "t", "b", None, None).unwrap();
+        db.add_notification(anna.id, Some("shop"), Some("S-2"), "mention", "t", "b", None, None).unwrap();
+        let ask = |task: &str| {
+            let q = crate::inbox::NewQuestion { text: "Which format?".into(), why: String::new(), options: vec![] };
+            db.create_questionnaire("shop", Some(task), "analyst", anna.id, "web", &[q], None, None, None).unwrap().0.id
+        };
+        let (asked, still_asked) = (ask("S-1"), ask("S-2"));
+        for task in ["S-1", "S-2"] {
+            db.conn().execute("INSERT INTO task_repos(project, task, repo, updated) VALUES ('shop', ?1, 'app', '')", [task]).unwrap();
+        }
+
+        db.forget_task("shop", "S-1").unwrap();
+
+        assert_eq!(db.job(gone).unwrap().status, "cancelled");
+        assert_eq!(db.job(kept).unwrap().status, "queued");
+        let tasks: Vec<Option<String>> = db.notifications(anna.id, false, 10).unwrap().into_iter().map(|n| n.task).collect();
+        assert_eq!(tasks, vec![Some("S-2".to_string())]);
+        assert_eq!(db.questionnaire(asked).unwrap().status, "cancelled");
+        assert_eq!(db.questionnaire(still_asked).unwrap().status, "open");
+        assert!(db.task_repos("shop", "S-1").unwrap().is_empty());
+        assert_eq!(db.task_repos("shop", "S-2").unwrap().len(), 1);
     }
 
     #[test]

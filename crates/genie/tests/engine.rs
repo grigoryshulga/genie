@@ -158,7 +158,7 @@ fn the_ready_next_playbook_wakes_the_orchestrator_when_a_team_stops() {
     };
     assert_eq!(asked(&app), 0, "a team that starts does not free room");
 
-    app.with_tracker("shop", |t| t.bus().set_state(&task, "stopped", Some("done"), "anna")).unwrap();
+    app.with_tracker("shop", |t| t.bus().set_state(&task, genie_core::TeamState::Stopped, Some("done"), "anna")).unwrap();
     genie::engine::tick(&app).unwrap();
     assert_eq!(asked(&app), 1, "a stopped team asks the orchestrator for the next ready task");
 }

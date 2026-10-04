@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useMeta } from "@/entities/project";
 import { EpicIcon, PRIORITY_NAME, PriorityIcon, StatusIcon, useCreateTask, useEpicMap } from "@/entities/task";
 import { useStartIdea } from "@/features/shape-idea";
+import type { TaskType } from "@/shared/api";
 import { Icon, Modal, useToast } from "@/shared/ui";
 import "@/features/shape-idea/ui/idea.css";
 
-const TYPES: [string, string][] = [
+const TYPES: [TaskType, string][] = [
   ["task", "Задача"],
   ["bug", "Баг"],
   ["spike", "Исследование"],
@@ -13,7 +14,7 @@ const TYPES: [string, string][] = [
 ];
 
 export interface NewTaskPreset {
-  type?: string;
+  type?: TaskType;
   epic?: string;
   /** Open in the «Обсудить с агентом» mode. */
   idea?: boolean;
@@ -38,7 +39,7 @@ export function NewTaskDialog({
   const [description, setDescription] = useState("");
   const [criteria, setCriteria] = useState("");
   const [priority, setPriority] = useState(2);
-  const [type, setType] = useState(preset?.type ?? "task");
+  const [type, setType] = useState<TaskType>(preset?.type ?? "task");
   const [epic, setEpic] = useState(preset?.epic ?? "");
   const epics = [...useEpicMap().values()].filter((e) => e.status !== "done" && e.status !== "cancelled");
   const isEpic = type === "epic";
@@ -167,7 +168,7 @@ export function NewTaskDialog({
                   ))}
                 </select>
               </label>
-              <select aria-label="Тип" value={type} onChange={(e) => setType(e.target.value)}>
+              <select aria-label="Тип" value={type} onChange={(e) => setType(e.target.value as TaskType)}>
                 {TYPES.map(([v, n]) => (
                   <option key={v} value={v}>
                     {n}

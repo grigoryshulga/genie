@@ -4,6 +4,7 @@
 
 mod common;
 
+use genie_core::{CheckState, DeliveryState, RequestState};
 use std::path::{Path, PathBuf};
 
 use axum::http::StatusCode;
@@ -179,7 +180,7 @@ async fn the_workflow_waits_for_the_request_and_a_person_merges_it() {
 
         assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
         let branch = commit_and_push(&t);
-        assert_eq!(row(&r, &id).state, "published");
+        assert_eq!(row(&r, &id).state, DeliveryState::Published);
 
         // Review needs the request: the branch is on the host, the policy says requests.
         let (s, b) = status(&r, &id, &t.executor, "review").await;
@@ -204,7 +205,7 @@ async fn the_workflow_waits_for_the_request_and_a_person_merges_it() {
             assert!(f.prs[0].title.starts_with(&format!("[{id}]")), "the task is named in the title: {}", f.prs[0].title);
             assert!(f.prs[0].body.contains("what and why") && f.prs[0].body.contains(&format!("Task {id}")), "{}", f.prs[0].body);
         }
-        assert_eq!((row(&r, &id).cr_number, row(&r, &id).cr_state.as_deref()), (Some(1), Some("open")), "{kind}");
+        assert_eq!((row(&r, &id).cr_number, row(&r, &id).cr_state), (Some(1), Some(RequestState::Open)), "{kind}");
         // Again: the same request, not a second one, and one announcement.
         let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
         assert_eq!((s, b["request"]["number"].clone()), (StatusCode::OK, json!(1)), "{kind}: {b}");
@@ -229,7 +230,7 @@ async fn the_workflow_waits_for_the_request_and_a_person_merges_it() {
         let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr/merge"), None, None).await;
         assert_eq!(s, StatusCode::OK, "{kind}: {b}");
         assert_eq!(b["request"]["state"], "merged");
-        assert_eq!(row(&r, &id).state, "merged");
+        assert_eq!(row(&r, &id).state, DeliveryState::Merged);
         assert_eq!(journal(&r, "cr.merged").len(), 1);
 
         assert_eq!(status(&r, &id, &r.orchestrator, "done").await.0, StatusCode::OK, "{kind}");
@@ -252,7 +253,7 @@ async fn the_watcher_follows_the_host_and_tells_the_team_and_the_orchestrator() 
     // The checks fail on the host: an event, and the team hears of it.
     r.fake.lock().ci = "failed".into();
     watch().await;
-    assert_eq!(row(&r, &id).ci_state.as_deref(), Some("failed"));
+    assert_eq!(row(&r, &id).ci_state, Some(CheckState::Failed));
     assert_eq!(journal(&r, "ci.failed").len(), 1);
     let team_id = r.h.app.with_tracker("shop", |t| Ok(t.get(&id)?.team.unwrap())).unwrap();
     let mail = r.h.app.with_tracker("shop", |t| t.bus().history(&team_id, 50)).unwrap();
@@ -270,7 +271,7 @@ async fn the_watcher_follows_the_host_and_tells_the_team_and_the_orchestrator() 
     assert_eq!(journal(&r, "ci.passed").len(), 1);
     r.fake.lock().prs[0].state = "merged".into();
     watch().await;
-    assert_eq!((row(&r, &id).state.as_str(), row(&r, &id).cr_state.as_deref()), ("merged", Some("merged")));
+    assert_eq!((row(&r, &id).state, row(&r, &id).cr_state), (DeliveryState::Merged, Some(RequestState::Merged)));
     assert_eq!(journal(&r, "cr.merged").len(), 1);
     let task = r.h.app.with_tracker("shop", |t| t.get(&id)).unwrap();
     assert!(task.comments.iter().any(|c| c.text.contains("was merged")), "the task says so");
@@ -286,7 +287,7 @@ async fn a_request_closed_on_the_host_is_recorded_as_abandoned() {
     http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
     r.fake.lock().prs[0].state = "closed".into();
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
-    assert_eq!((row(&r, &id).state.as_str(), row(&r, &id).cr_state.as_deref()), ("abandoned", Some("closed")));
+    assert_eq!((row(&r, &id).state, row(&r, &id).cr_state), (DeliveryState::Abandoned, Some(RequestState::Closed)));
     assert_eq!(journal(&r, "cr.closed").len(), 1);
 }
 
@@ -327,7 +328,7 @@ async fn with_auto_the_server_merges_once_the_task_is_approved_and_the_host_agre
     r.fake.lock().ci = "passed".into();
     watch().await;
     assert_eq!(r.fake.lock().prs[0].state, "merged");
-    assert_eq!(row(&r, &id).state, "merged");
+    assert_eq!(row(&r, &id).state, DeliveryState::Merged);
     assert_eq!(journal(&r, "cr.merged").len(), 1);
 }
 
@@ -543,7 +544,7 @@ async fn review_is_closed_when_the_checks_failed() {
         // Back to a red CI, and a host that cannot be reached: the recorded state decides.
         r.fake.lock().ci = "failed".into();
         genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
-        assert_eq!(row(&r, &id).ci_state.as_deref(), Some("failed"));
+        assert_eq!(row(&r, &id).ci_state, Some(CheckState::Failed));
         r.fake.lock().broken = 5;
         let (s, b) = status(&r, &id, &t.executor, "review").await;
         assert_eq!(s, StatusCode::CONFLICT, "{kind}: the recorded state is used when the host is down: {b}");
@@ -586,7 +587,7 @@ async fn a_pushed_branch_is_watched_without_a_request() {
 
     r.fake.lock().ci = "failed".into();
     genie::git::delivery::watch_one(&r.h.app, &pushed).await.unwrap();
-    assert_eq!(row(&r, &id).ci_state.as_deref(), Some("failed"));
+    assert_eq!(row(&r, &id).ci_state, Some(CheckState::Failed));
     assert_eq!(journal(&r, "ci.failed").len(), 1);
     let mail = team_mail(&r, &id);
     let m = mail.iter().find(|m| m.from == "git-host" && m.text.contains("failed")).expect("the team is told");
@@ -625,7 +626,7 @@ async fn the_target_branch_is_checked_after_a_merge_past_the_checks() {
         r.fake.lock().prs[0].state = "merged".into();
         genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
         let merged = row(&r, &id);
-        assert_eq!(merged.state, "merged", "{kind}");
+        assert_eq!(merged.state, DeliveryState::Merged, "{kind}");
         assert_eq!(journal(&r, "cr.merged").len(), 1);
         assert_eq!(merged.ci_ref, "main", "{kind}: the target branch is what is watched now");
         assert_eq!(merged.ci_sha.as_deref(), Some("2222222222222222222222222222222222222222"), "{kind}");
@@ -634,7 +635,7 @@ async fn the_target_branch_is_checked_after_a_merge_past_the_checks() {
 
         // The next look reports the failure of the commit that landed on the target branch.
         genie::git::delivery::watch_one(&r.h.app, &merged).await.unwrap();
-        assert_eq!(row(&r, &id).ci_state.as_deref(), Some("failed"));
+        assert_eq!(row(&r, &id).ci_state, Some(CheckState::Failed));
         assert_eq!(journal(&r, "ci.failed").len(), 1);
         let mail = team_mail(&r, &id);
         assert!(mail.iter().any(|m| m.text.contains("branch `main`")), "{kind}: {mail:?}");
@@ -642,7 +643,7 @@ async fn the_target_branch_is_checked_after_a_merge_past_the_checks() {
         // Green again: the watch settles and says so.
         r.fake.lock().ci = "passed".into();
         genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
-        assert_eq!(row(&r, &id).ci_state.as_deref(), Some("passed"));
+        assert_eq!(row(&r, &id).ci_state, Some(CheckState::Passed));
         assert_eq!(journal(&r, "ci.passed").len(), 1, "{kind}");
     })
     .await;
@@ -662,7 +663,7 @@ async fn checks_pending_too_long_are_reported_once() {
     // A first look records that the checks are running and since when.
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     let running = row(&r, &id);
-    assert_eq!(running.ci_state.as_deref(), Some("pending"));
+    assert_eq!(running.ci_state, Some(CheckState::Pending));
     assert_ne!(running.ci_since, "", "the clock is running");
     assert!(journal(&r, "ci.stalled").is_empty());
 
@@ -670,7 +671,7 @@ async fn checks_pending_too_long_are_reported_once() {
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     let stalled = row(&r, &id);
-    assert_eq!(stalled.ci_state.as_deref(), Some("stalled"));
+    assert_eq!(stalled.ci_state, Some(CheckState::Stalled));
     assert_eq!(journal(&r, "ci.stalled").len(), 1);
     let letters = team_mail(&r, &id).into_iter().filter(|m| m.from == "git-host").count();
     assert!(letters > 0, "the team is told");
@@ -693,15 +694,10 @@ async fn checks_pending_too_long_are_reported_once() {
 fn unarm(r: &Rig, task: &str, head_sha: Option<&str>, ci_state: &str) {
     r.h.app
         .with_server(|db| {
-            db.update_delivery(
-                "shop",
-                task,
-                "api",
-                genie_core::repos::Delivery { reset_ci: true, ci_state: Some(ci_state.into()), ..Default::default() },
-            )?;
             db.conn().execute(
-                "UPDATE task_repos SET head_sha = ?1 WHERE project = 'shop' AND task = ?2 AND repo = 'api'",
-                [head_sha, Some(task)],
+                "UPDATE task_repos SET ci_state = ?1, ci_ref = '', ci_sha = NULL, ci_since = '', head_sha = ?2
+                 WHERE project = 'shop' AND task = ?3 AND repo = 'api'",
+                rusqlite::params![ci_state, head_sha, task],
             )?;
             Ok(())
         })
@@ -751,7 +747,7 @@ async fn a_delivery_from_before_the_watch_does_not_slip_past_a_failed_check() {
     let armed = row(&r, &id);
     assert_eq!(armed.ci_sha.as_deref(), Some(r.fake.lock().sha.as_str()), "the request's head is watched");
     assert_eq!(armed.ci_ref, branch);
-    assert_eq!(armed.ci_state.as_deref(), Some("passed"), "and its checks are read");
+    assert_eq!(armed.ci_state, Some(CheckState::Passed), "and its checks are read");
 
     // (d) F4: the branch moved on the host, not through the proxy. The next look follows the request.
     r.fake.lock().prs[0].sha = "3333333333333333333333333333333333333333".into();
@@ -773,13 +769,13 @@ async fn a_branch_without_checks_is_watched_once_more_and_then_left_alone() {
 
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     let first = row(&r, &id);
-    assert_eq!(first.ci_state.as_deref(), Some("none"));
+    assert_eq!(first.ci_state, Some(CheckState::None));
     assert!(first.ci_sha.is_some(), "the branch stays watched for one more look");
     assert_eq!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().len(), 1);
 
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     let second = row(&r, &id);
-    assert_eq!(second.ci_state.as_deref(), Some("none"), "the answer stands");
+    assert_eq!(second.ci_state, Some(CheckState::None), "the answer stands");
     assert_eq!(second.ci_sha, None, "and nothing is watched any more");
     assert!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().is_empty(), "no row is polled for ever");
     assert!(journal(&r, "ci.failed").is_empty());

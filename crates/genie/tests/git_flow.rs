@@ -5,6 +5,7 @@
 
 mod common;
 
+use genie_core::{DeliveryState, RequestState};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -107,7 +108,7 @@ async fn agents_deliver_through_the_proxy_and_a_person_merges() {
     // The team delivers: pushed, refused where it must be, a request opened, reviewed and approved.
     wait_for(&app, "the task approved", Duration::from_secs(90), |app| status(app) == Status::Approved).await;
     let row = app.with_server(|db| db.task_repo("shop", "G-1", "api")).unwrap().unwrap();
-    assert_eq!((row.state.as_str(), row.cr_state.as_deref(), row.cr_number), ("published", Some("open"), Some(1)), "{row:?}");
+    assert_eq!((row.state, row.cr_state, row.cr_number), (DeliveryState::Published, Some(RequestState::Open), Some(1)), "{row:?}");
     assert_eq!(row.branch, "genie/G-1");
     // What the executor reported seeing, as artifacts of the task.
     let show = |name: &str| -> String {
@@ -151,5 +152,5 @@ async fn agents_deliver_through_the_proxy_and_a_person_merges() {
     let row = app.with_server(|db| db.task_repo("shop", "G-1", "api")).unwrap().unwrap();
     genie::git::delivery::watch_one(&app, &row).await.unwrap();
     wait_for(&app, "the task done", Duration::from_secs(60), |app| status(app) == Status::Done).await;
-    assert_eq!(app.with_server(|db| db.task_repo("shop", "G-1", "api")).unwrap().unwrap().state, "merged");
+    assert_eq!(app.with_server(|db| db.task_repo("shop", "G-1", "api")).unwrap().unwrap().state, DeliveryState::Merged);
 }

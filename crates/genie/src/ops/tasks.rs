@@ -2,12 +2,18 @@
 
 use std::path::PathBuf;
 
-use genie_core::{Capability, TEAM_TRANSITIONS};
+use genie_core::{Capability, GenieError, OwnerAction, TEAM_TRANSITIONS};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{AgentKind, Cx, Entry, Listed, Need, Op, Out, enc, register, render};
+use crate::tasks::{CommentBody, CreateBody, StatusBody, UpdateBody};
+
+/// A task type, status or comment kind by its name.
+fn parsed<T: std::str::FromStr<Err = GenieError>>(v: Option<String>) -> Result<Option<T>, String> {
+    v.filter(|s| !s.is_empty()).map(|s| s.parse()).transpose().map_err(|e: GenieError| e.to_string())
+}
 
 pub fn register(all: &mut Vec<Entry>) {
     register!(all, Show, List, Board, Epics, Create, Update, Status, Accept, Comment, Check, Artifact, ArtifactRead, Split, Block, Unblock);
@@ -182,13 +188,20 @@ impl Op for Create {
     const NEED: Need = Need::Write;
     const CAPS: &'static [Capability] = &[Capability::TaskCreate];
     async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let description = cx.text(self.description, None)?;
-        let body = json!({
-            "title": self.title, "description": description, "acceptance": self.acceptance, "type": self.task_type,
-            "parent": self.parent, "priority": self.priority, "deps": self.deps, "labels": self.labels, "plan": self.plan,
-            "draft": self.draft,
-        });
-        let v = cx.call("POST", "/tasks", Some(body)).await?;
+        let body = CreateBody {
+            title: self.title,
+            task_type: parsed(self.task_type)?,
+            description: cx.text(self.description, None)?,
+            acceptance: Some(self.acceptance),
+            priority: self.priority,
+            parent: self.parent,
+            deps: Some(self.deps),
+            labels: (!self.labels.is_empty()).then_some(self.labels),
+            plan: self.plan,
+            draft: Some(self.draft),
+            ..Default::default()
+        };
+        let v = cx.send("POST", "/tasks", &body).await?;
         Ok(Out::new(format!("created {}", render::summary(&v)), v))
     }
 }
@@ -265,41 +278,27 @@ impl Op for Update {
         }
     }
     async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let mut body = json!({});
-        let fields = [
-            ("title", self.title),
-            ("description", cx.text(self.description, None)?),
-            ("plan", cx.text(self.plan, None)?),
-            ("notes", cx.text(self.notes, None)?),
-            ("appendNotes", cx.text(self.append_notes, None)?),
-            ("mergeStrategy", self.merge_strategy),
-            ("type", self.task_type),
-        ];
-        for (k, v) in fields {
-            if let Some(v) = v {
-                body[k] = json!(v);
-            }
-        }
-        if let Some(p) = self.priority {
-            body["priority"] = json!(p);
-        }
-        if let Some(l) = self.labels {
-            body["labels"] = json!(l);
-        }
-        for (k, v) in [("addAcceptance", json!(self.acceptance)), ("addDeps", json!(self.deps)), ("removeDeps", json!(self.remove_deps))] {
-            if v.as_array().is_some_and(|a| !a.is_empty()) {
-                body[k] = v;
-            }
-        }
-        if !self.remove_acceptance.is_empty() {
-            body["removeAcceptance"] = json!(self.remove_acceptance);
-        }
-        for (k, v) in [("parent", self.parent), ("assignee", self.assignee)] {
-            if let Some(v) = v {
-                body[k] = if v == "none" || v.is_empty() { Value::Null } else { json!(v) };
-            }
-        }
-        let v = cx.call("PATCH", &format!("/tasks/{}", enc(&cx.task(self.task)?)), Some(body)).await?;
+        let some = |v: Vec<String>| (!v.is_empty()).then_some(v);
+        let clear = |v: Option<String>| v.map(|v| Some(v).filter(|v| v != "none" && !v.is_empty()));
+        let body = UpdateBody {
+            title: self.title,
+            task_type: parsed(self.task_type)?,
+            description: cx.text(self.description, None)?,
+            plan: cx.text(self.plan, None)?,
+            notes: cx.text(self.notes, None)?,
+            append_notes: cx.text(self.append_notes, None)?,
+            merge_strategy: self.merge_strategy,
+            priority: self.priority,
+            labels: self.labels,
+            add_acceptance: some(self.acceptance),
+            remove_acceptance: (!self.remove_acceptance.is_empty()).then_some(self.remove_acceptance),
+            add_deps: some(self.deps),
+            remove_deps: some(self.remove_deps),
+            parent: clear(self.parent),
+            assignee: clear(self.assignee),
+            ..Default::default()
+        };
+        let v = cx.send("PATCH", &format!("/tasks/{}", enc(&cx.task(self.task)?)), &body).await?;
         Ok(Out::new(format!("updated {}", render::summary(&v)), v))
     }
 }
@@ -352,9 +351,7 @@ impl Op for Status {
         Some(format!("your role may set: {}", to.join(", ")))
     }
     async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let note = cx.text(self.note, None)?;
-        let mut body = json!({ "status": self.status, "note": note, "force": self.force });
-        match (self.owner_action, self.options.is_empty(), &self.repo) {
+        let action = match (self.owner_action, self.options.is_empty(), &self.repo) {
             (Some(kind), _, _) => {
                 let mut action = json!({ "kind": kind });
                 if !self.options.is_empty() {
@@ -363,12 +360,18 @@ impl Op for Status {
                 if let Some(repo) = self.repo {
                     action["repo"] = json!(repo);
                 }
-                body["action"] = action;
+                Some(OwnerAction::parse(&action).map_err(|e| e.to_string())?)
             }
             (None, false, _) | (None, _, Some(_)) => return Err("--option and --repo go with --action".into()),
-            (None, true, None) => {}
-        }
-        let v = cx.call("POST", &format!("/tasks/{}/status", enc(&cx.task(self.task)?)), Some(body)).await?;
+            (None, true, None) => None,
+        };
+        let body = StatusBody {
+            status: self.status.parse().map_err(|e: GenieError| e.to_string())?,
+            note: cx.text(self.note, None)?,
+            force: Some(self.force),
+            action,
+        };
+        let v = cx.send("POST", &format!("/tasks/{}/status", enc(&cx.task(self.task)?)), &body).await?;
         Ok(Out::new(render::summary(&v), v))
     }
 }
@@ -388,7 +391,7 @@ impl Op for Accept {
     const NEED: Need = Need::Orchestrator;
     async fn run(self, cx: &Cx) -> Result<Out, String> {
         let v = cx
-            .call("POST", &format!("/tasks/{}/status", enc(&cx.task(self.task)?)), Some(json!({ "status": "done", "note": self.note })))
+            .send("POST", &format!("/tasks/{}/status", enc(&cx.task(self.task)?)), &StatusBody::to(genie_core::Status::Done, self.note))
             .await?;
         Ok(Out::new(render::summary(&v), v))
     }
@@ -418,10 +421,11 @@ impl Op for Comment {
     const LEGACY: Option<&'static str> = Some("comment");
     const NEED: Need = Need::Write;
     async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let text = cx.text(Some(self.text), None)?.unwrap_or_default();
-        let v = cx
-            .call("POST", &format!("/tasks/{}/comments", enc(&cx.task(self.task)?)), Some(json!({ "text": text, "kind": self.kind })))
-            .await?;
+        let body = CommentBody {
+            text: cx.text(Some(self.text), None)?.unwrap_or_default(),
+            kind: Some(self.kind.parse().map_err(|e: GenieError| e.to_string())?),
+        };
+        let v = cx.send("POST", &format!("/tasks/{}/comments", enc(&cx.task(self.task)?)), &body).await?;
         Ok(Out::new("comment added", v))
     }
 }

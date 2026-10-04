@@ -19,7 +19,7 @@ use genie::config::{Config, RoleModel};
 use genie::runtime::AgentKey;
 use genie::state::App;
 use genie_core::team::{NewMember, NewTeam, SendMail};
-use genie_core::{Actor, CreateInput, Role};
+use genie_core::{Activity, Actor, CreateInput, MemberState, Role};
 use serde_json::{Value, json};
 
 #[derive(Clone, Debug)]
@@ -679,11 +679,11 @@ async fn an_agent_whose_provider_refuses_stays_in_error_with_the_reason() {
         team.members.into_iter().find(|m| m.name == "bender").unwrap()
     };
     let m = bender();
-    assert_eq!(m.state, "error", "a stopped session does not clear the error: {m:?}");
+    assert_eq!(m.state, MemberState::Error, "a stopped session does not clear the error: {m:?}");
     assert!(m.status.contains("usage limit has been reached"), "the board says why: {}", m.status);
 
     genie::runtime::restart_member(app, "shop", "SHOP-1", "bender").unwrap();
-    assert_eq!(bender().state, "active", "a restart lets the agent work again");
+    assert_eq!(bender().state, MemberState::Active, "a restart lets the agent work again");
 }
 
 /// G-132: the server is killed mid-step, so the session process goes with it. Its mail was
@@ -722,7 +722,7 @@ async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
     // The shutdown path writes the activity too: wait for it, so the state fabricated below is the
     // last word — exactly what a kill -9 leaves.
     until("the session and its shutdown to settle", 30, || {
-        (app.sessions.get(&member("bender")).is_none() && activity() == "idle").then_some(())
+        (app.sessions.get(&member("bender")).is_none() && activity() == Activity::Idle).then_some(())
     })
     .await;
     let turn = app
@@ -734,14 +734,14 @@ async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
             Ok::<_, genie_core::GenieError>(t)
         })
         .unwrap();
-    app.with_tracker("shop", |t| t.bus().set_activity("SHOP-1", "bender", "working", None)).unwrap();
+    app.with_tracker("shop", |t| t.bus().member_working("SHOP-1", "bender", json!({ "kind": "session" }))).unwrap();
 
     // A restart: the turn is interrupted, the stray process is gone, and the agent is told to go on.
     let crashed = Instant::now();
     genie::runtime::recover(app).unwrap();
     genie::sessions::recover(app);
     assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "interrupted");
-    assert_eq!(activity(), "idle", "the board must not show a busy agent without a process");
+    assert_eq!(activity(), Activity::Idle, "the board must not show a busy agent without a process");
 
     // Nobody writes to the agent: the note alone starts the run, and the letter it had
     // acknowledged is in the resumed conversation exactly once.

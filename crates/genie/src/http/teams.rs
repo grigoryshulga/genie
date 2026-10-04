@@ -186,31 +186,13 @@ async fn stop(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, bod
         .blocking(move |app| {
             let mut r = runtime::stop_team(app, &slug, &id, reason, &by)?;
             if remove {
-                r.push(remove_worktree(app, &slug, &id));
+                r.push(crate::runtime::remove_worktree(app, &slug, &id));
             }
             Ok(r)
         })
         .await?;
     changed(&app);
     Ok(Json(json!({ "ok": true, "report": report })))
-}
-
-pub(super) fn remove_worktree(app: &App, slug: &str, team: &str) -> String {
-    let Ok(Some(w)) = app.with_tracker(slug, |t| Ok(t.bus().get(team)?.worktree)) else { return "no worktree".into() };
-    // A workspace of the project's repositories (clones of the server's mirrors, not git worktrees):
-    // its work is on the git host, so the directory can go.
-    if std::path::Path::new(&w.path).starts_with(app.data.join("workspaces")) {
-        return match std::fs::remove_dir_all(&w.path) {
-            Ok(()) => format!("workspace {} removed (branches stay on the git host)", w.path),
-            Err(e) => format!("workspace {} not removed: {e}", w.path),
-        };
-    }
-    let out = std::process::Command::new("git").args(["-C", &w.path, "worktree", "remove", "--force", &w.path]).output();
-    match out {
-        Ok(o) if o.status.success() => format!("worktree {} removed (branch {} kept)", w.path, w.branch),
-        Ok(o) => format!("worktree {} not removed: {}", w.path, String::from_utf8_lossy(&o.stderr).trim()),
-        Err(e) => format!("worktree {} not removed: {e}", w.path),
-    }
 }
 
 #[derive(Deserialize, Default)]
@@ -226,10 +208,10 @@ async fn remove(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Q
     let remove = q.remove_worktree.as_deref() == Some("1");
     let report = app
         .blocking(move |app| {
-            let active = app.with_tracker(&slug, |t| Ok(t.bus().get(&id)?.state == "active"))?;
+            let active = app.with_tracker(&slug, |t| Ok(t.bus().get(&id)?.state == genie_core::TeamState::Active))?;
             let mut r = if active { runtime::stop_team(app, &slug, &id, "owner", &by)? } else { Vec::new() };
             if remove {
-                r.push(remove_worktree(app, &slug, &id));
+                r.push(crate::runtime::remove_worktree(app, &slug, &id));
             }
             app.with_tracker(&slug, |t| t.bus().delete(&id))?;
             r.push(format!("team {id} deleted"));

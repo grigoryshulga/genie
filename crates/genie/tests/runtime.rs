@@ -9,7 +9,7 @@ use genie::config::Config;
 use genie::state::App;
 use genie_core::team::{NewMember, NewTeam, SendMail};
 use genie_core::work::NewJob;
-use genie_core::{Actor, CreateInput, Role, Status};
+use genie_core::{Activity, Actor, CreateInput, Role, Status, TeamState};
 use serde_json::json;
 
 struct Live {
@@ -86,7 +86,7 @@ async fn inbox_to_done_through_the_orchestrator_and_a_team() {
     assert_eq!(task.merge_strategy, "merge by orchestrator");
     // The closed task's team is stopped by the server, not by an agent.
     wait_for(&l.app, "team stopped", Duration::from_secs(10), |app| {
-        app.with_tracker("shop", |t| Ok(t.bus().get("G-1")?.state == "stopped")).unwrap()
+        app.with_tracker("shop", |t| Ok(t.bus().get("G-1")?.state == TeamState::Stopped)).unwrap()
     })
     .await;
     assert_eq!(team.template.as_deref(), Some("pair"));
@@ -172,7 +172,7 @@ fn a_server_restart_tells_the_interrupted_agents_to_continue() {
         })?;
         let d = t.bus().lease_delivery(Some("G-1"), "bender", &[], 10_000)?.expect("the letter is leased");
         t.bus().ack_delivery(d.id, "bender")?;
-        t.bus().set_activity("G-1", "bender", "working", None)?;
+        t.bus().member_working("G-1", "bender", serde_json::json!({ "kind": "session" }))?;
         Ok(())
     })
     .unwrap();
@@ -195,7 +195,7 @@ fn a_server_restart_tells_the_interrupted_agents_to_continue() {
         })
         .unwrap();
     assert_eq!(delivered, 1, "the letter the agent saw is still delivered, not lost");
-    assert_eq!(activity(), "idle", "the board does not show a busy agent without a process");
+    assert_eq!(activity(), Activity::Idle, "the board does not show a busy agent without a process");
 
     // A server restarted in a loop adds no second note while the first one is unread.
     app.with_server(|db| db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)).unwrap();

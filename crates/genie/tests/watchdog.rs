@@ -7,7 +7,7 @@ mod common;
 use chrono::{SecondsFormat, Utc};
 use common::*;
 use genie_core::inbox::NewQuestion;
-use genie_core::repos::{Delivery, NewRepo};
+use genie_core::repos::NewRepo;
 use genie_core::team::{NewMember, NewTeam, ORCHESTRATOR, SendMail};
 use genie_core::{Actor, CreateInput, Role, Status, StatusOptions};
 
@@ -222,7 +222,7 @@ async fn pending_ci_is_not_silence() {
             .with_server(|db| {
                 db.add_repo("shop", repo("api"))?;
                 db.set_task_repos("shop", &checks.task, &[("api".into(), "write".into())])?;
-                db.update_delivery("shop", &checks.task, "api", Delivery { ci_state: Some(state.into()), ..Default::default() })?;
+                set_delivery(db, &checks.task, &format!("ci_state = '{state}'"))?;
                 Ok(())
             })
             .unwrap();
@@ -238,12 +238,7 @@ async fn pending_ci_is_not_silence() {
         .with_server(|db| {
             db.add_repo("shop", repo("api"))?;
             db.set_task_repos("shop", &request.task, &[("api".into(), "write".into())])?;
-            db.update_delivery(
-                "shop",
-                &request.task,
-                "api",
-                Delivery { state: Some("published".into()), cr_state: Some("open".into()), cr_number: Some(7), ..Default::default() },
-            )?;
+            set_delivery(db, &request.task, "state = 'published', cr_state = 'open', cr_number = 7")?;
             Ok(())
         })
         .unwrap();
@@ -256,18 +251,19 @@ async fn pending_ci_is_not_silence() {
         .h
         .app
         .with_server(|db| {
-            db.update_delivery(
-                "shop",
-                &request.task,
-                "api",
-                Delivery { ci_state: Some("passed".into()), cr_state: Some("merged".into()), ..Default::default() },
-            )?;
+            set_delivery(db, &request.task, "ci_state = 'passed', cr_state = 'merged'")?;
             Ok(())
         })
         .unwrap();
     request.quieten(7200);
     request.watch().await;
     assert_eq!(request.letters().len(), 1, "nothing is waited for any more");
+}
+
+/// A delivery in a given state, as the watcher would have left it.
+fn set_delivery(db: &genie_core::server_db::ServerDb, task: &str, set: &str) -> genie_core::Result<()> {
+    db.conn().execute(&format!("UPDATE task_repos SET {set} WHERE project = 'shop' AND task = ?1 AND repo = 'api'"), [task])?;
+    Ok(())
 }
 
 fn repo(name: &str) -> NewRepo {
@@ -287,11 +283,11 @@ fn repo(name: &str) -> NewRepo {
 async fn a_working_member_is_not_silence() {
     let r = rig(900, Status::InProgress);
     r.quieten(7200);
-    r.h.app.with_tracker("shop", |t| t.bus().set_activity(&r.team, "bender", "working", None)).unwrap();
+    r.h.app.with_tracker("shop", |t| t.bus().member_working(&r.team, "bender", serde_json::json!({ "kind": "turn" }))).unwrap();
     r.watch().await;
     assert!(r.letters().is_empty(), "a member at work is not silence");
 
-    r.h.app.with_tracker("shop", |t| t.bus().set_activity(&r.team, "bender", "error", None)).unwrap();
+    r.h.app.with_tracker("shop", |t| t.bus().member_gave_up(&r.team, "bender", "model error", 3)).unwrap();
     r.h.app.with_tracker("shop", |t| Ok(t.conn().execute("UPDATE members SET activity_at = NULL, heartbeat_at = NULL", [])?)).unwrap();
     r.watch().await;
     assert!(r.letters().is_empty(), "an error is the agent watchdog's news, not this one's");

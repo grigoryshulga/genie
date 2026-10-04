@@ -138,7 +138,7 @@ pub fn enforce(app: &App, slug: &str, task: Option<&str>) -> AppResult<()> {
             over.explain(),
             covered.join(", ")
         );
-        app.with_tracker(slug, |t| t.bus().notify_orchestrator("genie", "system", "system", &text, task))?;
+        crate::runtime::tell_orchestrator(app, slug, task, &text)?;
     }
     Ok(())
 }

@@ -4,6 +4,7 @@
 
 mod common;
 
+use genie_core::DeliveryState;
 use std::path::{Path, PathBuf};
 
 use common::githost::{sh, try_sh, upstream, write_git_json};
@@ -129,7 +130,7 @@ async fn an_agent_pushes_its_task_branch_and_nothing_else() {
     assert!(ok, "the task branch is pushed: {out}");
     assert!(upstream_has(&r.up, &branch), "it reached the host");
     let rows = r.h.app.with_server(|db| db.task_repos("shop", &task_id(&r))).unwrap();
-    assert_eq!(rows[0].state, "published");
+    assert_eq!(rows[0].state, DeliveryState::Published);
     assert!(rows[0].head_sha.is_some());
     assert_eq!(journal(&r.h, "git.pushed").len(), 1);
 
