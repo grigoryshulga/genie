@@ -25,7 +25,7 @@ pub mod web;
 use std::sync::Arc;
 
 use axum::extract::{Request, State};
-use axum::http::{Method, StatusCode, Uri, header};
+use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -120,9 +120,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/mcp", post(mcp_server::endpoint).get(mcp_server::no_stream).delete(mcp_server::no_stream));
     // Client-side routes (/board, /team/G-7…) fall back to the SPA entry.
     let router = match web::resolve(app.web_root.as_deref()) {
-        web::WebUi::BuiltIn => {
-            router.fallback(|method: Method, uri: Uri| async move { web::respond(web::WEB_ASSETS, &method, uri.path()) })
-        }
+        web::WebUi::BuiltIn => router.fallback(|method: Method, uri: Uri, headers: HeaderMap| async move {
+            web::respond(web::WEB_ASSETS, &method, uri.path(), &headers)
+        }),
         web::WebUi::Dir(dir) => router.fallback_service(ServeDir::new(&dir).fallback(ServeFile::new(dir.join("index.html")))),
         web::WebUi::Missing(why) => router.fallback(move || async move { (StatusCode::SERVICE_UNAVAILABLE, why) }),
     };
