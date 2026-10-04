@@ -45,7 +45,7 @@ pub fn start(app: &Arc<App>) {
             }
             tokio::select! {
                 _ = app.wake_engine.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(2)) => {}
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {}
             }
         }
     });
@@ -514,27 +514,20 @@ fn execute(app: &App, run: &Run, step: &Value, kind: &str, input: &Value, state:
             let method = input["method"].as_str().unwrap_or("POST").to_uppercase();
             let body = input["body"].clone();
             let headers = input["headers"].clone();
-            let (status, text) = std::thread::scope(|s| {
-                s.spawn(|| {
-                    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
-                    rt.block_on(async {
-                        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
-                        let mut req = client.request(method.parse().map_err(|_| "bad method".to_string())?, &url);
-                        if let Some(h) = headers.as_object() {
-                            for (k, v) in h {
-                                req = req.header(k, v.as_str().unwrap_or_default());
-                            }
-                        }
-                        if !body.is_null() {
-                            req = req.json(&body);
-                        }
-                        let res = req.send().await.map_err(|e| e.to_string())?;
-                        let status = res.status().as_u16();
-                        Ok::<_, String>((status, res.text().await.unwrap_or_default()))
-                    })
-                })
-                .join()
-                .unwrap_or_else(|_| Err("http step panicked".into()))
+            let (status, text) = crate::state::block_on(async {
+                let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+                let mut req = client.request(method.parse().map_err(|_| "bad method".to_string())?, &url);
+                if let Some(h) = headers.as_object() {
+                    for (k, v) in h {
+                        req = req.header(k, v.as_str().unwrap_or_default());
+                    }
+                }
+                if !body.is_null() {
+                    req = req.json(&body);
+                }
+                let res = req.send().await.map_err(|e| e.to_string())?;
+                let status = res.status().as_u16();
+                Ok::<_, String>((status, res.text().await.unwrap_or_default()))
             })
             .map_err(invalid)?;
             if status >= 400 {

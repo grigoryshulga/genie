@@ -111,7 +111,7 @@ pub fn start(app: &Arc<App>) {
             }
             tokio::select! {
                 _ = app.wake_runtime.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(3)) => {}
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {}
             }
         }
     });

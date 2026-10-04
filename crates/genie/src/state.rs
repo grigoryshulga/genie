@@ -43,12 +43,16 @@ impl std::fmt::Display for AppError {
 pub type AppResult<T> = Result<T, AppError>;
 
 /// Run a future to its end from synchronous code — a worker of [`App::blocking`], the engine's
-/// tick, a test — on a thread of its own, so it never nests in the caller's runtime.
+/// tick, a test. On a worker it borrows the server's runtime; without one it builds a runtime on
+/// a thread of its own, so it never nests in the caller's runtime.
 pub fn block_on<F>(f: F) -> F::Output
 where
     F: std::future::Future + Send,
     F::Output: Send,
 {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return handle.block_on(f);
+    }
     std::thread::scope(|s| {
         s.spawn(|| tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime").block_on(f))
             .join()
@@ -85,6 +89,8 @@ pub struct App {
     pub mcp: crate::mcp_gateway::Gateway,
     /// Locks and fetch times of the repository mirrors and workspaces.
     pub git: crate::git::Git,
+    /// The journal pollers behind the live streams of the web UI.
+    pub live: crate::http::live::Hub,
 }
 
 impl App {
@@ -114,6 +120,7 @@ impl App {
             agents: RwLock::new(Arc::new(agents)),
             mcp: Default::default(),
             git: Default::default(),
+            live: Default::default(),
         }))
     }
 

@@ -615,7 +615,7 @@ async fn repo_and_host(app: &Arc<App>, project: &str, repo: &str) -> Result<(Pro
 /// until the server stops. Each row is looked at every `poll_secs` of its host.
 pub fn spawn_poller(app: Arc<App>) {
     tokio::spawn(async move {
-        let mut last: std::collections::HashMap<String, std::time::Instant> = Default::default();
+        let mut last: std::collections::HashMap<String, (std::time::Instant, u64)> = Default::default();
         let mut complained: std::collections::HashMap<String, std::time::Instant> = Default::default();
         loop {
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -625,6 +625,11 @@ pub fn spawn_poller(app: Arc<App>) {
             };
             for row in rows {
                 let key = format!("{}/{}/{}", row.project, row.task, row.repo);
+                // A row that was looked at lately costs nothing: its host is asked only when it is due.
+                let due = last.get(&key).map(|(at, every)| at.elapsed() >= Duration::from_secs(*every)).unwrap_or(true);
+                if !due {
+                    continue;
+                }
                 let every = app
                     .blocking({
                         let (p, r) = (row.project.clone(), row.repo.clone());
@@ -635,10 +640,7 @@ pub fn spawn_poller(app: Arc<App>) {
                     })
                     .await
                     .unwrap_or(60);
-                if last.get(&key).is_some_and(|t| t.elapsed() < Duration::from_secs(every)) {
-                    continue;
-                }
-                last.insert(key.clone(), std::time::Instant::now());
+                last.insert(key.clone(), (std::time::Instant::now(), every));
                 if let Err(e) = watch_one(&app, &row).await
                     && complained.get(&key).is_none_or(|t| t.elapsed() > Duration::from_secs(600))
                 {
