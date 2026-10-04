@@ -94,9 +94,8 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Why rebuild (diagnostics)
         run: |
-          CARGO_LOG=cargo::core::compiler::fingerprint=info cargo build --workspace --tests 2>&1 \
-            | grep -iE "dirty|stale|fingerprint error|changed" | head -40 || true
-          ls -la ~/.cargo/registry/src/*/proc-macro2-* | head -5 || true
+          cargo build --workspace --tests -v 2>&1 | grep -E "Dirty|Fresh" | head -30 || true
+          ls -la --time-style=full-iso ~/.cargo/registry/src/*/proc-macro2-*/build.rs target/debug/build/proc-macro2-*/output 2>&1 | head || true
       - name: Test
         # The live-session tests run the real pi harness inside the sandbox too. No doc tests: there are none.
         env:
