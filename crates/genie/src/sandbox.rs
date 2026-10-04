@@ -156,7 +156,7 @@ pub fn defaults(plan: &mut Plan, cfg: &SandboxConfig, home: &Path, pi_dir: Optio
         plan.set(&home.join(p), Access::Hidden);
     }
     for p in HIDDEN_SOCKETS {
-        plan.set(Path::new(p), Access::Hidden);
+        plan.set(&hidden_socket(Path::new(p)), Access::Hidden);
     }
     // The desktop session: its bus, keyring and agent sockets.
     if let Ok(run) = std::env::var("XDG_RUNTIME_DIR") {
@@ -167,6 +167,17 @@ pub fn defaults(plan: &mut Plan, cfg: &SandboxConfig, home: &Path, pi_dir: Optio
     }
     for p in &cfg.writable {
         plan.set(&expand(p, home), Access::Writable);
+    }
+}
+
+/// What to hide for a container engine's socket. The engines keep theirs in a private directory of `/run`
+/// (`/run/containerd/`, mode 0711, owned by root): bubblewrap cannot make the mount point of a file inside
+/// such a directory ("Can't mkdir parents"), and no agent sandbox starts. A directory that exists is hidden whole
+/// (an empty tmpfs in its place); a socket that sits right in `/run`, or whose directory is absent, stays a file.
+fn hidden_socket(socket: &Path) -> PathBuf {
+    match socket.parent() {
+        Some(dir) if dir != Path::new("/run") && dir.is_dir() => dir.to_path_buf(),
+        _ => socket.to_path_buf(),
     }
 }
 
@@ -216,6 +227,19 @@ mod tests {
     fn dir(path: &Path) -> PathBuf {
         std::fs::create_dir_all(path).unwrap();
         path.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn an_engine_socket_in_its_own_directory_is_hidden_with_the_directory() {
+        let t = tempfile::tempdir().unwrap();
+        let engine = dir(&t.path().join("containerd"));
+        // The directory exists (the engine runs): hide it whole, bubblewrap cannot mount a file inside it.
+        assert_eq!(hidden_socket(&engine.join("containerd.sock")), engine);
+        // The directory is absent: the socket itself, as before.
+        let absent = t.path().join("podman/podman.sock");
+        assert_eq!(hidden_socket(&absent), absent);
+        // A socket right in /run stays a file: /run is not ours to hide.
+        assert_eq!(hidden_socket(Path::new("/run/docker.sock")), PathBuf::from("/run/docker.sock"));
     }
 
     #[test]
