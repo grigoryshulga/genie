@@ -1,0 +1,9 @@
+{
+  "port": 7421,
+  "worktrees": { "dir": "{mainRoot}/../{repo}.pilot.worktrees/{team}" },
+  "runtime": {
+    "maxSessions": 6,
+    "maxConcurrent": 2,
+    "sandbox": { "hidden": ["~/.local/share/genie"] }
+  }
+}

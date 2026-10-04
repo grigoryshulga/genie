@@ -658,6 +658,49 @@ async fn a_team_with_an_explicit_roster_and_no_template_gets_its_own_worktree() 
     assert_eq!(team["cwd"].as_str(), Some(path), "members work in the worktree");
 }
 
+/// G-131: a pilot instance (`deploy/pilot.sh`, `deploy/pilot.config.json`) works on the same
+/// checkout as the working server without sharing data, worktrees or branches with it.
+#[tokio::test]
+async fn a_pilot_instance_keeps_worktrees_and_branches_apart() {
+    let template = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deploy/pilot.config.json");
+    let raw: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&template).unwrap()).unwrap();
+    let shipped = genie::config::Config::load(std::path::Path::new("/nonexistent-data-dir")).unwrap();
+    assert_ne!(raw["port"].as_u64(), Some(shipped.port as u64), "the pilot instance has its own port ({}): {template:?}", shipped.port);
+    let dir = raw["worktrees"]["dir"].as_str().expect("the template sets worktrees.dir");
+    assert_ne!(dir, shipped.worktrees.dir, "the pilot instance has its own worktree root: {template:?}");
+
+    let h = Harness::with_config(|cfg| cfg.worktrees.dir = dir.to_string());
+    let repo = h.dir.path().join("shop-repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    std::fs::write(repo.join("README.md"), "shop").unwrap();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git").arg("-C").arg(&repo).args(args).output().unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["add", "README.md"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
+    h.app.create_project("shop", "Магазин", Some(&repo.to_string_lossy()), None, Some("PIL")).unwrap();
+    let r = &h.router;
+
+    let (s, task, _) = call(r, "POST", "/api/tasks").json(json!({ "title": "Fix" })).send().await;
+    assert_eq!(s, StatusCode::CREATED);
+    assert!(task["id"].as_str().unwrap().starts_with("PIL-"), "the pilot's task ids cannot meet the working server's: {task}");
+    call(r, "POST", &format!("/api/tasks/{}/status", task["id"].as_str().unwrap())).json(json!({ "status": "ready" })).send().await;
+    let (s, team, _) = call(r, "POST", "/api/teams")
+        .json(json!({ "task": task["id"], "members": [{ "role": "executor" }, { "role": "reviewer" }] }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{team}");
+    let path = std::path::PathBuf::from(team["worktree"]["path"].as_str().expect("the team has a worktree"));
+    let branch = team["worktree"]["branch"].as_str().unwrap();
+    let name = branch.strip_prefix("genie/").expect("the branch comes from worktrees.branch");
+    let root = repo.parent().unwrap();
+    let repo_name = repo.file_name().unwrap().to_string_lossy();
+    assert_eq!(path, root.join(format!("{repo_name}.pilot.worktrees/{name}")));
+    assert_ne!(path, root.join(format!("{repo_name}.worktrees/{name}")), "the working server's root is untouched");
+}
+
 /// G-89: with `maxActiveTeamsPerEpic` the tasks of an epic above the limit are refused a team
 /// and stay in their status; another epic's tasks are not affected; a stopped team frees room.
 #[tokio::test]
