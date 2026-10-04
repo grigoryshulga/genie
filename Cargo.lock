@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "genie"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "base64",
@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "genie-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
