@@ -76,6 +76,8 @@ docker compose pull && docker compose up -d
 | `GENIE_SANDBOX` | `off` (по умолчанию в compose), `auto` или `bwrap`: песочница агентов, см. ниже |
 | `GITHUB_TOKEN` | HTTPS-доступ агентов к github.com |
 | `EXTRA_APT_PACKAGES` | пакеты, добавляемые в образ при сборке (компиляторы, python…) |
+| `RUST_TOOLCHAIN` | Rust для агентов (`stable`, `1.94`) при сборке образа, с общим кэшем сборки, см. «Инструменты для проектов» |
+| `GENIE_AGENT_BUILD_JOBS` | сколько задач сборки cargo у агента (по умолчанию 8), когда в образе есть Rust |
 
 Переменные `GENIE_BIND`, `GENIE_PUBLIC_URL`, `GENIE_ALLOW_HOSTS` и `GENIE_SANDBOX` (пишется в `runtime.sandbox.mode`) при каждом старте записываются в `/data/config.json` (только эти ключи; `allowHosts` дополняется, ничего не удаляется). Остальное содержимое `config.json` — ваше: модели ролей, лимиты, Telegram, SMTP — см. [[platform/getting-started]]. Сервер читает настройки только из этого файла, поэтому править его удобно так:
 
@@ -258,6 +260,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends golang && rm -r
 ```
 
 (Точка входа сама переключается на пользователя `genie`, `USER` менять не нужно.)
+
+### Rust
+
+Для проектов на Rust образ собирается с тулчейном: в compose — аргумент сборки `RUST_TOOLCHAIN: stable` (в `.env` — `RUST_TOOLCHAIN=stable`). В образ попадают тулчейн rustup с clippy и rustfmt (`/opt/rust`, только чтение), gcc и линковщик mold. Без него агент ставит себе тулчейн сам — по гигабайту с лишним на каждого.
+
+При старте контейнер выдаёт агентам общий кэш сборки `/data/cache` (в песочнице он виден и доступен на запись, остальной `/data` скрыт) и пишет в `runtime.env` значения по умолчанию:
+
+| Переменная | Значение | Зачем |
+|---|---|---|
+| `CARGO_HOME` | `/data/cache/cargo` | скачанные крейты — один раз на всех |
+| `CARGO_TARGET_DIR` | `/data/cache/cargo-target` | один каталог сборки: зависимости собираются один раз, а сборки разных агентов идут по очереди (блокировка cargo), а не линкуют все разом |
+| `CARGO_BUILD_JOBS` | `GENIE_AGENT_BUILD_JOBS`, по умолчанию 8 | не занимать все ядра |
+| `CARGO_TARGET_<архитектура>_UNKNOWN_LINUX_GNU_RUSTFLAGS` | `-C link-arg=-fuse-ld=mold` | быстрая линковка |
+
+Любое из них можно задать в `runtime.env` по-своему — значение по умолчанию его не перезапишет; `GENIE_AGENT_CACHE=0` оставляет настройки сборки агентов как есть. Кэш можно удалить целиком (`rm -rf /data/cache/cargo-target`) — он соберётся заново.
 
 ## Обратный прокси и TLS
 

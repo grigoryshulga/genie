@@ -83,10 +83,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # mold links the test binaries several times faster than the default linker.
+      - uses: rui314/setup-mold@v1
       # The agent sandbox: bubblewrap, with the unprivileged user namespaces Ubuntu restricts by default.
       - name: Sandbox
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends bubblewrap
+          # The runner's package lists are usually fresh enough; refresh them only when the install fails.
+          sudo apt-get install -y -q --no-install-recommends bubblewrap \
+            || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends bubblewrap; }
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Test
         # The live-session tests run the real pi harness inside the sandbox too. No doc tests: there are none.
