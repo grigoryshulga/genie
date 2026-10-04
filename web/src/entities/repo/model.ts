@@ -204,10 +204,18 @@ export interface TaskRepo {
   crNumber?: number | null;
   crUrl?: string | null;
   crState?: "open" | "merged" | "closed" | null;
-  ciState?: "none" | "pending" | "passed" | "failed" | null;
+  ciState?: "none" | "pending" | "passed" | "failed" | "stalled" | null;
+  ciRef?: string | null;
+  ciSha?: string | null;
   headSha?: string | null;
   updated: string;
 }
 
-export const CI_NAME: Record<string, string> = { none: "проверок нет", pending: "проверки идут", passed: "проверки прошли", failed: "проверки упали" };
+export const CI_NAME: Record<string, string> = {
+  none: "проверок нет",
+  pending: "проверки идут",
+  passed: "проверки прошли",
+  failed: "проверки упали",
+  stalled: "проверки зависли",
+};
 export const CR_NAME: Record<string, string> = { open: "открыт", merged: "слит", closed: "закрыт без слияния" };

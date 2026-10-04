@@ -296,6 +296,12 @@ CREATE TABLE IF NOT EXISTS task_repos (
   cr_url TEXT,
   cr_state TEXT,
   ci_state TEXT,
+  -- The ref whose checks are watched (`genie/S-1`, or the target branch after a merge),
+  -- the commit those checks belong to, and when waiting for that commit's checks began
+  -- (empty once they settled). One watched ref per task and repository.
+  ci_ref TEXT NOT NULL DEFAULT '',
+  ci_sha TEXT,
+  ci_since TEXT NOT NULL DEFAULT '',
   head_sha TEXT,
   -- The host's timestamp of the newest comment already passed on to the task.
   seen_at TEXT NOT NULL DEFAULT '',
@@ -326,6 +332,10 @@ const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     ("api_tokens", "last_used", "ALTER TABLE api_tokens ADD COLUMN last_used TEXT"),
     // The person a job runs on behalf of (whose LiteLLM key it uses).
     ("agent_jobs", "initiator", "ALTER TABLE agent_jobs ADD COLUMN initiator TEXT"),
+    // The watched CI ref of a delivery, its commit and since when its checks are awaited.
+    ("task_repos", "ci_ref", "ALTER TABLE task_repos ADD COLUMN ci_ref TEXT NOT NULL DEFAULT ''"),
+    ("task_repos", "ci_sha", "ALTER TABLE task_repos ADD COLUMN ci_sha TEXT"),
+    ("task_repos", "ci_since", "ALTER TABLE task_repos ADD COLUMN ci_since TEXT NOT NULL DEFAULT ''"),
 ];
 
 pub const SESSION_DAYS: i64 = 30;

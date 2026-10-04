@@ -79,6 +79,10 @@ pub enum Ci {
     Pending,
     Passed,
     Failed,
+    /// Not the host's answer: the checks stayed `pending` longer than `runtime.ciPendingSecs`
+    /// and the team was told. Terminal for the watcher (it stops looking), a wait for the
+    /// team still — see the silent-team watchdog.
+    Stalled,
 }
 
 impl Ci {
@@ -88,6 +92,7 @@ impl Ci {
             Ci::Pending => "pending",
             Ci::Passed => "passed",
             Ci::Failed => "failed",
+            Ci::Stalled => "stalled",
         }
     }
 }
@@ -107,6 +112,9 @@ pub struct ChangeRequest {
     /// The target branch.
     pub base: String,
     pub head_sha: Option<String>,
+    /// The commit the merge produced on the target branch (`merge_commit_sha`); absent when
+    /// the host does not work it out (then the target branch's checks are not watched).
+    pub merge_sha: Option<String>,
     /// `None` while the host is still working it out.
     pub mergeable: Option<bool>,
     pub approvals: u32,
@@ -331,19 +339,19 @@ impl Api {
         }
     }
 
-    /// Which checks of the request's head commit failed and why (best effort: an empty list when the host says nothing).
-    pub async fn ci_failures(&self, remote: &str, cr: &ChangeRequest) -> ApiResult<Vec<CiFailure>> {
+    /// Which checks of `sha` failed and why (best effort: an empty list when the host says nothing).
+    pub async fn ci_failures(&self, remote: &str, sha: Option<&str>) -> ApiResult<Vec<CiFailure>> {
         match self.host.kind {
-            Kind::Github => github::ci_failures(self, remote, cr).await,
-            _ => gitlab::ci_failures(self, remote, cr).await,
+            Kind::Github => github::ci_failures(self, remote, sha).await,
+            _ => gitlab::ci_failures(self, remote, sha).await,
         }
     }
 
-    /// The checks of the request's head commit.
-    pub async fn ci(&self, remote: &str, cr: &ChangeRequest) -> ApiResult<Ci> {
+    /// The checks of one commit.
+    pub async fn ci(&self, remote: &str, sha: Option<&str>) -> ApiResult<Ci> {
         match self.host.kind {
-            Kind::Github => github::ci(self, remote, cr).await,
-            _ => gitlab::ci(self, remote, cr).await,
+            Kind::Github => github::ci(self, remote, sha).await,
+            _ => gitlab::ci(self, remote, sha).await,
         }
     }
 }

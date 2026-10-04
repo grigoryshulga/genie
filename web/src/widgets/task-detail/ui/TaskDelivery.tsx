@@ -6,7 +6,21 @@ import { CI_NAME, CR_NAME, type TaskRepo, useMergeRequest, useTaskRepos } from "
 import { ConfirmDialog, useToast } from "@/shared/ui";
 
 function ciLevel(ci: TaskRepo["ciState"]): "ok" | "warn" | "fail" | "" {
-  return ci === "passed" ? "ok" : ci === "failed" ? "fail" : ci === "pending" ? "warn" : "";
+  return ci === "passed" ? "ok" : ci === "failed" ? "fail" : ci === "pending" || ci === "stalled" ? "warn" : "";
+}
+
+// The checks of a delivery, whenever they mean something: any recorded state (with or without a
+// request — a policy may ask for none at all), and "no checks" for an open request, as before.
+// The checks of the target branch appear here once the request was merged.
+function ciPill(r: TaskRepo) {
+  const known = r.ciState ?? (r.crState === "open" ? "none" : null);
+  if (!known) return null;
+  const of = r.ciRef && r.ciRef !== r.branch ? ` ${r.ciRef}` : "";
+  return (
+    <span className={`pill ${ciLevel(known)}`} title={`проверки${of}`}>
+      {CI_NAME[known]}
+    </span>
+  );
 }
 
 export function TaskDelivery({ task }: { task: string }) {
@@ -36,7 +50,7 @@ export function TaskDelivery({ task }: { task: string }) {
                   <span>запрос #{r.crNumber}</span>
                 )}
                 <span className={`pill ${r.crState === "merged" ? "ok" : r.crState === "closed" ? "warn" : ""}`}>{CR_NAME[r.crState ?? "open"]}</span>
-                {r.crState === "open" && <span className={`pill ${ciLevel(r.ciState)}`}>{CI_NAME[r.ciState ?? "none"]}</span>}
+                {ciPill(r)}
                 {r.crState === "open" && (
                   <button type="button" className="btn ghost" style={{ height: 24 }} onClick={() => setMerging(r)}>
                     Слить
@@ -44,7 +58,10 @@ export function TaskDelivery({ task }: { task: string }) {
                 )}
               </>
             ) : r.state === "published" ? (
-              <span className="muted">ветка отправлена, запроса ещё нет</span>
+              <>
+                <span className="muted">ветка отправлена, запроса ещё нет</span>
+                {ciPill(r)}
+              </>
             ) : r.access === "write" ? (
               <span className="muted">пока без изменений на хостинге</span>
             ) : null}

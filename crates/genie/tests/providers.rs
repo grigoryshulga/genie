@@ -68,20 +68,26 @@ async fn scenario(kind: &'static str) {
     assert!(list.iter().any(|c| c.body == "looks good" && c.author == "genie-bot"), "{kind}: {list:?}");
     assert!(list.iter().all(|c| !c.body.contains("assigned to")), "{kind}: system notes are left out");
 
-    // The checks of the head commit.
+    // The checks of one commit (the watched ref's sha, not necessarily a request's head).
     for (state, want) in [("none", Ci::None), ("pending", Ci::Pending), ("passed", Ci::Passed), ("failed", Ci::Failed)] {
         fake.lock().ci = state.into();
-        assert_eq!(api.ci("acme/api", &got).await.unwrap(), want, "{kind}: {state}");
+        assert_eq!(api.ci("acme/api", got.head_sha.as_deref()).await.unwrap(), want, "{kind}: {state}");
     }
+    // A commit the host does not know is not an error: it simply has no checks.
+    fake.lock().ci = "passed".into();
+    assert_eq!(api.ci("acme/api", None).await.unwrap(), Ci::None, "{kind}");
 
-    // A merge the host refuses says why; then it goes through.
+    // A merge the host refuses says why; then it goes through, and the merge commit is named.
     fake.lock().refuse_merge = Some("Pull Request is not mergeable".into());
     assert!(
         matches!(api.merge("acme/api", 1, Some("squash"), got.head_sha.as_deref()).await, Err(ApiError::Rejected(m)) if m.contains("not mergeable")),
         "{kind}"
     );
+    assert_eq!(got.merge_sha, None, "an open request has no merge commit yet: {kind}");
     api.merge("acme/api", 1, Some("squash"), got.head_sha.as_deref()).await.unwrap();
-    assert_eq!(api.get("acme/api", 1).await.unwrap().state, CrState::Merged, "{kind}");
+    let merged = api.get("acme/api", 1).await.unwrap();
+    assert_eq!(merged.state, CrState::Merged, "{kind}");
+    assert_eq!(merged.merge_sha.as_deref(), Some("2222222222222222222222222222222222222222"), "{kind}");
     if kind == "gitlab" {
         assert!(matches!(api.merge("acme/api", 2, Some("rebase"), None).await, Err(ApiError::Unsupported(_))));
     }

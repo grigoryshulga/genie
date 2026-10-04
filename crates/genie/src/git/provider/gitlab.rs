@@ -54,6 +54,7 @@ fn parse(mr: &Value) -> ChangeRequest {
         head: s(mr, "source_branch"),
         base: s(mr, "target_branch"),
         head_sha: mr["sha"].as_str().map(str::to_string),
+        merge_sha: mr["merge_commit_sha"].as_str().map(str::to_string),
         mergeable,
         approvals: 0,
         changes_requested: false,
@@ -130,15 +131,15 @@ pub(super) async fn merge(api: &Api, remote: &str, number: i64, method: Option<&
     api.send(Method::PUT, &format!("{base}/merge_requests/{number}/merge"), &[], Some(body)).await.map(|_| ())
 }
 
-/// The latest pipeline of the head commit.
-pub(super) async fn ci(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult<Ci> {
-    let Some(sha) = &cr.head_sha else { return Ok(Ci::None) };
+/// The latest pipeline of one commit.
+pub(super) async fn ci(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<Ci> {
+    let Some(sha) = sha else { return Ok(Ci::None) };
     let base = project(remote);
     let list = api
         .send(
             Method::GET,
             &format!("{base}/pipelines"),
-            &[("sha", sha.clone()), ("order_by", "id".into()), ("sort", "desc".into()), ("per_page", "1".into())],
+            &[("sha", sha.to_string()), ("order_by", "id".into()), ("sort", "desc".into()), ("per_page", "1".into())],
             None,
         )
         .await?
@@ -153,15 +154,15 @@ pub(super) async fn ci(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult
     })
 }
 
-/// The failed jobs of the request's latest pipeline, each with the end of its log.
-pub(super) async fn ci_failures(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult<Vec<super::CiFailure>> {
-    let Some(sha) = &cr.head_sha else { return Ok(Vec::new()) };
+/// The failed jobs of one commit's latest pipeline, each with the end of its log.
+pub(super) async fn ci_failures(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<Vec<super::CiFailure>> {
+    let Some(sha) = sha else { return Ok(Vec::new()) };
     let base = project(remote);
     let list = api
         .send(
             Method::GET,
             &format!("{base}/pipelines"),
-            &[("sha", sha.clone()), ("order_by", "id".into()), ("sort", "desc".into()), ("per_page", "1".into())],
+            &[("sha", sha.to_string()), ("order_by", "id".into()), ("sort", "desc".into()), ("per_page", "1".into())],
             None,
         )
         .await?

@@ -29,8 +29,15 @@ struct Team {
 }
 
 async fn rig(kind: &'static str, policy: Value) -> Rig {
+    rig_with(kind, policy, |_| {}).await
+}
+
+async fn rig_with(kind: &'static str, policy: Value, cfg: impl FnOnce(&mut genie::config::Config)) -> Rig {
     let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let h = Harness::with_config(|c| c.port = port);
+    let h = Harness::with_config(|c| {
+        c.port = port;
+        cfg(c);
+    });
     let hosts = h.dir.path().join("hosts");
     std::fs::create_dir_all(&hosts).unwrap();
     upstream(&hosts, "acme/api", &[("README.md", "api\n")]);
@@ -150,6 +157,12 @@ fn journal(r: &Rig, kind: &str) -> Vec<genie_core::Event> {
 
 async fn status(r: &Rig, task: &str, token: &str, to: &str) -> (StatusCode, Value) {
     http(r, "POST", &format!("/api/tasks/{task}/status"), Some(token), Some(json!({ "status": to }))).await
+}
+
+/// What the task's team was told by the git host.
+fn team_mail(r: &Rig, task: &str) -> Vec<genie_core::team::Mail> {
+    let team = r.h.app.with_tracker("shop", |t| Ok(t.get(task)?.team.unwrap())).unwrap();
+    r.h.app.with_tracker("shop", |t| t.bus().history(&team, 50)).unwrap()
 }
 
 async fn each_provider(f: impl AsyncFn(&'static str)) {
@@ -496,4 +509,285 @@ async fn a_failed_github_check_reaches_the_team_with_its_name_link_and_summary()
     assert!(m.text.contains("Build failed") && m.text.contains("unresolved import `orders`"), "{}", m.text);
     let event = journal(&r, "ci.failed");
     assert_eq!(event[0].payload["failures"][0]["name"], "build", "{event:?}");
+}
+
+/// AC1: an agent may not hand the work over for review while the checks of its branch have failed.
+/// The decision is taken from the host, with the recorded state as the fallback.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn review_is_closed_when_the_checks_failed() {
+    each_provider(async |kind| {
+        let r = rig(kind, json!({})).await;
+        let t = team(&r, "Add a feature").await;
+        let id = t.task.clone();
+        assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+        commit_and_push(&t);
+        let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+        assert_eq!(s, StatusCode::OK, "{kind}: {b}");
+
+        // The checks are red on the host: the move is refused and says what is in the way.
+        r.fake.lock().ci = "failed".into();
+        let (s, b) = status(&r, &id, &t.executor, "review").await;
+        assert_eq!(s, StatusCode::CONFLICT, "{kind}: {b}");
+        let why = b["error"].as_str().unwrap();
+        assert!(why.contains("checks") && why.contains("failed") && why.contains("api"), "{kind}: {b}");
+
+        // Still running is not a failure: nothing wakes a session when checks turn green, so a
+        // `pending` CI must not strand the executor (the plan's decision 1).
+        r.fake.lock().ci = "pending".into();
+        assert_eq!(status(&r, &id, &t.executor, "review").await.0, StatusCode::OK, "{kind}");
+        assert_eq!(
+            http(&r, "POST", &format!("/api/tasks/{id}/status"), None, Some(json!({ "status": "in_progress" }))).await.0,
+            StatusCode::OK
+        );
+
+        // Back to a red CI, and a host that cannot be reached: the recorded state decides.
+        r.fake.lock().ci = "failed".into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        assert_eq!(row(&r, &id).ci_state.as_deref(), Some("failed"));
+        r.fake.lock().broken = 5;
+        let (s, b) = status(&r, &id, &t.executor, "review").await;
+        assert_eq!(s, StatusCode::CONFLICT, "{kind}: the recorded state is used when the host is down: {b}");
+
+        // A person is not held to it: their moves are authoritative.
+        let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/status"), None, Some(json!({ "status": "review" }))).await;
+        assert_eq!(s, StatusCode::OK, "{kind}: a person decides: {b}");
+        assert_eq!(
+            http(&r, "POST", &format!("/api/tasks/{id}/status"), None, Some(json!({ "status": "in_progress" }))).await.0,
+            StatusCode::OK
+        );
+
+        // Green: the agent may hand it over.
+        r.fake.lock().ci = "passed".into();
+        r.fake.lock().broken = 0;
+        let (s, b) = status(&r, &id, &t.executor, "review").await;
+        assert_eq!(s, StatusCode::OK, "{kind}: {b}");
+    })
+    .await;
+}
+
+/// AC2: with a policy that asks for no requests, the branch's checks are watched all the same and
+/// the team hears about a failure (there is no request to watch).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pushed_branch_is_watched_without_a_request() {
+    let policy = json!({ "push": "branches", "change_request": { "open": false } });
+    let r = rig("github", policy).await;
+    let t = team(&r, "Deliver on the branch").await;
+    let id = t.task.clone();
+    assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+    let branch = commit_and_push(&t);
+
+    // The push itself arms the watch: the branch and its commit are recorded, no request exists.
+    let pushed = row(&r, &id);
+    assert_eq!(pushed.cr_number, None, "no request was opened");
+    assert_eq!(pushed.ci_ref, branch);
+    assert!(pushed.ci_sha.is_some(), "the watched commit comes from the push");
+    assert_eq!(pushed.ci_state, None, "nothing has been looked at yet");
+    assert_eq!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().len(), 1);
+
+    r.fake.lock().ci = "failed".into();
+    genie::git::delivery::watch_one(&r.h.app, &pushed).await.unwrap();
+    assert_eq!(row(&r, &id).ci_state.as_deref(), Some("failed"));
+    assert_eq!(journal(&r, "ci.failed").len(), 1);
+    let mail = team_mail(&r, &id);
+    let m = mail.iter().find(|m| m.from == "git-host" && m.text.contains("failed")).expect("the team is told");
+    assert!(m.text.contains(&format!("branch `{branch}`")), "the branch is named: {}", m.text);
+    assert!(m.text.contains("- build (https://github.example/acme/api/runs/9)"), "{}", m.text);
+
+    // The same failure is not announced twice.
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    assert_eq!(journal(&r, "ci.failed").len(), 1);
+
+    // The review gate reads it too — and with no request to open, nothing else holds the move.
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::CONFLICT, "{b}");
+
+    // The checks are still visible to whoever asks for the delivery (AC2: without asking for CI).
+    let (s, b) = http(&r, "GET", &format!("/api/tasks/{id}/repos"), Some(&t.executor), None).await;
+    assert_eq!(s, StatusCode::OK);
+    let row_json = b["repos"].as_array().unwrap().iter().find(|x| x["repo"] == "api").unwrap().clone();
+    assert_eq!((row_json["ciState"].as_str(), row_json["ciRef"].as_str()), (Some("failed"), Some(branch.as_str())));
+}
+
+/// AC2: a person may merge a request past its checks; the commit that lands on the target branch is
+/// then watched, and its failure reaches the team.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_target_branch_is_checked_after_a_merge_past_the_checks() {
+    each_provider(async |kind| {
+        let r = rig(kind, json!({})).await;
+        let t = team(&r, "Merge it as it is").await;
+        let id = t.task.clone();
+        commit_and_push(&t);
+        let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+        assert_eq!(s, StatusCode::OK, "{kind}: {b}");
+
+        // A person merges on the host while the checks are red.
+        r.fake.lock().ci = "failed".into();
+        r.fake.lock().prs[0].state = "merged".into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        let merged = row(&r, &id);
+        assert_eq!(merged.state, "merged", "{kind}");
+        assert_eq!(journal(&r, "cr.merged").len(), 1);
+        assert_eq!(merged.ci_ref, "main", "{kind}: the target branch is what is watched now");
+        assert_eq!(merged.ci_sha.as_deref(), Some("2222222222222222222222222222222222222222"), "{kind}");
+        assert_eq!(merged.ci_state, None, "the merge commit has not been looked at yet");
+        assert!(journal(&r, "ci.failed").is_empty(), "{kind}: the head's red checks are history, not news");
+
+        // The next look reports the failure of the commit that landed on the target branch.
+        genie::git::delivery::watch_one(&r.h.app, &merged).await.unwrap();
+        assert_eq!(row(&r, &id).ci_state.as_deref(), Some("failed"));
+        assert_eq!(journal(&r, "ci.failed").len(), 1);
+        let mail = team_mail(&r, &id);
+        assert!(mail.iter().any(|m| m.text.contains("branch `main`")), "{kind}: {mail:?}");
+
+        // Green again: the watch settles and says so.
+        r.fake.lock().ci = "passed".into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        assert_eq!(row(&r, &id).ci_state.as_deref(), Some("passed"));
+        assert_eq!(journal(&r, "ci.passed").len(), 1, "{kind}");
+    })
+    .await;
+}
+
+/// AC3: checks that never settle are reported once, and the watch stops taking them as running.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn checks_pending_too_long_are_reported_once() {
+    let policy = json!({ "push": "branches", "change_request": { "open": false } });
+    let r = rig_with("gitlab", policy, |c| c.runtime.ci_pending_secs = 1).await;
+    let t = team(&r, "Checks that never end").await;
+    let id = t.task.clone();
+    assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+    commit_and_push(&t);
+    r.fake.lock().ci = "pending".into();
+
+    // A first look records that the checks are running and since when.
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let running = row(&r, &id);
+    assert_eq!(running.ci_state.as_deref(), Some("pending"));
+    assert_ne!(running.ci_since, "", "the clock is running");
+    assert!(journal(&r, "ci.stalled").is_empty());
+
+    // Longer than `ciPendingSecs`: one event, one letter, and the state stops pretending.
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let stalled = row(&r, &id);
+    assert_eq!(stalled.ci_state.as_deref(), Some("stalled"));
+    assert_eq!(journal(&r, "ci.stalled").len(), 1);
+    let letters = team_mail(&r, &id).into_iter().filter(|m| m.from == "git-host").count();
+    assert!(letters > 0, "the team is told");
+    assert!(team_mail(&r, &id).iter().any(|m| m.from == "git-host" && m.text.contains(&format!("branch `{}`", stalled.ci_ref))));
+
+    // Reported once: looking again neither repeats the letter nor the event, and the row leaves the
+    // watch set (nothing keeps asking the host about checks nobody waits for any more).
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    assert_eq!(journal(&r, "ci.stalled").len(), 1);
+    assert_eq!(team_mail(&r, &id).into_iter().filter(|m| m.from == "git-host").count(), letters, "one letter, not two");
+    assert!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().is_empty(), "stalled is terminal");
+
+    // `stalled` is not a failure: it does not close the review either.
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+}
+
+/// A `task_repos` row as it looked before the CI watch existed: nothing watched, only `head_sha`
+/// (or nothing at all) and the state the host last gave.
+fn unarm(r: &Rig, task: &str, head_sha: Option<&str>, ci_state: &str) {
+    r.h.app
+        .with_server(|db| {
+            db.update_delivery(
+                "shop",
+                task,
+                "api",
+                genie_core::repos::Delivery { reset_ci: true, ci_state: Some(ci_state.into()), ..Default::default() },
+            )?;
+            db.conn().execute(
+                "UPDATE task_repos SET head_sha = ?1 WHERE project = 'shop' AND task = ?2 AND repo = 'api'",
+                [head_sha, Some(task)],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// F1 (round 1): a delivery whose watched commit was never armed — a row from before this change, or
+/// a request whose host named no head commit — must not slip past a failed CI. F4: a head that moved
+/// without a push through the proxy must not leave the gate and the watcher on different commits.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_delivery_from_before_the_watch_does_not_slip_past_a_failed_check() {
+    let r = rig("github", json!({})).await;
+    let t = team(&r, "An old delivery").await;
+    let id = t.task.clone();
+    assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+    let branch = commit_and_push(&t);
+    let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    let watched = row(&r, &id).ci_sha.clone().expect("the push armed the watch");
+
+    // (a) Nothing watched, `head_sha` and the failure recorded, the host down: the state decides.
+    unarm(&r, &id, Some(&watched), "failed");
+    r.fake.lock().broken = 5;
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::CONFLICT, "the recorded state decides when the host is down: {b}");
+    assert!(b["error"].as_str().unwrap().contains("checks"), "{b}");
+    r.fake.lock().broken = 0;
+
+    // (b) The host answers: with nothing armed the gate asks about the request's head.
+    r.fake.lock().ci = "passed".into();
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::OK, "the checks of the request's head are read live: {b}");
+    assert_eq!(
+        http(&r, "POST", &format!("/api/tasks/{id}/status"), None, Some(json!({ "status": "in_progress" }))).await.0,
+        StatusCode::OK
+    );
+
+    // (c) No commit to ask about at all (a request the host opened without a head sha): the recorded
+    // failure still closes the review.
+    unarm(&r, &id, None, "failed");
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::CONFLICT, "nothing to ask about, the state decides: {b}");
+
+    // The next look arms the watch from the request: the row from before the watch gets one too, and
+    // the checks become visible (AC2).
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let armed = row(&r, &id);
+    assert_eq!(armed.ci_sha.as_deref(), Some(r.fake.lock().sha.as_str()), "the request's head is watched");
+    assert_eq!(armed.ci_ref, branch);
+    assert_eq!(armed.ci_state.as_deref(), Some("passed"), "and its checks are read");
+
+    // (d) F4: the branch moved on the host, not through the proxy. The next look follows the request.
+    r.fake.lock().prs[0].sha = "3333333333333333333333333333333333333333".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    assert_eq!(row(&r, &id).ci_sha.as_deref(), Some("3333333333333333333333333333333333333333"), "the gate and the watcher agree");
+}
+
+/// F2 (round 1): a repository whose host reports no checks is looked at once more — they may start a
+/// moment after the push — and then left alone, so nothing is polled for the life of the row.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_branch_without_checks_is_watched_once_more_and_then_left_alone() {
+    let policy = json!({ "push": "branches", "change_request": { "open": false } });
+    let r = rig("github", policy).await;
+    let t = team(&r, "No checks here").await;
+    let id = t.task.clone();
+    assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+    let branch = commit_and_push(&t);
+    r.fake.lock().ci = "none".into();
+
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let first = row(&r, &id);
+    assert_eq!(first.ci_state.as_deref(), Some("none"));
+    assert!(first.ci_sha.is_some(), "the branch stays watched for one more look");
+    assert_eq!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().len(), 1);
+
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let second = row(&r, &id);
+    assert_eq!(second.ci_state.as_deref(), Some("none"), "the answer stands");
+    assert_eq!(second.ci_sha, None, "and nothing is watched any more");
+    assert!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().is_empty(), "no row is polled for ever");
+    assert!(journal(&r, "ci.failed").is_empty());
+
+    // The branch's delivery still says what was found, and it is still visible (AC2).
+    let (s, b) = http(&r, "GET", &format!("/api/tasks/{id}/repos"), Some(&t.executor), None).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    let found = b["repos"].as_array().unwrap().iter().find(|x| x["repo"] == "api").unwrap().clone();
+    assert_eq!(found["ciState"].as_str(), Some("none"));
+    assert_eq!(found["branch"].as_str(), Some(branch.as_str()));
 }

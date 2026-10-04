@@ -51,7 +51,13 @@ function QuestionCard({ action, picked, setPicked }: CardProps<"ask-owner-questi
   );
 }
 
-const CI_TEXT: Record<NonNullable<TaskRepo["ciState"]>, string> = { passed: "проверки пройдены", failed: "проверки упали", pending: "проверки идут", none: "проверок нет" };
+const CI_TEXT: Record<NonNullable<TaskRepo["ciState"]>, string> = {
+  passed: "проверки пройдены",
+  failed: "проверки упали",
+  pending: "проверки идут",
+  stalled: "проверки зависли",
+  none: "проверок нет",
+};
 
 function MergeCard({ task, action, resolve }: CardProps<"ask-for-merge-pr">) {
   const row = useTaskRepos(task.id).data?.repos.find((r) => r.repo === action.repo);

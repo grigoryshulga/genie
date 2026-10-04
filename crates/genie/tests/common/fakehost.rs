@@ -45,6 +45,9 @@ pub struct Fake {
     pub broken: u32,
     pub protected: Vec<String>,
     pub sha: String,
+    /// The commit a merge produced on the target branch (`merge_commit_sha`); `None` is a host
+    /// that does not say, so the target branch is not watched.
+    pub merge_sha: Option<String>,
     pub calls: Vec<String>,
 }
 
@@ -77,6 +80,7 @@ pub async fn spawn(kind: &'static str, token: &str) -> FakeHost {
         broken: 0,
         protected: vec!["main".into()],
         sha: "1111111111111111111111111111111111111111".into(),
+        merge_sha: Some("2222222222222222222222222222222222222222".into()),
         calls: Vec::new(),
     }));
     let app = if kind == "github" { github(state.clone()) } else { gitlab(state.clone()) };
@@ -132,6 +136,8 @@ fn gh_pr(f: &Fake, p: &Pr) -> Value {
     json!({
         "number": p.number, "html_url": format!("https://github.example/acme/api/pull/{}", p.number), "title": p.title,
         "state": if p.state == "open" { "open" } else { "closed" }, "merged": p.state == "merged",
+        // The host only names the merge commit of a request that was merged.
+        "merge_commit_sha": if p.state == "merged" { json!(f.merge_sha) } else { Value::Null },
         "draft": p.draft, "head": { "ref": p.head, "sha": p.sha }, "base": { "ref": p.base }, "mergeable": f.mergeable,
     })
 }
@@ -256,6 +262,7 @@ fn gl_mr(f: &Fake, p: &Pr) -> Value {
     json!({
         "iid": p.number, "web_url": format!("https://gitlab.example/acme/api/-/merge_requests/{}", p.number), "title": p.title,
         "state": match p.state.as_str() { "open" => "opened", "merged" => "merged", _ => "closed" },
+        "merge_commit_sha": if p.state == "merged" { json!(f.merge_sha) } else { Value::Null },
         "draft": p.draft, "source_branch": p.head, "target_branch": p.base, "sha": p.sha,
         "detailed_merge_status": if f.mergeable { "mergeable" } else { "conflict" },
     })

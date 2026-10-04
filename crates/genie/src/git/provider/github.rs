@@ -54,6 +54,7 @@ fn parse(pr: &Value) -> ChangeRequest {
         head: s(&pr["head"], "ref"),
         base: s(&pr["base"], "ref"),
         head_sha: pr["head"]["sha"].as_str().map(str::to_string),
+        merge_sha: pr["merge_commit_sha"].as_str().map(str::to_string),
         mergeable: pr["mergeable"].as_bool(),
         approvals: 0,
         changes_requested: false,
@@ -153,8 +154,8 @@ pub(super) async fn merge(api: &Api, remote: &str, number: i64, method: Option<&
 }
 
 /// Commit statuses and check runs together: any failure fails, anything unfinished is pending.
-pub(super) async fn ci(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult<Ci> {
-    let Some(sha) = &cr.head_sha else { return Ok(Ci::None) };
+pub(super) async fn ci(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<Ci> {
+    let Some(sha) = sha else { return Ok(Ci::None) };
     let base = repo_path(remote)?;
     let status = api.send(Method::GET, &format!("{base}/commits/{sha}/status"), &[], None).await?.body;
     let runs = api.send(Method::GET, &format!("{base}/commits/{sha}/check-runs"), &[("per_page", "100".into())], None).await?.body;
@@ -187,8 +188,8 @@ pub(super) async fn ci(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult
 }
 
 /// The failed check runs (with the host's title and summary) and failed commit statuses.
-pub(super) async fn ci_failures(api: &Api, remote: &str, cr: &ChangeRequest) -> ApiResult<Vec<super::CiFailure>> {
-    let Some(sha) = &cr.head_sha else { return Ok(Vec::new()) };
+pub(super) async fn ci_failures(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<Vec<super::CiFailure>> {
+    let Some(sha) = sha else { return Ok(Vec::new()) };
     let base = repo_path(remote)?;
     let mut out = Vec::new();
     let runs = api.send(Method::GET, &format!("{base}/commits/{sha}/check-runs"), &[("per_page", "100".into())], None).await?.body;

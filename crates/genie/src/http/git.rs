@@ -40,7 +40,8 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::io::AsyncReadExt;
 
-use crate::git::policy::Effective;
+use crate::git::delivery::watching;
+use crate::git::policy::{Effective, Push, glob_match};
 use crate::git::service::{self, AgentId};
 use crate::git::store::{self, ZERO_SHA};
 use crate::state::App;
@@ -675,27 +676,39 @@ fn record_pushed(app: &App, project: &str, t: &Target, who: &str, ok: &[&Command
     let _ = app.with_tracker(project, |tr| {
         events::append(tr.conn(), events::GIT_PUSHED, id.team.as_deref(), who, id.role.as_str(), payload).map(|_| ())
     });
-    // The task's branch is now published.
-    if let (Some(task), Some(eff)) = (task, &t.eff)
-        && let Some(branch) = eff.task_branch()
-        && let Some(c) = ok.iter().find(|c| c.branch() == Some(branch.as_str()) && !c.delete())
-        && let Ok(Some(row)) = app.with_server(|db| db.task_repo(project, &task, &t.repo.name))
-        && matches!(row.state.as_str(), "pending" | "published")
-    {
-        let _ = app.with_server(|db| {
-            db.update_delivery(
-                project,
-                &task,
-                &t.repo.name,
-                Delivery {
+    // The task's branch is now published, and the checks of the branch that was pushed are watched
+    // from here — that is what makes them visible under a policy that asks for no requests at all.
+    if let (Some(task), Some(eff)) = (task, &t.eff) {
+        let task_branch = eff.task_branch();
+        let allowed = eff.allowed_branches();
+        let branch_of = |c: &Command2| c.branch().map(str::to_string);
+        // The task's own branch first; without requests the pushed branch itself is the delivery.
+        let pushed = ok.iter().filter(|c| !c.delete()).find(|c| branch_of(c).is_some() && branch_of(c) == task_branch).or_else(|| {
+            matches!(eff.policy.push, Push::Branches | Push::Direct).then(|| ())?;
+            ok.iter().filter(|c| !c.delete()).find(|c| branch_of(c).is_some_and(|b| allowed.iter().any(|a| glob_match(a, &b))))
+        });
+        if let Some(c) = pushed
+            && let Ok(Some(row)) = app.with_server(|db| db.task_repo(project, &task, &t.repo.name))
+            && matches!(row.state.as_str(), "pending" | "published")
+        {
+            let _ = app.with_server(|db| {
+                let mut d = Delivery {
                     state: Some("published".into()),
                     head_sha: Some(c.new.clone()),
-                    branch: Some(branch.clone()),
+                    branch: Some(row.branch.clone()),
                     ..Default::default()
-                },
-            )
-            .map(|_| ())
-        });
+                };
+                if let Some(branch) = c.branch() {
+                    watching(&mut d, branch, &c.new);
+                    // The pushed branch is the delivery when it is the task's own, or when nothing
+                    // was named yet (without requests the agent picks the branch name itself).
+                    if task_branch.as_deref() == Some(branch) || row.branch.is_empty() {
+                        d.branch = Some(branch.to_string());
+                    }
+                }
+                db.update_delivery(project, &task, &t.repo.name, d).map(|_| ())
+            });
+        }
     }
 }
 
