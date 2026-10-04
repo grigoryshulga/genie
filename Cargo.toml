@@ -13,5 +13,8 @@ publish = false
 [profile.dev]
 debug = "line-tables-only"
 
+# Dependencies are built optimized: tests spend real time in them (argon2 password hashing, TLS,
+# SQLite), and they are compiled once and cached, unlike the workspace's own crates.
 [profile.dev.package."*"]
 debug = false
+opt-level = 2

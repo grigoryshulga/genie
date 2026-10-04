@@ -97,6 +97,9 @@ jobs:
         env:
           GENIE_REQUIRE_SANDBOX: 1
           GENIE_TEST_SANDBOX: bwrap
+          # Most tests wait on agent processes and timers, not the CPU: twice the runner's 4 cores
+          # (measured: 18 s → 15 s; 16 threads starts to starve the timing-sensitive tests).
+          RUST_TEST_THREADS: 8
         run: cargo test --workspace --lib --bins --tests
       # `cargo test` writes the API types for the web from the Rust structs (ts-rs).
       - name: API types for the web are committed
