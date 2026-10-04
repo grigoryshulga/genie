@@ -151,15 +151,15 @@ export function TeamView() {
     <>
       <main className="main">
         <header className="topbar team-top">
-          <Link to="/active" className="icon-btn m-only" aria-label="Назад">
+          <Link to="/tasks" className="icon-btn m-only" aria-label="Назад">
             <Icon.back />
           </Link>
           <nav className="crumbs" aria-label="Путь">
-            <Link to="/active" className="d-only">
+            <Link to="/tasks" className="d-only">
               Задачи
             </Link>
             <span className="d-only">/</span>
-            <Link to={`/active?task=${encodeURIComponent(team.task)}`} className="mono">
+            <Link to={`/tasks?task=${encodeURIComponent(team.task)}`} className="mono">
               {team.task}
             </Link>
             <span>/</span>

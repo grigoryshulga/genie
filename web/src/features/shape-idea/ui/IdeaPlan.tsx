@@ -32,7 +32,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
       {
         onSuccess: (r) => {
           toast(`${r.epic ? `Эпик ${r.id} и задачи ${r.created.join(", ")}` : [r.id, ...r.created].join(", ")} во входящих · оркестратор уведомлён`);
-          navigate(r.epic ? `/epic/${encodeURIComponent(r.id)}` : `/inbox?task=${encodeURIComponent(r.id)}`);
+          navigate(r.epic ? `/epic/${encodeURIComponent(r.id)}` : `/tasks?task=${encodeURIComponent(r.id)}`);
         },
         onError: (e) => toast(`Не заведено: ${e.message}`, "error"),
       },
@@ -68,7 +68,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
             <b>План заведён</b>
             <span>
               {task.type === "epic" ? "Идея стала эпиком, задачи во входящих у оркестратора." : "Задачи во входящих у оркестратора."}{" "}
-              <Link to={task.type === "epic" ? `/epic/${encodeURIComponent(task.id)}` : `/inbox?task=${encodeURIComponent(task.id)}`}>Открыть {task.id}</Link>
+              <Link to={task.type === "epic" ? `/epic/${encodeURIComponent(task.id)}` : `/tasks?task=${encodeURIComponent(task.id)}`}>Открыть {task.id}</Link>
             </span>
           </div>
         ) : !plan ? (

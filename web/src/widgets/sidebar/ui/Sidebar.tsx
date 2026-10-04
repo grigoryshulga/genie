@@ -4,18 +4,10 @@ import { BookIcon, useDocsTree } from "@/entities/doc";
 import { initials, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
 import { useNotifications, useProposals } from "@/entities/platform";
-import { EpicIcon, inTaskViews, inViewOf, StatusIcon, type ViewId, VIEWS, useTasks } from "@/entities/task";
+import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
 import { timeAgo, useTick } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
-
-const NAV: { id: Exclude<ViewId, "mine">; icon: "inbox" | "needs_owner" | "in_progress" | "refining" | "done" }[] = [
-  { id: "inbox", icon: "inbox" },
-  { id: "decisions", icon: "needs_owner" },
-  { id: "active", icon: "in_progress" },
-  { id: "prep", icon: "refining" },
-  { id: "done", icon: "done" },
-];
 
 export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean }) {
   useTick();
@@ -26,17 +18,15 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
   const unread = useNotifications().data?.unread ?? 0;
   const proposals = useProposals().data?.length ?? 0;
   const teams = useTeams().data?.filter((t) => t.state === "active") ?? [];
-  const { search, pathname } = useLocation();
+  const { pathname } = useLocation();
   const tasks = useTasks().data;
   const docs = useDocsTree().data;
   const docsCount = docs?.pages.length ?? 0;
   const agents = useAgentConfig();
-  const count = (id: ViewId) =>
-    tasks ? tasks.filter((t) => inTaskViews(t) && VIEWS[id].statuses.includes(t.status)).length : VIEWS[id].statuses.reduce((n, s) => n + (meta?.counts[s] ?? 0), 0);
-  const login = session?.mode === "users" ? session.user.login : undefined;
-  // Open tasks the viewer is responsible for; the ones waiting for them are marked.
-  const mine = login ? (tasks ?? []).filter((t) => inViewOf(t, "mine", login) && t.status !== "done") : [];
-  const mineWaiting = mine.filter((t) => t.status === "needs_owner").length;
+  // The list's badges: tasks waiting for a decision (when any) and all open ones.
+  const listed = tasks?.filter(inTaskViews);
+  const open = listed ? listed.filter((t) => OPEN.includes(t.status)).length : OPEN.reduce((n, st) => n + (meta?.counts[st] ?? 0), 0);
+  const waiting = listed ? listed.filter((t) => t.status === "needs_owner").length : (meta?.counts.needs_owner ?? 0);
   const openEpics = tasks?.filter((t) => t.type === "epic" && t.status !== "done" && t.status !== "cancelled").length ?? 0;
 
   const project = session?.projects.find((p) => p.slug === session.project);
@@ -77,29 +67,20 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
       </button>
 
       <div className="nav-group">
-        {login && (
-          <NavLink to={{ pathname: "/mine", search: keepLayout(search) }} className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
-            <Icon.user size={15} />
-            <span className="grow">{VIEWS.mine.name}</span>
-            {mineWaiting > 0 ? (
-              <span className="count alert" title="ждут вашего решения">
-                {mineWaiting}
-              </span>
-            ) : (
-              <span className="count">{mine.length || ""}</span>
-            )}
-          </NavLink>
-        )}
-        {NAV.map((n) => {
-          const c = count(n.id);
-          return (
-            <NavLink key={n.id} to={{ pathname: `/${n.id}`, search: keepLayout(search) }} className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
-              <StatusIcon status={n.icon} size={15} />
-              <span className="grow">{VIEWS[n.id].name}</span>
-              {n.id === "decisions" && c > 0 ? <span className="count alert">{c}</span> : <span className="count">{c || ""}</span>}
-            </NavLink>
-          );
-        })}
+        <NavLink to="/board" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+          <Icon.board size={15} />
+          <span className="grow">Доска</span>
+        </NavLink>
+        <NavLink to="/tasks" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+          <Icon.list size={15} />
+          <span className="grow">Задачи</span>
+          {waiting > 0 && (
+            <span className="count alert" title="ждут вашего решения">
+              {waiting}
+            </span>
+          )}
+          <span className="count">{open || ""}</span>
+        </NavLink>
         <NavLink to="/epics" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/epic/") ? " on" : ""}`}>
           <EpicIcon size={15} />
           <span className="grow">Эпики</span>
@@ -110,7 +91,7 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
       <div className="nav-group">
         <span className="nav-label">Знания</span>
         <NavLink
-          to={{ pathname: "/docs", search: keepLayout(search) }}
+          to="/docs"
           className={({ isActive }) => `nav-item${(isActive || pathname.startsWith("/docs")) && !pathname.startsWith("/docs/proposals") ? " on" : ""}`}
         >
           <BookIcon size={15} />
@@ -207,10 +188,3 @@ const ROLE_NAME: Record<string, string> = { owner: "владелец", admin: "�
 function statusShort(s: string): string {
   return ({ inbox: "входящие", draft: "черновик", refining: "уточнение", ready: "готово", in_progress: "в работе", changes_requested: "доработка", review: "ревью", approved: "одобрено", done: "принято" } as Record<string, string>)[s] ?? s;
 }
-
-export function keepLayout(search: string): string {
-  const p = new URLSearchParams(search);
-  const layout = p.get("layout");
-  return layout ? `?layout=${layout}` : "";
-}
-

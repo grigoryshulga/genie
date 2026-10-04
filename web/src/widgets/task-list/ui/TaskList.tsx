@@ -8,6 +8,9 @@ import { timeAgo } from "@/shared/lib";
 export function TaskList({
   tasks,
   statuses,
+  grouped = true,
+  when = "updated",
+  empty = "Здесь пусто",
   teams,
   people,
   focused,
@@ -17,6 +20,11 @@ export function TaskList({
 }: {
   tasks: TaskSummary[];
   statuses: Status[];
+  /** By status, or one flat list in the given order. */
+  grouped?: boolean;
+  /** Which date the last column shows. */
+  when?: "updated" | "created";
+  empty?: string;
   teams: Map<string, Team>;
   /** login → name of the project's people. */
   people?: Map<string, string>;
@@ -28,15 +36,19 @@ export function TaskList({
   const focusRef = useRef<HTMLDivElement>(null);
   useEffect(() => focusRef.current?.scrollIntoView({ block: "nearest" }), [focused]);
 
-  const groups = STATUS_ORDER.filter((s) => statuses.includes(s))
-    .map((s) => ({ status: s, items: tasks.filter((t) => t.status === s) }))
-    .filter((g) => g.items.length);
+  const groups: { status?: Status; items: TaskSummary[] }[] = grouped
+    ? STATUS_ORDER.filter((s) => statuses.includes(s))
+        .map((s) => ({ status: s, items: tasks.filter((t) => t.status === s) }))
+        .filter((g) => g.items.length)
+    : tasks.length
+      ? [{ items: tasks }]
+      : [];
 
   if (!groups.length) {
     return (
       <div className="empty">
         <StatusIcon status="done" size={26} />
-        Здесь пусто
+        {empty}
       </div>
     );
   }
@@ -44,11 +56,13 @@ export function TaskList({
   return (
     <div role="list" aria-label="Задачи" className="task-groups">
       {groups.map((g) => (
-        <section key={g.status} aria-label={STATUS_NAME[g.status]}>
-          <div className="group-head">
-            <StatusIcon status={g.status} />
-            {STATUS_NAME[g.status]} <span className="n">{g.items.length}</span>
-          </div>
+        <section key={g.status ?? "all"} aria-label={g.status ? STATUS_NAME[g.status] : "Задачи"}>
+          {g.status && (
+            <div className="group-head">
+              <StatusIcon status={g.status} />
+              {STATUS_NAME[g.status]} <span className="n">{g.items.length}</span>
+            </div>
+          )}
           {g.items.map((t) => {
             const team = t.team ? teams.get(t.team) : undefined;
             const cls = ["row", focused === t.id ? "focus" : "", selected === t.id ? "sel" : ""].filter(Boolean).join(" ");
@@ -79,12 +93,19 @@ export function TaskList({
                 <span className="tags">
                   <EpicChip id={t.parent} />
                   <Labels labels={t.labels} />
+                  {t.acceptanceTotal > 0 && (
+                    <span className={`ac${t.acceptanceDone >= t.acceptanceTotal ? " full" : ""}`} title="Критерии приёмки">
+                      ✓ {t.acceptanceDone}/{t.acceptanceTotal}
+                    </span>
+                  )}
                 </span>
                 <span className="who">
                   {team ? <Avatars members={team.members} max={t.assignee ? 3 : 4} /> : !t.assignee && (t.status === "inbox" ? "ждёт оркестратора" : "без команды")}
                   {t.assignee && <PersonAvatar login={t.assignee} name={people?.get(t.assignee)} />}
                 </span>
-                <span className="when">{timeAgo(t.updated)}</span>
+                <span className="when" title={when === "created" ? "создана" : "обновлена"}>
+                  {timeAgo(when === "created" ? t.created : t.updated)}
+                </span>
               </div>
             );
           })}

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router";
-import { useTasks, type ViewId } from "@/entities/task";
+import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
+import { LEGACY_VIEWS, type PresetId, PRESETS, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
 import { CommandPalette, type PaletteActions } from "@/features/command-palette";
 import { NewTaskDialog, type NewTaskPreset } from "@/features/create-task";
 import { AgentsPage } from "@/pages/agents";
+import { BoardPage } from "@/pages/board";
 import { EpicPage } from "@/pages/epic";
 import { EpicsPage } from "@/pages/epics";
 import { DocsPage } from "@/pages/docs";
@@ -38,7 +39,7 @@ function Shell() {
   const teamRoute = location.pathname.startsWith("/team/");
   const docsRoute = location.pathname.startsWith("/docs");
   const platformRoute = ["/automations", "/agents", "/notifications", "/profile", "/project", "/server"].some((p) => location.pathname.startsWith(p));
-  // Pages without a task list: palette actions that need one go to "active".
+  // Pages without the task list or board: opening a task from the palette goes to the list.
   const ownPage = teamRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
   const openTaskId = teamRoute ? undefined : (sp.get("task") ?? undefined);
   const openTask = tasks?.find((t) => t.id === openTaskId);
@@ -53,9 +54,13 @@ function Shell() {
     () => ({
       newTask: () => newTask(),
       newIdea: () => newTask({ idea: true }),
-      go: (v: ViewId) => navigate({ pathname: `/${v}`, search: sp.get("layout") ? `?layout=${sp.get("layout")}` : "" }),
-      layout: (l) => navigate({ pathname: ownPage ? "/active" : location.pathname, search: `?layout=${l}` }),
-      openTask: (id) => navigate({ pathname: ownPage ? "/active" : location.pathname, search: `?${new URLSearchParams({ ...(sp.get("layout") ? { layout: sp.get("layout")! } : {}), task: id })}` }),
+      go: (where: "board" | "tasks" | "epics") => navigate(`/${where}`),
+      preset: (id: PresetId, mine?: boolean) => navigate(presetPath(id, mine)),
+      openTask: (id) => {
+        const next = new URLSearchParams(ownPage ? undefined : sp);
+        next.set("task", id);
+        navigate({ pathname: ownPage ? "/tasks" : location.pathname, search: `?${next}` });
+      },
       openTeam: (id) => navigate(`/team/${encodeURIComponent(id)}`),
       openDoc: (path) => navigate(`/docs?page=${encodeURIComponent(path)}`),
       openDocs: () => navigate("/docs"),
@@ -65,7 +70,7 @@ function Shell() {
     [navigate, sp, location.pathname, ownPage, newTask],
   );
 
-  // Global shortcuts (Linear-style): C, /, ⌘K, Esc, G then M/I/D/A/P/C/E
+  // Global shortcuts (Linear-style): C, /, ⌘K, Esc, G then B/T/E (sections) or M/I/D/A/P/C (task list presets)
   const gPending = useRef(0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -81,15 +86,16 @@ function Shell() {
       }
       if (isTyping(e)) return;
       if (Date.now() - gPending.current < 1200) {
-        const map: Record<string, ViewId> = { m: "mine", i: "inbox", d: "decisions", a: "active", p: "prep", c: "done" };
+        const sections: Record<string, "board" | "tasks" | "epics"> = { b: "board", t: "tasks", e: "epics" };
+        const presets: Record<string, PresetId> = { m: "open", i: "inbox", d: "decisions", a: "working", p: "prep", c: "done" };
         gPending.current = 0;
-        if (e.key === "e") {
-          navigate("/epics");
+        if (sections[e.key]) {
+          actions.go(sections[e.key]);
           e.preventDefault();
           return;
         }
-        if (map[e.key]) {
-          actions.go(map[e.key]);
+        if (presets[e.key]) {
+          actions.preset(presets[e.key], e.key === "m");
           e.preventDefault();
           return;
         }
@@ -126,7 +132,7 @@ function Shell() {
             setDialog(undefined);
             if (type === "epic") navigate(`/epic/${encodeURIComponent(id)}`);
             else if (preset?.epic) navigate(`/epic/${encodeURIComponent(preset.epic)}`);
-            else navigate(`/inbox?task=${encodeURIComponent(id)}`);
+            else navigate(`/tasks?task=${encodeURIComponent(id)}`);
           }}
         />
       )}
@@ -140,6 +146,31 @@ type ShellContext = { onNew: (preset?: NewTaskPreset) => void; searchRef: React.
 function TasksRoute() {
   const ctx = useOutletContext<ShellContext>();
   return <TasksPage onNew={ctx.onNew} searchRef={ctx.searchRef} />;
+}
+
+function BoardRoute() {
+  const ctx = useOutletContext<ShellContext>();
+  return <BoardPage onNew={ctx.onNew} searchRef={ctx.searchRef} />;
+}
+
+/** The task list with a preset's statuses, "mine" narrowing it to the viewer. */
+function presetPath(id: PresetId, mine?: boolean): string {
+  const sp = new URLSearchParams();
+  if (id !== "open") sp.set("status", PRESETS.find((p) => p.id === id)!.statuses.join(","));
+  if (mine) sp.set("who", "me");
+  return `/tasks${sp.size ? `?${sp}` : ""}`;
+}
+
+/** Old addresses (`/active`, `/decisions?task=…`, `?layout=board`) lead to the board or the task list with the same filter. */
+function LegacyView() {
+  const view = LEGACY_VIEWS[useParams().view ?? ""];
+  const [sp] = useSearchParams();
+  const next = new URLSearchParams();
+  for (const k of ["task", "epic"]) if (sp.get(k)) next.set(k, sp.get(k)!);
+  if (!view || sp.get("layout") === "board") return <Navigate to={{ pathname: "/board", search: next.size ? `?${next}` : "" }} replace />;
+  if (view.statuses) next.set("status", view.statuses.join(","));
+  if (view.who) next.set("who", view.who);
+  return <Navigate to={{ pathname: "/tasks", search: next.size ? `?${next}` : "" }} replace />;
 }
 
 function EpicsRoute() {
@@ -170,7 +201,9 @@ export const router = createBrowserRouter([
     path: "/",
     element: <Gate />,
     children: [
-      { index: true, element: <Navigate to="/active" replace /> },
+      { index: true, element: <Navigate to="/board" replace /> },
+      { path: "board", element: <BoardRoute /> },
+      { path: "tasks", element: <TasksRoute /> },
       { path: "team/:teamId", element: <TeamView /> },
       { path: "team/:teamId/:member", element: <AgentChat /> },
       { path: "epics", element: <EpicsRoute /> },
@@ -184,7 +217,7 @@ export const router = createBrowserRouter([
       { path: "profile/:tab?", element: <ProfilePage /> },
       { path: "project/:tab?", element: <ProjectPage /> },
       { path: "server/:tab?", element: <ServerPage /> },
-      { path: ":view", element: <TasksRoute /> },
+      { path: ":view", element: <LegacyView /> },
     ],
   },
 ]);
