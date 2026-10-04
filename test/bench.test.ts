@@ -320,6 +320,7 @@ test("prepare registers the project, creates the eight parked tasks and releases
   assert.match(run.fixtureHash, /^[0-9a-f]{64}$/);
   assert.match(run.baselineSha, /^[0-9a-f]{40}$/);
   assert.equal(run.preparedFrom.checkout, ROOT, "the checkout the hashes come from is recorded");
+  assert.ok(run.preparedFrom.resolved === null || String(run.preparedFrom.resolved).endsWith("genie"), "the binary is recorded by path when it resolves");
   assert.ok(Object.keys(run.hashes.files).some((f) => f.startsWith("agents/")), "the role prompts are hashed");
   assert.ok(Object.keys(run.hashes.files).some((f) => f.startsWith("config/teams/")), "the team templates are hashed");
   assert.deepEqual(Object.keys(run.recommendedAnswers), ["R3", "R6"]);
@@ -345,15 +346,46 @@ test("the release call follows the CLI's grammar, checked against the real binar
   assert.match(`${wrong.stdout}${wrong.stderr}`, wrongGrammar, "the old argument order really is refused by the CLI");
 });
 
-test("releasing a round twice is refused instead of moving done tasks back to the inbox", () => {
-  const { log, env } = stubEnv();
+test("releasing a round twice is refused, and --force releases again without re-creating it", () => {
+  const { log, runs, env } = stubEnv();
   assert.equal(runCli(["prepare", "--run", "twice", "--start"], env).status, 0);
-  const before = readFileSync(log, "utf8").trim().split("\n").length;
+  const calls = (): Call[] => readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  const created = calls().filter((c) => c.includes("create")).length;
+  const file = path.join(runs, "twice", "run.json");
+  const first = JSON.parse(readFileSync(file, "utf8"));
+  const before = calls().length;
 
   const again = runCli(["prepare", "--run", "twice", "--start"], env);
   assert.equal(again.status, 2);
   assert.match(again.stderr, /already released/);
-  assert.equal(readFileSync(log, "utf8").trim().split("\n").length, before, "no task was moved");
+  assert.equal(calls().length, before, "no task was moved");
+
+  // --force means what the message says: release again, not rebuild.
+  const forced = runCli(["prepare", "--run", "twice", "--start", "--force"], env);
+  assert.equal(forced.status, 0, forced.stderr || forced.stdout);
+  const after = calls();
+  assert.equal(after.filter((c) => c.includes("create")).length, created, "no new tasks are created");
+  assert.equal(after.filter((c) => c.includes("add")).length, 1, "the project is not added twice");
+  assert.equal(after.length - before, 8, "the eight tasks are released again");
+  const second = JSON.parse(readFileSync(file, "utf8"));
+  assert.deepEqual(second.tasks, first.tasks, "run.json keeps the same task ids");
+  assert.equal(second.released, true);
+});
+
+test("a round is never re-created in place: its run.json survives a refusal, with or without --force", () => {
+  const { log, runs, env } = stubEnv();
+  assert.equal(runCli(["prepare", "--run", "keep"], env).status, 0);
+  const file = path.join(runs, "keep", "run.json");
+  const before = readFileSync(file, "utf8");
+  const callsBefore = readFileSync(log, "utf8").trim().split("\n").length;
+
+  for (const extra of [[], ["--force"]]) {
+    const out = runCli(["prepare", "--run", "keep", ...extra], env);
+    assert.equal(out.status, 2, `${extra.join(" ") || "(plain)"} must be refused`);
+    assert.match(out.stderr, /not re-created in place/);
+    assert.equal(readFileSync(file, "utf8"), before, "run.json is untouched");
+    assert.equal(readFileSync(log, "utf8").trim().split("\n").length, callsBefore, "no genie call is made");
+  }
 });
 
 test("prepare without --start parks the tasks in draft and writes the round", () => {

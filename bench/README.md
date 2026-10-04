@@ -89,8 +89,10 @@ node bench/run.mjs compare bench/results/before.json bench/results/after.json
 `prepare` prints the round, the tasks and the recommended answers for R3/R6;
 `--dry-run` prints the plan and touches nothing (no server, no token needed).
 Releasing a round twice is refused — a released round is collected, not released
-again (`--force` exists for the odd case, and moves finished tasks back to the
-inbox).
+again; `--force` is the escape hatch for exactly that case (it moves finished
+tasks back to the inbox). A round is never **re-created in place**: the record of
+a finished round is evidence, so a new round gets a new id — and a refused
+`project add` can therefore never destroy `run.json`.
 
 `collect` is a **snapshot**: tasks still open are recorded as not done, and the
 person stops the round before running it. Stopping means **accepting the

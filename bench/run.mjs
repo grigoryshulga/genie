@@ -7,7 +7,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,7 +69,10 @@ const usage = `bench/run.mjs — the genie agent benchmark
 Environment: GENIE_URL and GENIE_TOKEN reach the pilot instance, GENIE is the
 binary (default "genie"), BENCH_RUNS_DIR / BENCH_RESULTS_DIR move the output.
 
-The working server on port ${WORKING_PORT} is refused unless --i-know is passed.`;
+The working server on port ${WORKING_PORT} is refused unless --i-know is passed.
+
+--force has one meaning: release a round that was already released (it moves
+finished tasks back to the inbox). A round is never re-created in place.`;
 
 /** The URL of the pilot instance, with the guard against the working server. */
 function targetUrl(flags) {
@@ -138,6 +141,24 @@ function hashTree(dir) {
     hash.update("\0");
   }
   return hash.digest("hex");
+}
+
+/** Where a command name resolves to, or `null` when it is not on PATH. */
+function resolveBinary(name) {
+  const candidates = name.includes(path.sep)
+    ? [name]
+    : (process.env.PATH || "")
+        .split(path.delimiter)
+        .filter(Boolean)
+        .map((dir) => path.join(dir, name));
+  for (const candidate of candidates) {
+    try {
+      return realpathSync(candidate);
+    } catch {
+      // keep looking
+    }
+  }
+  return null;
 }
 
 /** What a round must record so a diff that mixed two changes is visible. */
@@ -231,12 +252,13 @@ function prepare(flags) {
     return;
   }
 
-  // A parked round is released later with `prepare --run <id> --start`: it is
-  // already prepared, only the tasks are still drafts. Releasing twice would
-  // move finished tasks back to the inbox, so it needs --force.
-  if (existsSync(runFile(runId)) && flags.start && !flags.force) {
+  // A prepared round is released later with `prepare --run <id> --start`: the
+  // tasks are still drafts. Releasing twice would move finished tasks back to
+  // the inbox, so it takes --force — the flag means exactly this and nothing
+  // else.
+  if (existsSync(runFile(runId)) && flags.start) {
     const parked = JSON.parse(readFileSync(runFile(runId), "utf8"));
-    if (parked.released) {
+    if (parked.released && !flags.force) {
       die(`round ${runId} is already released: collect it, or pass --force to release it again (tasks that are already done would go back to the inbox)`);
     }
     const releaseUrl = targetUrl(flags);
@@ -248,8 +270,13 @@ function prepare(flags) {
     note(`next: ${GENIE} bench/run.mjs next --run ${runId}`);
     return;
   }
-  if (existsSync(dir) && !flags.force) die(`${dir} already holds a round: pick another --run id, or pass --force`);
-  rmSync(dir, { recursive: true, force: true });
+  // A round is a record: it is never re-created in place, because the numbers of
+  // a finished round are evidence. `--force` does not change that, so a refused
+  // `project add` can never destroy a round's `run.json`. Start again under a new
+  // id.
+  if (existsSync(dir)) {
+    die(`${dir} already holds round ${runId}: a round is not re-created in place — pick another --run id (or release this one with \`prepare --run ${runId} --start\`)`);
+  }
   mkdirSync(dir, { recursive: true });
   cpSync(TRAINING, repo, { recursive: true });
   git(["init", "-q"], repo);
@@ -288,7 +315,7 @@ function prepare(flags) {
     // The hashes below are the runner's own checkout: prepare and collect from
     // the instance's checkout and binary, or the "only one thing changed"
     // guarantee does not hold (see bench/README.md).
-    preparedFrom: { checkout: GENIE_ROOT, binary: GENIE },
+    preparedFrom: { checkout: GENIE_ROOT, binary: GENIE, resolved: resolveBinary(GENIE) },
     tasks: created,
     recommendedAnswers: Object.fromEntries(tasks.filter((t) => t.ownerAnswer).map((t) => [t.id, t.ownerAnswer])),
     hashes: environmentHashes(),
