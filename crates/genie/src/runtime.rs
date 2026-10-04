@@ -9,7 +9,9 @@
 //! with exponential backoff; after `maxAttempts` failures the member is put in
 //! `error` and the orchestrator is told. After a restart, running turns are
 //! marked interrupted and their mail is offered again — nothing is lost and no
-//! long-running process has to be babysat.
+//! long-running process has to be babysat. A live session's mail was already
+//! acknowledged in the lost step, so offering it again reaches nobody: there the
+//! agent is told to continue with a note (`sessions::resume_after_restart`).
 //!
 //! Agents act through the `genie` command line (HTTP with a per-turn token bound
 //! to the project, the team and the role), so any harness with a shell can take part.
@@ -122,7 +124,8 @@ pub fn start(app: &Arc<App>) {
     });
 }
 
-/// After a restart: interrupted turns give their mail back, running jobs are requeued.
+/// After a restart: interrupted turns give their mail back, running jobs are requeued,
+/// and agents whose live session was lost mid-step are told to continue.
 pub fn recover(app: &App) -> AppResult<()> {
     let interrupted = app.with_server(|db| {
         db.requeue_running_jobs()?;
@@ -152,6 +155,9 @@ pub fn recover(app: &App) -> AppResult<()> {
             println!("genie runtime: stopped stray agent process {pid} ({}/{name})", t.project);
         }
     }
+    // A live session's mail was acknowledged inside the lost step, so nothing is pending and the
+    // scheduler would never start it again: give it the same note the agent-crash path writes.
+    crate::sessions::resume_after_restart(app, &interrupted);
     Ok(())
 }
 
