@@ -687,3 +687,107 @@ async fn checks_pending_too_long_are_reported_once() {
     let (s, b) = status(&r, &id, &t.executor, "review").await;
     assert_eq!(s, StatusCode::OK, "{b}");
 }
+
+/// A `task_repos` row as it looked before the CI watch existed: nothing watched, only `head_sha`
+/// (or nothing at all) and the state the host last gave.
+fn unarm(r: &Rig, task: &str, head_sha: Option<&str>, ci_state: &str) {
+    r.h.app
+        .with_server(|db| {
+            db.update_delivery(
+                "shop",
+                task,
+                "api",
+                genie_core::repos::Delivery { reset_ci: true, ci_state: Some(ci_state.into()), ..Default::default() },
+            )?;
+            db.conn().execute(
+                "UPDATE task_repos SET head_sha = ?1 WHERE project = 'shop' AND task = ?2 AND repo = 'api'",
+                [head_sha, Some(task)],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// F1 (round 1): a delivery whose watched commit was never armed — a row from before this change, or
+/// a request whose host named no head commit — must not slip past a failed CI. F4: a head that moved
+/// without a push through the proxy must not leave the gate and the watcher on different commits.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_delivery_from_before_the_watch_does_not_slip_past_a_failed_check() {
+    let r = rig("github", json!({})).await;
+    let t = team(&r, "An old delivery").await;
+    let id = t.task.clone();
+    assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+    let branch = commit_and_push(&t);
+    let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    let watched = row(&r, &id).ci_sha.clone().expect("the push armed the watch");
+
+    // (a) Nothing watched, `head_sha` and the failure recorded, the host down: the state decides.
+    unarm(&r, &id, Some(&watched), "failed");
+    r.fake.lock().broken = 5;
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::CONFLICT, "the recorded state decides when the host is down: {b}");
+    assert!(b["error"].as_str().unwrap().contains("checks"), "{b}");
+    r.fake.lock().broken = 0;
+
+    // (b) The host answers: with nothing armed the gate asks about the request's head.
+    r.fake.lock().ci = "passed".into();
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::OK, "the checks of the request's head are read live: {b}");
+    assert_eq!(
+        http(&r, "POST", &format!("/api/tasks/{id}/status"), None, Some(json!({ "status": "in_progress" }))).await.0,
+        StatusCode::OK
+    );
+
+    // (c) No commit to ask about at all (a request the host opened without a head sha): the recorded
+    // failure still closes the review.
+    unarm(&r, &id, None, "failed");
+    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    assert_eq!(s, StatusCode::CONFLICT, "nothing to ask about, the state decides: {b}");
+
+    // The next look arms the watch from the request: the row from before the watch gets one too, and
+    // the checks become visible (AC2).
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let armed = row(&r, &id);
+    assert_eq!(armed.ci_sha.as_deref(), Some(r.fake.lock().sha.as_str()), "the request's head is watched");
+    assert_eq!(armed.ci_ref, branch);
+    assert_eq!(armed.ci_state.as_deref(), Some("passed"), "and its checks are read");
+
+    // (d) F4: the branch moved on the host, not through the proxy. The next look follows the request.
+    r.fake.lock().prs[0].sha = "3333333333333333333333333333333333333333".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    assert_eq!(row(&r, &id).ci_sha.as_deref(), Some("3333333333333333333333333333333333333333"), "the gate and the watcher agree");
+}
+
+/// F2 (round 1): a repository whose host reports no checks is looked at once more — they may start a
+/// moment after the push — and then left alone, so nothing is polled for the life of the row.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_branch_without_checks_is_watched_once_more_and_then_left_alone() {
+    let policy = json!({ "push": "branches", "change_request": { "open": false } });
+    let r = rig("github", policy).await;
+    let t = team(&r, "No checks here").await;
+    let id = t.task.clone();
+    assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+    let branch = commit_and_push(&t);
+    r.fake.lock().ci = "none".into();
+
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let first = row(&r, &id);
+    assert_eq!(first.ci_state.as_deref(), Some("none"));
+    assert!(first.ci_sha.is_some(), "the branch stays watched for one more look");
+    assert_eq!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().len(), 1);
+
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let second = row(&r, &id);
+    assert_eq!(second.ci_state.as_deref(), Some("none"), "the answer stands");
+    assert_eq!(second.ci_sha, None, "and nothing is watched any more");
+    assert!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().is_empty(), "no row is polled for ever");
+    assert!(journal(&r, "ci.failed").is_empty());
+
+    // The branch's delivery still says what was found, and it is still visible (AC2).
+    let (s, b) = http(&r, "GET", &format!("/api/tasks/{id}/repos"), Some(&t.executor), None).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    let found = b["repos"].as_array().unwrap().iter().find(|x| x["repo"] == "api").unwrap().clone();
+    assert_eq!(found["ciState"].as_str(), Some("none"));
+    assert_eq!(found["branch"].as_str(), Some(branch.as_str()));
+}

@@ -391,9 +391,10 @@ pub(crate) fn watching(d: &mut Delivery, r#ref: &str, sha: &str) {
     d.reset_ci = true;
 }
 
-/// Stop watching the ref of a delivery (nothing to look at, or nothing left to watch).
-fn stop_watching() -> Delivery {
-    Delivery { reset_ci: true, ..Default::default() }
+/// Stop watching the ref of a delivery (nothing to look at, or nothing left to watch: the checks
+/// are recorded once more, then the row leaves the watch set).
+fn stop_watching(ci_state: Option<&str>) -> Delivery {
+    Delivery { ci_state: ci_state.map(str::to_string), reset_ci: true, ..Default::default() }
 }
 
 /// Store the host's state and, for what changed, the event, the note on the task and the message to
@@ -435,6 +436,19 @@ fn record_changes(
         d.reset_ci = true;
         if merged_now && let Some(sha) = cr.merge_sha.clone() {
             watching(&mut d, &cr.base, &sha);
+        }
+    } else if cr.state == CrState::Open
+        && let Some(sha) = cr.head_sha.clone()
+        && row.ci_sha.as_deref() != Some(sha.as_str())
+    {
+        // While the request is open, the checks that matter are those of its head: either the row was
+        // never armed (it predates the watch, or its host named no commit when the request was opened)
+        // or the branch moved under us (a push that did not go through the proxy). The recorded state
+        // stays — it is what the host said last — and the clock starts again for the new commit.
+        d.ci_ref = Some(cr.head.clone());
+        d.ci_sha = Some(sha);
+        if row.ci_sha.is_some() {
+            d.ci_since = Some(String::new());
         }
     }
     let updated = app.with_server(|db| db.update_delivery(p, task, repo, d))?;
@@ -519,19 +533,28 @@ fn record_ci(app: &App, row: &TaskRepo, ci: Ci, failures: &[CiFailure], cr: Opti
     let (p, task, repo) = (row.project.as_str(), row.task.as_str(), row.repo.as_str());
     let ci = settle(app, row, ci);
     let changed = row.ci_state.as_deref() != Some(ci.as_str());
-    // Waiting begins with the first look that says `pending` and ends when the checks settle.
-    let starts_now = ci == Ci::Pending && row.ci_since.is_empty();
-    if !changed && !starts_now {
+    // A second look that still finds no checks ends the watch: a repository without CI, or one whose
+    // checks never start, must not be polled for the life of the row.
+    let none_settled = ci == Ci::None && row.ci_state.as_deref() == Some("none");
+    // Waiting begins with the first look that finds the checks running (a `none` in between does not
+    // start the clock) and ends when they settle.
+    let began = ci == Ci::Pending && (row.ci_since.is_empty() || row.ci_state.as_deref() != Some("pending"));
+    if !changed && !began && !none_settled {
         return Ok(row.clone());
     }
-    let ci_since = match ci {
-        Ci::Pending => starts_now.then(now),
+    let (ci_since, reset) = match ci {
+        Ci::Pending if began => (Some(now()), false),
+        Ci::Pending => (None, false),
         // `stalled` keeps the moment it began: the record is what the team was told about.
-        Ci::Stalled => None,
-        _ => Some(String::new()),
+        Ci::Stalled => (None, false),
+        // The first `none` gets one more look (checks may start a moment after the push), the second
+        // one stops the watch.
+        Ci::None if none_settled => (Some(String::new()), true),
+        Ci::None => (Some(now()), false),
+        Ci::Passed | Ci::Failed => (Some(String::new()), false),
     };
     let updated = app.with_server(|db| {
-        db.update_delivery(p, task, repo, Delivery { ci_state: Some(ci.as_str().into()), ci_since, ..Default::default() })
+        db.update_delivery(p, task, repo, Delivery { ci_state: Some(ci.as_str().into()), ci_since, reset_ci: reset, ..Default::default() })
     })?;
     if !changed {
         return Ok(updated);
@@ -658,18 +681,21 @@ pub async fn gate(app: &Arc<App>, project: &str, task: &str, to: Status) -> Resu
     Ok(())
 }
 
-/// The checks in the way of a review, if any: the host is asked live about the watched commit, and
-/// the recorded state decides when the host cannot be reached — an outage must not block work.
+/// The checks in the way of a review, if any: the host is asked live about the watched commit — or,
+/// for a delivery that was never armed, about the request's head — and the recorded state decides
+/// when there is no commit to ask about and when the host cannot be reached: an outage must not block
+/// work, and a delivery that predates the watch must not slip past a red CI either.
 async fn failed_checks(app: &Arc<App>, project: &str, row: &TaskRepo) -> Option<String> {
-    let sha = row.ci_sha.as_deref()?;
-    let ci = match repo_and_host(app, project, &row.repo).await {
-        Ok((record, host)) => match Api::new(&host) {
-            Ok(api) => {
-                api.ci(&record.remote, Some(sha)).await.unwrap_or_else(|_| row.ci_state.as_deref().map(parse_ci).unwrap_or(Ci::None))
-            }
-            Err(_) => row.ci_state.as_deref().map(parse_ci).unwrap_or(Ci::None),
+    let stored = || row.ci_state.as_deref().map(parse_ci).unwrap_or(Ci::None);
+    let ci = match row.ci_sha.as_deref().or(row.head_sha.as_deref()) {
+        Some(sha) => match repo_and_host(app, project, &row.repo).await {
+            Ok((record, host)) => match Api::new(&host) {
+                Ok(api) => api.ci(&record.remote, Some(sha)).await.unwrap_or_else(|_| stored()),
+                Err(_) => stored(),
+            },
+            Err(_) => stored(),
         },
-        Err(_) => row.ci_state.as_deref().map(parse_ci).unwrap_or(Ci::None),
+        None => stored(),
     };
     (ci == Ci::Failed).then(|| {
         let what = if row.ci_ref.is_empty() { row.branch.clone() } else { row.ci_ref.clone() };
@@ -773,7 +799,7 @@ pub async fn sync_ref_ci(app: &Arc<App>, row: &TaskRepo) -> DResult<()> {
         // A plain git server has no API to ask: stop watching instead of asking forever.
         Err(ApiError::Unsupported(_)) => {
             let (p, task, repo) = (row.project.clone(), row.task.clone(), row.repo.clone());
-            app.blocking(move |app| app.with_server(|db| db.update_delivery(&p, &task, &repo, stop_watching())).map(|_| ())).await?;
+            app.blocking(move |app| app.with_server(|db| db.update_delivery(&p, &task, &repo, stop_watching(None))).map(|_| ())).await?;
             return Ok(());
         }
         Err(e) => return Err(e.into()),

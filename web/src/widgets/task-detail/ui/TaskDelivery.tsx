@@ -9,14 +9,16 @@ function ciLevel(ci: TaskRepo["ciState"]): "ok" | "warn" | "fail" | "" {
   return ci === "passed" ? "ok" : ci === "failed" ? "fail" : ci === "pending" || ci === "stalled" ? "warn" : "";
 }
 
-// The checks of a delivery, whenever some are known — with or without a request (a policy may
-// ask for none at all), and of the target branch once the request was merged.
+// The checks of a delivery, whenever they mean something: any recorded state (with or without a
+// request — a policy may ask for none at all), and "no checks" for an open request, as before.
+// The checks of the target branch appear here once the request was merged.
 function ciPill(r: TaskRepo) {
-  if (!r.ciState || r.ciState === "none") return null;
+  const known = r.ciState ?? (r.crState === "open" ? "none" : null);
+  if (!known) return null;
   const of = r.ciRef && r.ciRef !== r.branch ? ` ${r.ciRef}` : "";
   return (
-    <span className={`pill ${ciLevel(r.ciState)}`} title={`проверки${of}`}>
-      {CI_NAME[r.ciState]}
+    <span className={`pill ${ciLevel(known)}`} title={`проверки${of}`}>
+      {CI_NAME[known]}
     </span>
   );
 }

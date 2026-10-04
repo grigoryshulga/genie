@@ -143,8 +143,9 @@ pub struct Delivery {
     pub ci_sha: Option<String>,
     /// When waiting for these checks began; `Some("")` clears it (they settled).
     pub ci_since: Option<String>,
-    /// Start the watch over: drop the recorded `ci_state`/`ci_since` and take the given ref,
-    /// commit and start time (a new push, a requeued look). `None` alone cannot clear a column.
+    /// Start the watch over, or end it: drop the recorded `ci_state`/`ci_since` and take the given
+    /// ref, commit, start time and state instead of keeping what is there (a new push, a requeue,
+    /// nothing left to watch). `None` alone cannot clear a column.
     pub reset_ci: bool,
     pub head_sha: Option<String>,
     pub seen_at: Option<String>,
@@ -373,7 +374,7 @@ impl ServerDb {
             "UPDATE task_repos SET
                branch = COALESCE(?4, branch), state = COALESCE(?5, state),
                cr_number = COALESCE(?6, cr_number), cr_url = COALESCE(?7, cr_url), cr_state = COALESCE(?8, cr_state),
-               ci_state = CASE WHEN ?9 THEN NULL ELSE COALESCE(?10, ci_state) END,
+               ci_state = CASE WHEN ?9 THEN ?10 ELSE COALESCE(?10, ci_state) END,
                ci_ref = CASE WHEN ?9 THEN COALESCE(?11, '') ELSE COALESCE(?11, ci_ref) END,
                ci_sha = CASE WHEN ?9 THEN ?12 ELSE COALESCE(?12, ci_sha) END,
                ci_since = CASE WHEN ?9 THEN COALESCE(?13, '') ELSE COALESCE(?13, ci_since) END,
