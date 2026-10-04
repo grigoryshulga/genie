@@ -1000,6 +1000,7 @@ body:has(.auth-page) { overflow: auto; }
 .props.rail select { margin-left: -6px; }
 .tp-rail .epic-box { padding: 12px; gap: 8px; font-size: 12px; }
 .tp-rail .epic-box .h { color: var(--text); text-decoration: none; }
+.tp-rail .epic-box .kind { flex: none; font-size: 12px; }
 .tp-rail .epic-box .h:hover .nm { color: var(--accent-text); }
 .tp-rail .epic-box .mini { margin: 0; flex-direction: column; align-items: stretch; gap: 6px; white-space: normal; }
 .tp-rail .epic-box .mini .epic-progress { width: auto; }
@@ -1031,4 +1032,5 @@ body:has(.auth-page) { overflow: auto; }
   .tp-rail { order: -1; border-left: 0; border-bottom: 1px solid var(--line); padding: 16px; }
   .tp-main { padding: 16px 16px 40px; overflow: visible; }
   .tp-tabs a { min-height: 40px; }
+  .tp-rail .epic-box .goal { display: none; }
 }
