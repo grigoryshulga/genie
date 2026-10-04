@@ -43,20 +43,24 @@ impl std::fmt::Display for AppError {
 pub type AppResult<T> = Result<T, AppError>;
 
 /// Run a future to its end from synchronous code — a worker of [`App::blocking`], the engine's
-/// tick, a test. On a worker it borrows the server's runtime; without one it builds a runtime on
-/// a thread of its own, so it never nests in the caller's runtime.
+/// tick, a test — on a thread of its own, so it never nests in the caller's runtime. A
+/// multi-thread runtime (the server's) drives the future itself; anywhere else (no runtime, or a
+/// current-thread test runtime, which is driven only by its own `block_on`) a runtime is built for
+/// the call. `Handle::block_on` directly would panic when the caller is a task, so it is not used
+/// on the caller's thread.
 pub fn block_on<F>(f: F) -> F::Output
 where
     F: std::future::Future + Send,
     F::Output: Send,
 {
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        return handle.block_on(f);
-    }
+    let handle = tokio::runtime::Handle::try_current().ok().filter(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread);
     std::thread::scope(|s| {
-        s.spawn(|| tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime").block_on(f))
-            .join()
-            .unwrap_or_else(|e| std::panic::resume_unwind(e))
+        s.spawn(|| match &handle {
+            Some(h) => h.block_on(f),
+            None => tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime").block_on(f),
+        })
+        .join()
+        .unwrap_or_else(|e| std::panic::resume_unwind(e))
     })
 }
 
@@ -232,5 +236,41 @@ impl App {
     pub fn with_vault<T>(&self, f: impl FnOnce(&mut Vault) -> Result<T, GenieError>) -> AppResult<T> {
         let mut v = self.vault.lock().map_err(|_| AppError::Internal("vault lock poisoned".into()))?;
         Ok(f(&mut v)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::block_on;
+    use std::time::Duration;
+
+    async fn after_a_timer() -> u8 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        7
+    }
+
+    #[test]
+    fn block_on_works_without_a_runtime() {
+        assert_eq!(block_on(after_a_timer()), 7);
+    }
+
+    #[tokio::test]
+    async fn block_on_works_on_a_blocking_worker_of_a_current_thread_runtime() {
+        assert_eq!(tokio::task::spawn_blocking(|| block_on(after_a_timer())).await.unwrap(), 7);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn block_on_works_on_a_blocking_worker_of_a_multi_thread_runtime() {
+        assert_eq!(tokio::task::spawn_blocking(|| block_on(after_a_timer())).await.unwrap(), 7);
+    }
+
+    #[tokio::test]
+    async fn block_on_does_not_panic_inside_a_task() {
+        assert_eq!(block_on(after_a_timer()), 7);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn block_on_does_not_panic_inside_a_task_of_a_multi_thread_runtime() {
+        assert_eq!(block_on(after_a_timer()), 7);
     }
 }
