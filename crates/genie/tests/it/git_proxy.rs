@@ -2,7 +2,7 @@
 //! effective policy, the host's own refusals reach the agent, and nothing of the
 //! host's credentials is in the agent's reach.
 
-mod common;
+use crate::common;
 
 use genie_core::DeliveryState;
 use std::path::{Path, PathBuf};

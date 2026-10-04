@@ -3,7 +3,7 @@
 //! Run against fake GitHub and GitLab servers (`common/fakehost.rs`) — a new host kind
 //! joins by passing this list.
 
-mod common;
+use crate::common;
 
 use common::fakehost::{self, FakeHost};
 use genie::git::hosts;

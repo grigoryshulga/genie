@@ -2,7 +2,7 @@
 //! progress is reported to the orchestrator once per silence streak, and waiting for a
 //! person or for CI is not silence. No pi is involved: the watchdog is called directly.
 
-mod common;
+use crate::common;
 
 use chrono::{SecondsFormat, Utc};
 use common::*;

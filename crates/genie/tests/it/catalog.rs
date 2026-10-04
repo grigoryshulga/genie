@@ -3,7 +3,7 @@
 //! operator of the server's machine, a person with a token or an agent — and
 //! what comes back is rendered for people and models.
 
-mod common;
+use crate::common;
 
 use common::Harness;
 use genie::ops::{self, Auth, Cx, InProcess, Out};

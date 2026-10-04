@@ -2,7 +2,7 @@
 //! (databases, the vault, the configuration) and old backups are pruned; the
 //! preflight is there for the server's admins only.
 
-mod common;
+use crate::common;
 
 use axum::http::StatusCode;
 use common::{Harness, call};

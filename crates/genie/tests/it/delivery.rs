@@ -2,7 +2,7 @@
 //! (fake) host, the workflow's gates hold until the request is in order, a person merges,
 //! the watcher notices what happens on the host, and `auto` merges by itself.
 
-mod common;
+use crate::common;
 
 use genie_core::{CheckState, DeliveryState, RequestState};
 use std::path::{Path, PathBuf};

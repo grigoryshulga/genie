@@ -1,7 +1,7 @@
 //! Roles and team templates as server configuration: the admin API, agents
 //! acting with their role's permissions, kickoffs and handoffs from relations.
 
-mod common;
+use crate::common;
 
 use axum::http::StatusCode;
 use common::{Harness, call};

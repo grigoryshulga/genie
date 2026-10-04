@@ -88,7 +88,6 @@ fn an_old_tracker_migrates_on_a_copy_and_keeps_every_row() {
     let dir = tempfile::tempdir().unwrap();
     let file = legacy_tracker(&dir.path().join("tracker"));
     let tasks_before = count(&file, "SELECT COUNT(*) FROM tasks");
-    migrate::clear_reports();
     drop(Tracker::open(file.parent().unwrap()).unwrap());
 
     assert_eq!(migrate::version(&file).unwrap(), Some(SCHEMA_VERSION));
@@ -101,7 +100,8 @@ fn an_old_tracker_migrates_on_a_copy_and_keeps_every_row() {
         "the column is there and empty"
     );
 
-    let reports = migrate::take_reports();
+    // The reports are the process's: other tests of this binary migrate their own databases.
+    let reports: Vec<_> = migrate::take_reports().into_iter().filter(|r| r.path == file).collect();
     assert_eq!(reports.len(), 1, "one line per database: {reports:?}");
     let report = &reports[0];
     assert!(report.rehearsed, "the migration was not checked on a copy: {report:?}");

@@ -2,7 +2,7 @@
 //! stand-in for `ssh` that runs the remote command locally, so nothing but genie's own
 //! wiring is under test).
 
-mod common;
+use crate::common;
 
 use axum::http::StatusCode;
 use common::fakehost;
