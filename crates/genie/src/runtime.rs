@@ -176,9 +176,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
                 };
                 for b in boxes {
                     match b.team {
-                        None if p.autonomy != "manual" && !console_held(app, &p.slug) => {
-                            out.push(AgentKey::Orchestrator { project: p.slug.clone() })
-                        }
+                        None if orchestrator_runs(app, &p) => out.push(AgentKey::Orchestrator { project: p.slug.clone() }),
                         None => {}
                         Some(team) => out.push(AgentKey::Member { project: p.slug.clone(), team, member: b.recipient }),
                     }
@@ -222,29 +220,17 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
 }
 
 struct Prepared {
+    spec: AgentSpec,
     turn: i64,
-    role: Role,
-    /// The configured role (its id; `role` is its class).
-    role_id: String,
-    /// `--exclude-tools` for read-only roles.
-    readonly: String,
-    name: String,
-    team: Option<String>,
-    task: Option<String>,
-    job: Option<i64>,
-    cwd: PathBuf,
-    session_id: String,
-    model: Option<String>,
-    thinking: Option<String>,
-    prompt: String,
+    /// The mail (or job) it takes, as its first message.
     message: String,
-    kit: Kit,
     /// Per-turn agent token, revoked when the turn ends.
     token: String,
     /// Its `LITELLM_API_KEY`: its initiator's ([`crate::llm_key`]).
     llm: crate::llm_key::Key,
 }
 
+/// Run one turn.
 /// Run one turn; returns whether it succeeded.
 async fn run_turn(app: &Arc<App>, key: &AgentKey) {
     let k = key.clone();
@@ -260,12 +246,8 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey) {
     };
     let turn = p.turn;
     let ttl = chrono::Duration::seconds(app.cfg.runtime.turn_timeout_secs as i64 + 300);
-    let (slug, role, role_id, name, team, job) =
-        (key.project().to_string(), p.role, p.role_id.clone(), p.name.clone(), p.team.clone(), p.job);
-    match app
-        .blocking(move |app| app.with_server(|db| db.create_role_token(&slug, role, Some(&role_id), &name, team.as_deref(), job, ttl)))
-        .await
-    {
+    let (slug, spec) = (key.project().to_string(), p.spec.clone());
+    match app.blocking(move |app| spec.token(app, &slug, ttl)).await {
         Ok(t) => p.token = t,
         Err(e) => {
             app.attempts.failed_to_start(key);
@@ -370,37 +352,14 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
                 return Ok(None);
             }
             app.with_server(|db| db.set_turn_mail(turn, &mail.iter().map(|m| m.id).collect::<Vec<_>>()))?;
-            let agents = app.agents();
-            let def = orchestrator_role(&agents)?;
-            let (model, thinking) = role_model(app, &def, None, None);
-            let initiator = crate::llm_key::mail_initiator(app, slug, &mail);
-            let llm = turn_key(app, slug, turn, &label, initiator.as_deref(), model.as_deref())?;
-            let cwd = project_workspace(app, &project, "orchestrator");
-            Ok(Some(Prepared {
-                turn,
-                role: Role::Orchestrator,
-                role_id: def.id.clone(),
-                readonly: def.excluded_tools().unwrap_or_default(),
-                name: ORCHESTRATOR.into(),
-                team: None,
-                task: None,
-                job: None,
-                kit: kit(app, &agents, slug, &def, def.files, &cwd),
-                cwd,
-                session_id: format!("{slug}-orchestrator"),
-                model,
-                thinking,
-                prompt: agent_prompt(app, &agents, &project, &def, None, false, AgentKind::Orchestrator, &who(&def, None, None)),
-                message: orchestrator_message(&project, &mail),
-                token: String::new(),
-                llm,
-            }))
+            let spec = orchestrator_spec(app, &project, false, crate::llm_key::mail_initiator(app, slug, &mail))?;
+            let llm = turn_key(app, slug, turn, &label, spec.initiator.as_deref(), spec.model.as_deref())?;
+            Ok(Some(Prepared { spec, turn, message: orchestrator_message(&project, &mail), token: String::new(), llm }))
         }
         AgentKey::Member { project: slug, team, member } => {
             let t = app.with_tracker(slug, |t| t.bus().get(team))?;
             let Some(m) = t.members.iter().find(|m| &m.name == member).cloned() else { return Ok(None) };
-            let agents = app.agents();
-            let def = running_role(&agents, &m.role)?;
+            let spec = member_spec(app, &project, &t, &m, false)?;
             let turn = app.with_server(|db| db.start_turn(slug, &label, Some(team), Some(member), None))?;
             let mail = app.with_tracker(slug, |t| t.bus().lease(Some(team), member, turn))?;
             if mail.is_empty() {
@@ -408,39 +367,9 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
                 return Ok(None);
             }
             app.with_server(|db| db.set_turn_mail(turn, &mail.iter().map(|m| m.id).collect::<Vec<_>>()))?;
-            let (model, thinking) = role_model(app, &def, m.model.clone(), m.thinking.clone());
-            let initiator = crate::llm_key::team_initiator(app, slug, team);
-            let llm = turn_key(app, slug, turn, &label, initiator.as_deref(), model.as_deref())?;
+            let llm = turn_key(app, slug, turn, &label, spec.initiator.as_deref(), spec.model.as_deref())?;
             app.with_tracker(slug, |t| t.bus().member_working(team, member, json!({ "kind": "turn", "turn": turn })))?;
-            let cwd = member_workspace(app, &project, &def, &t.cwd, team, member);
-            Ok(Some(Prepared {
-                turn,
-                role: def.class,
-                role_id: def.id.clone(),
-                readonly: def.excluded_tools().unwrap_or_default(),
-                name: member.clone(),
-                team: Some(team.clone()),
-                task: Some(t.task.clone()),
-                job: None,
-                kit: kit(app, &agents, slug, &def, def.files, &cwd),
-                cwd,
-                session_id: m.session_file.clone().unwrap_or_else(|| format!("{team}-{member}").to_lowercase()),
-                model,
-                thinking,
-                prompt: agent_prompt(
-                    app,
-                    &agents,
-                    &project,
-                    &def,
-                    m.instructions.as_deref(),
-                    false,
-                    AgentKind::Member,
-                    &who(&def, Some(team), None),
-                ),
-                message: member_message(&mail),
-                token: String::new(),
-                llm,
-            }))
+            Ok(Some(Prepared { spec, turn, message: member_message(&mail), token: String::new(), llm }))
         }
         AgentKey::Job { project: slug, job } => {
             let j = app.with_server(|db| {
@@ -485,8 +414,7 @@ fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Pr
     let llm = crate::llm_key::resolve(app, &project.slug, &format!("job {}", j.id), initiator.as_deref(), model.as_deref())
         .map_err(GenieError::invalid)?;
     let place = job_workspace(app, project, j, def.files)?;
-    Ok(Prepared {
-        turn,
+    let spec = AgentSpec {
         role: def.class,
         role_id: def.id.clone(),
         readonly: if place.files == FileAccess::Write { String::new() } else { "edit,write".into() },
@@ -501,10 +429,9 @@ fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Pr
         model,
         thinking,
         prompt: agent_prompt(app, &agents, project, &def, None, false, AgentKind::Job, &who(&def, None, Some(j.id))),
-        message: job_message(j, &place.note),
-        token: String::new(),
-        llm,
-    })
+        initiator,
+    };
+    Ok(Prepared { spec, turn, message: job_message(j, &place.note), token: String::new(), llm })
 }
 
 /// Where a job works and what it may change there.
@@ -580,31 +507,8 @@ fn job_workspace(app: &App, project: &Project, j: &Job, role_files: FileAccess) 
 
 /// Launch the harness for a prepared turn and wait for it (with a timeout).
 async fn execute(app: &Arc<App>, key: &AgentKey, p: &Prepared) -> Result<(Option<i32>, String), String> {
-    let dir = app.data.join("runtime").join(key.project()).join(key.label().replace('/', "_"));
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
-    let prompt_file = dir.join("prompt.md");
-    tokio::fs::write(&prompt_file, &p.prompt).await.map_err(|e| e.to_string())?;
-    let sessions = app.data.join("sessions").join(key.project());
-    tokio::fs::create_dir_all(&sessions).await.map_err(|e| e.to_string())?;
-    let token = p.token.clone();
-    let files = p.kit.write(app, &dir, &p.role_id).map_err(|e| e.to_string())?;
-    let mut vars: HashMap<&str, String> = HashMap::from([
-        ("sessionDir", sessions.to_string_lossy().into_owned()),
-        ("sessionId", p.session_id.clone()),
-        ("model", p.model.clone().unwrap_or_default()),
-        ("thinking", p.thinking.clone().unwrap_or_default()),
-        ("promptFile", prompt_file.to_string_lossy().into_owned()),
-        ("message", p.message.clone()),
-        ("readonlyTools", p.readonly.clone()),
-        ("cwd", p.cwd.to_string_lossy().into_owned()),
-    ]);
-    let lists = p.kit.placeholders(&files, &mut vars);
-    let argv = build_command(&app.cfg.runtime.command, &vars, &lists);
-    let Some(program) = argv.first() else { return Err("runtime.command is empty".into()) };
-    let who = Identity { role: p.role, role_id: &p.role_id, name: &p.name, team: p.team.as_deref(), task: p.task.as_deref(), job: p.job };
-    let mut cmd = agent_command(app, &argv, &p.cwd, &dir, key.project(), &who, &token)?;
-    p.llm.apply(&mut cmd);
-    kit_env(&mut cmd, &files, &argv);
+    let (mut cmd, dir) = agent_process(app, key, &p.spec, Mode::Turn { message: &p.message }, &p.token, &p.llm).await?;
+    let program = cmd.as_std().get_program().to_string_lossy().into_owned();
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     let mut child = cmd.spawn().map_err(|e| format!("cannot start {program}: {e}"))?;
     if let Some(pid) = child.id() {
@@ -643,6 +547,62 @@ async fn execute(app: &Arc<App>, key: &AgentKey, p: &Prepared) -> Result<(Option
     let _ = tokio::fs::write(dir.join(format!("turn-{}.log", p.turn)), &log).await;
     let tail: String = log.chars().rev().take(4000).collect::<Vec<_>>().into_iter().rev().collect();
     Ok((status.map_err(|e| e.to_string())?.code(), tail))
+}
+
+/// How an agent process runs: one turn on its mail, or a live session fed over RPC.
+pub(crate) enum Mode<'a> {
+    Turn { message: &'a str },
+    Session { extension: &'a Path },
+}
+
+/// The runtime directory of an agent: its prompt, rules, MCP config, logs and pid file.
+pub(crate) fn agent_dir(app: &App, key: &AgentKey) -> PathBuf {
+    app.data.join("runtime").join(key.project()).join(key.label().replace('/', "_"))
+}
+
+/// The harness command for an agent, ready to spawn — the same for a turn and a session
+/// but for the command template (`runtime.command` / `runtime.sessionCommand`) and what
+/// it is given (`{message}` / `{extension}`). Returns it with the agent's runtime directory.
+pub(crate) async fn agent_process(
+    app: &App,
+    key: &AgentKey,
+    spec: &AgentSpec,
+    mode: Mode<'_>,
+    token: &str,
+    llm: &crate::llm_key::Key,
+) -> Result<(tokio::process::Command, PathBuf), String> {
+    let dir = agent_dir(app, key);
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
+    let prompt_file = dir.join("prompt.md");
+    tokio::fs::write(&prompt_file, &spec.prompt).await.map_err(|e| e.to_string())?;
+    let files = spec.kit.write(app, &dir, &spec.role_id).map_err(|e| e.to_string())?;
+    let sessions = app.data.join("sessions").join(key.project());
+    tokio::fs::create_dir_all(&sessions).await.map_err(|e| e.to_string())?;
+    let mut vars: HashMap<&str, String> = HashMap::from([
+        ("sessionDir", sessions.to_string_lossy().into_owned()),
+        ("sessionId", spec.session_id.clone()),
+        ("model", spec.model.clone().unwrap_or_default()),
+        ("thinking", spec.thinking.clone().unwrap_or_default()),
+        ("promptFile", prompt_file.to_string_lossy().into_owned()),
+        ("readonlyTools", spec.readonly.clone()),
+        ("cwd", spec.cwd.to_string_lossy().into_owned()),
+    ]);
+    let template = match mode {
+        Mode::Turn { message } => {
+            vars.insert("message", message.to_string());
+            &app.cfg.runtime.command
+        }
+        Mode::Session { extension } => {
+            vars.insert("extension", extension.to_string_lossy().into_owned());
+            &app.cfg.runtime.session_command
+        }
+    };
+    let lists = spec.kit.placeholders(&files, &mut vars);
+    let argv = build_command(template, &vars, &lists);
+    let mut cmd = agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), token)?;
+    llm.apply(&mut cmd);
+    kit_env(&mut cmd, &files, &argv);
+    Ok((cmd, dir))
 }
 
 /// Who an agent process is: its environment for the `genie` command line and the extension.
@@ -941,8 +901,9 @@ pub(crate) fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// What a live session runs as.
-pub(crate) struct Spec {
+/// Who an agent runs as and with what — for a turn and a live session alike.
+#[derive(Clone)]
+pub(crate) struct AgentSpec {
     pub role: Role,
     pub role_id: String,
     /// `--exclude-tools` for read-only roles.
@@ -950,6 +911,7 @@ pub(crate) struct Spec {
     pub name: String,
     pub team: Option<String>,
     pub task: Option<String>,
+    pub job: Option<i64>,
     pub cwd: PathBuf,
     pub session_id: String,
     pub model: Option<String>,
@@ -960,7 +922,7 @@ pub(crate) struct Spec {
     pub initiator: Option<String>,
 }
 
-impl Spec {
+impl AgentSpec {
     pub fn identity(&self) -> Identity<'_> {
         Identity {
             role: self.role,
@@ -968,9 +930,77 @@ impl Spec {
             name: &self.name,
             team: self.team.as_deref(),
             task: self.task.as_deref(),
-            job: None,
+            job: self.job,
         }
     }
+
+    /// The agent's token, bound to the project and to what it is (role, name, team or job).
+    pub fn token(&self, app: &App, project: &str, ttl: chrono::Duration) -> AppResult<String> {
+        app.with_server(|db| db.create_role_token(project, self.role, Some(&self.role_id), &self.name, self.team.as_deref(), self.job, ttl))
+    }
+}
+
+/// The project's orchestrator (`live`: as a session; `initiator`: whom it works for now).
+fn orchestrator_spec(app: &App, project: &Project, live: bool, initiator: Option<String>) -> AppResult<AgentSpec> {
+    let agents = app.agents();
+    let def = orchestrator_role(&agents)?;
+    let (model, thinking) = role_model(app, &def, None, None);
+    let cwd = project_workspace(app, project, "orchestrator");
+    Ok(AgentSpec {
+        role: Role::Orchestrator,
+        role_id: def.id.clone(),
+        readonly: def.excluded_tools().unwrap_or_default(),
+        name: ORCHESTRATOR.into(),
+        team: None,
+        task: None,
+        job: None,
+        kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
+        cwd,
+        session_id: format!("{}-orchestrator", project.slug),
+        model,
+        thinking,
+        prompt: agent_prompt(app, &agents, project, &def, None, live, AgentKind::Orchestrator, &who(&def, None, None)),
+        initiator,
+    })
+}
+
+/// A member of a team (`live`: as a session).
+fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, live: bool) -> AppResult<AgentSpec> {
+    let agents = app.agents();
+    let def = running_role(&agents, &m.role)?;
+    let (model, thinking) = role_model(app, &def, m.model.clone(), m.thinking.clone());
+    let cwd = member_workspace(app, project, &def, &t.cwd, &t.id, &m.name);
+    Ok(AgentSpec {
+        role: def.class,
+        role_id: def.id.clone(),
+        readonly: def.excluded_tools().unwrap_or_default(),
+        name: m.name.clone(),
+        team: Some(t.id.clone()),
+        task: Some(t.task.clone()),
+        job: None,
+        kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
+        cwd,
+        session_id: m.session_file.clone().unwrap_or_else(|| format!("{}-{}", t.id, m.name).to_lowercase()),
+        model,
+        thinking,
+        prompt: agent_prompt(
+            app,
+            &agents,
+            project,
+            &def,
+            m.instructions.as_deref(),
+            live,
+            AgentKind::Member,
+            &who(&def, Some(&t.id), None),
+        ),
+        initiator: crate::llm_key::team_initiator(app, &project.slug, &t.id),
+    })
+}
+
+/// Whether the server's orchestrator of a project runs: not in `manual` mode, and not while
+/// a person's session holds its console.
+fn orchestrator_runs(app: &App, project: &Project) -> bool {
+    project.autonomy != "manual" && !console_held(app, &project.slug)
 }
 
 /// Whether someone's own session holds the orchestrator console of a project
@@ -1003,71 +1033,22 @@ pub(crate) fn console_spec(app: &App, slug: &str, user: &str) -> AppResult<Conso
 /// The live session of an agent, or `None` when it should not run now (team
 /// stopped, member removed or in error, orchestrator in manual mode or at a
 /// person's console, a job).
-pub(crate) fn session_spec(app: &App, key: &AgentKey) -> AppResult<Option<Spec>> {
+pub(crate) fn session_spec(app: &App, key: &AgentKey) -> AppResult<Option<AgentSpec>> {
     let project = project_of(app, key.project())?;
     match key {
-        AgentKey::Orchestrator { project: slug } => {
-            if project.autonomy == "manual" || console_held(app, slug) {
-                return Ok(None);
-            }
-            let agents = app.agents();
-            let def = orchestrator_role(&agents)?;
-            let (model, thinking) = role_model(app, &def, None, None);
-            let cwd = project_workspace(app, &project, "orchestrator");
-            Ok(Some(Spec {
-                role: Role::Orchestrator,
-                role_id: def.id.clone(),
-                readonly: def.excluded_tools().unwrap_or_default(),
-                name: ORCHESTRATOR.into(),
-                team: None,
-                task: None,
-                kit: kit(app, &agents, slug, &def, def.files, &cwd),
-                cwd,
-                session_id: format!("{slug}-orchestrator"),
-                model,
-                thinking,
-                prompt: agent_prompt(app, &agents, &project, &def, None, true, AgentKind::Orchestrator, &who(&def, None, None)),
-                initiator: crate::llm_key::orchestrator_initiator(app, slug),
-            }))
+        AgentKey::Orchestrator { project: slug } if orchestrator_runs(app, &project) => {
+            orchestrator_spec(app, &project, true, crate::llm_key::orchestrator_initiator(app, slug)).map(Some)
         }
         AgentKey::Member { project: slug, team, member } => {
             let Ok((t, runnable)) = app.with_tracker(slug, |t| Ok((t.bus().get(team)?, t.bus().runnable(team, member)?))) else {
                 return Ok(None);
             };
-            let Some(m) = t.members.iter().find(|m| &m.name == member).cloned() else { return Ok(None) };
-            if !runnable {
-                return Ok(None);
+            match t.members.iter().find(|m| &m.name == member) {
+                Some(m) if runnable => member_spec(app, &project, &t, m, true).map(Some),
+                _ => Ok(None),
             }
-            let agents = app.agents();
-            let def = running_role(&agents, &m.role)?;
-            let (model, thinking) = role_model(app, &def, m.model.clone(), m.thinking.clone());
-            let cwd = member_workspace(app, &project, &def, &t.cwd, team, member);
-            Ok(Some(Spec {
-                role: def.class,
-                role_id: def.id.clone(),
-                readonly: def.excluded_tools().unwrap_or_default(),
-                name: member.clone(),
-                team: Some(team.clone()),
-                task: Some(t.task.clone()),
-                kit: kit(app, &agents, slug, &def, def.files, &cwd),
-                cwd,
-                session_id: m.session_file.clone().unwrap_or_else(|| format!("{team}-{member}").to_lowercase()),
-                model,
-                thinking,
-                prompt: agent_prompt(
-                    app,
-                    &agents,
-                    &project,
-                    &def,
-                    m.instructions.as_deref(),
-                    true,
-                    AgentKind::Member,
-                    &who(&def, Some(team), None),
-                ),
-                initiator: crate::llm_key::team_initiator(app, slug, team),
-            }))
         }
-        AgentKey::Job { .. } => Ok(None),
+        _ => Ok(None),
     }
 }
 
@@ -1155,7 +1136,7 @@ fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, 
         }
     }
     let outcome = if ok { Outcome::Ran } else { Outcome::Failed { error: error.unwrap_or("error"), log } };
-    crate::outcome::record(app, key, p.task.as_deref(), outcome);
+    crate::outcome::record(app, key, p.spec.task.as_deref(), outcome);
     Ok(())
 }
 
@@ -2109,6 +2090,70 @@ pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppRes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_turn_and_a_session_launch_the_same_agent_but_for_what_they_are_given() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+        cfg.runtime.enabled = false;
+        cfg.runtime.sandbox.mode = "off".into();
+        let template = |last: &str| -> Vec<Vec<String>> {
+            vec![
+                vec!["harness".into()],
+                vec!["--session".into(), "{sessionId}".into()],
+                vec!["--model".into(), "{model}".into()],
+                vec!["--prompt".into(), "{promptFile}".into()],
+                vec![last.into()],
+            ]
+        };
+        cfg.runtime.command = template("{message}");
+        cfg.runtime.session_command = template("{extension}");
+        let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+        app.create_project("shop", "Shop", None, None, None).unwrap();
+        let t = app
+            .with_tracker("shop", |t| {
+                t.create(&Actor::new("anna", Role::Human), genie_core::CreateInput { title: "CSV export".into(), ..Default::default() })?;
+                t.bus().create(
+                    "anna",
+                    "human",
+                    NewTeam {
+                        id: "G-1".into(),
+                        task: "G-1".into(),
+                        cwd: ".".into(),
+                        members: vec![NewMember {
+                            name: "bender".into(),
+                            role: "executor".into(),
+                            model: Some("m-1".into()),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                )?;
+                t.bus().get("G-1")
+            })
+            .unwrap();
+        let project = project_of(&app, "shop").unwrap();
+        let key = AgentKey::Member { project: "shop".into(), team: "G-1".into(), member: "bender".into() };
+        let spec = member_spec(&app, &project, &t, &t.members[0], false).unwrap();
+        assert_eq!(
+            (spec.name.as_str(), spec.team.as_deref(), spec.task.as_deref(), spec.model.as_deref()),
+            ("bender", Some("G-1"), Some("G-1"), Some("m-1"))
+        );
+        assert_eq!(spec.session_id, "g-1-bender");
+        let llm = crate::llm_key::Key::Server;
+        let argv =
+            |cmd: &tokio::process::Command| -> Vec<String> { cmd.as_std().get_args().map(|a| a.to_string_lossy().into_owned()).collect() };
+        let (turn, turn_dir) = agent_process(&app, &key, &spec, Mode::Turn { message: "two letters" }, "tok", &llm).await.unwrap();
+        let extension = PathBuf::from("/x/genie-bus.ts");
+        let (session, session_dir) = agent_process(&app, &key, &spec, Mode::Session { extension: &extension }, "tok", &llm).await.unwrap();
+        assert_eq!(turn_dir, session_dir, "one runtime directory per agent");
+        assert_eq!(turn_dir, agent_dir(&app, &key));
+        let prompt = turn_dir.join("prompt.md").to_string_lossy().into_owned();
+        let common = ["--session", "g-1-bender", "--model", "m-1", "--prompt", prompt.as_str()];
+        assert_eq!(argv(&turn), [&common[..], &["two letters"]].concat());
+        assert_eq!(argv(&session), [&common[..], &["/x/genie-bus.ts"]].concat());
+        assert!(std::fs::read_to_string(&prompt).unwrap().contains("bender"), "the prompt is written for the agent");
+    }
 
     #[test]
     fn optional_groups_disappear_when_empty() {

@@ -39,7 +39,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::outcome::{self, Outcome};
-use crate::runtime::{self, AgentKey};
+use crate::runtime::{self, AgentKey, Mode};
 use crate::state::{App, AppError, AppResult};
 
 /// The pi extension that delivers mail into a session (written to `<data>/runtime`).
@@ -296,10 +296,6 @@ pub fn refresh_policies(app: &App) {
     }
 }
 
-fn session_dir(app: &App, key: &AgentKey) -> PathBuf {
-    app.data.join("runtime").join(key.project()).join(key.label().replace('/', "_"))
-}
-
 /// Stop session processes left by a previous server run (their pid files).
 pub fn recover(app: &App) {
     let Ok(projects) = std::fs::read_dir(app.data.join("runtime")) else { return };
@@ -417,14 +413,7 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
 async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>> {
     let k = key.clone();
     let Some(spec) = app.blocking(move |app| runtime::session_spec(app, &k)).await? else { return Ok(None) };
-    let dir = session_dir(app, key);
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| AppError::Internal(e.to_string()))?;
-    let prompt_file = dir.join("prompt.md");
-    tokio::fs::write(&prompt_file, &spec.prompt).await.map_err(|e| AppError::Internal(e.to_string()))?;
     let extension = write_extension(app).map_err(|e| AppError::Internal(e.to_string()))?;
-    let files = spec.kit.write(app, &dir, &spec.role_id).map_err(|e| AppError::Internal(e.to_string()))?;
-    let sessions = app.data.join("sessions").join(key.project());
-    tokio::fs::create_dir_all(&sessions).await.map_err(|e| AppError::Internal(e.to_string()))?;
     let (slug, label, initiator, model) = (key.project().to_string(), key.label(), spec.initiator.clone(), spec.model.clone());
     let llm = app
         .blocking(move |app| {
@@ -432,30 +421,9 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
                 .map_err(|e| genie_core::GenieError::invalid(e).into())
         })
         .await?;
-    let (slug, role, role_id, name, team) =
-        (key.project().to_string(), spec.role, spec.role_id.clone(), spec.name.clone(), spec.team.clone());
-    let token = app
-        .blocking(move |app| {
-            app.with_server(|db| {
-                db.create_role_token(&slug, role, Some(&role_id), &name, team.as_deref(), None, chrono::Duration::days(30))
-            })
-        })
-        .await?;
-    let readonly = spec.readonly.clone();
-    let mut vars: HashMap<&str, String> = HashMap::from([
-        ("sessionDir", sessions.to_string_lossy().into_owned()),
-        ("sessionId", spec.session_id.clone()),
-        ("model", spec.model.clone().unwrap_or_default()),
-        ("thinking", spec.thinking.clone().unwrap_or_default()),
-        ("promptFile", prompt_file.to_string_lossy().into_owned()),
-        ("extension", extension.to_string_lossy().into_owned()),
-        ("readonlyTools", readonly),
-        ("cwd", spec.cwd.to_string_lossy().into_owned()),
-    ]);
-    let lists = spec.kit.placeholders(&files, &mut vars);
-    let argv = runtime::build_command(&app.cfg.runtime.session_command, &vars, &lists);
-    let Some(program) = argv.first() else { return Err(AppError::Internal("runtime.sessionCommand is empty".into())) };
-    let mut cmd = match runtime::agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), &token) {
+    let (slug, s2) = (key.project().to_string(), spec.clone());
+    let token = app.blocking(move |app| s2.token(app, &slug, chrono::Duration::days(30))).await?;
+    let (mut cmd, dir) = match runtime::agent_process(app, key, &spec, Mode::Session { extension: &extension }, &token, &llm).await {
         Ok(c) => c,
         Err(e) => {
             let t = token.clone();
@@ -463,8 +431,7 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
             return Err(AppError::Internal(e));
         }
     };
-    llm.apply(&mut cmd);
-    runtime::kit_env(&mut cmd, &files, &argv);
+    let program = cmd.as_std().get_program().to_string_lossy().into_owned();
     cmd.env("GENIE_SESSION", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     let mut child = match cmd.spawn() {
         Ok(c) => c,
