@@ -141,6 +141,9 @@ pub struct RuntimeConfig {
     pub idle_stop_secs: u64,
     /// A turn, or a session step without any sign of life, is stopped after this long.
     pub turn_timeout_secs: u64,
+    /// A team that neither works nor waits for anyone for this long is reported to the
+    /// orchestrator. 0 turns the silent-team watchdog off.
+    pub stall_secs: u64,
     pub max_attempts: u32,
     /// How long `genie mail ask` waits for the answer by default.
     pub ask_timeout_secs: u64,
@@ -286,6 +289,7 @@ impl Default for RuntimeConfig {
             max_sessions: 12,
             idle_stop_secs: 900,
             turn_timeout_secs: 1800,
+            stall_secs: 900,
             max_attempts: 3,
             ask_timeout_secs: 180,
             delivery_budget: genie_core::team::DELIVERY_BUDGET,
@@ -454,7 +458,17 @@ mod tests {
         assert_eq!(cfg.port, 9000);
         assert_eq!(cfg.runtime.max_concurrent, 1);
         assert_eq!(cfg.runtime.turn_timeout_secs, 1800, "unset runtime fields keep defaults");
+        assert_eq!(cfg.runtime.stall_secs, 900, "unset runtime fields keep defaults");
         assert_eq!(cfg.limits.max_members_per_team, 6);
+    }
+
+    #[test]
+    fn the_silent_team_watchdog_can_be_configured_and_switched_off() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"stallSecs": 30}}"#).unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().runtime.stall_secs, 30);
+        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"stallSecs": 0}}"#).unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().runtime.stall_secs, 0, "0 switches it off");
     }
 
     #[test]

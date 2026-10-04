@@ -195,6 +195,10 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
     if live {
         crate::sessions::sweep(app).await?;
     }
+    // The silent-team watchdog rides every tick, in both `sessions` and `turns` mode.
+    if let Err(e) = crate::sessions::watch_silent_teams(app).await {
+        eprintln!("genie runtime: silent-team watchdog: {e}");
+    }
     let now = Instant::now();
     for key in candidates {
         if live && !matches!(key, AgentKey::Job { .. }) {
