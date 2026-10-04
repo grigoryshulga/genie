@@ -214,20 +214,22 @@ async fn waiting_for_a_person_is_not_silence() {
 /// AC2: waiting for CI or for a request to be reviewed or merged is not silence.
 #[tokio::test]
 async fn pending_ci_is_not_silence() {
-    let checks = rig(900, Status::InProgress);
-    checks
-        .h
-        .app
-        .with_server(|db| {
-            db.add_repo("shop", repo("api"))?;
-            db.set_task_repos("shop", &checks.task, &[("api".into(), "write".into())])?;
-            db.update_delivery("shop", &checks.task, "api", Delivery { ci_state: Some("pending".into()), ..Default::default() })?;
-            Ok(())
-        })
-        .unwrap();
-    checks.quieten(7200);
-    checks.watch().await;
-    assert!(checks.letters().is_empty(), "checks still running are not silence");
+    for state in ["pending", "stalled"] {
+        let checks = rig(900, Status::InProgress);
+        checks
+            .h
+            .app
+            .with_server(|db| {
+                db.add_repo("shop", repo("api"))?;
+                db.set_task_repos("shop", &checks.task, &[("api".into(), "write".into())])?;
+                db.update_delivery("shop", &checks.task, "api", Delivery { ci_state: Some(state.into()), ..Default::default() })?;
+                Ok(())
+            })
+            .unwrap();
+        checks.quieten(7200);
+        checks.watch().await;
+        assert!(checks.letters().is_empty(), "checks {state} are still a wait, not silence");
+    }
 
     let request = rig(900, Status::InProgress);
     request

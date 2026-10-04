@@ -42,6 +42,8 @@ pub const CR_CLOSED: &str = "cr.closed";
 /// The CI of a task's request failed / passed.
 pub const CI_FAILED: &str = "ci.failed";
 pub const CI_PASSED: &str = "ci.passed";
+/// The checks of a watched ref stayed `pending` longer than `runtime.ciPendingSecs`.
+pub const CI_STALLED: &str = "ci.stalled";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

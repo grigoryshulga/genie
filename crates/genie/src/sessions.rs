@@ -1038,8 +1038,12 @@ fn report_if_silent(app: &App, slug: &str, q: &QuietTeam) -> AppResult<bool> {
     let held = app.with_server(|db| {
         let people = db.open_questionnaires_for_task(slug, &q.task)?;
         let jobs = db.open_jobs_for_task(slug, &q.task)?;
-        let delivery =
-            db.task_repos(slug, &q.task)?.iter().any(|r| r.ci_state.as_deref() == Some("pending") || r.cr_state.as_deref() == Some("open"));
+        // Checks running, a request waiting for review or merge, and checks that will not settle are
+        // all waits: the delivery, not the team, is what has to move.
+        let delivery = db
+            .task_repos(slug, &q.task)?
+            .iter()
+            .any(|r| matches!(r.ci_state.as_deref(), Some("pending" | "stalled")) || r.cr_state.as_deref() == Some("open"));
         Ok(people > 0 || jobs > 0 || delivery)
     })?;
     if held {

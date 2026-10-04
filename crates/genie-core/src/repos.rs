@@ -67,8 +67,14 @@ pub struct TaskRepo {
     pub cr_url: Option<String>,
     /// `open`, `merged` or `closed`.
     pub cr_state: Option<String>,
-    /// `pending`, `passed`, `failed` or `none`.
+    /// `pending`, `passed`, `failed`, `none` or `stalled`.
     pub ci_state: Option<String>,
+    /// The ref whose checks are watched (empty: none is).
+    pub ci_ref: String,
+    /// The commit those checks belong to.
+    pub ci_sha: Option<String>,
+    /// When waiting for this commit's checks began; empty once they settled.
+    pub ci_since: String,
     pub head_sha: Option<String>,
     /// The host's timestamp of the newest comment already passed on to the task.
     pub seen_at: String,
@@ -88,6 +94,9 @@ impl TaskRepo {
             cr_url: r.get("cr_url")?,
             cr_state: r.get("cr_state")?,
             ci_state: r.get("ci_state")?,
+            ci_ref: r.get("ci_ref")?,
+            ci_sha: r.get("ci_sha")?,
+            ci_since: r.get("ci_since")?,
             head_sha: r.get("head_sha")?,
             seen_at: r.get("seen_at")?,
             updated: r.get("updated")?,
@@ -129,6 +138,14 @@ pub struct Delivery {
     pub cr_url: Option<String>,
     pub cr_state: Option<String>,
     pub ci_state: Option<String>,
+    /// The ref to watch from now on, and the commit to watch.
+    pub ci_ref: Option<String>,
+    pub ci_sha: Option<String>,
+    /// When waiting for these checks began; `Some("")` clears it (they settled).
+    pub ci_since: Option<String>,
+    /// Start the watch over: drop the recorded `ci_state`/`ci_since` and take the given ref,
+    /// commit and start time (a new push, a requeued look). `None` alone cannot clear a column.
+    pub reset_ci: bool,
     pub head_sha: Option<String>,
     pub seen_at: Option<String>,
 }
@@ -356,9 +373,30 @@ impl ServerDb {
             "UPDATE task_repos SET
                branch = COALESCE(?4, branch), state = COALESCE(?5, state),
                cr_number = COALESCE(?6, cr_number), cr_url = COALESCE(?7, cr_url), cr_state = COALESCE(?8, cr_state),
-               ci_state = COALESCE(?9, ci_state), head_sha = COALESCE(?10, head_sha), seen_at = COALESCE(?11, seen_at), updated = ?12
+               ci_state = CASE WHEN ?9 THEN NULL ELSE COALESCE(?10, ci_state) END,
+               ci_ref = CASE WHEN ?9 THEN COALESCE(?11, '') ELSE COALESCE(?11, ci_ref) END,
+               ci_sha = CASE WHEN ?9 THEN ?12 ELSE COALESCE(?12, ci_sha) END,
+               ci_since = CASE WHEN ?9 THEN COALESCE(?13, '') ELSE COALESCE(?13, ci_since) END,
+               head_sha = COALESCE(?14, head_sha), seen_at = COALESCE(?15, seen_at), updated = ?16
              WHERE project = ?1 AND task = ?2 AND repo = ?3",
-            params![project, task, repo, d.branch, d.state, d.cr_number, d.cr_url, d.cr_state, d.ci_state, d.head_sha, d.seen_at, now()],
+            params![
+                project,
+                task,
+                repo,
+                d.branch,
+                d.state,
+                d.cr_number,
+                d.cr_url,
+                d.cr_state,
+                d.reset_ci,
+                d.ci_state,
+                d.ci_ref,
+                d.ci_sha,
+                d.ci_since,
+                d.head_sha,
+                d.seen_at,
+                now()
+            ],
         )?;
         Ok(self.task_repo(project, task, repo)?.expect("row exists"))
     }
@@ -366,6 +404,18 @@ impl ServerDb {
     /// Deliveries with an open request: the ones the poller watches.
     pub fn open_deliveries(&self) -> Result<Vec<TaskRepo>> {
         let mut stmt = self.conn().prepare("SELECT * FROM task_repos WHERE cr_state = 'open' ORDER BY updated")?;
+        Ok(stmt.query_map([], TaskRepo::from_row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Deliveries the poller looks at: an open request, or a watched ref whose checks are not
+    /// settled yet (`none` stays in: a fresh push may have no checks for the first moments).
+    pub fn watched_deliveries(&self) -> Result<Vec<TaskRepo>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT * FROM task_repos
+             WHERE cr_state = 'open'
+                OR (ci_sha IS NOT NULL AND (ci_state IS NULL OR ci_state IN ('pending', 'none')))
+             ORDER BY updated",
+        )?;
         Ok(stmt.query_map([], TaskRepo::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 }
@@ -441,5 +491,67 @@ mod tests {
         assert_eq!(kept.iter().find(|r| r.repo == "api").unwrap().cr_number, Some(7), "delivery survives an access change");
         assert_eq!(db.open_deliveries().unwrap().len(), 1);
         assert!(db.remove_repo("shop", "api").is_err(), "an unmerged delivery blocks removal");
+    }
+
+    #[test]
+    fn the_watch_follows_a_published_branch_and_a_merge_commit() {
+        let (_d, db) = db();
+        db.add_repo("shop", new("api", "acme/api", "api")).unwrap();
+        db.set_task_repos("shop", "S-1", &[("api".into(), "write".into())]).unwrap();
+        assert!(db.watched_deliveries().unwrap().is_empty(), "nothing is watched until a commit is named");
+
+        // A pushed branch: armed with its commit, no request at all.
+        db.update_delivery(
+            "shop",
+            "S-1",
+            "api",
+            Delivery {
+                state: Some("published".into()),
+                ci_ref: Some("genie/S-1".into()),
+                ci_sha: Some("aaa".into()),
+                ci_since: Some(now()),
+                reset_ci: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let rows = db.watched_deliveries().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].ci_ref.as_str(), rows[0].ci_sha.as_deref(), rows[0].ci_state.as_deref()), ("genie/S-1", Some("aaa"), None));
+
+        // Settled: the row leaves the watch, and a new push arms it again with the new commit.
+        db.update_delivery("shop", "S-1", "api", Delivery { ci_state: Some("failed".into()), ..Default::default() }).unwrap();
+        assert!(db.watched_deliveries().unwrap().is_empty());
+        let row = db
+            .update_delivery(
+                "shop",
+                "S-1",
+                "api",
+                Delivery { ci_sha: Some("bbb".into()), ci_since: Some(now()), reset_ci: true, ..Default::default() },
+            )
+            .unwrap();
+        assert_eq!(row.ci_state, None, "reset_ci drops the recorded state");
+        assert_ne!(row.ci_since, "");
+        assert_eq!(db.watched_deliveries().unwrap().len(), 1);
+
+        // A merge commit without a request: the target branch is watched.
+        db.update_delivery(
+            "shop",
+            "S-1",
+            "api",
+            Delivery {
+                state: Some("merged".into()),
+                cr_state: Some("merged".into()),
+                ci_ref: Some("main".into()),
+                ci_sha: Some("ccc".into()),
+                ci_since: Some(now()),
+                reset_ci: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let rows = db.watched_deliveries().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].ci_ref, "main");
     }
 }

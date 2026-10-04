@@ -173,6 +173,11 @@ fn task_repos(v: &Value) -> String {
         if let Some(n) = r["crNumber"].as_i64() {
             line.push_str(&format!(" · request #{n} ({})", r["crState"].as_str().unwrap_or("?")));
         }
+        // The checks of the watched ref, whether or not a request is open (AC2: visible without asking).
+        if let Some(ci) = r["ciState"].as_str().filter(|c| !c.is_empty()) {
+            let r#ref = r["ciRef"].as_str().filter(|x| !x.is_empty());
+            line.push_str(&format!(" · checks{of}: {ci}", of = r#ref.map(|w| format!(" of {w}")).unwrap_or_default()));
+        }
         out.push(line);
     }
     if out.len() == 1 {
@@ -353,12 +358,31 @@ async fn pick(cx: &Cx, task: &str, repo: Option<String>) -> Result<String, Strin
 fn request(v: &Value) -> String {
     let r = &v["request"];
     if r.is_null() {
-        return format!("no request yet for {} (branch {})", s(v, "repo"), s(v, "branch"));
+        // No request yet: the branch's checks are still worth seeing (a policy that asks for no
+        // requests has nothing else to show of the delivery).
+        let d = &v["delivery"];
+        let checks = d["ciState"].as_str().filter(|c| !c.is_empty());
+        let watched = d["ciRef"].as_str().filter(|x| !x.is_empty() && *x != s(v, "branch"));
+        return match checks {
+            Some(ci) => format!(
+                "no request yet for {} (branch {}) · checks{}: {ci}",
+                s(v, "repo"),
+                s(v, "branch"),
+                watched.map(|w| format!(" of {w}")).unwrap_or_default()
+            ),
+            None => format!("no request yet for {} (branch {})", s(v, "repo"), s(v, "branch")),
+        };
     }
     let mergeable = match r["mergeable"].as_bool() {
         Some(true) => "yes",
         Some(false) => "no",
         None => "not known yet",
+    };
+    // The recorded state is the news when the watch has been put to rest: the host still says the
+    // checks are running though nothing has come of them.
+    let ci = match v["delivery"]["ciState"].as_str() {
+        Some("stalled") => "stalled",
+        _ => v["ci"].as_str().unwrap_or("none"),
     };
     format!(
         "{} #{} ({}{}) {}\n  {} → {}\n  checks: {} · approvals: {}{} · mergeable: {mergeable}",
@@ -369,7 +393,7 @@ fn request(v: &Value) -> String {
         s(r, "url"),
         s(r, "head"),
         s(r, "base"),
-        v["ci"].as_str().unwrap_or("none"),
+        ci,
         r["approvals"],
         if r["changesRequested"] == json!(true) { " · changes requested" } else { "" },
     )
