@@ -42,8 +42,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
     GENIE_WEB_DIST=web/dist cargo build --release --locked -p genie \
- && install -D -m 0755 target/release/genie /out/genie \
- && strip /out/genie
+ && install -D -m 0755 target/release/genie /out/genie
 
 # ---- runtime ------------------------------------------------------------------------------------
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim AS runtime
