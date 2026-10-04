@@ -13,6 +13,7 @@ import { FirstProjectPage, ProjectPage, ServerPage } from "@/pages/project";
 import { AnswerPage, AutomationsPage, NotificationsPage, ProposalsPage } from "@/pages/platform";
 import { ProfilePage } from "@/pages/profile";
 import { useSession } from "@/entities/session";
+import { TaskPage } from "@/pages/task";
 import { TasksPage } from "@/pages/tasks";
 import { TeamView } from "@/pages/team";
 import { AgentChat } from "@/pages/agent";
@@ -36,11 +37,12 @@ function Shell() {
   const teams = useTeamMap();
   const tasks = useTasks().data;
   const teamRoute = location.pathname.startsWith("/team/");
+  const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
   const platformRoute = ["/automations", "/agents", "/notifications", "/profile", "/project", "/server"].some((p) => location.pathname.startsWith(p));
   // Pages without a task list: palette actions that need one go to "active".
-  const ownPage = teamRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
-  const openTaskId = teamRoute ? undefined : (sp.get("task") ?? undefined);
+  const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
+  const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
   const openTask = tasks?.find((t) => t.id === openTaskId);
 
   const closeTask = useCallback(() => {
@@ -171,6 +173,7 @@ export const router = createBrowserRouter([
     element: <Gate />,
     children: [
       { index: true, element: <Navigate to="/active" replace /> },
+      { path: "task/:taskId/:tab?", element: <TaskPage /> },
       { path: "team/:teamId", element: <TeamView /> },
       { path: "team/:teamId/:member", element: <AgentChat /> },
       { path: "epics", element: <EpicsRoute /> },
