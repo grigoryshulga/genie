@@ -77,6 +77,18 @@ async fn writes_need_the_csrf_header_and_hosts_are_checked() {
 }
 
 #[tokio::test]
+async fn wake_only_answers_loopback_callers() {
+    let h = Harness::new();
+    // The tokenless local CLI connects from the machine itself: it wakes the workers.
+    let (s, v, _) = call(&h.router, "POST", "/api/wake").send().await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v, json!({ "ok": true }));
+    // A caller from another machine is refused: waking every worker is too cheap to hand out.
+    let (s, e, _) = call(&h.remote, "POST", "/api/wake").send().await;
+    assert_eq!((s, e["error"].as_str()), (StatusCode::FORBIDDEN, Some("loopback connections only")));
+}
+
+#[tokio::test]
 async fn remote_callers_need_a_login_even_without_users() {
     let h = Harness::new();
     h.project("shop");
