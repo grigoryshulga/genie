@@ -16,9 +16,9 @@
 //
 //   GENIE_AGENT_BUILD_JOBS  CARGO_BUILD_JOBS of agents (default 8)
 //
-// Everything else in config.json is left alone. The script also registers pi-mcp-adapter
-// (shipped in the image) in pi's settings so roles with MCP connections work; opt out with
-// GENIE_MCP_ADAPTER=0.
+// Everything else in config.json is left alone. The script also takes pi-mcp-adapter out of pi's
+// settings: earlier images registered it there, and on pi 1.0 it would replace pi's built-in MCP
+// support, through which agents get the connections of their roles.
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -118,19 +118,28 @@ if (JSON.stringify(config) !== before || fresh) {
   log(`${fresh ? "created" : "updated"} ${configPath}`);
 }
 
-// --- pi: pi-mcp-adapter ---------------------------------------------------------------
+// --- pi: no pi-mcp-adapter ------------------------------------------------------------
 
-const adapterDir = env.GENIE_MCP_ADAPTER_DIR || "/opt/genie/pi-seed/npm/node_modules/pi-mcp-adapter";
-if (env.GENIE_MCP_ADAPTER !== "0" && existsSync(adapterDir)) {
-  const agentDir = env.PI_CODING_AGENT_DIR || join(env.HOME || "/data/home", ".pi", "agent");
-  const settingsPath = join(agentDir, "settings.json");
+const agentDir = env.PI_CODING_AGENT_DIR || join(env.HOME || "/data/home", ".pi", "agent");
+const settingsPath = join(agentDir, "settings.json");
+if (existsSync(settingsPath)) {
   const settings = readJson(settingsPath, {});
-  const packages = Array.isArray(settings.packages) ? settings.packages : [];
   const source = (p) => (typeof p === "string" ? p : p && typeof p.source === "string" ? p.source : "");
-  // Any entry naming the adapter (npm:pi-mcp-adapter@x, a git source, our path) counts as installed.
-  if (!packages.some((p) => source(p).includes("pi-mcp-adapter"))) {
-    settings.packages = [...packages, adapterDir];
+  // Any entry naming the adapter counts (npm:pi-mcp-adapter@x, a git source, the path the old image used).
+  let removed = false;
+  for (const key of ["packages", "extensions"]) {
+    if (!Array.isArray(settings[key])) continue;
+    const kept = settings[key].filter((p) => !source(p).includes("pi-mcp-adapter"));
+    if (kept.length !== settings[key].length) {
+      settings[key] = kept;
+      removed = true;
+    }
+  }
+  if (removed) {
     writeJson(settingsPath, settings, 0o600);
-    log(`registered pi-mcp-adapter in ${settingsPath}`);
+    log(`removed pi-mcp-adapter from ${settingsPath}: pi's built-in MCP support serves the agents`);
   }
 }
+const strayAdapter = join(agentDir, "extensions", "pi-mcp-adapter");
+if (existsSync(strayAdapter)) log(`warning: ${strayAdapter} replaces pi's built-in MCP support: remove it`);
+
