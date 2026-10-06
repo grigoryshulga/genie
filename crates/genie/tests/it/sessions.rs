@@ -572,6 +572,30 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     assert_eq!(session_state(app, "bender").unwrap().2, pid, "the same session");
 }
 
+/// pi runs under a V8 heap cap added to the operator's own `NODE_OPTIONS`; what pi runs does not inherit it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_session_runs_under_a_heap_cap_its_commands_do_not_inherit() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        return;
+    };
+    let l = live(pi, |cfg| {
+        cfg.runtime.env.insert("NODE_OPTIONS".into(), "--no-warnings".into());
+    })
+    .await;
+    let (app, log) = (&l.app, &l.log);
+    mail(app, "anna", "human", "bender", "RUN: echo CAP=[$NODE_OPTIONS][$GENIE_NODE_HEAP_MB]", None);
+    let out = tool_result(log, "CAP=").await;
+    assert!(out.contains("CAP=[--no-warnings][]"), "the command sees the operator's options only: {out}");
+    let pid = session_state(app, "bender").unwrap().2;
+    let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap();
+    let environ = String::from_utf8_lossy(&environ);
+    assert!(environ.contains("NODE_OPTIONS=--no-warnings --max-old-space-size=2048"), "pi itself got the cap");
+    // What a bare session weighs, for sizing `nodeHeapMb` and `maxSessions` (docs/platform/docker.md).
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
+    eprintln!("pi session: {}", status.lines().filter(|l| l.starts_with("VmRSS") || l.starts_with("VmHWM")).collect::<Vec<_>>().join(" "));
+}
+
 /// The orchestrator console: `genie orchestrate` runs pi (here in RPC mode, so
 /// the test sees its UI requests) with genie-bus in console mode — mail for the
 /// orchestrator reaches the idle session without anyone waking it — and the

@@ -199,7 +199,26 @@ function reportUsage(pi: any): void {
   pi.on("session_shutdown", () => flush());
 }
 
+/** `NODE_OPTIONS` without the heap cap genie put there for pi (`--max-old-space-size=<mb>`); other options stay. */
+export function withoutHeapCap(options: string, mb: string): string {
+  return options
+    .split(/\s+/)
+    .filter((o) => o && o !== `--max-old-space-size=${mb}`)
+    .join(" ");
+}
+
+/** Node read the cap at start-up; what pi runs (builds, test runs) inherits the environment and must not be held to pi's limit. */
+function releaseHeapCap(): void {
+  const cap = process.env.GENIE_NODE_HEAP_MB;
+  if (!cap) return;
+  const rest = withoutHeapCap(process.env.NODE_OPTIONS ?? "", cap);
+  if (rest) process.env.NODE_OPTIONS = rest;
+  else delete process.env.NODE_OPTIONS;
+  delete process.env.GENIE_NODE_HEAP_MB;
+}
+
 export default function genieGuard(pi: any) {
+  releaseHeapCap();
   reportUsage(pi);
   if (!POLICY) return;
 
