@@ -97,9 +97,21 @@ impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequest<
     }
 }
 
+/// The command line changed the data directory on its own (no token: it writes the databases
+/// itself): run the workers' next pass now instead of at their safety net. Reveals and changes
+/// nothing, so it asks for no login.
+async fn wake(State(app): State<Arc<App>>) -> Json<serde_json::Value> {
+    app.wake_engine.notify_one();
+    app.wake_runtime.notify_one();
+    app.wake_outbox.notify_one();
+    app.wake_poller.notify_one();
+    Json(json!({ "ok": true }))
+}
+
 pub fn router(app: Arc<App>) -> Router {
     let api = Router::new()
         .route("/health", get(|| async { Json(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") })) }))
+        .route("/wake", post(wake))
         .merge(account::routes())
         .merge(tasks::routes())
         .merge(ideas::routes())

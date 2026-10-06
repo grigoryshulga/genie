@@ -6,7 +6,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use genie_core::events;
 use genie_core::vault::{AuthorKind, WriteOutcome};
 use genie_core::work::Proposal;
 use serde_json::{Value, json};
@@ -29,7 +28,7 @@ pub struct Author<'a> {
 pub fn doc_event(app: &App, path: &str, kind: &str, actor: &str, actor_role: &str, payload: Value) {
     let project = app.with_vault(|v| Ok(v.project_of(path))).ok().flatten();
     if let Some(p) = project {
-        let _ = app.with_tracker(&p, |t| events::append(t.conn(), kind, None, actor, actor_role, payload.clone()).map(|_| ()));
+        let _ = app.with_tracker(&p, |t| t.append_event(kind, None, actor, actor_role, payload.clone()).map(|_| ()));
         app.wake_engine.notify_one();
     }
 }
@@ -126,13 +125,19 @@ pub fn decide(app: &App, id: i64, approve: bool, by: &str, note: Option<&str>, f
     Ok(decided)
 }
 
-/// Pick up edits made outside genie (Obsidian, git pull) every few seconds.
+const WATCH_MIN: Duration = Duration::from_secs(4);
+const WATCH_MAX: Duration = Duration::from_secs(15);
+
+/// Pick up edits made outside genie (Obsidian, git pull). Nothing tells the server about them, so
+/// the vault is looked at: every few seconds while it changes, backing off to [`WATCH_MAX`] while
+/// it is quiet (a walk over every page is not free). Edits through genie index themselves.
 pub fn start_watcher(app: &Arc<App>) {
     let app = app.clone();
     tokio::spawn(async move {
         let mut last = String::new();
+        let mut wait = WATCH_MIN;
         loop {
-            tokio::time::sleep(Duration::from_secs(4)).await;
+            tokio::time::sleep(wait).await;
             let prev = last.clone();
             let res = app
                 .blocking(move |app| {
@@ -160,6 +165,7 @@ pub fn start_watcher(app: &Arc<App>) {
                             })
                             .await;
                     }
+                    wait = if sig == last { (wait * 2).min(WATCH_MAX) } else { WATCH_MIN };
                     last = sig;
                 }
                 Err(e) => eprintln!("genie vault: {e}"),
@@ -178,8 +184,7 @@ pub fn release(app: &App, project: &str, version: &str, by: &str) -> AppResult<S
         v.changelog_release(&space, version, &date)
     })?;
     app.with_tracker(project, |t| {
-        events::append(t.conn(), "release.published", None, by, "human", json!({ "version": version, "date": date, "notes": notes }))
-            .map(|_| ())
+        t.append_event("release.published", None, by, "human", json!({ "version": version, "date": date, "notes": notes })).map(|_| ())
     })?;
     app.wake_engine.notify_one();
     Ok(notes)

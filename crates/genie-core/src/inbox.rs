@@ -240,6 +240,12 @@ impl ServerDb {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// When the earliest pending message falls due (`None`: nothing is pending): a failed
+    /// delivery waits for its backoff, and nobody wakes the dispatcher when it ends.
+    pub fn next_outbox_at(&self) -> Result<Option<String>> {
+        Ok(self.conn().query_row("SELECT MIN(next_at) FROM outbox WHERE status = 'pending'", [], |r| r.get(0))?)
+    }
+
     pub fn outbox_sent(&self, id: i64, external_ref: Option<&str>) -> Result<()> {
         self.conn().execute(
             "UPDATE outbox SET status = 'sent', sent_at = ?1, attempts = attempts + 1, external_ref = ?2 WHERE id = ?3",
@@ -450,11 +456,14 @@ mod tests {
         assert_eq!(db.due_outbox(10).unwrap().len(), 1);
         db.outbox_failed(id, "smtp down").unwrap();
         assert!(db.due_outbox(10).unwrap().is_empty(), "retried later, not immediately");
+        // The dispatcher sleeps until the retry falls due.
+        assert!(db.next_outbox_at().unwrap().unwrap() > now());
         for _ in 1..MAX_DELIVERY_ATTEMPTS {
             db.outbox_failed(id, "smtp down").unwrap();
         }
         let status: String = db.conn().query_row("SELECT status FROM outbox WHERE id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(status, "failed");
+        assert_eq!(db.next_outbox_at().unwrap(), None, "nothing pending, nothing to wake up for");
     }
 
     #[test]

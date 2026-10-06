@@ -87,6 +87,8 @@ async fn take(State(app): State<Arc<App>>, ctx: Ctx, body: Option<Json<TakeBody>
             let e: ApiError = e.into();
             if e.message.contains(" is held by ") { ApiError::new(StatusCode::CONFLICT, e.message) } else { e }
         })?;
+    // Mail already waiting for the orchestrator now waits for the console to lapse: the scheduler works out when.
+    app.wake_runtime.notify_one();
     Ok(Json(json!({
         "console": console,
         "token": token,

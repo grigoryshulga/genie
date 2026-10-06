@@ -5,6 +5,7 @@
 //! runs the server anyway).
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use axum::Router;
 use axum::body::Body;
@@ -31,6 +32,11 @@ pub trait Api: Send + Sync {
     fn request<'a>(&'a self, method: &'a str, path: &'a str, body: Payload) -> BoxFuture<'a, Result<Value, String>>;
     /// Where the calls go, for messages.
     fn place(&self) -> String;
+    /// Whether a call changed something in the data directory of a server this process does not
+    /// run (the command line without a token): that server has to be told ([`wake_server`]).
+    fn wrote_locally(&self) -> bool {
+        false
+    }
 
     fn call<'a>(&'a self, method: &'a str, path: &'a str, body: Option<Value>) -> BoxFuture<'a, Result<Value, String>> {
         self.request(method, path, body.map_or(Payload::None, Payload::Json))
@@ -111,17 +117,35 @@ pub struct InProcess {
     auth: Auth,
     /// The project to act in (`X-Genie-Project`).
     project: Option<String>,
+    /// A call other than a read went through.
+    wrote: AtomicBool,
 }
 
 impl InProcess {
     pub fn new(router: Router, port: u16, auth: Auth, project: Option<String>) -> InProcess {
-        InProcess { router, port, auth, project }
+        InProcess { router, port, auth, project, wrote: AtomicBool::new(false) }
     }
+}
+
+/// Tell a server running on this machine that the data directory changed under it: the command line
+/// without a token writes the databases itself, and the server's workers sleep until woken. Best
+/// effort: no server, no harm.
+pub async fn wake_server(port: u16) {
+    let Ok(http) = reqwest::Client::builder().timeout(std::time::Duration::from_millis(500)).build() else { return };
+    let _ = http
+        .post(format!("http://127.0.0.1:{port}/api/wake"))
+        .header("host", format!("127.0.0.1:{port}"))
+        .header("x-genie", "1")
+        .send()
+        .await;
 }
 
 impl Api for InProcess {
     fn request<'a>(&'a self, method: &'a str, path: &'a str, body: Payload) -> BoxFuture<'a, Result<Value, String>> {
         Box::pin(async move {
+            if method != "GET" {
+                self.wrote.store(true, Ordering::Relaxed);
+            }
             let mut req = Request::builder()
                 .method(method)
                 .uri(format!("/api{path}"))
@@ -152,5 +176,9 @@ impl Api for InProcess {
 
     fn place(&self) -> String {
         "the local server data".into()
+    }
+
+    fn wrote_locally(&self) -> bool {
+        self.wrote.load(Ordering::Relaxed)
     }
 }

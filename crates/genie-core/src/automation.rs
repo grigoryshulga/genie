@@ -145,6 +145,13 @@ pub fn due_fire(expr: &str, tz: Option<&str>, after: DateTime<Utc>, now: DateTim
     last
 }
 
+/// First scheduled time after `after` (what the engine sleeps until).
+pub fn next_fire(expr: &str, tz: Option<&str>, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let sched = parse_cron(expr).ok()?;
+    let tz: chrono_tz::Tz = tz.and_then(|t| chrono_tz::Tz::from_str(t).ok()).unwrap_or(chrono_tz::UTC);
+    sched.after(&after.with_timezone(&tz)).next().map(|t| t.with_timezone(&Utc))
+}
+
 // --- matching and templates ------------------------------------------------------
 
 /// Value at a dotted path (`task.type`, `steps.docs.output.pages.0`).
@@ -633,6 +640,9 @@ mod tests {
         // 09:00 in Moscow is 06:00 UTC.
         assert_eq!(due_fire("0 9 * * *", Some("Europe/Moscow"), after, now), Some(Utc.with_ymd_and_hms(2026, 9, 28, 6, 0, 0).unwrap()));
         assert_eq!(due_fire("0 9 * * *", Some("Europe/Moscow"), now, now), None);
+        // The next one is tomorrow's, 09:00 Moscow time.
+        assert_eq!(next_fire("0 9 * * *", Some("Europe/Moscow"), now), Some(Utc.with_ymd_and_hms(2026, 9, 29, 6, 0, 0).unwrap()));
+        assert_eq!(next_fire("not cron", None, now), None);
     }
 
     #[test]

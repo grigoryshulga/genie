@@ -168,9 +168,7 @@ async fn record(app: &Arc<App>, project: &str, kind: &'static str, t: &Target, p
     let (project, subject, actor, class) = (project.to_string(), id.team.clone(), name.clone(), id.role);
     let _ = app
         .blocking(move |app| {
-            app.with_tracker(&project, |tr| {
-                events::append(tr.conn(), kind, subject.as_deref(), &actor, class.as_str(), payload).map(|_| ())
-            })
+            app.with_tracker(&project, |tr| tr.append_event(kind, subject.as_deref(), &actor, class.as_str(), payload).map(|_| ()))
         })
         .await;
 }
@@ -662,9 +660,8 @@ fn record_denied(app: &App, project: &str, t: &Target, cmds: &[Command2], reason
     let Some((name, id)) = &t.agent else { return };
     let refs: Vec<&str> = cmds.iter().map(|c| c.refname.as_str()).collect();
     let payload = json!({ "repo": t.repo.name, "op": "push", "refs": refs, "reason": reasons.join("; ") });
-    let _ = app.with_tracker(project, |tr| {
-        events::append(tr.conn(), events::GIT_DENIED, id.team.as_deref(), name, id.role.as_str(), payload).map(|_| ())
-    });
+    let _ = app
+        .with_tracker(project, |tr| tr.append_event(events::GIT_DENIED, id.team.as_deref(), name, id.role.as_str(), payload).map(|_| ()));
 }
 
 fn record_pushed(app: &App, project: &str, t: &Target, who: &str, ok: &[&Command2]) {
@@ -672,9 +669,8 @@ fn record_pushed(app: &App, project: &str, t: &Target, who: &str, ok: &[&Command
     let refs: Vec<_> = ok.iter().map(|c| json!({ "ref": c.refname, "old": c.old, "new": c.new })).collect();
     let task = eff_task(t);
     let payload = json!({ "repo": t.repo.name, "task": task, "refs": refs });
-    let _ = app.with_tracker(project, |tr| {
-        events::append(tr.conn(), events::GIT_PUSHED, id.team.as_deref(), who, id.role.as_str(), payload).map(|_| ())
-    });
+    let _ =
+        app.with_tracker(project, |tr| tr.append_event(events::GIT_PUSHED, id.team.as_deref(), who, id.role.as_str(), payload).map(|_| ()));
     // The task's branch is now published, and the checks of the branch that was pushed are watched
     // from here — that is what makes them visible under a policy that asks for no requests at all.
     if let (Some(task), Some(eff)) = (task, &t.eff) {
@@ -693,6 +689,8 @@ fn record_pushed(app: &App, project: &str, t: &Target, who: &str, ok: &[&Command
         {
             let push = BranchPush { branch, sha: &c.new, delivers: task_branch.as_deref() == Some(branch) };
             let _ = app.with_server(|db| db.branch_pushed(project, &task, &t.repo.name, push));
+            // The pushed commit's checks are watched from now on.
+            app.wake_poller.notify_one();
         }
     }
 }

@@ -35,7 +35,7 @@ use crate::config::MemberSpec;
 use crate::ops::{self, AgentKind};
 use crate::outcome::Outcome;
 use crate::sandbox;
-use crate::state::{App, AppError, AppResult};
+use crate::state::{App, AppError, AppResult, SAFETY_NET};
 
 /// Which agent a turn is for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -106,15 +106,31 @@ pub fn start(app: &Arc<App>) {
     tokio::spawn(async move {
         let slots = Arc::new(Semaphore::new(app.cfg.runtime.max_concurrent.max(1)));
         loop {
-            if let Err(e) = schedule(&app, &slots).await {
-                eprintln!("genie runtime: {e}");
-            }
+            let next = match schedule(&app, &slots).await {
+                Ok(next) => next,
+                Err(e) => {
+                    eprintln!("genie runtime: {e}");
+                    Next(Some(Duration::from_secs(5)))
+                }
+            };
             tokio::select! {
                 _ = app.wake_runtime.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                _ = tokio::time::sleep(next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET)).max(Duration::from_millis(50))) => {}
             }
         }
     });
+}
+
+/// When the scheduler has to look again without being woken: the soonest of the deadlines it
+/// meets in a pass (a backoff, a nudge to repeat, an idle session to stop, a console that lapses).
+/// New mail, jobs, finished turns and changed teams wake it instead (`App::wake_runtime`).
+#[derive(Default)]
+pub(crate) struct Next(Option<Duration>);
+
+impl Next {
+    pub(crate) fn within(&mut self, d: Duration) {
+        self.0 = Some(self.0.map_or(d, |x| x.min(d)));
+    }
 }
 
 /// After a restart: interrupted turns give their mail back, running jobs are requeued,
@@ -162,10 +178,26 @@ pub(crate) fn is_our_agent(pid: i64, project: &str, name: &str) -> bool {
     has(format!("GENIE_PROJECT={project}")) && has(format!("GENIE_AGENT_NAME={name}"))
 }
 
-async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
-    let candidates = app
+async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
+    let mut next = Next::default();
+    let live = app.cfg.runtime.live_sessions();
+    // Supervision first, so what it frees (stale deliveries, stopped sessions) is seen below.
+    if live {
+        crate::sessions::sweep(app, &mut next).await?;
+    }
+    // The silent-team watchdog rides every pass, in both `sessions` and `turns` mode. What it
+    // watches for is quiet, so the safety net (a minute) bounds how late it may be; the last
+    // activity of a team (mail, a turn, a team change) wakes the scheduler by itself.
+    if let Err(e) = crate::sessions::watch_silent_teams(app).await {
+        eprintln!("genie runtime: silent-team watchdog: {e}");
+    }
+    if app.cfg.runtime.stall_secs > 0 {
+        next.within(Duration::from_secs((app.cfg.runtime.stall_secs / 4).max(1)));
+    }
+    let (candidates, console) = app
         .blocking(|app| {
             let mut out = Vec::new();
+            let mut console = None::<Duration>;
             for p in app.with_server(|db| db.projects())? {
                 let boxes = match app.with_tracker(&p.slug, |t| t.bus().mailboxes_with_mail()) {
                     Ok(b) => b,
@@ -177,6 +209,15 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
                 for b in boxes {
                     match b.team {
                         None if orchestrator_runs(app, &p) => out.push(AgentKey::Orchestrator { project: p.slug.clone() }),
+                        // A person's console lapses by itself: the orchestrator takes its mail then.
+                        None if p.autonomy != "manual" => {
+                            let lapses = app.with_server(|db| db.console(&p.slug)).ok().flatten().and_then(|c| {
+                                chrono::DateTime::parse_from_rfc3339(&c.until)
+                                    .ok()
+                                    .and_then(|u| (u.to_utc() - chrono::Utc::now()).to_std().ok())
+                            });
+                            console = [console, lapses].into_iter().flatten().min();
+                        }
                         None => {}
                         Some(team) => out.push(AgentKey::Member { project: p.slug.clone(), team, member: b.recipient }),
                     }
@@ -185,24 +226,27 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
             for j in app.with_server(|db| db.queued_jobs())? {
                 out.push(AgentKey::Job { project: j.project.clone(), job: j.id });
             }
-            Ok(out)
+            Ok((out, console))
         })
         .await?;
-    let live = app.cfg.runtime.live_sessions();
-    if live {
-        crate::sessions::sweep(app).await?;
-    }
-    // The silent-team watchdog rides every tick, in both `sessions` and `turns` mode.
-    if let Err(e) = crate::sessions::watch_silent_teams(app).await {
-        eprintln!("genie runtime: silent-team watchdog: {e}");
+    if let Some(d) = console {
+        next.within(d + Duration::from_millis(50));
     }
     for key in candidates {
         if live && !matches!(key, AgentKey::Job { .. }) {
-            crate::sessions::deliver(app, &key).await;
+            if let Some(d) = crate::sessions::deliver(app, &key).await {
+                next.within(d);
+            }
             continue;
         }
-        let ready = !app.sched.with(|s| s.running.contains(&key)) && app.attempts.may_start(&key);
-        if !ready {
+        if !app.attempts.may_start(&key) {
+            // Waiting out a backoff: nobody wakes the scheduler when it ends.
+            if let Some(d) = app.attempts.wait_for(&key) {
+                next.within(d + Duration::from_millis(50));
+            }
+            continue;
+        }
+        if app.sched.with(|s| s.running.contains(&key)) {
             continue;
         }
         let Ok(permit) = slots.clone().try_acquire_owned() else { break };
@@ -216,7 +260,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
             app.wake_engine.notify_one();
         });
     }
-    Ok(())
+    Ok(next)
 }
 
 struct Prepared {

@@ -1851,16 +1851,23 @@ impl AgentConfig {
     }
 }
 
-/// Keep the configuration in step with the files: reload when they change.
+const WATCH_MIN: Duration = Duration::from_secs(3);
+const WATCH_MAX: Duration = Duration::from_secs(15);
+
+/// Keep the configuration in step with the files: reload when they change. Edits through the API
+/// reload at once; hand edits are noticed by looking at the files, every few seconds while they
+/// change and backing off while they are quiet.
 pub fn start_watcher(app: &Arc<App>) {
     let app = app.clone();
     tokio::spawn(async move {
+        let mut wait = WATCH_MIN;
         loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(wait).await;
             let res = app
                 .blocking(|app| {
                     let sig = signature(&app.data, &app.cfg);
-                    if sig != app.agents().signature {
+                    let changed = sig != app.agents().signature;
+                    if changed {
                         let cfg = app.reload_agents();
                         let errors = cfg.errors().count();
                         println!(
@@ -1870,9 +1877,13 @@ pub fn start_watcher(app: &Arc<App>) {
                             if errors > 0 { format!(", {errors} error(s): `genie agents check`") } else { String::new() }
                         );
                     }
-                    Ok(())
+                    Ok(changed)
                 })
                 .await;
+            wait = match res {
+                Ok(true) | Err(_) => WATCH_MIN,
+                Ok(false) => (wait * 2).min(WATCH_MAX),
+            };
             if let Err(e) = res {
                 eprintln!("genie: agent configuration: {e}");
             }

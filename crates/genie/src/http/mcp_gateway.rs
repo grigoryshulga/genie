@@ -217,7 +217,7 @@ async fn call_tool(app: &Arc<App>, who: &Caller, g: &Grant, params: Value) -> Re
     let written = app
         .blocking(move |app| {
             app.with_tracker(&project, |t| {
-                events::append(t.conn(), events::MCP_CALLED, subject.as_deref(), &actor, class.as_str(), payload).map(|_| ())
+                t.append_event(events::MCP_CALLED, subject.as_deref(), &actor, class.as_str(), payload).map(|_| ())
             })
         })
         .await;

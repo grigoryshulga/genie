@@ -5,6 +5,7 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 use rusqlite::{OptionalExtension, Row, params, params_from_iter};
 use serde::Serialize;
@@ -225,10 +226,14 @@ fn system_actor() -> Actor {
     Actor::new("genie", Role::Orchestrator)
 }
 
+/// Told the kind of every event appended to the journal (see [`Tracker::on_event`]).
+pub type EventHook = Arc<dyn Fn(&str) + Send + Sync>;
+
 pub struct Tracker {
     dir: PathBuf,
     db: Db,
     pub gates: Gates,
+    on_event: OnceLock<EventHook>,
 }
 
 impl Tracker {
@@ -239,7 +244,7 @@ impl Tracker {
         if !file.exists() {
             return Err(GenieError::not_found(format!("no genie tracker in {}; run `genie init` first", dir.display())));
         }
-        Ok(Tracker { db: Db::open(&file)?, dir, gates: Gates::default() })
+        Ok(Tracker { db: Db::open(&file)?, dir, gates: Gates::default(), on_event: OnceLock::new() })
     }
 
     /// Create (or reopen) a tracker directory. Existing meta values are kept.
@@ -260,11 +265,27 @@ impl Tracker {
             set("next_seq", "1")?;
             Ok(())
         })?;
-        Ok(Tracker { db, dir, gates: Gates::default() })
+        Ok(Tracker { db, dir, gates: Gates::default(), on_event: OnceLock::new() })
     }
 
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    /// Call `hook` with the kind of every event this tracker appends from now on (once per tracker),
+    /// so the workers that read the journal sleep until there is something to read. It runs inside
+    /// the writer's transaction: it must only wake someone, never read the database.
+    pub fn on_event(&self, hook: EventHook) {
+        let _ = self.on_event.set(hook);
+    }
+
+    /// Append to the journal and tell the hook (see [`Tracker::on_event`]).
+    pub fn append_event(&self, kind: &str, subject: Option<&str>, actor: &str, actor_role: &str, payload: Value) -> Result<i64> {
+        let id = events::append(self.conn(), kind, subject, actor, actor_role, payload)?;
+        if let Some(hook) = self.on_event.get() {
+            hook(kind);
+        }
+        Ok(id)
     }
 
     /// Raw connection, for the team bus and diagnostics that live outside this module.
@@ -513,7 +534,7 @@ impl Tracker {
     }
 
     fn event(&self, kind: &str, subject: &str, actor: &Actor, payload: Value) -> Result<()> {
-        events::append(self.conn(), kind, Some(subject), &actor.name, actor.role.as_str(), payload)?;
+        self.append_event(kind, Some(subject), &actor.name, actor.role.as_str(), payload)?;
         Ok(())
     }
 
@@ -524,8 +545,7 @@ impl Tracker {
             params![now(), sender, sender_role, text, kind, task],
         )?;
         let id = self.conn().last_insert_rowid();
-        events::append(
-            self.conn(),
+        self.append_event(
             events::MAIL_SENT,
             Some(task),
             sender,

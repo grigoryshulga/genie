@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
 
+use chrono::{DateTime, Utc};
+use genie_core::events;
 use genie_core::server_db::{Project, ServerDb};
 use genie_core::vault::Vault;
 use genie_core::{GenieError, Tracker};
@@ -40,6 +43,17 @@ impl std::fmt::Display for AppError {
     }
 }
 
+/// How long a background loop sleeps when nothing is due and nobody wakes it. Work wakes its loop
+/// (`App::wake_*`), and time-based work (a cron rule, a reminder, a backoff) sets the sleep to its
+/// own deadline, so this only covers what changes the data directory behind the server's back.
+pub const SAFETY_NET: Duration = Duration::from_secs(60);
+
+/// How long to sleep for the soonest of `deadlines`, but never longer than `net`.
+pub fn sleep_until(deadlines: impl IntoIterator<Item = DateTime<Utc>>, net: Duration) -> Duration {
+    let now = Utc::now();
+    deadlines.into_iter().map(|d| (d - now).to_std().unwrap_or_default()).fold(net, Duration::min)
+}
+
 pub type AppResult<T> = Result<T, AppError>;
 
 /// Run a future to its end from synchronous code — a worker of [`App::blocking`], the engine's
@@ -73,12 +87,17 @@ pub struct App {
     /// The knowledge vault shared by all projects of this installation.
     pub vault: Mutex<Vault>,
     projects: RwLock<HashMap<String, Arc<Mutex<Tracker>>>>,
-    /// Wakes the agent scheduler (new mail, finished turn, new job).
-    pub wake_runtime: Notify,
-    /// Wakes the automation engine (new events, answered questions, finished jobs).
-    pub wake_engine: Notify,
+    /// Wakes the agent scheduler (new mail, finished turn, new job). The background loops sleep
+    /// until a deadline of their own or this: whoever creates work for one calls the `notify_one`
+    /// (it keeps a permit, so a wake-up between two passes is not lost). Journal events do it by
+    /// themselves ([`App::project_tracker`]).
+    pub wake_runtime: Arc<Notify>,
+    /// Wakes the automation engine (new events, answered questions, finished jobs, rule changes).
+    pub wake_engine: Arc<Notify>,
     /// Wakes the delivery dispatcher (new outbox rows).
-    pub wake_outbox: Notify,
+    pub wake_outbox: Arc<Notify>,
+    /// Wakes the delivery poller (a task's delivery started to be watched).
+    pub wake_poller: Notify,
     /// Path of the running `genie` binary, given to agents so they can call back.
     pub exe: PathBuf,
     /// Live agent sessions (long-running harness processes).
@@ -114,9 +133,10 @@ impl App {
             server: Mutex::new(server),
             vault: Mutex::new(vault),
             projects: RwLock::new(HashMap::new()),
-            wake_runtime: Notify::new(),
-            wake_engine: Notify::new(),
-            wake_outbox: Notify::new(),
+            wake_runtime: Default::default(),
+            wake_engine: Default::default(),
+            wake_outbox: Default::default(),
+            wake_poller: Notify::new(),
             exe,
             sessions: Default::default(),
             sched: Default::default(),
@@ -170,7 +190,17 @@ impl App {
             return Ok(p.clone());
         }
         let project = self.with_server(|db| db.project(slug))?;
-        let tracker = Arc::new(Mutex::new(Tracker::open(&project.tracker_dir)?));
+        let tracker = Tracker::open(&project.tracker_dir)?;
+        // Every journal event is work for the engine (rules, notifications, team flow), and mail and
+        // team changes are work for the scheduler: nothing has to poll for them.
+        let (engine, runtime) = (self.wake_engine.clone(), self.wake_runtime.clone());
+        tracker.on_event(Arc::new(move |kind| {
+            engine.notify_one();
+            if kind == events::MAIL_SENT || kind.starts_with("team.") {
+                runtime.notify_one();
+            }
+        }));
+        let tracker = Arc::new(Mutex::new(tracker));
         // Opening a tracker may have migrated it: log it, like the server's start-up does.
         crate::cli::report_migrations(&self.data);
         let mut map = self.projects.write().map_err(|_| AppError::Internal("registry poisoned".into()))?;
