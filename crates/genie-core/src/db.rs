@@ -244,10 +244,18 @@ impl Db {
 
     fn migrate(&self) -> Result<()> {
         self.add_columns(COLUMN_MIGRATIONS)?;
-        // Indexes on migrated columns (an old database gets the columns just above).
+        // Indexes on migrated columns (an old database gets the columns just above), and on the
+        // ones the loops of the background poller query every couple of seconds: the mailbox
+        // pass, the open-delivery sweep and the quiet-team streak. Without them these scan
+        // tables that grow with use.
         self.conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS mail_delivery ON mail(delivery);
-             CREATE INDEX IF NOT EXISTS mail_reply ON mail(reply_to);",
+             CREATE INDEX IF NOT EXISTS mail_reply ON mail(reply_to);
+             CREATE INDEX IF NOT EXISTS mail_team_at ON mail(team, at);
+             CREATE INDEX IF NOT EXISTS mail_level_pending ON mail(level, delivered_at);
+             CREATE INDEX IF NOT EXISTS mail_undelivered ON mail(team, recipient, level) WHERE delivered_at IS NULL;
+             CREATE INDEX IF NOT EXISTS deliveries_open ON deliveries(id) WHERE acked_at IS NULL AND released_at IS NULL;
+             CREATE INDEX IF NOT EXISTS log_team_event ON log(team, event);",
         )?;
         // Legacy rows only knew `urgent`; normalise them to the level vocabulary.
         self.conn.execute("UPDATE mail SET level = 'high' WHERE urgent = 1 AND level <> 'high'", [])?;
