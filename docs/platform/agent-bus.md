@@ -97,7 +97,7 @@ genie serve (Rust)
 | Ключ | По умолчанию | Смысл |
 |---|---|---|
 | `mode` | `auto` | `sessions` — живые сессии; `turns` — запуск на каждый ход; `auto` — сессии, пока `command` стандартный |
-| `sessionCommand` | `pi --mode rpc` + сессия, модель, промпт, навыки роли, `-e {extension}`, `-e {guard}`, `--mcp-config {mcpConfig}` | как запускается сессия; `{extension}` — путь к genie-bus, `{guard}` — к защитному расширению ([[platform/agent-roles-and-teams]]) |
+| `sessionCommand` | `pi --mode rpc` + сессия, модель, промпт, навыки роли, `-e {extension}`, `-e {guard}`, `--no-approve` | как запускается сессия; `{extension}` — путь к genie-bus, `{guard}` — к защитному расширению ([[platform/agent-roles-and-teams]]) |
 | `maxSessions` | 12 | живых сессий одновременно |
 | `idleStopSecs` | 900 | остановить сессию после простоя |
 | `turnTimeoutSecs` | 1800 | шаг без признаков жизни прерывается (в режиме ходов — таймаут хода) |

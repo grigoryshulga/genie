@@ -32,7 +32,7 @@ Open http://127.0.0.1:7420. Volumes, repositories, model keys, git access, proxi
 
 ### From source
 
-Requires Rust (stable), Node 23.6+ and git.
+Requires Rust (stable), Node 22.19+ and git.
 
 ```bash
 npm install && npm run build:web && cargo build --release -p genie   # the web UI is embedded into the binary

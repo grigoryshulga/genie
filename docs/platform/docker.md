@@ -18,8 +18,7 @@ verified: 2026-09-29
 | Слой | Зачем |
 |---|---|
 | `genie` (Rust, release) | сервер, CLI, веб-интерфейс, встроенные роли, шаблоны и расширения pi |
-| Node 24 + **pi** (версия зафиксирована `PI_VERSION`) | харнесс агентов: по процессу `pi --mode rpc` на агента |
-| `pi-mcp-adapter` | подключения MCP для ролей; регистрируется в настройках pi при старте |
+| Node 24 + **pi** (версия и все зависимости зафиксированы `package-lock.json`: `npm ci`, а не `npm install -g`) | харнесс агентов: по процессу `pi --mode rpc` на агента; подключения MCP ролей даёт встроенная поддержка MCP pi |
 | git, ssh, ripgrep, jq, curl, procps | всё, чем пользуются агенты и сам сервер (`kill`, worktree, vault) |
 | tini | PID 1: подбирает завершённые процессы агентов, пересылает сигналы |
 
@@ -114,7 +113,9 @@ docker compose exec -u genie genie chmod 600 /data/home/.pi/agent/models.json
 
 Образ выключает проверку версий pi и его телеметрию (`PI_SKIP_VERSION_CHECK=1`, `PI_TELEMETRY=0`); переопределяется в `.env`.
 
-Доверие к проектным ресурсам pi (`defaultProjectTrust`) остаётся по умолчанию: не интерактивный запуск не загружает расширения из `.pi/` репозитория. Навыки роли genie передаёт агенту явно.
+Агентам genie передаёт `--no-approve`: проектные ресурсы pi (`.pi/extensions`, `.pi/settings.json`, `.pi/mcp.json`, `.pi/SYSTEM.md`…) не загружаются, что бы ни говорили `defaultProjectTrust` и сохранённое `/trust` (`trust.json`). Навыки роли и репозитория genie передаёт агенту явно (`--skill`).
+
+Обновление с образа, где pi ставился вместе с `pi-mcp-adapter`: при старте контейнер убирает адаптер из `~/.pi/agent/settings.json` (на pi 1.0 он подменял встроенную поддержку MCP). Настройка `runtime.mcpAdapter` в `config.json` больше ничего не значит; `genie doctor` просит её убрать, как и `--mcp-config {mcpConfig}` из собственных `runtime.command` и `runtime.sessionCommand`.
 
 ## LiteLLM и секреты
 
