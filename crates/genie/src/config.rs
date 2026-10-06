@@ -122,8 +122,9 @@ impl Default for Language {
 /// (`--model {model}`) disappear when unset. Placeholders: `{sessionDir}`,
 /// `{sessionId}`, `{model}`, `{thinking}`, `{promptFile}`, `{message}` (turns),
 /// `{extension}` (sessions), `{readonlyTools}` (read-only roles), `{cwd}`,
-/// `{guard}` (the genie guard extension), `{mcpConfig}` (the role's MCP
-/// connections for pi-mcp-adapter), `{limitSkills}` (the role lists its skills)
+/// `{guard}` (the genie guard extension, which connects the role's MCP
+/// connections: `GENIE_MCP_CONFIG`), `{mcpConfig}` (the file with them, in pi's
+/// `mcp.json` format, for a harness that wants it), `{limitSkills}` (the role lists its skills)
 /// and `{skill}` — a list: its group is repeated for each skill directory.
 /// `{?name}` adds nothing but keeps its group only when `name` is set
 /// (`["--no-skills", "{?limitSkills}"]`).
@@ -154,8 +155,8 @@ pub struct RuntimeConfig {
     pub delivery_budget: usize,
     /// Extra environment for agent processes.
     pub env: BTreeMap<String, String>,
-    /// Whether pi loads pi-mcp-adapter, so agents get their MCP config (`{mcpConfig}`):
-    /// unset — found in pi's settings (`pi install npm:pi-mcp-adapter`); `true`/`false` — say so.
+    /// Obsolete: pi's own MCP support replaced pi-mcp-adapter (pi 1.0). Read so that existing
+    /// config files stay valid; ignored, `genie doctor` says to remove it.
     pub mcp_adapter: Option<bool>,
     /// Agents reach MCP connections through the genie gateway (default): secrets
     /// stay on the server and every call is in the project's journal. `false`:
@@ -214,14 +215,11 @@ impl<'de> Deserialize<'de> for SandboxConfig {
 }
 
 impl RuntimeConfig {
-    /// Whether pi loads pi-mcp-adapter (which reads `--mcp-config`; pi refuses the flag
-    /// without it): `mcpAdapter`, else a command loading it, else pi's settings — its
-    /// packages and extensions — or its extensions directory.
-    pub fn mcp_adapter(&self) -> bool {
+    /// Whether pi still loads pi-mcp-adapter: a command loading it, or pi's settings — its
+    /// packages and extensions — or its extensions directory list it. It replaces pi's native
+    /// MCP support (it registers `/mcp`), which is what agents get their connections through.
+    pub fn mcp_adapter_loaded(&self) -> bool {
         const NAME: &str = "pi-mcp-adapter";
-        if let Some(v) = self.mcp_adapter {
-            return v;
-        }
         if self.command.iter().chain(&self.session_command).flatten().any(|a| a.contains(NAME)) {
             return true;
         }
@@ -271,7 +269,7 @@ impl Default for RuntimeConfig {
                 g(&["--no-skills", "{?limitSkills}"]),
                 g(&["--skill", "{skill}"]),
                 g(&["-e", "{guard}"]),
-                g(&["--mcp-config", "{mcpConfig}"]),
+                g(&["--no-approve"]),
                 g(&["{message}"]),
             ],
             session_command: vec![
@@ -286,7 +284,7 @@ impl Default for RuntimeConfig {
                 g(&["--skill", "{skill}"]),
                 g(&["-e", "{extension}"]),
                 g(&["-e", "{guard}"]),
-                g(&["--mcp-config", "{mcpConfig}"]),
+                g(&["--no-approve"]),
             ],
             max_concurrent: 4,
             max_sessions: 12,
@@ -501,18 +499,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut rt = RuntimeConfig::default();
         rt.env.insert("PI_CODING_AGENT_DIR".into(), dir.path().to_string_lossy().into_owned());
-        assert!(!rt.mcp_adapter(), "no settings");
+        assert!(!rt.mcp_adapter_loaded(), "no settings");
         let settings = |v: &str| std::fs::write(dir.path().join("settings.json"), v).unwrap();
         settings(r#"{"packages": ["npm:pi-web-access"]}"#);
-        assert!(!rt.mcp_adapter());
+        assert!(!rt.mcp_adapter_loaded());
         settings(r#"{"packages": ["npm:pi-web-access", "npm:pi-mcp-adapter@3.1.0"]}"#);
-        assert!(rt.mcp_adapter(), "pi install npm:pi-mcp-adapter");
+        assert!(rt.mcp_adapter_loaded(), "pi install npm:pi-mcp-adapter");
         settings(r#"{"packages": [{"source": "git:github.com/nicobailon/pi-mcp-adapter", "extensions": ["index.ts"]}]}"#);
-        assert!(rt.mcp_adapter(), "a filtered package entry");
+        assert!(rt.mcp_adapter_loaded(), "a filtered package entry");
         settings("{}");
         std::fs::create_dir_all(dir.path().join("extensions/pi-mcp-adapter")).unwrap();
-        assert!(rt.mcp_adapter(), "the extensions directory");
+        assert!(rt.mcp_adapter_loaded(), "the extensions directory");
+        // The obsolete setting is still read, and says nothing about pi.
         rt.mcp_adapter = Some(false);
-        assert!(!rt.mcp_adapter(), "the setting wins");
+        assert!(rt.mcp_adapter_loaded());
+    }
+
+    #[test]
+    fn the_obsolete_mcp_adapter_setting_still_parses() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"mcpAdapter": true}}"#).unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().runtime.mcp_adapter, Some(true));
     }
 }

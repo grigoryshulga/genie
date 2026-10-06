@@ -364,12 +364,25 @@ fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
             ),
         }
     }
-    let with_mcp: Vec<&str> = agents.roles.values().filter(|r| !r.mcp.is_empty()).map(|r| r.id.as_str()).collect();
-    if !with_mcp.is_empty() && !cfg.runtime.mcp_adapter() {
+    if cfg.runtime.mcp_adapter_loaded() {
         out.warn(
             "pi",
-            format!("roles {} have MCP connections, but pi does not load pi-mcp-adapter", with_mcp.join(", ")),
-            "pi install npm:pi-mcp-adapter (or set runtime.mcpAdapter)",
+            "pi loads pi-mcp-adapter, which replaces pi's native MCP support (pi 1.0): agents may see MCP servers outside their role, their tools are blocked",
+            "pi remove npm:pi-mcp-adapter (the Docker image does it at start)",
+        );
+    }
+    if cfg.runtime.mcp_adapter.is_some() {
+        out.warn(
+            "pi",
+            "runtime.mcpAdapter is obsolete: agents get their MCP connections through pi's built-in MCP support",
+            "remove runtime.mcpAdapter from config.json",
+        );
+    }
+    if cfg.runtime.session_command.iter().chain(&cfg.runtime.command).flatten().any(|a| a == "--mcp-config") {
+        out.warn(
+            "pi",
+            "the agent command passes --mcp-config, which pi's built-in MCP support does not know",
+            "remove `--mcp-config {mcpConfig}` from runtime.command and runtime.sessionCommand",
         );
     }
     // The models agents will ask pi for: roles (with roleModels) and team members.

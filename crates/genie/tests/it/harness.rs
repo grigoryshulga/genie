@@ -66,18 +66,19 @@ impl Live {
         let mut lines = text.lines();
         let cwd = PathBuf::from(lines.next().unwrap());
         let policy = lines.next().unwrap().strip_prefix("policy=").unwrap().to_string();
-        let mcp_mode = lines.next().unwrap().strip_prefix("mcpmode=").unwrap().to_string();
+        let mcp_config = lines.next().unwrap().strip_prefix("mcpconfig=").unwrap().to_string();
         let secrets = lines.next().unwrap().strip_prefix("secrets=").unwrap().to_string();
         let rest: Vec<&str> = lines.collect();
         let args: Vec<String> = rest.join("\n").split("\narg=").map(|a| a.trim_start_matches("arg=").to_string()).collect();
-        Recorded { cwd, policy: PathBuf::from(policy), mcp_mode, secrets, args }
+        Recorded { cwd, policy: PathBuf::from(policy), mcp_config: PathBuf::from(mcp_config), secrets, args }
     }
 }
 
 struct Recorded {
     cwd: PathBuf,
     policy: PathBuf,
-    mcp_mode: String,
+    /// `GENIE_MCP_CONFIG`: the file the guard extension reads the role's connections from.
+    mcp_config: PathBuf,
     /// `<docs token>,<wiki token>` as the agent's environment has them.
     secrets: String,
     args: Vec<String>,
@@ -93,8 +94,7 @@ impl Recorded {
     }
 }
 
-/// `adapter`: pi's settings list pi-mcp-adapter (as `pi install npm:pi-mcp-adapter` leaves them).
-async fn live(max_attempts: u32, adapter: bool) -> Live {
+async fn live(max_attempts: u32) -> Live {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path();
 
@@ -146,7 +146,7 @@ async fn live(max_attempts: u32, adapter: bool) -> Live {
     cfg.runtime.sandbox.mode = "off".into();
     cfg.port = listener.local_addr().unwrap().port();
     std::fs::create_dir_all(data.join("rec")).unwrap();
-    let script = r#"out="$GENIE_REC/$GENIE_AGENT_NAME"; { pwd -P; echo "policy=${GENIE_POLICY:-}"; echo "mcpmode=${PI_MCP_CONFIG_MODE:-}"; echo "secrets=${GENIE_TEST_DOCS_TOKEN-unset},${GENIE_TEST_WIKI_TOKEN-unset}"; printf 'arg=%s\n' "$@"; } > "$out"; "$GENIE_BIN" agent output '{"summary":"ok"}'"#;
+    let script = r#"out="$GENIE_REC/$GENIE_AGENT_NAME"; { pwd -P; echo "policy=${GENIE_POLICY:-}"; echo "mcpconfig=${GENIE_MCP_CONFIG:-}"; echo "secrets=${GENIE_TEST_DOCS_TOKEN-unset},${GENIE_TEST_WIKI_TOKEN-unset}"; printf 'arg=%s\n' "$@"; } > "$out"; "$GENIE_BIN" agent output '{"summary":"ok"}'"#;
     let mut command = RuntimeConfig::default().command;
     command[0] = vec!["bash".into(), "-c".into(), script.into(), "harness".into()];
     cfg.runtime.command = command;
@@ -155,8 +155,7 @@ async fn live(max_attempts: u32, adapter: bool) -> Live {
     cfg.runtime.env.insert("GENIE_BIN".into(), env!("CARGO_BIN_EXE_genie").into());
     cfg.runtime.env.insert("GENIE_REC".into(), data.join("rec").to_string_lossy().into_owned());
     let pi_dir = data.join("pi-agent");
-    let packages = if adapter { json!(["npm:pi-mcp-adapter"]) } else { json!([]) };
-    write(&pi_dir.join("settings.json"), &json!({ "packages": packages }).to_string());
+    write(&pi_dir.join("settings.json"), &json!({ "packages": [] }).to_string());
     cfg.runtime.env.insert("PI_CODING_AGENT_DIR".into(), pi_dir.to_string_lossy().into_owned());
     let app = App::open(data, cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", Some(&repo.to_string_lossy()), None, Some("SHOP")).unwrap();
@@ -177,7 +176,7 @@ async fn live(max_attempts: u32, adapter: bool) -> Live {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_harness_gets_the_roles_skills_mcp_and_rules_and_jobs_work_where_their_workspace_says() {
-    let l = live(3, true).await;
+    let l = live(3).await;
     let data = l.dir.path().canonicalize().unwrap();
     let home = std::env::var("HOME").unwrap_or_default();
 
@@ -191,27 +190,36 @@ async fn the_harness_gets_the_roles_skills_mcp_and_rules_and_jobs_work_where_the
     // Only the role's skills (the missing one is skipped), then the repository's.
     assert!(r.has("--no-skills"));
     assert_eq!(r.values("--skill"), vec![data.join("skills/owasp").to_string_lossy(), l.repo.join(".agents/skills").to_string_lossy()]);
-    // The guard is loaded and finds its rules; the MCP config is the only one pi-mcp-adapter reads.
+    // The guard is loaded and finds its rules and its MCP connections (the only ones pi gets).
     assert_eq!(r.values("-e"), vec![data.join("runtime/genie-guard.ts").to_string_lossy()]);
     assert_eq!(std::fs::read_to_string(data.join("runtime/genie-guard.ts")).unwrap(), genie::sessions::GUARD);
-    assert_eq!(r.mcp_mode, "exclusive");
+    assert!(r.has("--no-approve"), "no project-local extensions, settings or MCP, whatever pi's trust file says: {:?}", r.args);
+    assert!(!r.has("--mcp-config"), "pi's built-in MCP support has no such flag");
     let policy: Value = serde_json::from_str(&std::fs::read_to_string(&r.policy).unwrap()).unwrap();
     assert_eq!(
         policy,
         json!({ "role": "auditor", "files": "read", "denyCommands": ["git push*"], "mcp": { "docs": ["search_*"], "wiki": null } }),
         "a read-only workspace narrows the role's `files`"
     );
-    let mcp_file = PathBuf::from(r.values("--mcp-config")[0]);
+    let mcp_file = r.mcp_config.clone();
+    assert_eq!(mcp_file, data.join(format!("runtime/shop/job_{id}/mcp.json")));
     let mcp: Value = serde_json::from_str(&std::fs::read_to_string(&mcp_file).unwrap()).unwrap();
     let gateway = format!("http://127.0.0.1:{}/api/mcp-gateway/docs", l.app.cfg.port);
     assert_eq!(
         mcp,
-        json!({ "mcpServers": {
-            "docs": { "url": gateway, "headers": { "Authorization": "Bearer ${GENIE_TOKEN}" } },
-            "wiki": { "command": "wiki-mcp", "args": ["--home", home], "env": { "WIKI_TOKEN": "w1ki" } }
+        json!({ "autoEnableCodemode": false, "mcpServers": {
+            "docs": {
+                "url": gateway,
+                "headers": { "Authorization": "Bearer ${GENIE_TOKEN}" },
+                "description": "Search the docs",
+                "exposure": "hidden",
+                "toolExposure": { "search_*": "direct" }
+            },
+            "wiki": { "command": "wiki-mcp", "args": ["--home", home], "env": { "WIKI_TOKEN": "w1ki" }, "exposure": "deferred" }
         }}),
         "only granted connections: through the gateway its address and the agent's token, no secrets; \
-         handed over directly, the entry with its secrets resolved and genie's own fields dropped"
+         handed over directly, the entry with its secrets resolved and genie's own fields dropped. A grant of some \
+         tools exposes those tools (declared) and nothing else of the connection, a whole one is found by tool search"
     );
     assert_eq!(r.secrets, "unset,w1ki", "the gateway's secrets stay with the server; a direct connection's the agent needs");
     #[cfg(unix)]
@@ -258,22 +266,13 @@ async fn the_harness_gets_the_roles_skills_mcp_and_rules_and_jobs_work_where_the
     let r = l.recorded(id);
     assert!(!r.has("--no-skills"));
     assert_eq!(r.values("--skill"), vec![l.repo.join(".agents/skills").to_string_lossy()]);
-    let mcp: Value = serde_json::from_str(&std::fs::read_to_string(r.values("--mcp-config")[0]).unwrap()).unwrap();
-    assert_eq!(mcp, json!({ "mcpServers": {} }));
+    let mcp: Value = serde_json::from_str(&std::fs::read_to_string(&r.mcp_config).unwrap()).unwrap();
+    assert_eq!(mcp, json!({ "mcpServers": {}, "autoEnableCodemode": false }));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn without_pi_mcp_adapter_no_mcp_config_and_a_job_that_cannot_start_fails() {
-    let l = live(1, false).await;
-    // pi refuses --mcp-config without the adapter: the flag and the file (secrets) are left out.
-    let id = l.job("auditor", "scratch");
-    assert_eq!(l.finished(id).await.status, "succeeded");
-    let r = l.recorded(id);
-    assert!(!r.has("--mcp-config"), "{:?}", r.args);
-    assert_eq!(r.mcp_mode, "");
-    assert!(!l.dir.path().join(format!("runtime/shop/job_{id}/mcp.json")).exists());
-    assert!(r.policy.exists(), "the guard's rules are there all the same");
-
+async fn a_job_that_cannot_start_fails() {
+    let l = live(1).await;
     // The role was removed from the configuration after the job was queued.
     let id = l.job("ghost", "none");
     let j = l.finished(id).await;
