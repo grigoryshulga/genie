@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deniedBy, mcpDenial, type Policy, simpleCommands, usageOf } from "../crates/genie/pi/genie-guard.ts";
+import { deniedBy, mcpDenial, type Policy, simpleCommands, usageOf, withoutHeapCap } from "../crates/genie/pi/genie-guard.ts";
 
 test("a shell line is split into simple commands without assignments and wrappers", () => {
   assert.deepEqual(simpleCommands("cd app && FOO=1 git push origin main; ls | wc -l"), ["cd app", "git push origin main", "ls", "wc -l"]);
@@ -67,4 +67,10 @@ test("a model response is reported with its provider and tokens", () => {
   assert.equal(usageOf({ role: "assistant", provider: "litellm", model: "litellm/x", usage })?.model, "litellm/x");
   assert.equal(usageOf({ role: "user", usage }), undefined);
   assert.equal(usageOf({ role: "assistant", model: "m", usage: { input: 0, output: 0 } }), undefined, "a failed request spent nothing");
+});
+
+test("the heap cap put on pi is taken off NODE_OPTIONS for its commands, other options stay", () => {
+  assert.equal(withoutHeapCap("--max-old-space-size=2048", "2048"), "");
+  assert.equal(withoutHeapCap("--no-warnings --max-old-space-size=2048", "2048"), "--no-warnings");
+  assert.equal(withoutHeapCap("--max-old-space-size=8192", "2048"), "--max-old-space-size=8192", "not ours");
 });

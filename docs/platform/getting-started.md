@@ -133,7 +133,8 @@ claude mcp add --transport http genie http://127.0.0.1:7420/mcp --header "Author
   "runtime": {
     "mode": "auto",
     "maxSessions": 12,
-    "idleStopSecs": 900,
+    "idleStopSecs": 300,
+    "nodeHeapMb": 2048,
     "turnTimeoutSecs": 1800,
     "maxAttempts": 3,
     "askTimeoutSecs": 180

@@ -139,6 +139,10 @@ pub struct RuntimeConfig {
     pub max_sessions: usize,
     /// A session idle this long is stopped (its conversation is kept and resumed).
     pub idle_stop_secs: u64,
+    /// The V8 heap limit of a pi process, MB (`NODE_OPTIONS=--max-old-space-size`; 0: Node's own
+    /// default, up to 4 GB). Keeps a runaway session from eating the machine; the cap is dropped
+    /// again for the commands pi runs. Left alone when `NODE_OPTIONS` already sets one.
+    pub node_heap_mb: u64,
     /// A turn, or a session step without any sign of life, is stopped after this long.
     pub turn_timeout_secs: u64,
     /// A team that neither works nor waits for anyone for this long is reported to the
@@ -290,7 +294,8 @@ impl Default for RuntimeConfig {
             ],
             max_concurrent: 4,
             max_sessions: 12,
-            idle_stop_secs: 900,
+            idle_stop_secs: 300,
+            node_heap_mb: 2048,
             turn_timeout_secs: 1800,
             stall_secs: 900,
             ci_pending_secs: 1800,
@@ -465,6 +470,15 @@ mod tests {
         assert_eq!(cfg.runtime.stall_secs, 900, "unset runtime fields keep defaults");
         assert_eq!(cfg.runtime.ci_pending_secs, 1800, "unset runtime fields keep defaults");
         assert_eq!(cfg.limits.max_members_per_team, 6);
+        assert_eq!((cfg.runtime.idle_stop_secs, cfg.runtime.node_heap_mb), (300, 2048), "unset runtime fields keep defaults");
+    }
+
+    #[test]
+    fn the_heap_cap_is_set_in_megabytes() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"nodeHeapMb": 0, "idleStopSecs": 60}}"#).unwrap();
+        let cfg = Config::load(dir.path()).unwrap();
+        assert_eq!((cfg.runtime.node_heap_mb, cfg.runtime.idle_stop_secs), (0, 60));
     }
 
     #[test]

@@ -674,6 +674,7 @@ pub(crate) fn agent_command(
     let path = std::env::var("PATH").unwrap_or_default();
     let exe_dir = app.exe.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
     let (program, args) = argv.split_first().ok_or("the agent command is empty")?;
+    let is_pi = Path::new(program).file_name().is_some_and(|n| n == "pi");
     let (program, args) = match sandbox_plan(app, project, cwd, dir)? {
         Some(plan) => plan.wrap(program, args),
         None => (program.to_string(), args.to_vec()),
@@ -716,8 +717,25 @@ pub(crate) fn agent_command(
     for (k, v) in &app.cfg.runtime.env {
         cmd.env(k, v);
     }
+    if is_pi {
+        let own = app.cfg.runtime.env.get("NODE_OPTIONS").cloned().or_else(|| std::env::var("NODE_OPTIONS").ok());
+        if let Some(options) = heap_cap(own.as_deref(), app.cfg.runtime.node_heap_mb) {
+            // The guard extension takes the cap off again for what pi runs (builds are not pi).
+            cmd.env("NODE_OPTIONS", options).env("GENIE_NODE_HEAP_MB", app.cfg.runtime.node_heap_mb.to_string());
+        }
+    }
     app.mcp.place(&crate::mcp_gateway::agent_key(project, who.team, who.name), cwd);
     Ok(cmd)
+}
+
+/// `NODE_OPTIONS` with a heap cap of `mb` added, or `None` when there is nothing to add: no cap
+/// wanted (0) or one already set.
+fn heap_cap(own: Option<&str>, mb: u64) -> Option<String> {
+    let own = own.unwrap_or_default().trim();
+    if mb == 0 || own.contains("--max-old-space-size") {
+        return None;
+    }
+    Some(format!("{own} --max-old-space-size={mb}").trim().to_string())
 }
 
 /// The sandbox of an agent working in `cwd` (`dir`: its runtime directory), or
@@ -2134,6 +2152,15 @@ pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppRes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_heap_cap_joins_node_options_without_replacing_them() {
+        assert_eq!(heap_cap(None, 2048).as_deref(), Some("--max-old-space-size=2048"));
+        assert_eq!(heap_cap(Some("  "), 512).as_deref(), Some("--max-old-space-size=512"));
+        assert_eq!(heap_cap(Some("--no-warnings"), 2048).as_deref(), Some("--no-warnings --max-old-space-size=2048"));
+        assert_eq!(heap_cap(Some("--no-warnings"), 0), None, "0 is no cap");
+        assert_eq!(heap_cap(Some("--max-old-space-size=8192"), 2048), None, "the operator's own cap stands");
+    }
 
     #[tokio::test]
     async fn a_turn_and_a_session_launch_the_same_agent_but_for_what_they_are_given() {
