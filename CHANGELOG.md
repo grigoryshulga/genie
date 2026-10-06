@@ -4,6 +4,13 @@
 
 ## Не выпущено
 
+### Добавлено
+
+**Повтор упавших проверок CI: `genie pr rerun`** (`docs/platform/git-repositories.md`, «Повтор упавших проверок»)
+- `genie pr rerun [--repo имя] [--task id]` (исполнитель) просит хостинг перезапустить **упавшие** проверки наблюдаемого коммита задачи: GitHub — `rerun-failed-jobs` у завершившихся workflow runs, GitLab — `retry` последнего пайплайна. Команда сначала спрашивает хостинг и отказывается, если проверки не упали (`pending`/`passed`/`stalled`/`none`); на успешный повтор наблюдатель снова смотрит на коммит (строка возвращается в `pending`, часы `ciPendingSecs` начинаются заново), в журнал пишется `ci.rerun`. Письма на сам повтор нет: кто запустил, тот и знает, а упавший снова прогон пришлёт новое `ci.failed`.
+- Лимиты: один повтор на коммит (решение владельца), `runtime.ciRerunsPerRequest` (по умолчанию 2) на доставку и `runtime.ciRerunsPerTask` (по умолчанию 3) на задачу по всем её репозиториям; `0` в любом из ключей выключает повторы (новые колонки `task_repos.ci_rerun_sha`/`ci_reruns`, `reset_ci` их не стирает). Лимит резервируется до вызова хостинга одной транзакцией и возвращается, если хостинг отказал, — сломанный токен не сжигает попытку. Проверки без API перезапуска (упавшие статусы коммита и check runs другого приложения, `plain`-хостинг) объясняются в ответе.
+- Тесты: `a_failed_check_is_rerun_once_and_the_watch_follows_it`, `a_rerun_needs_a_failed_check_and_a_watched_commit`, `the_rerun_limits_stop_a_second_rerun`, `a_host_refusing_a_rerun_does_not_burn_the_limit`, `reruns_are_switched_off_by_the_config`, `a_plain_host_cannot_rerun_checks`, `a_github_failure_without_actions_runs_is_explained` (`crates/genie/tests/delivery.rs`), `github_provider`/`gitlab_provider` (`crates/genie/tests/providers.rs`), `a_delivery_remembers_the_rerun_and_a_re_arm_does_not_erase_it` (`crates/genie-core/src/repos.rs`); фейковые хостинги получили эндпоинты перезапуска (`tests/common/fakehost.rs`).
+
 ### Изменено
 
 - **Фоновые воркеры спят до события, а не по таймеру.** Журнал читает один поллер на проект для всех SSE-клиентов (цена не растёт с числом вкладок, скрытая вкладка закрывает поток). Движок, планировщик, outbox и delivery-поллер спят до пробуждения (`Notify` теперь зовётся из каждой записи журнала и каждого места создания работы) или ближайшего дедлайна (cron автоматизаций, напоминания вопросников, backoff'ы) со страховочной сетью 60 с; локальный CLI без токена будит сервер через `POST /api/wake` (только loopback). Пробуждений в простое: ~77/мин → ~12/мин.

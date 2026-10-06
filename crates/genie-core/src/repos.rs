@@ -76,6 +76,10 @@ pub struct TaskRepo {
     pub ci_sha: Option<String>,
     /// When waiting for this commit's checks began; empty once they settled.
     pub ci_since: String,
+    /// The commit whose failed checks were last rerun (empty: none was).
+    pub ci_rerun_sha: String,
+    /// How many reruns of failed checks this delivery has started.
+    pub ci_reruns: i64,
     pub head_sha: Option<String>,
     /// The host's timestamp of the newest comment already passed on to the task.
     pub seen_at: String,
@@ -98,6 +102,8 @@ impl TaskRepo {
             ci_ref: r.get("ci_ref")?,
             ci_sha: r.get("ci_sha")?,
             ci_since: r.get("ci_since")?,
+            ci_rerun_sha: r.get("ci_rerun_sha")?,
+            ci_reruns: r.get("ci_reruns")?,
             head_sha: r.get("head_sha")?,
             seen_at: r.get("seen_at")?,
             updated: r.get("updated")?,
@@ -147,6 +153,10 @@ struct Patch {
     /// Start the watch over, or end it: drop the recorded `ci_state`/`ci_since` and take the given
     /// ref, commit, start time and state instead of keeping what is there.
     reset_ci: bool,
+    /// The commit whose checks were rerun, and the rerun count of this delivery. History: unlike
+    /// `ci_state`/`ci_since` they survive a `reset_ci`.
+    ci_rerun_sha: Option<String>,
+    ci_reruns: Option<i64>,
     head_sha: Option<String>,
     seen_at: Option<String>,
 }
@@ -199,6 +209,13 @@ pub struct RequestLook<'a> {
     pub merge_sha: Option<&'a str>,
     /// The newest comment passed on to the task by this look, if any.
     pub seen_at: Option<String>,
+}
+
+/// A rerun counted before the host is asked: what the delivery had, to give back on a refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reservation {
+    pub previous_sha: String,
+    pub previous_count: i64,
 }
 
 /// The delivery after a look at its request.
@@ -448,6 +465,8 @@ impl ServerDb {
                ci_ref = CASE WHEN ?9 THEN COALESCE(?11, '') ELSE COALESCE(?11, ci_ref) END,
                ci_sha = CASE WHEN ?9 THEN ?12 ELSE COALESCE(?12, ci_sha) END,
                ci_since = CASE WHEN ?9 THEN COALESCE(?13, '') ELSE COALESCE(?13, ci_since) END,
+               ci_rerun_sha = COALESCE(?17, ci_rerun_sha),
+               ci_reruns = COALESCE(?18, ci_reruns),
                head_sha = COALESCE(?14, head_sha), seen_at = COALESCE(?15, seen_at), updated = ?16
              WHERE project = ?1 AND task = ?2 AND repo = ?3",
             params![
@@ -466,7 +485,9 @@ impl ServerDb {
                 d.ci_since,
                 d.head_sha,
                 d.seen_at,
-                now()
+                now(),
+                d.ci_rerun_sha,
+                d.ci_reruns
             ],
         )?;
         Ok(self.task_repo(project, task, repo)?.expect("row exists"))
@@ -586,6 +607,60 @@ impl ServerDb {
         let d = Patch { ci_state: Some(checks), ci_since, reset_ci, ..Default::default() };
         let row = self.patch(&row.project, &row.task, &row.repo, d)?;
         Ok(ChecksChange { row, checks, changed })
+    }
+
+    /// Reserve a rerun of the failed checks of `sha` before the host is asked, in one transaction
+    /// (two concurrent calls cannot both pass): one rerun per commit, `per_request` for this
+    /// delivery and `per_task` over all the task's repositories; 0 switches reruns off. Returns
+    /// what to give back with [`ServerDb::release_rerun`] when the host refuses.
+    pub fn reserve_rerun(&self, project: &str, task: &str, repo: &str, sha: &str, per_request: u32, per_task: u32) -> Result<Reservation> {
+        self.tx(|| {
+            let row =
+                self.task_repo(project, task, repo)?.ok_or_else(|| GenieError::not_found(format!("{task} has no repository {repo}")))?;
+            if per_request == 0 || per_task == 0 {
+                let key = if per_request == 0 { "ciRerunsPerRequest" } else { "ciRerunsPerTask" };
+                return Err(GenieError::invalid(format!("reruns are switched off (`runtime.{key}: 0`)")));
+            }
+            let watched = if row.ci_ref.is_empty() { &row.branch } else { &row.ci_ref };
+            if row.ci_rerun_sha == sha {
+                return Err(GenieError::invalid(format!(
+                    "the checks of `{watched}` in {repo} were already rerun once: fix and push a new commit instead"
+                )));
+            }
+            if row.ci_reruns as u32 >= per_request {
+                return Err(GenieError::invalid(format!(
+                    "{repo} already used {} of {per_request} reruns for this request (`runtime.ciRerunsPerRequest`)",
+                    row.ci_reruns
+                )));
+            }
+            let total: i64 = self.task_repos(project, task)?.iter().map(|r| r.ci_reruns).sum();
+            if total as u32 >= per_task {
+                return Err(GenieError::invalid(format!("the task used {total} of {per_task} reruns (`runtime.ciRerunsPerTask`)")));
+            }
+            let d = Patch { ci_rerun_sha: Some(sha.into()), ci_reruns: Some(row.ci_reruns + 1), ..Default::default() };
+            self.patch(project, task, repo, d)?;
+            Ok(Reservation { previous_sha: row.ci_rerun_sha, previous_count: row.ci_reruns })
+        })
+    }
+
+    /// The host refused the rerun: it does not count.
+    pub fn release_rerun(&self, project: &str, task: &str, repo: &str, r: Reservation) -> Result<TaskRepo> {
+        self.patch(
+            project,
+            task,
+            repo,
+            Patch { ci_rerun_sha: Some(r.previous_sha), ci_reruns: Some(r.previous_count), ..Default::default() },
+        )
+    }
+
+    /// The host restarted the failed checks of `sha` on `ref`: the watch is armed again as `pending`
+    /// with a fresh clock, so the restarted run is followed (a `failed` row is not watched) and does
+    /// not look stalled at once. The rerun history stays.
+    pub fn rerun_started(&self, project: &str, task: &str, repo: &str, r#ref: &str, sha: &str) -> Result<TaskRepo> {
+        let mut d = Patch::default().watch(r#ref, sha);
+        d.ci_state = Some(CheckState::Pending);
+        d.ci_since = Some(now());
+        self.patch(project, task, repo, d)
     }
 
     /// Nothing to look at any more (a plain git server has no API to ask): the watch ends.
@@ -829,5 +904,36 @@ mod tests {
         let second = db.checks_looked(&first.row, CheckState::None, 1800).unwrap();
         assert!(!second.changed);
         assert!(second.row.ci_sha.is_none() && db.watched_deliveries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_rerun_is_reserved_within_its_limits_and_survives_a_new_push() {
+        let (_d, db) = task_with_api();
+        let fresh = delivery(&db);
+        assert_eq!((fresh.ci_rerun_sha.as_str(), fresh.ci_reruns), ("", 0), "a new row has no rerun history");
+        assert!(db.reserve_rerun("shop", "S-1", "api", "aaa", 0, 3).unwrap_err().to_string().contains("switched off"));
+
+        let r = db.reserve_rerun("shop", "S-1", "api", "aaa", 2, 3).unwrap();
+        assert_eq!(r, Reservation { previous_sha: String::new(), previous_count: 0 });
+        let e = db.reserve_rerun("shop", "S-1", "api", "aaa", 2, 3).unwrap_err().to_string();
+        assert!(e.contains("already rerun once"), "one rerun per commit: {e}");
+        let row = db.rerun_started("shop", "S-1", "api", "genie/S-1", "aaa").unwrap();
+        assert_eq!((row.ci_state, row.ci_sha.as_deref(), row.ci_reruns), (Some(CheckState::Pending), Some("aaa"), 1));
+        assert_ne!(row.ci_since, "", "the clock starts over");
+
+        // A new push re-arms the watch; the rerun history has to survive it, or a later push would
+        // hand the delivery its rerun allowance back.
+        let row = pushed(&db, "bbb");
+        assert_eq!((row.ci_rerun_sha.as_str(), row.ci_reruns, row.ci_state), ("aaa", 1, None));
+
+        // A refused rerun gives the reservation back; the per-request limit counts.
+        let r = db.reserve_rerun("shop", "S-1", "api", "bbb", 2, 3).unwrap();
+        db.release_rerun("shop", "S-1", "api", r).unwrap();
+        assert_eq!((delivery(&db).ci_rerun_sha.as_str(), delivery(&db).ci_reruns), ("aaa", 1));
+        db.reserve_rerun("shop", "S-1", "api", "bbb", 2, 3).unwrap();
+        let e = db.reserve_rerun("shop", "S-1", "api", "ccc", 2, 3).unwrap_err().to_string();
+        assert!(e.contains("2 of 2 reruns for this request"), "{e}");
+        let e = db.reserve_rerun("shop", "S-1", "api", "ccc", 5, 2).unwrap_err().to_string();
+        assert!(e.contains("the task used 2 of 2"), "{e}");
     }
 }

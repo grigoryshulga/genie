@@ -27,7 +27,15 @@ ciSha: string | null,
 /**
  * When waiting for this commit's checks began; empty once they settled.
  */
-ciSince: string, headSha: string | null, 
+ciSince: string, 
+/**
+ * The commit whose failed checks were last rerun (empty: none was).
+ */
+ciRerunSha: string, 
+/**
+ * How many reruns of failed checks this delivery has started.
+ */
+ciReruns: number, headSha: string | null, 
 /**
  * The host's timestamp of the newest comment already passed on to the task.
  */

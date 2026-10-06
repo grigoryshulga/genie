@@ -187,6 +187,38 @@ pub(super) async fn ci(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<
     })
 }
 
+/// Rerun the failed GitHub Actions workflow runs of one commit. Only Actions runs have a rerun API:
+/// commit statuses and check runs written by another app cannot be restarted from here.
+pub(super) async fn rerun_failed(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<u32> {
+    let Some(sha) = sha else {
+        return Err(ApiError::Unsupported("no commit is watched yet: push the branch first".into()));
+    };
+    let base = repo_path(remote)?;
+    let runs = api
+        .send(Method::GET, &format!("{base}/actions/runs"), &[("head_sha", sha.to_string()), ("per_page", "100".into())], None)
+        .await?
+        .body;
+    let mut rerun = 0u32;
+    for run in runs["workflow_runs"].as_array().into_iter().flatten() {
+        // Only a finished run can be rerun; a running one has nothing failed yet.
+        if run["status"].as_str() != Some("completed") {
+            continue;
+        }
+        if !matches!(run["conclusion"].as_str(), Some("failure" | "timed_out" | "startup_failure" | "action_required")) {
+            continue;
+        }
+        let Some(id) = run["id"].as_i64() else { continue };
+        api.send(Method::POST, &format!("{base}/actions/runs/{id}/rerun-failed-jobs"), &[], None).await?;
+        rerun += 1;
+    }
+    if rerun == 0 {
+        return Err(ApiError::Unsupported(format!(
+            "no GitHub Actions run of {sha} failed: the failed checks are commit statuses or another app's check runs — rerun them on the host"
+        )));
+    }
+    Ok(rerun)
+}
+
 /// The failed check runs (with the host's title and summary) and failed commit statuses.
 pub(super) async fn ci_failures(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<Vec<super::CiFailure>> {
     let Some(sha) = sha else { return Ok(Vec::new()) };

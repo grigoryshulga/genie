@@ -154,6 +154,30 @@ pub(super) async fn ci(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<
     })
 }
 
+/// Rerun the failed jobs of one commit's latest pipeline (GitLab's pipeline retry).
+pub(super) async fn rerun_failed(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<u32> {
+    let Some(sha) = sha else {
+        return Err(ApiError::Unsupported("no commit is watched yet: push the branch first".into()));
+    };
+    let base = project(remote);
+    let list = api
+        .send(
+            Method::GET,
+            &format!("{base}/pipelines"),
+            &[("sha", sha.to_string()), ("order_by", "id".into()), ("sort", "desc".into()), ("per_page", "1".into())],
+            None,
+        )
+        .await?
+        .body;
+    let Some(id) = list.as_array().and_then(|a| a.first()).and_then(|p| p["id"].as_i64()) else {
+        return Err(ApiError::Unsupported(format!(
+            "no GitLab pipeline of {sha} was found: the failed checks are not a pipeline — rerun them on the host"
+        )));
+    };
+    api.send(Method::POST, &format!("{base}/pipelines/{id}/retry"), &[], None).await?;
+    Ok(1)
+}
+
 /// The failed jobs of one commit's latest pipeline, each with the end of its log.
 pub(super) async fn ci_failures(api: &Api, remote: &str, sha: Option<&str>) -> ApiResult<Vec<super::CiFailure>> {
     let Some(sha) = sha else { return Ok(Vec::new()) };

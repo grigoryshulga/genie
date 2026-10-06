@@ -787,3 +787,255 @@ async fn a_branch_without_checks_is_watched_once_more_and_then_left_alone() {
     assert_eq!(found["ciState"].as_str(), Some("none"));
     assert_eq!(found["branch"].as_str(), Some(branch.as_str()));
 }
+
+// --- G-115: rerunning failed checks -----------------------------------------------------
+
+async fn rerun(r: &Rig, task: &str, token: &str) -> (StatusCode, Value) {
+    http(r, "POST", &format!("/api/tasks/{task}/repos/api/cr/rerun"), Some(token), Some(json!({}))).await
+}
+
+/// Add a second repository to the project and put it on the task (the per-task limit is summed
+/// over a task's deliveries, so the test needs two rows).
+async fn add_second_repo(r: &Rig, task: &str) {
+    let (s, b) = http(
+        r,
+        "POST",
+        "/api/repos",
+        None,
+        Some(json!({ "name": "web", "host": "h", "remote": "acme/api", "mount": "web", "policy": {}, "token": "secret" })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CREATED, "{b}");
+    let (s, b) = http(r, "PUT", &format!("/api/tasks/{task}/repos"), None, Some(json!({ "repos": ["api:write", "web:write"] }))).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+}
+
+/// AC1: a failed check is rerun on the host, the limit is spent, the watch is re-armed to `pending`
+/// (a `failed` row is not watched), the event is journalled, and the watcher follows the new run.
+/// AC2: the same commit cannot be rerun twice; a moved head is a new commit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_check_is_rerun_once_and_the_watch_follows_it() {
+    each_provider(async |kind| {
+        let r = rig(kind, json!({})).await;
+        let t = team(&r, "Fix the build").await;
+        let id = t.task.clone();
+        commit_and_push(&t);
+        let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+        assert_eq!(s, StatusCode::OK, "{kind}: {b}");
+
+        // The checks fail, and the watcher records it.
+        r.fake.lock().ci = "failed".into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        assert_eq!(row(&r, &id).ci_state, Some(CheckState::Failed), "{kind}");
+
+        // The executor reruns them: the host restarts the run, the row goes back to `pending`.
+        let (s, b) = rerun(&r, &id, &t.executor).await;
+        assert_eq!(s, StatusCode::OK, "{kind}: {b}");
+        assert!(b["runs"].as_u64().unwrap_or(0) >= 1, "{kind}: {b}");
+        assert_eq!((b["used"]["request"].as_i64(), b["limits"]["request"].as_i64()), (Some(1), Some(2)), "{kind}: {b}");
+        assert_eq!(r.fake.lock().reruns, 1, "{kind}");
+        let rearmed = row(&r, &id);
+        assert_eq!(rearmed.ci_state, Some(CheckState::Pending), "{kind}: re-armed, or the watcher would never look again");
+        assert_ne!(rearmed.ci_since, "", "{kind}: the stalled clock starts over");
+        assert_eq!(rearmed.ci_reruns, 1, "{kind}");
+        assert_eq!(rearmed.ci_rerun_sha, rearmed.ci_sha.clone().unwrap_or_default(), "{kind}");
+        assert_eq!(journal(&r, "ci.rerun").len(), 1, "{kind}");
+        assert_eq!(journal(&r, "ci.rerun")[0].payload["runs"].as_u64(), Some(1), "{kind}");
+        // The row is watched again, and the restarted run is followed to its end.
+        assert_eq!(r.h.app.with_server(|db| db.watched_deliveries()).unwrap().len(), 1, "{kind}");
+        r.fake.lock().ci = "passed".into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        assert_eq!(row(&r, &id).ci_state, Some(CheckState::Passed), "{kind}");
+        assert_eq!(journal(&r, "ci.passed").len(), 1, "{kind}");
+
+        // The same commit failed again: the owner's one-rerun-per-commit rule refuses a second one.
+        r.fake.lock().ci = "failed".into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        let (s, b) = rerun(&r, &id, &t.executor).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{kind}: {b}");
+        assert!(b["error"].as_str().unwrap().contains("already rerun"), "{kind}: {b}");
+        assert_eq!(r.fake.lock().reruns, 1, "{kind}: the host was not called again");
+
+        // A moved head is a new commit: the per-commit rule allows it, the request limit counts it.
+        r.fake.lock().prs[0].sha = "4444444444444444444444444444444444444444".into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        let (s, b) = rerun(&r, &id, &t.executor).await;
+        assert_eq!(s, StatusCode::OK, "{kind}: {b}");
+        assert_eq!(b["used"]["request"].as_i64(), Some(2), "{kind}: {b}");
+        assert_eq!(r.fake.lock().reruns, 2, "{kind}");
+    })
+    .await;
+}
+
+/// AC1/AC2: only a commit whose checks have actually failed can be rerun, and only once a commit is
+/// watched at all. `stalled` keeps its own letter: a run nobody waits for is not restarted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_rerun_needs_a_failed_check_and_a_watched_commit() {
+    let policy = json!({ "push": "branches", "change_request": { "open": false } });
+    let r = rig_with("github", policy, |c| c.runtime.ci_pending_secs = 1).await;
+    let t = team(&r, "Only when red").await;
+    let id = t.task.clone();
+
+    // Nothing pushed yet: there is no commit to rerun.
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("push the branch first"), "{b}");
+
+    assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
+    commit_and_push(&t);
+    for state in ["none", "pending", "passed"] {
+        r.fake.lock().ci = state.into();
+        genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+        let (s, b) = rerun(&r, &id, &t.executor).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{state}: {b}");
+        assert!(b["error"].as_str().unwrap().contains("not failed"), "{state}: {b}");
+    }
+    assert_eq!(r.fake.lock().reruns, 0, "nothing failed, nothing restarted");
+
+    // Checks that stay running past `ciPendingSecs` become `stalled`: their letter says to settle
+    // them on the host, and a rerun is refused (nothing may restart a run nobody is waiting for).
+    r.fake.lock().ci = "pending".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    assert_eq!(row(&r, &id).ci_state, Some(CheckState::Stalled));
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    // The host still says the run is going: only a failed one may be restarted.
+    assert!(b["error"].as_str().unwrap().contains("not failed"), "{b}");
+    assert_eq!(r.fake.lock().reruns, 0);
+}
+
+/// AC2: `runtime.ciRerunsPerRequest` caps one delivery, `runtime.ciRerunsPerTask` the whole task
+/// (summed over its repositories).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_rerun_limits_stop_a_second_rerun() {
+    // Per request: the second rerun of the same delivery is refused after the first.
+    let r = rig_with("github", json!({}), |c| {
+        c.runtime.ci_reruns_per_request = 1;
+        c.runtime.ci_reruns_per_task = 5;
+    })
+    .await;
+    let t = team(&r, "One rerun only").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+    http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    r.fake.lock().ci = "failed".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    assert_eq!(rerun(&r, &id, &t.executor).await.0, StatusCode::OK);
+
+    r.fake.lock().ci = "failed".into();
+    r.fake.lock().prs[0].sha = "5555555555555555555555555555555555555555".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("ciRerunsPerRequest"), "{b}");
+    assert_eq!(r.fake.lock().reruns, 1, "the host was not called again");
+
+    // Per task: another delivery of the same task has spent the task's only rerun.
+    let r = rig_with("github", json!({}), |c| {
+        c.runtime.ci_reruns_per_request = 5;
+        c.runtime.ci_reruns_per_task = 1;
+    })
+    .await;
+    let t = team(&r, "One budget").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+    http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    add_second_repo(&r, &id).await;
+    r.h.app
+        .with_server(|db| {
+            Ok(db.conn().execute("UPDATE task_repos SET ci_reruns = 1 WHERE project = 'shop' AND task = ?1 AND repo = 'web'", [&id])?)
+        })
+        .unwrap();
+    r.fake.lock().ci = "failed".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("ciRerunsPerTask"), "{b}");
+    assert_eq!(r.fake.lock().reruns, 0);
+}
+
+/// AC2: a host that refuses the rerun is reported, and the refusal must not eat the limit — the
+/// reservation is given back so a fixed token can try again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_host_refusing_a_rerun_does_not_burn_the_limit() {
+    let r = rig("github", json!({})).await;
+    let t = team(&r, "Bad token").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+    http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    r.fake.lock().ci = "failed".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+
+    r.fake.lock().refuse_rerun = Some("Resource not accessible by personal access token".into());
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_ne!(s, StatusCode::OK, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("token"), "the token's right is named: {b}");
+    assert_eq!(r.fake.lock().reruns, 0);
+    let released = row(&r, &id);
+    assert_eq!((released.ci_reruns, released.ci_rerun_sha.as_str()), (0, ""), "the reservation was given back");
+
+    // The token is fixed: the rerun goes through and counts once.
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    assert_eq!((r.fake.lock().reruns, row(&r, &id).ci_reruns), (1, 1));
+}
+
+/// AC2: `runtime.ciRerunsPerRequest: 0` switches reruns off: refused before the host is asked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reruns_are_switched_off_by_the_config() {
+    let r = rig_with("github", json!({}), |c| c.runtime.ci_reruns_per_request = 0).await;
+    let t = team(&r, "No reruns").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+    http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    r.fake.lock().ci = "failed".into();
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("switched off"), "{b}");
+    assert_eq!(r.fake.lock().reruns, 0);
+    assert!(!r.fake.lock().calls.iter().any(|c| c == "rerun"), "no rerun reached the host");
+}
+
+/// AC3: a plain git server has no rerun API; the command explains it instead of failing oddly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_plain_host_cannot_rerun_checks() {
+    let r = rig("github", json!({})).await;
+    let t = team(&r, "Plain host").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+    http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    // The host is a bare git server: no pull/merge request API, so no rerun either.
+    let hosts = r.h.dir.path().join("hosts");
+    let cfg = json!({ "hosts": { "h": { "kind": "plain", "url": r.fake.url,
+        "clone_urls": { "https": format!("file://{}/{{remote}}.git", hosts.display()) } } } });
+    std::fs::write(r.h.dir.path().join("git.json"), cfg.to_string()).unwrap();
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("no pull/merge request API"), "{b}");
+}
+
+/// AC3: the GitHub failure that is a commit status or another app's check run has no rerun API; the
+/// command says so, and nothing was restarted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_github_failure_without_actions_runs_is_explained() {
+    let r = rig("github", json!({})).await;
+    let t = team(&r, "Status only").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+    http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    {
+        let mut f = r.fake.lock();
+        f.ci = "failed".into();
+        f.action_runs = false;
+    }
+    genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
+    let (s, b) = rerun(&r, &id, &t.executor).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("commit statuses"), "{b}");
+    assert_eq!(r.fake.lock().reruns, 0);
+    assert_eq!(row(&r, &id).ci_reruns, 0, "a host that cannot rerun spends no limit");
+}

@@ -335,6 +335,16 @@ impl Api {
             _ => gitlab::ci(self, remote, sha).await,
         }
     }
+
+    /// Ask the host to restart the failed checks of one commit; how many runs were restarted.
+    /// Only a failed run can be rerun, so a host with no failed run of its own has nothing to do:
+    /// `Unsupported` says why (the checks are commit statuses or another app's check runs).
+    pub async fn rerun_failed(&self, remote: &str, sha: Option<&str>) -> ApiResult<u32> {
+        match self.host.kind {
+            Kind::Github => github::rerun_failed(self, remote, sha).await,
+            _ => gitlab::rerun_failed(self, remote, sha).await,
+        }
+    }
 }
 
 fn classify(status: u16, body: Value, retry_after: Option<Duration>, exhausted: bool) -> ApiResult<Resp> {

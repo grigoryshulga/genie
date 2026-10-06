@@ -36,6 +36,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/tasks/{id}/repos/{name}/cr", get(cr_show).post(cr_open))
         .route("/tasks/{id}/repos/{name}/cr/comments", get(cr_comments).post(cr_comment))
         .route("/tasks/{id}/repos/{name}/cr/merge", post(cr_merge))
+        .route("/tasks/{id}/repos/{name}/cr/rerun", post(cr_rerun))
 }
 
 impl From<DeliveryError> for ApiError {
@@ -138,6 +139,14 @@ async fn cr_merge(
     let (access, task, caller) = cr_caller(&app, &ctx, &id, Touch::Edit).await?;
     let by_policy = body.is_some_and(|b| b.policy);
     let out = delivery::merge(&app, &access.project, &task, &name, &caller, by_policy).await?;
+    changed(&app);
+    Ok(Json(out))
+}
+
+/// Rerun the failed checks of the task's watched commit, within the configured limits.
+async fn cr_rerun(State(app): State<Arc<App>>, ctx: Ctx, Path((id, name)): Path<(String, String)>) -> ApiResult<Json<Value>> {
+    let (access, task, caller) = cr_caller(&app, &ctx, &id, Touch::Edit).await?;
+    let out = delivery::rerun(&app, &access.project, &task, &name, &caller).await?;
     changed(&app);
     Ok(Json(out))
 }

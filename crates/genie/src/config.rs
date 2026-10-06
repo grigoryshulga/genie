@@ -152,6 +152,11 @@ pub struct RuntimeConfig {
     /// Checks that stay `pending` for this long are reported to the team once and the watch
     /// stops taking them as running (`stalled`). 0 turns the timeout off.
     pub ci_pending_secs: u64,
+    /// How many times failed checks may be rerun for one delivery (request or branch).
+    /// 0 switches reruns off (per request and per task together).
+    pub ci_reruns_per_request: u32,
+    /// How many reruns a whole task may spend over all its repositories; 0 switches reruns off.
+    pub ci_reruns_per_task: u32,
     pub max_attempts: u32,
     /// How long `genie mail ask` waits for the answer by default.
     pub ask_timeout_secs: u64,
@@ -297,6 +302,8 @@ impl Default for RuntimeConfig {
             turn_timeout_secs: 1800,
             stall_secs: 900,
             ci_pending_secs: 1800,
+            ci_reruns_per_request: 2,
+            ci_reruns_per_task: 3,
             max_attempts: 3,
             ask_timeout_secs: 180,
             delivery_budget: genie_core::team::DELIVERY_BUDGET,
@@ -467,6 +474,7 @@ mod tests {
         assert_eq!(cfg.runtime.turn_timeout_secs, 1800, "unset runtime fields keep defaults");
         assert_eq!(cfg.runtime.stall_secs, 900, "unset runtime fields keep defaults");
         assert_eq!(cfg.runtime.ci_pending_secs, 1800, "unset runtime fields keep defaults");
+        assert_eq!((cfg.runtime.ci_reruns_per_request, cfg.runtime.ci_reruns_per_task), (2, 3));
         assert_eq!(cfg.limits.max_members_per_team, 6);
         assert_eq!((cfg.runtime.idle_stop_secs, cfg.runtime.node_heap_mb), (300, 2048), "unset runtime fields keep defaults");
     }
@@ -495,6 +503,17 @@ mod tests {
         assert_eq!(Config::load(dir.path()).unwrap().runtime.ci_pending_secs, 60);
         std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"ciPendingSecs": 0}}"#).unwrap();
         assert_eq!(Config::load(dir.path()).unwrap().runtime.ci_pending_secs, 0, "0 switches it off");
+    }
+
+    #[test]
+    fn the_rerun_limits_can_be_configured_and_switched_off() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"ciRerunsPerRequest": 5, "ciRerunsPerTask": 7}}"#).unwrap();
+        let rt = Config::load(dir.path()).unwrap().runtime;
+        assert_eq!((rt.ci_reruns_per_request, rt.ci_reruns_per_task), (5, 7));
+        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"ciRerunsPerRequest": 0}}"#).unwrap();
+        let rt = Config::load(dir.path()).unwrap().runtime;
+        assert_eq!((rt.ci_reruns_per_request, rt.ci_reruns_per_task), (0, 3), "0 switches reruns off");
     }
 
     #[test]

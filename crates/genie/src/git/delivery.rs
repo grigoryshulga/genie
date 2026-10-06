@@ -247,6 +247,93 @@ pub async fn comments(app: &Arc<App>, project: &str, task: &str, repo: &str, cal
     Ok(json!(list))
 }
 
+/// What the reviewer and the caller read of the three rerun limits.
+fn rerun_limits(app: &App) -> (u32, u32) {
+    (app.cfg.runtime.ci_reruns_per_request, app.cfg.runtime.ci_reruns_per_task)
+}
+
+/// The human name of the watched ref of a delivery.
+fn watched_name(row: &TaskRepo) -> String {
+    if row.ci_ref.is_empty() { row.branch.clone() } else { row.ci_ref.clone() }
+}
+
+/// Ask the host to rerun the **failed** checks of the task's watched commit (GitHub Actions runs,
+/// a GitLab pipeline), bounded by three limits: one rerun per commit (the owner's rule),
+/// `runtime.ciRerunsPerRequest` for this delivery and `runtime.ciRerunsPerTask` over all of the
+/// task's repositories. Only a commit whose checks have actually failed can be rerun; on success the
+/// watch is re-armed so the restarted run is followed as if it had just been pushed.
+///
+/// The limit is reserved before the host is called (one transaction, so two concurrent calls cannot
+/// both pass) and released when the host refuses, so a broken token does not burn a rerun.
+pub async fn rerun(app: &Arc<App>, project: &str, task: &str, repo: &str, caller: &Caller) -> DResult<Value> {
+    let (p, tk, rp, c) = (project.to_string(), task.to_string(), repo.to_string(), caller.clone());
+    let t = app.blocking(move |app| load(app, &p, &tk, &rp, &c).map_err(to_app)).await?;
+    if !t.eff.write {
+        return Err(DeliveryError::Denied(format!("{repo}: no access")));
+    }
+    // The watched commit — the one the review gate and the watcher read. Without one nothing was
+    // pushed yet (a row from before the watch may still name the request's head).
+    let sha = t
+        .row
+        .ci_sha
+        .clone()
+        .or_else(|| t.row.head_sha.clone())
+        .ok_or_else(|| DeliveryError::Invalid("no commit is watched yet: push the branch first".into()))?;
+    // The host's live answer decides: restarting a running pipeline would be wrong, and a `stalled`
+    // watch keeps its own letter (nothing may restart a run nobody is waiting for).
+    let api = api(&t)?;
+    let ci = CheckState::from(api.ci(&t.record.remote, Some(&sha)).await?);
+    if ci != CheckState::Failed {
+        return Err(DeliveryError::Invalid(format!(
+            "the checks of `{}` in {repo} are {}, not failed: a rerun is possible only after they fail",
+            watched_name(&t.row),
+            ci.as_str()
+        )));
+    }
+    // Reserve the limit and count the rerun in one transaction.
+    let (per_request, per_task) = rerun_limits(app);
+    let (p, tk, rp, sha2) = (project.to_string(), task.to_string(), repo.to_string(), sha.clone());
+    let reservation = app.blocking(move |app| app.with_server(|db| db.reserve_rerun(&p, &tk, &rp, &sha2, per_request, per_task))).await?;
+    // The host is asked to restart the failed runs.
+    let runs = match api.rerun_failed(&t.record.remote, Some(&sha)).await {
+        Ok(n) => n,
+        Err(e) => {
+            // The refusal must not eat a rerun: give the reservation back.
+            let (p, tk, rp) = (project.to_string(), task.to_string(), repo.to_string());
+            let _ = app.blocking(move |app| app.with_server(|db| db.release_rerun(&p, &tk, &rp, reservation))).await;
+            return Err(e.into());
+        }
+    };
+    // Re-arm the watch to `pending` so the watcher follows the restarted run: a `failed` row is not
+    // watched, and `ciPendingSecs` starts over rather than making the rerun look stalled at once.
+    let (p, tk, rp, sha2, ref2, actor) =
+        (project.to_string(), task.to_string(), repo.to_string(), sha.clone(), watched_name(&t.row), (caller.name.clone(), caller.role));
+    let row = app
+        .blocking(move |app| {
+            let row = app.with_server(|db| db.rerun_started(&p, &tk, &rp, &ref2, &sha2))?;
+            let payload = json!({
+                "task": tk, "repo": rp, "ref": ref2, "sha": sha2, "runs": runs,
+                "reruns": row.ci_reruns, "by": actor.0,
+            });
+            app.with_tracker(&p, |tr| {
+                events::append(tr.conn(), events::CI_RERUN, Some(&tk), &actor.0, actor.1.as_str(), payload)?;
+                Ok(())
+            })?;
+            Ok(row)
+        })
+        .await?;
+    let total: i64 = app.with_server(|db| db.task_repos(project, task))?.iter().map(|r| r.ci_reruns).sum();
+    Ok(json!({
+        "repo": repo,
+        "ref": row.ci_ref,
+        "sha": row.ci_sha,
+        "runs": runs,
+        "request": row.cr_number,
+        "used": { "perCommit": 1, "request": row.ci_reruns, "task": total },
+        "limits": { "perCommit": 1, "request": per_request, "task": per_task },
+    }))
+}
+
 pub async fn comment(app: &Arc<App>, project: &str, task: &str, repo: &str, caller: &Caller, text: &str) -> DResult<()> {
     let (p, tk, rp, c) = (project.to_string(), task.to_string(), repo.to_string(), caller.clone());
     let t = app.blocking(move |app| load(app, &p, &tk, &rp, &c).map_err(to_app)).await?;
@@ -504,7 +591,7 @@ fn record_ci(app: &App, row: &TaskRepo, ci: CheckState, failures: &[CiFailure], 
                 let waited = if secs < 120 { format!("{secs} s") } else { format!("{} min", secs / 60) };
                 let text = format!(
                     "The checks of {subject} have been running for more than {waited} and nothing has come of them: \
-                     look at the host and settle them by hand — genie does not rerun checks."
+                     settle them on the host by hand — `genie pr rerun` restarts failed checks, not one that is still running."
                 );
                 match active_team(t, task) {
                     Some(team) => {
