@@ -9,6 +9,15 @@ import { lazy, type LazyExoticComponent, type ReactNode } from "react";
 // rethrown to the router's error screen.
 const RELOADED = "genie.chunk-reload";
 
+// A fresh boot clears the one-shot too: a deploy-triggered reload can land the user on an eager
+// page (the board), and the next deploy's first stale chunk must still get its single reload
+// instead of the error screen. This module loads with the entry chunk, so this runs at boot.
+try {
+  sessionStorage.removeItem(RELOADED);
+} catch {
+  // A hardened browser that blocks storage: there was no flag to clear.
+}
+
 type PageComponent<P> = (props: P) => ReactNode;
 
 /** `React.lazy` for a page module, plus the stale-chunk reload above. */
