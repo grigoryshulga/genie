@@ -1,5 +1,7 @@
 //! Builds the web UI into the binary: the files of `web/dist` (`npm run
-//! build:web`) become `$OUT_DIR/web_assets.rs`, source maps left out.
+//! build:web`) become `$OUT_DIR/web_assets.rs`, source maps left out. A
+//! compressible file gets a gzip and a brotli copy under `$OUT_DIR/web`, so the
+//! server sends them without compressing anything at run time.
 //!
 //! - `GENIE_WEB_DIST=<dir>` (relative to the repository root) names the build
 //!   and requires it: a release build fails rather than ship without the UI,
@@ -10,7 +12,16 @@
 //!   working directory, or the directory given with `--web`.
 
 use std::fmt::Write as _;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
+
+use flate2::Compression;
+use flate2::write::GzEncoder;
+
+/// Files under this size are not worth a second copy in the binary.
+const COMPRESS_ABOVE_BYTES: usize = 1024;
+/// A copy is kept only when it saves at least this much of the original.
+const KEEP_BELOW_PERCENT: usize = 95;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -28,16 +39,76 @@ fn main() {
     } else if let Some(d) = explicit {
         panic!("GENIE_WEB_DIST={}: no index.html there; build the web UI first (npm run build:web)", d.display());
     }
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let mut out = String::from(
-        "/// The files of the built web UI: path under `web/dist` and contents.\npub static WEB_ASSETS: &[(&str, &[u8])] = &[\n",
+        "/// The files of the built web UI: path under `web/dist`, contents, and the\n/// precompressed copies worth their bytes.\npub static WEB_ASSETS: &[WebAsset] = &[\n",
     );
     for (rel, file) in &files {
-        writeln!(out, "    ({rel:?}, include_bytes!({:?})),", file.display().to_string()).unwrap();
+        let raw = std::fs::read(file).expect("web/dist file");
+        let (gzip, br) = if compressible(rel) && raw.len() > COMPRESS_ABOVE_BYTES {
+            let gzip = packed(&out_dir, rel, &raw, "gz", gzip);
+            let br = packed(&out_dir, rel, &raw, "br", brotli);
+            (gzip, br)
+        } else {
+            (None, None)
+        };
+        writeln!(
+            out,
+            "    WebAsset {{ path: {rel:?}, raw: include_bytes!({:?}), gzip: {}, br: {} }},",
+            file.display().to_string(),
+            variant(gzip.as_deref()),
+            variant(br.as_deref())
+        )
+        .unwrap();
     }
     out.push_str("];\n");
-    let target = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("web_assets.rs");
-    if std::fs::read_to_string(&target).ok().as_deref() != Some(out.as_str()) {
-        std::fs::write(&target, out).expect("web_assets.rs");
+    write_if_changed(&out_dir.join("web_assets.rs"), out.as_bytes());
+}
+
+/// What a compressor may make smaller: text formats that shrink well, which the
+/// browser can be asked to take compressed.
+fn compressible(rel: &str) -> bool {
+    matches!(rel.rsplit_once('.').map(|(_, ext)| ext), Some("html" | "js" | "mjs" | "css" | "svg" | "json" | "txt"))
+}
+
+/// A compressed copy of `raw` written next to the generated asset list, or
+/// `None` when the copy is not at least 5% smaller than `raw`: a saving below
+/// that does not pay for the bytes in the binary. Its path feeds `include_bytes!`.
+fn packed(out_dir: &Path, rel: &str, raw: &[u8], ext: &str, compress: fn(&[u8]) -> Vec<u8>) -> Option<PathBuf> {
+    let data = compress(raw);
+    if data.len() * 100 > raw.len() * KEEP_BELOW_PERCENT {
+        return None;
+    }
+    let path = out_dir.join("web").join(format!("{rel}.{ext}"));
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).expect("precompressed assets");
+    }
+    write_if_changed(&path, &data);
+    Some(path)
+}
+
+fn gzip(raw: &[u8]) -> Vec<u8> {
+    let mut enc = GzEncoder::new(Vec::new(), Compression::best());
+    enc.write_all(raw).expect("gzip");
+    enc.finish().expect("gzip")
+}
+
+fn brotli(raw: &[u8]) -> Vec<u8> {
+    let params = brotli::enc::BrotliEncoderParams { quality: 11, lgwin: 22, ..Default::default() };
+    let mut out = Vec::new();
+    brotli::BrotliCompress(&mut &raw[..], &mut out, &params).expect("brotli");
+    out
+}
+
+/// The `include_bytes!` of a copy, or `None` for a file left whole.
+fn variant(path: Option<&Path>) -> String {
+    path.map_or_else(|| "None".into(), |p| format!("Some(include_bytes!({:?}))", p.display().to_string()))
+}
+
+/// Keep an unchanged output: rewriting it would recompile the crate for nothing.
+fn write_if_changed(path: &Path, data: &[u8]) {
+    if std::fs::read(path).ok().as_deref() != Some(data) {
+        std::fs::write(path, data).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     }
 }
 
