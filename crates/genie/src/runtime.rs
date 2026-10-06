@@ -645,7 +645,7 @@ pub(crate) async fn agent_process(
     let argv = build_command(template, &vars, &lists);
     let mut cmd = agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), token)?;
     llm.apply(&mut cmd);
-    kit_env(&mut cmd, &files, &argv);
+    kit_env(&mut cmd, &files);
     Ok((cmd, dir))
 }
 
@@ -833,7 +833,7 @@ pub(crate) struct Kit {
     pub skills: Vec<String>,
     /// `{?limitSkills}`: the role lists its skills, so the harness loads no others.
     pub limit_skills: bool,
-    /// The pi-mcp-adapter config with only the role's connections (secrets resolved).
+    /// The role's connections in pi's `mcp.json` format (secrets resolved, exposure chosen).
     pub mcp: serde_json::Value,
     /// The guard's rules (`GENIE_POLICY`).
     pub policy: serde_json::Value,
@@ -842,8 +842,8 @@ pub(crate) struct Kit {
 /// The files a started agent reads.
 pub(crate) struct KitFiles {
     pub policy: PathBuf,
-    /// Only when pi loads pi-mcp-adapter (pi refuses `--mcp-config` otherwise).
-    pub mcp_config: Option<PathBuf>,
+    /// The role's MCP connections; the guard extension connects them (`GENIE_MCP_CONFIG`).
+    pub mcp_config: PathBuf,
     pub guard: PathBuf,
 }
 
@@ -862,24 +862,72 @@ pub(crate) fn kit(app: &App, agents: &AgentConfig, project: &str, role: &RoleDef
     let mut skills: Vec<String> =
         role.skills.iter().flatten().filter_map(|name| agents.skills.get(name)).map(|s| s.dir.to_string_lossy().into_owned()).collect();
     skills.extend(repo_skill_dirs(cwd).into_iter().map(|d| d.to_string_lossy().into_owned()));
+    let mut codemode = false;
     let servers: serde_json::Map<String, serde_json::Value> = agents
         .mcp_for(project, role)
         .into_iter()
         .map(|(s, tools)| {
             // Through the gateway the harness holds only its address and the agent's own token
             // (the harness fills `${GENIE_TOKEN}` from its environment); the gateway keeps the tools.
-            if app.cfg.runtime.mcp_gateway && s.gateway {
+            let mut entry = if app.cfg.runtime.mcp_gateway && s.gateway {
                 let url = format!("http://127.0.0.1:{}/api/mcp-gateway/{}", app.cfg.port, s.id);
-                return (s.id.clone(), json!({ "url": url, "headers": { "Authorization": "Bearer ${GENIE_TOKEN}" } }));
-            }
-            let mut entry = s.resolved();
-            if let (Some(tools), Some(o)) = (tools, entry.as_object_mut()) {
-                o.insert("includeTools".into(), json!(tools));
+                json!({ "url": url, "headers": { "Authorization": "Bearer ${GENIE_TOKEN}" } })
+            } else {
+                s.resolved()
+            };
+            if let Some(o) = entry.as_object_mut() {
+                // The admin's choice of exposure is the connection's, whoever opens it.
+                for key in ["exposure", "toolExposure"] {
+                    if let Some(v) = s.config.get(key) {
+                        o.insert(key.into(), v.clone());
+                    }
+                }
+                if !s.description.is_empty() {
+                    o.insert("description".into(), json!(s.description));
+                }
+                codemode |= expose(o, tools.as_deref());
             }
             (s.id.clone(), entry)
         })
         .collect();
-    Kit { skills, limit_skills: role.skills.is_some(), mcp: json!({ "mcpServers": servers }), policy: policy(agents, project, role, files) }
+    // Codemode (JavaScript calling the tools) only for connections an admin set to it: pi would
+    // switch it on for every role otherwise.
+    Kit {
+        skills,
+        limit_skills: role.skills.is_some(),
+        mcp: json!({ "mcpServers": servers, "autoEnableCodemode": codemode }),
+        policy: policy(agents, project, role, files),
+    }
+}
+
+/// How the tools of a connection reach the model. `exposure` in `mcp.json` is the admin's choice;
+/// by default a connection limited to some tools declares them (`direct`: few, and the model calls
+/// them as any tool), a whole one is searched with `tool_search` (`deferred`: its tools stay out of
+/// every request until needed). A grant limited to tools hides the rest of the connection:
+/// `toolExposure` names the granted patterns, so the others are never exposed (the guard checks
+/// the calls all the same). Returns whether a tool is left to codemode.
+fn expose(entry: &mut serde_json::Map<String, serde_json::Value>, granted: Option<&[String]>) -> bool {
+    let codemode = |how: &str| how.starts_with("codemode");
+    let chosen = entry.get("exposure").and_then(|e| e.as_str()).map(str::to_string);
+    match granted {
+        Some(patterns) => {
+            let how = chosen.unwrap_or_else(|| "direct".into());
+            // pi's patterns know `*` only.
+            let by_tool: serde_json::Map<String, serde_json::Value> = patterns.iter().map(|p| (p.replace('?', "*"), json!(how))).collect();
+            entry.insert("exposure".into(), json!("hidden"));
+            entry.insert("toolExposure".into(), json!(by_tool));
+            codemode(&how)
+        }
+        None => {
+            let how = chosen.unwrap_or_else(|| "deferred".into());
+            entry.insert("exposure".into(), json!(how));
+            codemode(&how)
+                || entry
+                    .get("toolExposure")
+                    .and_then(|t| t.as_object())
+                    .is_some_and(|t| t.values().any(|v| v.as_str().is_some_and(codemode)))
+        }
+    }
 }
 
 /// The project's own skills, which every agent gets: `.pi/skills` and `.agents/skills`
@@ -901,23 +949,14 @@ impl Kit {
     /// Write the agent's rules and MCP config into its runtime directory `dir`.
     pub(crate) fn write(&self, app: &App, dir: &Path, role: &str) -> std::io::Result<KitFiles> {
         let text = |v: &serde_json::Value| serde_json::to_string_pretty(v).unwrap_or_default();
-        let adapter = app.cfg.runtime.mcp_adapter();
-        let files = KitFiles {
-            policy: dir.join("policy.json"),
-            mcp_config: adapter.then(|| dir.join("mcp.json")),
-            guard: crate::sessions::write_guard(app)?,
-        };
+        let files =
+            KitFiles { policy: dir.join("policy.json"), mcp_config: dir.join("mcp.json"), guard: crate::sessions::write_guard(app)? };
         write_private(&files.policy, &text(&self.policy))?;
-        match &files.mcp_config {
-            Some(path) => write_private(path, &text(&self.mcp))?,
-            None => {
-                let _ = std::fs::remove_file(dir.join("mcp.json"));
-                if self.mcp["mcpServers"].as_object().is_some_and(|m| !m.is_empty()) {
-                    warn_once(&format!(
-                        "genie runtime: the role {role} has MCP connections, but pi does not load pi-mcp-adapter (`pi install npm:pi-mcp-adapter`, or set runtime.mcpAdapter); its agents run without MCP"
-                    ));
-                }
-            }
+        write_private(&files.mcp_config, &text(&self.mcp))?;
+        if app.cfg.runtime.mcp_adapter_loaded() && self.mcp["mcpServers"].as_object().is_some_and(|m| !m.is_empty()) {
+            warn_once(&format!(
+                "genie runtime: pi loads pi-mcp-adapter, which does not belong next to its native MCP support: the guard blocks its tools, so the role {role} has only the connections genie hands it (`pi remove npm:pi-mcp-adapter`)"
+            ));
         }
         Ok(files)
     }
@@ -926,7 +965,7 @@ impl Kit {
     pub(crate) fn placeholders(&self, files: &KitFiles, vars: &mut HashMap<&str, String>) -> HashMap<&'static str, Vec<String>> {
         let path = |p: &Path| p.to_string_lossy().into_owned();
         vars.insert("guard", path(&files.guard));
-        vars.insert("mcpConfig", files.mcp_config.as_deref().map(path).unwrap_or_default());
+        vars.insert("mcpConfig", path(&files.mcp_config));
         vars.insert("limitSkills", if self.limit_skills { "yes".into() } else { String::new() });
         HashMap::from([("skill", self.skills.clone())])
     }
@@ -941,13 +980,9 @@ fn warn_once(text: &str) {
     }
 }
 
-/// Tell the started agent where its rules are; with its MCP config on the command
-/// line, pi-mcp-adapter reads that file only (no user-wide or repository configs).
-pub(crate) fn kit_env(cmd: &mut tokio::process::Command, files: &KitFiles, argv: &[String]) {
-    cmd.env("GENIE_POLICY", &files.policy);
-    if files.mcp_config.as_ref().is_some_and(|m| argv.iter().any(|a| Path::new(a) == m)) {
-        cmd.env("PI_MCP_CONFIG_MODE", "exclusive");
-    }
+/// Tell the started agent where its rules and its MCP connections are (the guard extension reads both).
+pub(crate) fn kit_env(cmd: &mut tokio::process::Command, files: &KitFiles) {
+    cmd.env("GENIE_POLICY", &files.policy).env("GENIE_MCP_CONFIG", &files.mcp_config);
 }
 
 /// Write a file only its owner can read (it may hold secrets), replacing it at once.
@@ -1352,7 +1387,9 @@ fn mcp_section(agents: &AgentConfig, project: &str, role: &RoleDef) -> String {
     if grants.is_empty() {
         return String::new();
     }
-    let mut out = String::from("\n## MCP connections\n\nYour role may use these MCP connections, and no others:\n\n");
+    let mut out = String::from(
+        "\n## MCP connections\n\nYour role may use these MCP connections, and no others. Their tools are named `mcp__<connection>__<tool>` (`-` becomes `_`); those not declared to you yet are found with `tool_search`, or in a `codemode` script when you have it:\n\n",
+    );
     for (s, tools) in grants {
         out.push_str(&format!("- `{}`", s.id));
         if !s.description.is_empty() {
@@ -2160,6 +2197,31 @@ mod tests {
         assert_eq!(heap_cap(Some("--no-warnings"), 2048).as_deref(), Some("--no-warnings --max-old-space-size=2048"));
         assert_eq!(heap_cap(Some("--no-warnings"), 0), None, "0 is no cap");
         assert_eq!(heap_cap(Some("--max-old-space-size=8192"), 2048), None, "the operator's own cap stands");
+    }
+
+    #[test]
+    fn a_connections_tools_reach_the_model_as_the_grant_and_the_admin_say() {
+        let run = |entry: serde_json::Value, granted: Option<&[&str]>| {
+            let mut o = entry.as_object().unwrap().clone();
+            let granted: Option<Vec<String>> = granted.map(|g| g.iter().map(|s| s.to_string()).collect());
+            let codemode = expose(&mut o, granted.as_deref());
+            (serde_json::Value::Object(o), codemode)
+        };
+        // Some tools: those are declared, the rest of the connection is hidden.
+        let (e, cm) = run(json!({ "url": "http://x" }), Some(&["get_*", "list_?"]));
+        assert_eq!(
+            (e["exposure"].clone(), e["toolExposure"].clone(), cm),
+            (json!("hidden"), json!({ "get_*": "direct", "list_*": "direct" }), false)
+        );
+        // A whole connection is searched for.
+        assert_eq!(run(json!({ "url": "http://x" }), None).0["exposure"], "deferred");
+        // The admin's choice stands, and codemode is switched on only for it.
+        let (e, cm) = run(json!({ "url": "http://x", "exposure": "codemode" }), None);
+        assert_eq!((e["exposure"].clone(), cm), (json!("codemode"), true));
+        let (e, cm) = run(json!({ "url": "http://x", "exposure": "deferred", "toolExposure": { "get_*": "codemode" } }), None);
+        assert_eq!((e["exposure"].clone(), cm), (json!("deferred"), true));
+        let (e, cm) = run(json!({ "url": "http://x", "exposure": "deferred" }), Some(&["get_*"]));
+        assert_eq!((e["toolExposure"].clone(), cm), (json!({ "get_*": "deferred" }), false), "also for the granted tools");
     }
 
     #[tokio::test]

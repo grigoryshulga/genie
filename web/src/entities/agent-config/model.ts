@@ -133,8 +133,8 @@ export interface Problem {
 export interface Catalogue {
   project: string;
   admin: boolean;
-  /** pi loads pi-mcp-adapter, so MCP connections reach the agents. */
-  mcpAdapter: boolean;
+  /** pi still loads pi-mcp-adapter, which replaces its native MCP support (the agents' connections). */
+  mcpAdapterLoaded: boolean;
   /** Agents reach MCP connections through the genie gateway (`runtime.mcpGateway`). */
   mcpGateway: boolean;
   /** Whether agents run in the bubblewrap sandbox (`runtime.sandbox`), and why not. */

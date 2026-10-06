@@ -273,9 +273,9 @@ export function McpTab({ cfg }: { cfg: Catalogue }) {
               ? "Агенты ходят в подключения через шлюз genie: секреты остаются на сервере, агент видит только выданные его роли инструменты, каждый вызов попадает в журнал проекта. Подключение, которое харнесс открывает сам, помечено «напрямую»."
               : "Шлюз genie выключен (runtime.mcpGateway): харнесс получает подключения вместе с секретами, вызовы genie не видит."}
           </p>
-          {!cfg.mcpAdapter && (
-            <p className="ag-warn-line" title="Установите на сервере: pi install npm:pi-mcp-adapter (или задайте runtime.mcpAdapter)">
-              Не установлен pi-mcp-adapter: пока его нет, агенты работают без MCP.
+          {cfg.mcpAdapterLoaded && (
+            <p className="ag-warn-line" title="Уберите на сервере: pi remove npm:pi-mcp-adapter">
+              pi загружает pi-mcp-adapter: он подменяет встроенную поддержку MCP, его инструменты агентам закрыты.
             </p>
           )}
         </div>
