@@ -381,9 +381,9 @@ async fn usage(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>) ->
         Ok((t.usage_of_task(&id)?, crate::spend::TaskIndex::load(t.conn())?))
     })
     .await?;
-    let prices = &app.cfg.model_prices;
+    let prices = app.blocking(|app| app.prices()).await?;
     Ok(Json(json!({
-        "spend": crate::spend::Spend::of(prices, &rows),
-        "tasks": crate::spend::by_task(prices, &rows, &tasks, usize::MAX),
+        "spend": crate::spend::Spend::of(&prices, &rows),
+        "tasks": crate::spend::by_task(&prices, &rows, &tasks, usize::MAX),
     })))
 }

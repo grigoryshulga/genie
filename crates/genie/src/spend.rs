@@ -21,6 +21,9 @@ pub struct ModelSpend {
     pub tokens: Tokens,
     /// Dollars; `None` when the model has no price.
     pub cost: Option<f64>,
+    /// Tokens no price covered (cache without a cache price; all of them when
+    /// the model has no price) — counted, never billed as input.
+    pub unpriced_tokens: u64,
     pub price: Option<ModelPrice>,
 }
 
@@ -43,7 +46,11 @@ impl Spend {
         self.tokens.add(tokens);
         let price = price_of(prices, model).copied();
         match price {
-            Some(p) => self.cost += p.cost(tokens),
+            Some(p) => {
+                let (cost, unpriced) = p.split(tokens);
+                self.cost += cost;
+                self.unpriced_tokens += unpriced;
+            }
             None => self.unpriced_tokens += tokens.total(),
         }
         let i = match self.models.iter().position(|m| m.model == model) {
@@ -56,8 +63,14 @@ impl Spend {
         let m = &mut self.models[i];
         m.calls += calls;
         m.tokens.add(tokens);
-        if let (Some(c), Some(p)) = (m.cost.as_mut(), price) {
-            *c += p.cost(tokens);
+        if let Some(p) = price {
+            let (cost, unpriced) = p.split(tokens);
+            if let Some(c) = m.cost.as_mut() {
+                *c += cost;
+            }
+            m.unpriced_tokens += unpriced;
+        } else {
+            m.unpriced_tokens += tokens.total();
         }
     }
 

@@ -38,7 +38,7 @@ const spend = (models: [string, number | null, number][]): Spend => ({
   tokens: tokens(models.reduce((n, m) => n + m[2], 0)),
   cost: models.reduce((n, m) => n + (m[1] ?? 0), 0),
   unpricedTokens: models.filter((m) => m[1] === null).reduce((n, m) => n + m[2], 0),
-  models: models.map(([model, cost, n]) => ({ model, calls: 1, tokens: tokens(n), cost, price: null })),
+  models: models.map(([model, cost, n]) => ({ model, calls: 1, tokens: tokens(n), cost, unpricedTokens: cost === null ? n : 0, price: null })),
 });
 
 test("spends merge by model, the most expensive first, unpriced models last", () => {

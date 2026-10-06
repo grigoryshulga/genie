@@ -38,6 +38,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/projects/{slug}/members/{user}", put(set_member).delete(remove_member))
         .route("/projects/{slug}/invites", post(create_invite))
         .route("/doctor", get(doctor))
+        .route("/model-prices", get(model_prices).post(refresh_model_prices))
         .route("/stats", get(stats))
         .route("/vault/sync", get(vault_sync).post(vault_sync_now))
 }
@@ -542,6 +543,49 @@ async fn doctor(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>>
     Ok(Json(json!({ "checks": checks })))
 }
 
+/// The model prices in effect: `modelPrices` of config.json over what LiteLLM
+/// returned, with where each model's price comes from and when it was received.
+async fn model_prices(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
+    ctx.server_admin()?;
+    let state = app
+        .blocking(|app| {
+            let s = app.prices.read().map_err(|_| genie_core::GenieError::invalid("prices lock poisoned"))?;
+            let manual = &app.cfg.model_prices;
+            let models: Vec<Value> = s
+                .prices
+                .iter()
+                .map(|(model, p)| {
+                    let source = if manual.contains_key(model) {
+                        match (p.cache_read.is_some(), manual[model].cache_read.is_some()) {
+                            (true, false) => "config.json + LiteLLM (cache)",
+                            _ => "config.json",
+                        }
+                    } else {
+                        "LiteLLM"
+                    };
+                    json!({ "model": model, "price": p, "source": source })
+                })
+                .collect();
+            Ok(json!({ "models": models, "fetchedAt": s.fetched_at, "lastError": s.last_error }))
+        })
+        .await?;
+    Ok(Json(state))
+}
+
+/// «Pull the config»: ask LiteLLM for the tariffs again (an administrator's
+/// action — there is no timer) and make them the prices in effect.
+async fn refresh_model_prices(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
+    ctx.server_admin()?;
+    let n = crate::model_prices::refresh(&app).await.map_err(genie_core::GenieError::invalid)?;
+    let state = app
+        .blocking(move |app| {
+            let s = app.prices.read().map_err(|_| genie_core::GenieError::invalid("prices lock poisoned"))?;
+            Ok(json!({ "received": n, "priced": s.prices.len(), "fetchedAt": s.fetched_at }))
+        })
+        .await?;
+    Ok(Json(state))
+}
+
 /// How the vault syncs with its git remote (`vault.remote`).
 async fn vault_sync(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     ctx.server_admin()?;
@@ -567,7 +611,8 @@ async fn stats(State(app): State<Arc<App>>, ctx: Ctx, axum::extract::Query(q): a
     ctx.server_admin()?;
     let stats = app
         .blocking(move |app| {
-            crate::stats::collect(&app.data, q.days.unwrap_or(7), q.project.as_deref(), &app.cfg.model_prices)
+            let prices = app.prices()?;
+            crate::stats::collect(&app.data, q.days.unwrap_or(7), q.project.as_deref(), &prices)
                 .map_err(|e| genie_core::GenieError::invalid(e).into())
         })
         .await?;

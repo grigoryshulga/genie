@@ -320,6 +320,13 @@ CREATE TABLE IF NOT EXISTS consoles (
   taken TEXT NOT NULL,
   until TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS model_prices (
+  model TEXT PRIMARY KEY,
+  input REAL NOT NULL,
+  output REAL NOT NULL,
+  cache_read REAL,
+  cache_write REAL
+);
 "#;
 
 /// Columns added after the first server release; applied to existing databases on open.
@@ -350,7 +357,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 2;
+pub const SERVER_SCHEMA_VERSION: i64 = 3;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -624,6 +631,62 @@ impl ServerDb {
 
     pub fn tx<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
         self.db.tx(f)
+    }
+
+    // --- model prices --------------------------------------------------------
+
+    /// The model prices fetched from LiteLLM, as they were last received. What the
+    /// tokens cost is decided from these merged with `modelPrices` of config.json.
+    pub fn model_prices(&self) -> Result<Vec<(String, crate::usage::ModelPrice)>> {
+        let mut stmt = self.conn().prepare("SELECT model, input, output, cache_read, cache_write FROM model_prices ORDER BY model")?;
+        Ok(stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    crate::usage::ModelPrice { input: r.get(1)?, output: r.get(2)?, cache_read: r.get(3)?, cache_write: r.get(4)? },
+                ))
+            })?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Replace the fetched prices and remember when that was (a successful fetch
+    /// also clears the recorded error, if there was one).
+    pub fn set_model_prices(&self, prices: &[(String, crate::usage::ModelPrice)], fetched_at: &str) -> Result<()> {
+        self.tx(|| {
+            self.conn().execute("DELETE FROM model_prices", [])?;
+            let mut stmt = self
+                .conn()
+                .prepare("INSERT INTO model_prices(model, input, output, cache_read, cache_write) VALUES (?1, ?2, ?3, ?4, ?5)")?;
+            for (model, p) in prices {
+                stmt.execute(params![model, p.input, p.output, p.cache_read, p.cache_write])?;
+            }
+            self.set_meta("pricesFetchedAt", fetched_at)?;
+            self.conn().execute("DELETE FROM meta WHERE key = 'pricesFetchError'", [])?;
+            Ok(())
+        })
+    }
+
+    /// Why the last fetch failed, for doctor and the costs page (the prices that
+    /// already work stay as they are).
+    pub fn set_prices_error(&self, at: &str, error: &str) -> Result<()> {
+        self.set_meta("pricesFetchedAt", at)?;
+        self.set_meta("pricesFetchError", error)
+    }
+
+    fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO meta(key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    /// When the prices were last fetched, and why that fetch failed if it did.
+    pub fn prices_fetch_state(&self) -> Result<(Option<String>, Option<String>)> {
+        let get = |k: &str| -> Result<Option<String>> {
+            Ok(self.conn().query_row("SELECT value FROM meta WHERE key = ?1", [k], |r| r.get(0)).optional()?)
+        };
+        Ok((get("pricesFetchedAt")?, get("pricesFetchError")?))
     }
 
     // --- users ---------------------------------------------------------------

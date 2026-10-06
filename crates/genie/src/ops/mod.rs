@@ -349,7 +349,7 @@ pub const GROUPS: &[(&str, &str)] = &[
     ("project", "Projects of the server: add, settings, people, invitations, what happened"),
     ("user", "People with access to the server"),
     ("me", "You: who you are, your notifications and the questions agents asked you"),
-    ("server", "The running server: readiness, what happened, knowledge sync"),
+    ("server", "The running server: readiness, what happened, knowledge sync, model prices"),
 ];
 
 /// Every operation of genie.

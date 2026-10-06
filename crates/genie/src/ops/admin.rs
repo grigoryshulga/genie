@@ -26,7 +26,8 @@ pub fn register(all: &mut Vec<Entry>) {
         UserToken,
         Doctor,
         Stats,
-        VaultSync
+        VaultSync,
+        ModelPrices
     );
 }
 
@@ -545,5 +546,56 @@ impl Op for VaultSync {
             text.push_str(&format!("\nchanged on both sides (the server's lines kept where they overlap): {}", both.join(", ")));
         }
         Ok(Out::new(text, v))
+    }
+}
+
+/// The model prices in effect and where each one comes from; --refresh asks LiteLLM for the tariffs again (server admins).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct ModelPrices {
+    /// Pull the config: fetch the tariffs from LiteLLM now (no timer does it).
+    #[arg(long)]
+    pub refresh: bool,
+}
+
+impl Op for ModelPrices {
+    const GROUP: &'static str = "server";
+    const NAME: &'static str = "prices";
+    const NEED: Need = Need::Admin;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = if self.refresh {
+            cx.call("POST", "/model-prices", Some(json!({}))).await?
+        } else {
+            cx.call("GET", "/model-prices", None).await?
+        };
+        let mut lines = Vec::new();
+        if let Some(n) = v["received"].as_u64() {
+            lines.push(format!("received: {n} model price(s) from LiteLLM at {}", s(&v, "fetchedAt")));
+            let models = v["priced"].as_u64().unwrap_or(n);
+            lines.push(format!("in effect: {models} price(s) (modelPrices of config.json overrides per field)"));
+            return Ok(Out::new(lines.join("\n"), v));
+        }
+        let models = v["models"].as_array().cloned().unwrap_or_default();
+        lines.push(match v["fetchedAt"].as_str() {
+            Some(at) => format!("LiteLLM's tariffs received at {at}"),
+            None => "LiteLLM's tariffs have not been received yet".to_string(),
+        });
+        if let Some(e) = v["lastError"].as_str().filter(|e| !e.is_empty()) {
+            lines.push(format!("the last fetch failed: {e}"));
+        }
+        lines.push(String::new());
+        for m in &models {
+            let p = &m["price"];
+            let price = |x: &Value| x.as_f64().map(|x| format!("${}", (x * 10_000.0).round() / 10_000.0)).unwrap_or_else(|| "—".into());
+            lines.push(format!(
+                "{:<42} in {} out {} cache {} / {}  ({})",
+                s(m, "model"),
+                price(&p["input"]),
+                price(&p["output"]),
+                price(&p["cacheRead"]),
+                price(&p["cacheWrite"]),
+                s(m, "source")
+            ));
+        }
+        Ok(Out::new(lines.join("\n"), v))
     }
 }

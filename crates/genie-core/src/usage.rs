@@ -33,6 +33,37 @@ impl Tokens {
     }
 }
 
+/// What a model costs, in dollars per million tokens. A missing cache price
+/// leaves that cache's tokens **unpriced** — they are never billed as input:
+/// providers price cache far below input, and inventing a price would inflate
+/// the spend several times over.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ModelPrice {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: Option<f64>,
+    pub cache_write: Option<f64>,
+}
+
+impl ModelPrice {
+    /// What `t` costs and how many of its tokens stayed unpriced: every part
+    /// without a price (the whole model, or cache without a cache price).
+    pub fn split(&self, t: &Tokens) -> (f64, u64) {
+        let mut cost = (t.input as f64 * self.input + t.output as f64 * self.output) / 1_000_000.0;
+        let mut unpriced = 0u64;
+        match self.cache_read {
+            Some(p) => cost += t.cache_read as f64 * p / 1_000_000.0,
+            None => unpriced += t.cache_read,
+        }
+        match self.cache_write {
+            Some(p) => cost += t.cache_write as f64 * p / 1_000_000.0,
+            None => unpriced += t.cache_write,
+        }
+        (cost, unpriced)
+    }
+}
+
 /// What one chat spent on one task with one model in one day.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,5 +136,40 @@ impl Tracker {
     pub fn usage_of_agent(&self, agent: &str) -> Result<Vec<UsageRow>> {
         let mut stmt = self.conn().prepare(&format!("SELECT {COLUMNS} FROM usage WHERE agent = ?1 ORDER BY day"))?;
         Ok(stmt.query_map([agent], row)?.collect::<rusqlite::Result<_>>()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_without_a_price_is_unpriced_not_input() {
+        // The case the task was filed about: a manual price for input and output
+        // only, and almost all tokens in the cache.
+        let p = ModelPrice { input: 0.14, output: 0.28, cache_read: None, cache_write: None };
+        let t = Tokens { input: 1_000_000, output: 1_000_000, cache_read: 40_000_000, cache_write: 3_000_000 };
+        let (cost, unpriced) = p.split(&t);
+        assert!((cost - 0.42).abs() < 1e-12, "only input and output are billed: {cost}");
+        assert_eq!(unpriced, 43_000_000, "the cache tokens are counted, not billed");
+    }
+
+    #[test]
+    fn a_full_price_bills_everything() {
+        let p = ModelPrice { input: 2.0, output: 10.0, cache_read: Some(0.2), cache_write: Some(2.5) };
+        let t = Tokens { input: 1_000_000, output: 1_000_000, cache_read: 1_000_000, cache_write: 1_000_000 };
+        let (cost, unpriced) = p.split(&t);
+        assert!((cost - 14.7).abs() < 1e-12, "{cost}");
+        assert_eq!(unpriced, 0);
+    }
+
+    #[test]
+    fn a_zero_cache_tariff_is_a_price() {
+        // DeepSeek writes its cache for free: that is a tariff, not a gap.
+        let p = ModelPrice { input: 0.14, output: 0.28, cache_read: Some(0.006), cache_write: Some(0.0) };
+        let t = Tokens { input: 0, output: 0, cache_read: 1_000_000, cache_write: 1_000_000 };
+        let (cost, unpriced) = p.split(&t);
+        assert!((cost - 0.006).abs() < 1e-12, "{cost}");
+        assert_eq!(unpriced, 0);
     }
 }

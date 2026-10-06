@@ -96,3 +96,17 @@ export const useSyncVaultNow = () =>
 
 export const useStats = (days: number) =>
   useQuery({ queryKey: ["stats", days], queryFn: () => request<{ days: number; since: string; projects: ProjectStats[] }>("GET", `/api/stats?days=${days}`) });
+
+/** The model prices in effect: where each model's price comes from and when LiteLLM's were received. */
+export interface ModelPrices {
+  models: { model: string; source: string; price: { input: number; output: number; cacheRead: number | null; cacheWrite: number | null } }[];
+  fetchedAt: string | null;
+  lastError: string | null;
+}
+
+export const useModelPrices = () =>
+  useQuery({ queryKey: ["model-prices"], queryFn: () => request<ModelPrices>("GET", "/api/model-prices") });
+
+/** «Pull the config»: ask LiteLLM for the tariffs again; the stats reprice with what comes back. */
+export const useRefreshModelPrices = () =>
+  useInvalidating(() => request<{ received: number; priced: number; fetchedAt: string }>("POST", "/api/model-prices"), [["model-prices"], ["stats"]]);

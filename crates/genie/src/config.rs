@@ -20,26 +20,18 @@ pub struct RoleModel {
     pub thinking: Option<String>,
 }
 
-/// `modelPrices`: what a model costs, in dollars per million tokens. Cache prices
-/// default to the input price.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, serde::Serialize, Default)]
-#[serde(rename_all = "camelCase", default)]
-pub struct ModelPrice {
-    pub input: f64,
-    pub output: f64,
-    pub cache_read: Option<f64>,
-    pub cache_write: Option<f64>,
-}
+/// `modelPrices`: what a model costs, in dollars per million tokens. A missing
+/// cache price leaves that cache's tokens unpriced (never billed as input).
+pub use genie_core::usage::ModelPrice;
 
-impl ModelPrice {
-    /// What `t` cost, in dollars.
-    pub fn cost(&self, t: &genie_core::usage::Tokens) -> f64 {
-        (t.input as f64 * self.input
-            + t.output as f64 * self.output
-            + t.cache_read as f64 * self.cache_read.unwrap_or(self.input)
-            + t.cache_write as f64 * self.cache_write.unwrap_or(self.input))
-            / 1_000_000.0
-    }
+/// `litellm`: where the server reads the models' tariffs from. Prices load at
+/// start and by an administrator's «pull the config» action — never on a timer.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Litellm {
+    /// The proxy's base URL, the same one pi's `litellm` provider uses
+    /// (…/v1); `None` switches fetching off.
+    pub base_url: Option<String>,
 }
 
 /// The price of `model` (`provider/model`): its own entry, else an entry naming
@@ -382,6 +374,7 @@ pub struct Config {
     pub role_models: BTreeMap<String, RoleModel>,
     /// Prices of models (`provider/model` or the model alone), for what agents' work cost.
     pub model_prices: BTreeMap<String, ModelPrice>,
+    pub litellm: Litellm,
     pub budgets: Budgets,
     pub limits: Limits,
     pub worktrees: Worktrees,
@@ -402,6 +395,7 @@ impl Default for Config {
             allow_hosts: Vec::new(),
             role_models: BTreeMap::new(),
             model_prices: BTreeMap::new(),
+            litellm: Litellm::default(),
             budgets: Budgets::default(),
             limits: Limits::default(),
             worktrees: Worktrees::default(),

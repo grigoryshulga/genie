@@ -16,6 +16,7 @@ pub mod http;
 pub mod knowledge;
 pub mod llm_key;
 pub mod mcp_gateway;
+pub mod model_prices;
 pub mod notify;
 pub mod ops;
 pub mod orchestrate;
@@ -70,6 +71,24 @@ pub async fn serve(app: Arc<App>) -> Result<(), String> {
     }
 }
 
+/// Load the models' tariffs from LiteLLM once the server is up — the only
+/// fetch that is not an administrator's action. An unconfigured server
+/// (no `litellm.baseUrl`, no service token) simply skips it.
+fn boot_price_refresh(app: Arc<App>) {
+    if app.cfg.litellm.base_url.is_none() || std::env::var(model_prices::INFO_TOKEN).unwrap_or_default().is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        match model_prices::refresh(&app).await {
+            Ok(n) => println!("genie serve: {n} model price(s) received from LiteLLM"),
+            Err(e) => {
+                model_prices::record_error(&app, &e);
+                eprintln!("genie serve: model prices not received: {e}");
+            }
+        }
+    });
+}
+
 /// Completes on Ctrl-C (SIGINT) or, where the platform has it, SIGTERM (`docker stop`, systemd).
 async fn stop_signal() {
     #[cfg(unix)]
@@ -89,6 +108,7 @@ pub async fn serve_on(
     listener: tokio::net::TcpListener,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<(), String> {
+    boot_price_refresh(app.clone());
     let router = http::router(app);
     axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown)

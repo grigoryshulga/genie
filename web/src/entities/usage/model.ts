@@ -22,6 +22,8 @@ export interface ModelSpend {
   tokens: Tokens;
   /** Dollars; `null` when the model has no price. */
   cost: number | null;
+  /** Tokens no price covered (cache without a cache price; all of them when the model has no price). */
+  unpricedTokens: number;
   price: ModelPrice | null;
 }
 
@@ -73,7 +75,7 @@ export function mergeSpends(list: Spend[]): Spend {
       models.set(
         m.model,
         was
-          ? { ...was, calls: was.calls + m.calls, tokens: addTokens(was.tokens, m.tokens), cost: was.cost === null || m.cost === null ? (was.cost ?? m.cost) : was.cost + m.cost }
+          ? { ...was, calls: was.calls + m.calls, tokens: addTokens(was.tokens, m.tokens), cost: was.cost === null || m.cost === null ? (was.cost ?? m.cost) : was.cost + m.cost, unpricedTokens: (was.unpricedTokens ?? 0) + (m.unpricedTokens ?? 0) }
           : { ...m },
       );
     }

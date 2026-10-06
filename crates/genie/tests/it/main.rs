@@ -21,6 +21,7 @@ mod ideas;
 mod litellm_key;
 mod mcp_gateway;
 mod mcp_server;
+mod model_prices;
 mod ops;
 mod outcome;
 mod providers;

@@ -57,6 +57,7 @@ pub fn run(data: &Path, cfg: &Config, agents: &AgentConfig, web: Option<&Path>) 
     let mut out = Out(Vec::new());
     storage(&mut out, data);
     schemas(&mut out, data);
+    model_prices(&mut out, data, cfg);
     match (crate::http::web::resolve(web), web) {
         (crate::http::web::WebUi::BuiltIn, Some(dir)) => out.warn(
             "web",
@@ -71,7 +72,7 @@ pub fn run(data: &Path, cfg: &Config, agents: &AgentConfig, web: Option<&Path>) 
         }
     }
     let repos = people_and_projects(&mut out, data);
-    agents_and_models(&mut out, cfg, agents);
+    agents_and_models(&mut out, data, cfg, agents);
     match crate::sandbox::status(&cfg.runtime.sandbox) {
         (true, note) => out.ok("sandbox", note),
         (false, note) if cfg.runtime.sandbox.mode == "off" => out.warn("sandbox", note, "set runtime.sandbox to \"auto\" once bubblewrap works here"),
@@ -318,7 +319,47 @@ fn output(program: &Path, args: &[&str], cfg: &Config) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
+/// The prices in effect where doctor runs: `modelPrices` over what was fetched
+/// from LiteLLM (kept in `server.db`; an unreadable database prices manually).
+fn effective_prices(data: &Path, cfg: &Config) -> crate::spend::Prices {
+    ServerDb::open(&data.join("server.db"))
+        .map(|db| crate::model_prices::State::load(cfg, &db).prices)
+        .unwrap_or_else(|_| crate::model_prices::effective(cfg, &[]))
+}
+
+/// The tariffs from LiteLLM: configured at all, received at least once, and the
+/// last fetch's error if there was one (spend then prices with what it has).
+fn model_prices(out: &mut Out, data: &Path, cfg: &Config) {
+    let base = cfg.litellm.base_url.as_deref().filter(|b| !b.trim().is_empty());
+    let token = std::env::var(crate::model_prices::INFO_TOKEN).unwrap_or_default();
+    let Some(base) = base else {
+        return out.ok("models", "model prices: modelPrices of config.json (LiteLLM not configured)");
+    };
+    if token.is_empty() {
+        return out.warn(
+            "models",
+            format!("model prices: litellm.baseUrl is set, but {} is not", crate::model_prices::INFO_TOKEN),
+            "give the server a service token that may read LiteLLM's model info and no more",
+        );
+    }
+    let state = ServerDb::open(&data.join("server.db")).ok().map(|db| crate::model_prices::State::load(cfg, &db)).unwrap_or_default();
+    let n = state.prices.len();
+    match (&state.fetched_at, &state.last_error) {
+        (_, Some(e)) => out.warn(
+            "models",
+            format!("model prices: the last fetch from {base} failed: {e} (pricing with {n} price(s) already in hand)"),
+            "check the service token and LiteLLM, then pull the config again (the costs page or `genie server prices --refresh`)",
+        ),
+        (Some(at), None) => out.ok("models", format!("model prices: {n} model(s) priced from LiteLLM at {at}")),
+        (None, None) => out.warn(
+            "models",
+            format!("model prices: not received from {base} yet"),
+            "pull the config (the costs page or `genie server prices --refresh`); until then modelPrices of config.json prices what it can",
+        ),
+    }
+}
+
+fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentConfig) {
     let errors = agents.errors().count();
     if errors > 0 {
         out.fail(
@@ -415,11 +456,9 @@ fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
     }
     let b = cfg.budgets;
     if b.per_task > 0.0 || b.per_epic > 0.0 || b.per_day > 0.0 {
-        let unpriced: BTreeSet<&str> = wanted
-            .iter()
-            .map(|(m, _)| m.as_str())
-            .filter(|m| !m.is_empty() && crate::config::price_of(&cfg.model_prices, m).is_none())
-            .collect();
+        let prices = effective_prices(data, cfg);
+        let unpriced: BTreeSet<&str> =
+            wanted.iter().map(|(m, _)| m.as_str()).filter(|m| !m.is_empty() && crate::config::price_of(&prices, m).is_none()).collect();
         if !unpriced.is_empty() {
             out.warn(
                 "budgets",
@@ -427,7 +466,7 @@ fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
                     "budgets count dollars, but these models have no price and are not counted: {}",
                     unpriced.iter().copied().collect::<Vec<_>>().join(", ")
                 ),
-                "add them to modelPrices in config.json (dollars per million tokens)",
+                "pull the tariffs from LiteLLM (litellm.baseUrl + LITELLM_INFO_TOKEN) or add the models to modelPrices in config.json (dollars per million tokens)",
             );
         }
     }

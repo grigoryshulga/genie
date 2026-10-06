@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { costDays, type ProjectStats } from "@/entities/project";
+import { costDays, type ProjectStats, useModelPrices, useRefreshModelPrices } from "@/entities/project";
 import { useSession, useSwitchProject } from "@/entities/session";
 import {
   chatTitle,
@@ -18,6 +18,7 @@ import {
   topItems,
 } from "@/entities/usage";
 import { BarChart } from "./BarChart.tsx";
+import { useAct } from "./ProjectPage.tsx";
 
 const COLORS = ["#7c84f0", "#3aa58a", "#d9a441", "#5ba7e0"];
 const OTHER = "#6b6f78";
@@ -36,7 +37,9 @@ type Row = { key: string; name: string; sub: string; extra: string; spend: Spend
 const perMillion = (x: number) => `$${String(Math.round(x * 10_000) / 10_000).replace(".", ",")}`;
 
 const priceText = (m: Spend["models"][number]) =>
-  m.price ? `${perMillion(m.price.input)} / ${perMillion(m.price.output)} / ${perMillion(m.price.cacheRead ?? m.price.input)}` : "цена не указана";
+  m.price
+    ? `${perMillion(m.price.input)} / ${perMillion(m.price.output)} / ${m.price.cacheRead === null ? "—" : perMillion(m.price.cacheRead)} / ${m.price.cacheWrite === null ? "—" : perMillion(m.price.cacheWrite)}`
+    : "цена не указана";
 
 const tokensTitle = (s: Spend) =>
   `вход ${tokensText(s.tokens.input)}, выход ${tokensText(s.tokens.output)}, из кэша ${tokensText(s.tokens.cacheRead)}, в кэш ${tokensText(s.tokens.cacheWrite)}`;
@@ -49,9 +52,12 @@ const modelsText = (s: Spend) =>
 
 export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
   const [view, setView] = useState<View>("epics");
+  const act = useAct();
+  const modelPrices = useModelPrices();
+  const refreshPrices = useRefreshModelPrices();
   const total = mergeSpends(list.map((p) => p.usage?.spend).filter((s): s is Spend => !!s));
   const done = list.reduce((n, p) => n + p.done, 0);
-  const unpriced = total.models.filter((m) => m.cost === null);
+  const unpriced = total.models.filter((m) => m.cost === null || (m.unpricedTokens ?? 0) > 0);
   // The chart: the four most expensive models, the rest as one.
   const top = total.models.filter((m) => m.cost !== null).slice(0, COLORS.length);
   const rest = total.models.filter((m) => m.cost !== null).length > top.length;
@@ -136,7 +142,11 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
         <div className="sv-tile">
           <span className="lbl">Потрачено</span>
           <b>{moneyText(total.cost)}</b>
-          <span className="sub">по ценам из config.json</span>
+          <span className="sub">
+            {modelPrices.data?.fetchedAt
+              ? `по тарифам LiteLLM от ${modelPrices.data.fetchedAt.slice(0, 16).replace("T", " ")}, modelPrices перекрывает`
+              : "по ценам из config.json"}
+          </span>
         </div>
         <div className="sv-tile">
           <span className="lbl">Токенов</span>
@@ -151,9 +161,9 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
           <span className="sub">{done ? `на каждую из ${done} готовых` : "готовых задач не было"}</span>
         </div>
         <div className={`sv-tile${unpriced.length ? " warn" : ""}`}>
-          <span className="lbl">Без цены</span>
+          <span className="lbl">Не оценено</span>
           <b>{unpriced.length ? `${unpriced.length} ${unpriced.length === 1 ? "модель" : unpriced.length < 5 ? "модели" : "моделей"}` : "нет"}</b>
-          <span className="sub">{unpriced.length ? `${tokensText(total.unpricedTokens)} токенов не вошли в сумму` : "у всех моделей есть цена"}</span>
+          <span className="sub">{unpriced.length ? `${tokensText(total.unpricedTokens)} токенов не вошли в сумму (модель или кэш без цены)` : "у всех моделей и кэша есть цена"}</span>
         </div>
       </div>
       <div className="sv-charts">
@@ -161,8 +171,17 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
         <section className="st-card sv-models" aria-label="По моделям">
           <div className="sv-models-head">
             <b>По моделям</b>
-            <span className="muted">цена за 1 млн токенов: вход / выход / кэш</span>
+            <span className="muted">цена за 1 млн токенов: вход / выход / кэш чтение / кэш запись</span>
+            <button
+              type="button"
+              className="btn"
+              disabled={refreshPrices.isPending}
+              onClick={() => void act(() => refreshPrices.mutateAsync(), "Тарифы получены от LiteLLM")}
+            >
+              Подтянуть тарифы из LiteLLM
+            </button>
           </div>
+          {modelPrices.data?.lastError ? <p className="sv-cli sv-warn-text">Последняя загрузка тарифов не удалась: {modelPrices.data.lastError}</p> : null}
           <div className="sv-table sv-mtable">
             <div className="tr th">
               <span>Модель</span>
@@ -183,6 +202,7 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
                 </span>
                 <span data-l="Токены" title={tokensTitle({ ...total, tokens: m.tokens })}>
                   {tokensText(tokensTotal(m.tokens))}
+                  {(m.unpricedTokens ?? 0) > 0 ? <span className="muted"> · {tokensText(m.unpricedTokens)} без цены</span> : null}
                 </span>
                 <span data-l="Стоимость" className="num">
                   {m.cost === null ? "—" : moneyText(m.cost)}
@@ -191,7 +211,7 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
             ))}
           </div>
           <p className="sv-cli sv-pad">
-            Цена задаётся в <code>modelPrices</code> файла config.json. Без цены модель показывает только токены.
+            Тарифы берутся из LiteLLM (кнопка «Подтянуть тарифы», то же — <code>genie server prices --refresh</code>), а <code>modelPrices</code> файла config.json перекрывает их по полям. Кэш без цены не считается по цене входа: такие токены показываются отдельно.
           </p>
         </section>
       </div>
