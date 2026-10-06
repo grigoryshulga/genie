@@ -354,7 +354,7 @@ impl ServerDb {
     }
 
     pub fn open_questionnaires(&self) -> Result<Vec<Questionnaire>> {
-        let mut stmt = self.conn().prepare("SELECT id FROM questionnaires WHERE status = 'open' ORDER BY id")?;
+        let mut stmt = self.conn().prepare_cached("SELECT id FROM questionnaires WHERE status = 'open' ORDER BY id")?;
         let ids = stmt.query_map([], |r| r.get::<_, i64>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
         ids.into_iter().map(|id| self.questionnaire(id)).collect()
     }

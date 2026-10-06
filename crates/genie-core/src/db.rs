@@ -231,6 +231,8 @@ impl Db {
     /// Open any genie SQLite file: WAL, busy timeout, foreign keys, then `schema`.
     pub fn open_with_schema(path: &Path, schema: &str) -> Result<Db> {
         let conn = Connection::open(path)?;
+        // The default cache holds 16 statements; this crate caches more, and the background loops must find theirs instead of re-planning every tick.
+        conn.set_prepared_statement_cache_capacity(64);
         conn.busy_timeout(Duration::from_secs(10))?;
         conn.pragma_update_and_check(None, "journal_mode", "WAL", |r| r.get::<_, String>(0))?;
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")?;
