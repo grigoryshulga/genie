@@ -587,6 +587,22 @@ pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
     let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
     db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
     db.add_columns(SERVER_COLUMN_MIGRATIONS)?;
+    // Indexes on the columns the background loops filter and order by every couple of seconds —
+    // open questionnaires, queued jobs, an automation's run history and the delivery poller.
+    // After `add_columns`: the poller's `ci_sha` is one of the columns just applied, and an
+    // index over a missing column would fail on an old database. The poller's partial index
+    // repeats the query's WHERE clause exactly, or SQLite would not prove it can use it.
+    db.conn().execute_batch(
+        "CREATE INDEX IF NOT EXISTS questionnaires_open ON questionnaires(status, id);
+         CREATE INDEX IF NOT EXISTS questionnaires_open_task ON questionnaires(project, task, status);
+         CREATE INDEX IF NOT EXISTS agent_jobs_queued ON agent_jobs(status, id);
+         CREATE INDEX IF NOT EXISTS agent_jobs_task ON agent_jobs(project, task, status);
+         CREATE INDEX IF NOT EXISTS automation_runs_started ON automation_runs(automation, started);
+         CREATE INDEX IF NOT EXISTS automation_runs_key ON automation_runs(automation, trigger_key COLLATE NOCASE);
+         CREATE INDEX IF NOT EXISTS automation_runs_by_status ON automation_runs(automation, status);
+         CREATE INDEX IF NOT EXISTS task_repos_watched ON task_repos(updated)
+           WHERE cr_state = 'open' OR (ci_sha IS NOT NULL AND (ci_state IS NULL OR ci_state IN ('pending', 'none')));",
+    )?;
     db.record_version(SERVER_SCHEMA_VERSION)?;
     Ok(db)
 }
@@ -978,7 +994,7 @@ impl ServerDb {
     }
 
     pub fn projects(&self) -> Result<Vec<Project>> {
-        let mut stmt = self.conn().prepare("SELECT * FROM projects ORDER BY created, slug")?;
+        let mut stmt = self.conn().prepare_cached("SELECT * FROM projects ORDER BY created, slug")?;
         Ok(stmt.query_map([], Project::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
@@ -1412,5 +1428,40 @@ mod tests {
         assert!(db.acquire_lock("orch:shop", "server", ChronoDuration::seconds(30)).unwrap(), "the holder renews");
         db.release_lock("orch:shop", "server").unwrap();
         assert!(db.acquire_lock("orch:shop", "cockpit", ChronoDuration::seconds(30)).unwrap());
+    }
+
+    /// The `detail` lines (the fourth column) `EXPLAIN QUERY PLAN` gives for one statement.
+    fn plan_of(conn: &Connection, sql: &str, params: impl rusqlite::Params) -> Vec<String> {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        let rows = stmt.query_map(params, |r| r.get::<_, String>(3)).unwrap();
+        rows.filter_map(|d| d.ok()).collect()
+    }
+
+    /// The queries the background loops run every couple of seconds have to reach their index
+    /// on a fresh database, or they scan tables that grow with use. Each SQL text is copied
+    /// from the function it belongs to and has to stay identical to it.
+    #[test]
+    fn the_background_loops_use_their_indexes() {
+        let dir = tempfile::tempdir().unwrap();
+        let tracker = Db::open(&dir.path().join("genie.db")).unwrap();
+        let server = ServerDb::open(&dir.path().join("server.db")).unwrap();
+
+        // `team::Bus::open_deliveries` in team.rs — the partial index is `deliveries_open`.
+        const OPEN_DELIVERIES: &str = "SELECT id, team, recipient, created FROM deliveries WHERE acked_at IS NULL AND released_at IS NULL AND created < ?1 ORDER BY id";
+        let plan = plan_of(tracker.conn(), OPEN_DELIVERIES, params!["2026-01-01T00:00:00.000Z"]);
+        assert!(plan.iter().any(|d| d.contains("deliveries_open")), "open_deliveries scans: {plan:?}");
+
+        // `repos::watched_deliveries` in repos.rs — its WHERE clause is the index's too.
+        const WATCHED_DELIVERIES: &str = "SELECT * FROM task_repos
+             WHERE cr_state = 'open'
+                OR (ci_sha IS NOT NULL AND (ci_state IS NULL OR ci_state IN ('pending', 'none')))
+             ORDER BY updated";
+        let plan = plan_of(server.conn(), WATCHED_DELIVERIES, ());
+        assert!(plan.iter().any(|d| d.contains("task_repos_watched")), "watched_deliveries scans: {plan:?}");
+
+        // `work::queued_jobs` in work.rs.
+        const QUEUED_JOBS: &str = "SELECT * FROM agent_jobs WHERE status = 'queued' ORDER BY id";
+        let plan = plan_of(server.conn(), QUEUED_JOBS, ());
+        assert!(plan.iter().any(|d| d.contains("agent_jobs_queued")), "queued_jobs scans: {plan:?}");
     }
 }

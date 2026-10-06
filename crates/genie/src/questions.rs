@@ -3,7 +3,7 @@
 //! web: a link to the answer page), answered anywhere, recorded in the task as
 //! the owner's comment when complete (which also wakes the orchestrator).
 
-use chrono::Duration as ChronoDuration;
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use genie_core::inbox::{NewQuestion, Questionnaire};
 use serde_json::json;
 
@@ -32,6 +32,8 @@ pub fn ask(app: &App, a: Ask<'_>) -> AppResult<i64> {
         db.create_questionnaire(a.project, a.task, a.asked_by, a.recipient, channel, &a.questions, a.run_step, a.remind_after, a.timeout)
     })?;
     send(app, &qn, &secret, false)?;
+    // Its reminder and deadline are new deadlines for the engine to sleep until.
+    app.wake_engine.notify_one();
     Ok(qn.id)
 }
 
@@ -137,28 +139,43 @@ fn record(app: &App, qn: &Questionnaire) -> AppResult<()> {
     Ok(())
 }
 
-/// Reminders and deadlines of open questionnaires (called by the engine tick).
-pub fn tick(app: &App) -> AppResult<()> {
+/// Reminders and deadlines of open questionnaires (called by the engine's pass). Returns when the
+/// next reminder or deadline falls: the engine sleeps until then.
+pub fn tick(app: &App) -> AppResult<Option<DateTime<Utc>>> {
     let now = genie_core::db::now();
+    let mut next: Option<DateTime<Utc>> = None;
+    let mut soonest = |at: &str| {
+        if let Ok(t) = DateTime::parse_from_rfc3339(at) {
+            let t = t.with_timezone(&Utc);
+            next = Some(next.map_or(t, |n| n.min(t)));
+        }
+    };
     for qn in app.with_server(|db| db.open_questionnaires())? {
         if qn.due.as_ref().is_some_and(|d| *d <= now) {
             app.with_server(|db| db.close_questionnaire(qn.id, "expired"))?;
             app.wake_engine.notify_one();
             continue;
         }
-        if qn.remind_at.as_ref().is_some_and(|r| *r <= now) {
-            app.with_server(|db| db.clear_reminder(qn.id))?;
-            // The secret is not stored; a reminder carries a fresh answer link.
-            let secret = genie_core::server_db::new_secret();
-            app.with_server(|db| {
-                db.conn().execute(
-                    "UPDATE questionnaires SET token_hash = ?1 WHERE id = ?2",
-                    rusqlite::params![genie_core::server_db::hash_secret(&secret), qn.id],
-                )?;
-                Ok(())
-            })?;
-            send(app, &qn, &secret, true)?;
+        if let Some(due) = &qn.due {
+            soonest(due);
+        }
+        match &qn.remind_at {
+            Some(r) if *r <= now => {
+                app.with_server(|db| db.clear_reminder(qn.id))?;
+                // The secret is not stored; a reminder carries a fresh answer link.
+                let secret = genie_core::server_db::new_secret();
+                app.with_server(|db| {
+                    db.conn().execute(
+                        "UPDATE questionnaires SET token_hash = ?1 WHERE id = ?2",
+                        rusqlite::params![genie_core::server_db::hash_secret(&secret), qn.id],
+                    )?;
+                    Ok(())
+                })?;
+                send(app, &qn, &secret, true)?;
+            }
+            Some(r) => soonest(r),
+            None => {}
         }
     }
-    Ok(())
+    Ok(next)
 }

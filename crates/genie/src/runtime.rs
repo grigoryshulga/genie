@@ -35,7 +35,7 @@ use crate::config::MemberSpec;
 use crate::ops::{self, AgentKind};
 use crate::outcome::Outcome;
 use crate::sandbox;
-use crate::state::{App, AppError, AppResult};
+use crate::state::{App, AppError, AppResult, SAFETY_NET};
 
 /// Which agent a turn is for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -106,15 +106,31 @@ pub fn start(app: &Arc<App>) {
     tokio::spawn(async move {
         let slots = Arc::new(Semaphore::new(app.cfg.runtime.max_concurrent.max(1)));
         loop {
-            if let Err(e) = schedule(&app, &slots).await {
-                eprintln!("genie runtime: {e}");
-            }
+            let next = match schedule(&app, &slots).await {
+                Ok(next) => next,
+                Err(e) => {
+                    eprintln!("genie runtime: {e}");
+                    Next(Some(Duration::from_secs(5)))
+                }
+            };
             tokio::select! {
                 _ = app.wake_runtime.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(3)) => {}
+                _ = tokio::time::sleep(next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET)).max(Duration::from_millis(50))) => {}
             }
         }
     });
+}
+
+/// When the scheduler has to look again without being woken: the soonest of the deadlines it
+/// meets in a pass (a backoff, a nudge to repeat, an idle session to stop, a console that lapses).
+/// New mail, jobs, finished turns and changed teams wake it instead (`App::wake_runtime`).
+#[derive(Default)]
+pub(crate) struct Next(Option<Duration>);
+
+impl Next {
+    pub(crate) fn within(&mut self, d: Duration) {
+        self.0 = Some(self.0.map_or(d, |x| x.min(d)));
+    }
 }
 
 /// After a restart: interrupted turns give their mail back, running jobs are requeued,
@@ -162,10 +178,26 @@ pub(crate) fn is_our_agent(pid: i64, project: &str, name: &str) -> bool {
     has(format!("GENIE_PROJECT={project}")) && has(format!("GENIE_AGENT_NAME={name}"))
 }
 
-async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
-    let candidates = app
+async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
+    let mut next = Next::default();
+    let live = app.cfg.runtime.live_sessions();
+    // Supervision first, so what it frees (stale deliveries, stopped sessions) is seen below.
+    if live {
+        crate::sessions::sweep(app, &mut next).await?;
+    }
+    // The silent-team watchdog rides every pass, in both `sessions` and `turns` mode. What it
+    // watches for is quiet, so the safety net (a minute) bounds how late it may be; the last
+    // activity of a team (mail, a turn, a team change) wakes the scheduler by itself.
+    if let Err(e) = crate::sessions::watch_silent_teams(app).await {
+        eprintln!("genie runtime: silent-team watchdog: {e}");
+    }
+    if app.cfg.runtime.stall_secs > 0 {
+        next.within(Duration::from_secs((app.cfg.runtime.stall_secs / 4).max(1)));
+    }
+    let (candidates, console) = app
         .blocking(|app| {
             let mut out = Vec::new();
+            let mut console = None::<Duration>;
             for p in app.with_server(|db| db.projects())? {
                 let boxes = match app.with_tracker(&p.slug, |t| t.bus().mailboxes_with_mail()) {
                     Ok(b) => b,
@@ -177,6 +209,15 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
                 for b in boxes {
                     match b.team {
                         None if orchestrator_runs(app, &p) => out.push(AgentKey::Orchestrator { project: p.slug.clone() }),
+                        // A person's console lapses by itself: the orchestrator takes its mail then.
+                        None if p.autonomy != "manual" => {
+                            let lapses = app.with_server(|db| db.console(&p.slug)).ok().flatten().and_then(|c| {
+                                chrono::DateTime::parse_from_rfc3339(&c.until)
+                                    .ok()
+                                    .and_then(|u| (u.to_utc() - chrono::Utc::now()).to_std().ok())
+                            });
+                            console = [console, lapses].into_iter().flatten().min();
+                        }
                         None => {}
                         Some(team) => out.push(AgentKey::Member { project: p.slug.clone(), team, member: b.recipient }),
                     }
@@ -185,24 +226,27 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
             for j in app.with_server(|db| db.queued_jobs())? {
                 out.push(AgentKey::Job { project: j.project.clone(), job: j.id });
             }
-            Ok(out)
+            Ok((out, console))
         })
         .await?;
-    let live = app.cfg.runtime.live_sessions();
-    if live {
-        crate::sessions::sweep(app).await?;
-    }
-    // The silent-team watchdog rides every tick, in both `sessions` and `turns` mode.
-    if let Err(e) = crate::sessions::watch_silent_teams(app).await {
-        eprintln!("genie runtime: silent-team watchdog: {e}");
+    if let Some(d) = console {
+        next.within(d + Duration::from_millis(50));
     }
     for key in candidates {
         if live && !matches!(key, AgentKey::Job { .. }) {
-            crate::sessions::deliver(app, &key).await;
+            if let Some(d) = crate::sessions::deliver(app, &key).await {
+                next.within(d);
+            }
             continue;
         }
-        let ready = !app.sched.with(|s| s.running.contains(&key)) && app.attempts.may_start(&key);
-        if !ready {
+        if !app.attempts.may_start(&key) {
+            // Waiting out a backoff: nobody wakes the scheduler when it ends.
+            if let Some(d) = app.attempts.wait_for(&key) {
+                next.within(d + Duration::from_millis(50));
+            }
+            continue;
+        }
+        if app.sched.with(|s| s.running.contains(&key)) {
             continue;
         }
         let Ok(permit) = slots.clone().try_acquire_owned() else { break };
@@ -216,7 +260,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<()> {
             app.wake_engine.notify_one();
         });
     }
-    Ok(())
+    Ok(next)
 }
 
 struct Prepared {
@@ -601,7 +645,7 @@ pub(crate) async fn agent_process(
     let argv = build_command(template, &vars, &lists);
     let mut cmd = agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), token)?;
     llm.apply(&mut cmd);
-    kit_env(&mut cmd, &files, &argv);
+    kit_env(&mut cmd, &files);
     Ok((cmd, dir))
 }
 
@@ -630,6 +674,7 @@ pub(crate) fn agent_command(
     let path = std::env::var("PATH").unwrap_or_default();
     let exe_dir = app.exe.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
     let (program, args) = argv.split_first().ok_or("the agent command is empty")?;
+    let is_pi = Path::new(program).file_name().is_some_and(|n| n == "pi");
     let (program, args) = match sandbox_plan(app, project, cwd, dir)? {
         Some(plan) => plan.wrap(program, args),
         None => (program.to_string(), args.to_vec()),
@@ -672,8 +717,25 @@ pub(crate) fn agent_command(
     for (k, v) in &app.cfg.runtime.env {
         cmd.env(k, v);
     }
+    if is_pi {
+        let own = app.cfg.runtime.env.get("NODE_OPTIONS").cloned().or_else(|| std::env::var("NODE_OPTIONS").ok());
+        if let Some(options) = heap_cap(own.as_deref(), app.cfg.runtime.node_heap_mb) {
+            // The guard extension takes the cap off again for what pi runs (builds are not pi).
+            cmd.env("NODE_OPTIONS", options).env("GENIE_NODE_HEAP_MB", app.cfg.runtime.node_heap_mb.to_string());
+        }
+    }
     app.mcp.place(&crate::mcp_gateway::agent_key(project, who.team, who.name), cwd);
     Ok(cmd)
+}
+
+/// `NODE_OPTIONS` with a heap cap of `mb` added, or `None` when there is nothing to add: no cap
+/// wanted (0) or one already set.
+fn heap_cap(own: Option<&str>, mb: u64) -> Option<String> {
+    let own = own.unwrap_or_default().trim();
+    if mb == 0 || own.contains("--max-old-space-size") {
+        return None;
+    }
+    Some(format!("{own} --max-old-space-size={mb}").trim().to_string())
 }
 
 /// The sandbox of an agent working in `cwd` (`dir`: its runtime directory), or
@@ -771,7 +833,7 @@ pub(crate) struct Kit {
     pub skills: Vec<String>,
     /// `{?limitSkills}`: the role lists its skills, so the harness loads no others.
     pub limit_skills: bool,
-    /// The pi-mcp-adapter config with only the role's connections (secrets resolved).
+    /// The role's connections in pi's `mcp.json` format (secrets resolved, exposure chosen).
     pub mcp: serde_json::Value,
     /// The guard's rules (`GENIE_POLICY`).
     pub policy: serde_json::Value,
@@ -780,8 +842,8 @@ pub(crate) struct Kit {
 /// The files a started agent reads.
 pub(crate) struct KitFiles {
     pub policy: PathBuf,
-    /// Only when pi loads pi-mcp-adapter (pi refuses `--mcp-config` otherwise).
-    pub mcp_config: Option<PathBuf>,
+    /// The role's MCP connections; the guard extension connects them (`GENIE_MCP_CONFIG`).
+    pub mcp_config: PathBuf,
     pub guard: PathBuf,
 }
 
@@ -800,24 +862,72 @@ pub(crate) fn kit(app: &App, agents: &AgentConfig, project: &str, role: &RoleDef
     let mut skills: Vec<String> =
         role.skills.iter().flatten().filter_map(|name| agents.skills.get(name)).map(|s| s.dir.to_string_lossy().into_owned()).collect();
     skills.extend(repo_skill_dirs(cwd).into_iter().map(|d| d.to_string_lossy().into_owned()));
+    let mut codemode = false;
     let servers: serde_json::Map<String, serde_json::Value> = agents
         .mcp_for(project, role)
         .into_iter()
         .map(|(s, tools)| {
             // Through the gateway the harness holds only its address and the agent's own token
             // (the harness fills `${GENIE_TOKEN}` from its environment); the gateway keeps the tools.
-            if app.cfg.runtime.mcp_gateway && s.gateway {
+            let mut entry = if app.cfg.runtime.mcp_gateway && s.gateway {
                 let url = format!("http://127.0.0.1:{}/api/mcp-gateway/{}", app.cfg.port, s.id);
-                return (s.id.clone(), json!({ "url": url, "headers": { "Authorization": "Bearer ${GENIE_TOKEN}" } }));
-            }
-            let mut entry = s.resolved();
-            if let (Some(tools), Some(o)) = (tools, entry.as_object_mut()) {
-                o.insert("includeTools".into(), json!(tools));
+                json!({ "url": url, "headers": { "Authorization": "Bearer ${GENIE_TOKEN}" } })
+            } else {
+                s.resolved()
+            };
+            if let Some(o) = entry.as_object_mut() {
+                // The admin's choice of exposure is the connection's, whoever opens it.
+                for key in ["exposure", "toolExposure"] {
+                    if let Some(v) = s.config.get(key) {
+                        o.insert(key.into(), v.clone());
+                    }
+                }
+                if !s.description.is_empty() {
+                    o.insert("description".into(), json!(s.description));
+                }
+                codemode |= expose(o, tools.as_deref());
             }
             (s.id.clone(), entry)
         })
         .collect();
-    Kit { skills, limit_skills: role.skills.is_some(), mcp: json!({ "mcpServers": servers }), policy: policy(agents, project, role, files) }
+    // Codemode (JavaScript calling the tools) only for connections an admin set to it: pi would
+    // switch it on for every role otherwise.
+    Kit {
+        skills,
+        limit_skills: role.skills.is_some(),
+        mcp: json!({ "mcpServers": servers, "autoEnableCodemode": codemode }),
+        policy: policy(agents, project, role, files),
+    }
+}
+
+/// How the tools of a connection reach the model. `exposure` in `mcp.json` is the admin's choice;
+/// by default a connection limited to some tools declares them (`direct`: few, and the model calls
+/// them as any tool), a whole one is searched with `tool_search` (`deferred`: its tools stay out of
+/// every request until needed). A grant limited to tools hides the rest of the connection:
+/// `toolExposure` names the granted patterns, so the others are never exposed (the guard checks
+/// the calls all the same). Returns whether a tool is left to codemode.
+fn expose(entry: &mut serde_json::Map<String, serde_json::Value>, granted: Option<&[String]>) -> bool {
+    let codemode = |how: &str| how.starts_with("codemode");
+    let chosen = entry.get("exposure").and_then(|e| e.as_str()).map(str::to_string);
+    match granted {
+        Some(patterns) => {
+            let how = chosen.unwrap_or_else(|| "direct".into());
+            // pi's patterns know `*` only.
+            let by_tool: serde_json::Map<String, serde_json::Value> = patterns.iter().map(|p| (p.replace('?', "*"), json!(how))).collect();
+            entry.insert("exposure".into(), json!("hidden"));
+            entry.insert("toolExposure".into(), json!(by_tool));
+            codemode(&how)
+        }
+        None => {
+            let how = chosen.unwrap_or_else(|| "deferred".into());
+            entry.insert("exposure".into(), json!(how));
+            codemode(&how)
+                || entry
+                    .get("toolExposure")
+                    .and_then(|t| t.as_object())
+                    .is_some_and(|t| t.values().any(|v| v.as_str().is_some_and(codemode)))
+        }
+    }
 }
 
 /// The project's own skills, which every agent gets: `.pi/skills` and `.agents/skills`
@@ -839,23 +949,14 @@ impl Kit {
     /// Write the agent's rules and MCP config into its runtime directory `dir`.
     pub(crate) fn write(&self, app: &App, dir: &Path, role: &str) -> std::io::Result<KitFiles> {
         let text = |v: &serde_json::Value| serde_json::to_string_pretty(v).unwrap_or_default();
-        let adapter = app.cfg.runtime.mcp_adapter();
-        let files = KitFiles {
-            policy: dir.join("policy.json"),
-            mcp_config: adapter.then(|| dir.join("mcp.json")),
-            guard: crate::sessions::write_guard(app)?,
-        };
+        let files =
+            KitFiles { policy: dir.join("policy.json"), mcp_config: dir.join("mcp.json"), guard: crate::sessions::write_guard(app)? };
         write_private(&files.policy, &text(&self.policy))?;
-        match &files.mcp_config {
-            Some(path) => write_private(path, &text(&self.mcp))?,
-            None => {
-                let _ = std::fs::remove_file(dir.join("mcp.json"));
-                if self.mcp["mcpServers"].as_object().is_some_and(|m| !m.is_empty()) {
-                    warn_once(&format!(
-                        "genie runtime: the role {role} has MCP connections, but pi does not load pi-mcp-adapter (`pi install npm:pi-mcp-adapter`, or set runtime.mcpAdapter); its agents run without MCP"
-                    ));
-                }
-            }
+        write_private(&files.mcp_config, &text(&self.mcp))?;
+        if app.cfg.runtime.mcp_adapter_loaded() && self.mcp["mcpServers"].as_object().is_some_and(|m| !m.is_empty()) {
+            warn_once(&format!(
+                "genie runtime: pi loads pi-mcp-adapter, which does not belong next to its native MCP support: the guard blocks its tools, so the role {role} has only the connections genie hands it (`pi remove npm:pi-mcp-adapter`)"
+            ));
         }
         Ok(files)
     }
@@ -864,7 +965,7 @@ impl Kit {
     pub(crate) fn placeholders(&self, files: &KitFiles, vars: &mut HashMap<&str, String>) -> HashMap<&'static str, Vec<String>> {
         let path = |p: &Path| p.to_string_lossy().into_owned();
         vars.insert("guard", path(&files.guard));
-        vars.insert("mcpConfig", files.mcp_config.as_deref().map(path).unwrap_or_default());
+        vars.insert("mcpConfig", path(&files.mcp_config));
         vars.insert("limitSkills", if self.limit_skills { "yes".into() } else { String::new() });
         HashMap::from([("skill", self.skills.clone())])
     }
@@ -879,13 +980,9 @@ fn warn_once(text: &str) {
     }
 }
 
-/// Tell the started agent where its rules are; with its MCP config on the command
-/// line, pi-mcp-adapter reads that file only (no user-wide or repository configs).
-pub(crate) fn kit_env(cmd: &mut tokio::process::Command, files: &KitFiles, argv: &[String]) {
-    cmd.env("GENIE_POLICY", &files.policy);
-    if files.mcp_config.as_ref().is_some_and(|m| argv.iter().any(|a| Path::new(a) == m)) {
-        cmd.env("PI_MCP_CONFIG_MODE", "exclusive");
-    }
+/// Tell the started agent where its rules and its MCP connections are (the guard extension reads both).
+pub(crate) fn kit_env(cmd: &mut tokio::process::Command, files: &KitFiles) {
+    cmd.env("GENIE_POLICY", &files.policy).env("GENIE_MCP_CONFIG", &files.mcp_config);
 }
 
 /// Write a file only its owner can read (it may hold secrets), replacing it at once.
@@ -1290,7 +1387,9 @@ fn mcp_section(agents: &AgentConfig, project: &str, role: &RoleDef) -> String {
     if grants.is_empty() {
         return String::new();
     }
-    let mut out = String::from("\n## MCP connections\n\nYour role may use these MCP connections, and no others:\n\n");
+    let mut out = String::from(
+        "\n## MCP connections\n\nYour role may use these MCP connections, and no others. Their tools are named `mcp__<connection>__<tool>` (`-` becomes `_`); those not declared to you yet are found with `tool_search`, or in a `codemode` script when you have it:\n\n",
+    );
     for (s, tools) in grants {
         out.push_str(&format!("- `{}`", s.id));
         if !s.description.is_empty() {
@@ -2090,6 +2189,40 @@ pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppRes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_heap_cap_joins_node_options_without_replacing_them() {
+        assert_eq!(heap_cap(None, 2048).as_deref(), Some("--max-old-space-size=2048"));
+        assert_eq!(heap_cap(Some("  "), 512).as_deref(), Some("--max-old-space-size=512"));
+        assert_eq!(heap_cap(Some("--no-warnings"), 2048).as_deref(), Some("--no-warnings --max-old-space-size=2048"));
+        assert_eq!(heap_cap(Some("--no-warnings"), 0), None, "0 is no cap");
+        assert_eq!(heap_cap(Some("--max-old-space-size=8192"), 2048), None, "the operator's own cap stands");
+    }
+
+    #[test]
+    fn a_connections_tools_reach_the_model_as_the_grant_and_the_admin_say() {
+        let run = |entry: serde_json::Value, granted: Option<&[&str]>| {
+            let mut o = entry.as_object().unwrap().clone();
+            let granted: Option<Vec<String>> = granted.map(|g| g.iter().map(|s| s.to_string()).collect());
+            let codemode = expose(&mut o, granted.as_deref());
+            (serde_json::Value::Object(o), codemode)
+        };
+        // Some tools: those are declared, the rest of the connection is hidden.
+        let (e, cm) = run(json!({ "url": "http://x" }), Some(&["get_*", "list_?"]));
+        assert_eq!(
+            (e["exposure"].clone(), e["toolExposure"].clone(), cm),
+            (json!("hidden"), json!({ "get_*": "direct", "list_*": "direct" }), false)
+        );
+        // A whole connection is searched for.
+        assert_eq!(run(json!({ "url": "http://x" }), None).0["exposure"], "deferred");
+        // The admin's choice stands, and codemode is switched on only for it.
+        let (e, cm) = run(json!({ "url": "http://x", "exposure": "codemode" }), None);
+        assert_eq!((e["exposure"].clone(), cm), (json!("codemode"), true));
+        let (e, cm) = run(json!({ "url": "http://x", "exposure": "deferred", "toolExposure": { "get_*": "codemode" } }), None);
+        assert_eq!((e["exposure"].clone(), cm), (json!("deferred"), true));
+        let (e, cm) = run(json!({ "url": "http://x", "exposure": "deferred" }), Some(&["get_*"]));
+        assert_eq!((e["toolExposure"].clone(), cm), (json!({ "get_*": "deferred" }), false), "also for the granted tools");
+    }
 
     #[tokio::test]
     async fn a_turn_and_a_session_launch_the_same_agent_but_for_what_they_are_given() {

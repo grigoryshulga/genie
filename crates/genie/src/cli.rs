@@ -160,7 +160,9 @@ pub fn op_context(data: &Path, project: Option<String>, setup: bool) -> Result<C
 
 async fn run_op(entry: &ops::Entry, args: &ArgMatches, data: &Path, project: Option<String>, json: bool) -> Result<(), String> {
     let cx = op_context(data, project, matches!(entry.group, "user" | "project"))?;
-    let out = entry.run_cli(args, &cx).await?;
+    let out = entry.run_cli(args, &cx).await;
+    wake_server_after(&cx, data).await;
+    let out = out?;
     if json {
         println!("{}", serde_json::to_string_pretty(&out.data).map_err(|e| e.to_string())?);
     } else if !out.text.is_empty() {
@@ -172,7 +174,17 @@ async fn run_op(entry: &ops::Entry, args: &ArgMatches, data: &Path, project: Opt
 /// A command kept from before the catalog, done by its operation.
 async fn legacy_op(group: &str, name: &str, args: serde_json::Value, data: &Path) -> Result<String, String> {
     let entry = ops::find(group, name).ok_or(format!("no operation {group} {name}"))?;
-    Ok(entry.run_json(args, &op_context(data, None, true)?).await?.text)
+    let cx = op_context(data, None, true)?;
+    let out = entry.run_json(args, &cx).await;
+    wake_server_after(&cx, data).await;
+    Ok(out?.text)
+}
+
+/// A command that wrote to the data directory itself: a running server does not know yet.
+async fn wake_server_after(cx: &Cx, data: &Path) {
+    if cx.api.wrote_locally() {
+        ops::api::wake_server(Config::load(data).map(|c| c.port).unwrap_or(7420)).await;
+    }
 }
 
 /// The whole command line: the commands below and the catalog's.

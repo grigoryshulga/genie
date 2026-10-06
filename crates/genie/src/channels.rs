@@ -12,16 +12,19 @@ use genie_core::inbox::OutboxItem;
 use genie_core::{Actor, CreateInput, Role, Status};
 use serde_json::{Value, json};
 
-use crate::state::App;
+use crate::state::{App, SAFETY_NET, sleep_until};
 
 pub fn start(app: &Arc<App>) {
     let a = app.clone();
     tokio::spawn(async move {
         loop {
             dispatch(&a).await;
+            // New rows wake the dispatcher; a failed one waits for its backoff, which ends by itself.
+            let due = a.blocking(|app| app.with_server(|db| db.next_outbox_at())).await.ok().flatten();
+            let due = due.and_then(|t| chrono::DateTime::parse_from_rfc3339(&t).ok()).map(|t| t.to_utc());
             tokio::select! {
                 _ = a.wake_outbox.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                _ = tokio::time::sleep(sleep_until(due, SAFETY_NET).max(Duration::from_millis(100))) => {}
             }
         }
     });

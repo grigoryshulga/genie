@@ -22,7 +22,7 @@ use super::policy::{Effective, Merge, RoleGit, effective};
 use super::provider::{Api, ApiError, ChangeRequest, Ci, CiFailure, Comment, CrState, OpenRequest};
 use super::service::{self, AgentId};
 use super::store;
-use crate::state::{App, AppError};
+use crate::state::{App, AppError, SAFETY_NET};
 
 /// Why a delivery operation failed.
 #[derive(Debug)]
@@ -191,11 +191,13 @@ pub async fn open_request(app: &Arc<App>, project: &str, task: &str, repo: &str,
                 seen_at: first.then_some(seen).flatten(),
             };
             let row = app.with_server(|db| db.request_opened(&p, &tk, &rp, opened))?;
+            // The request is watched from now on.
+            app.wake_poller.notify_one();
             if first {
                 let actor = Actor::new(c.name.clone(), c.role);
                 let payload = json!({ "task": tk, "repo": rp, "number": cr2.number, "url": cr2.url, "by": c.name });
                 app.with_tracker(&p, |t| {
-                    events::append(t.conn(), events::CR_OPENED, Some(&tk), &actor.name, actor.role.as_str(), payload)?;
+                    t.append_event(events::CR_OPENED, Some(&tk), &actor.name, actor.role.as_str(), payload)?;
                     t.comment(
                         &actor,
                         &tk,
@@ -504,12 +506,12 @@ fn record_changes(
         let payload = json!({ "task": task, "repo": repo, "number": cr.number, "url": cr.url, "ci": ci });
         app.with_tracker(p, |t| {
             if merged_now {
-                events::append(t.conn(), events::CR_MERGED, Some(task), "git-host", "human", payload.clone())?;
+                t.append_event(events::CR_MERGED, Some(task), "git-host", "human", payload.clone())?;
                 // A merge is news for the orchestrator (owner activity wakes it).
                 t.comment(&host_actor, task, &format!("The request #{} in {repo} was merged: {}", cr.number, cr.url), CommentKind::Note)?;
             }
             if abandoned_now {
-                events::append(t.conn(), events::CR_CLOSED, Some(task), "git-host", "human", payload.clone())?;
+                t.append_event(events::CR_CLOSED, Some(task), "git-host", "human", payload.clone())?;
                 t.comment(
                     &host_actor,
                     task,
@@ -547,7 +549,7 @@ fn record_ci(app: &App, row: &TaskRepo, ci: CheckState, failures: &[CiFailure], 
             CheckState::Failed => {
                 let mut payload = payload.clone();
                 payload["failures"] = json!(failures);
-                events::append(t.conn(), events::CI_FAILED, Some(task), "git-host", "human", payload)?;
+                t.append_event(events::CI_FAILED, Some(task), "git-host", "human", payload)?;
                 if let Some(team) = active_team(t, task) {
                     let mut text = match cr {
                         Some(cr) => format!(
@@ -576,10 +578,10 @@ fn record_ci(app: &App, row: &TaskRepo, ci: CheckState, failures: &[CiFailure], 
                 }
             }
             CheckState::Passed => {
-                events::append(t.conn(), events::CI_PASSED, Some(task), "git-host", "human", payload)?;
+                t.append_event(events::CI_PASSED, Some(task), "git-host", "human", payload)?;
             }
             CheckState::Stalled => {
-                events::append(t.conn(), events::CI_STALLED, Some(task), "git-host", "human", payload)?;
+                t.append_event(events::CI_STALLED, Some(task), "git-host", "human", payload)?;
                 let subject = match cr {
                     Some(cr) => format!("the request #{} in {repo} ({})", cr.number, cr.url),
                     None => format!("the branch `{}` in {repo}", row.ci_ref),
@@ -699,39 +701,55 @@ async fn repo_and_host(app: &Arc<App>, project: &str, repo: &str) -> Result<(Pro
 // --- the watcher --------------------------------------------------------------------------------
 
 /// Watch the delivery of every task — open requests and the branches of policies that have none —
-/// until the server stops. Each row is looked at every `poll_secs` of its host.
+/// until the server stops. Each row is looked at every `poll_secs` of its host: the poller sleeps
+/// until the first row is due, and is woken when a delivery starts to be watched (`wake_poller`).
 pub fn spawn_poller(app: Arc<App>) {
     tokio::spawn(async move {
-        let mut last: std::collections::HashMap<String, std::time::Instant> = Default::default();
+        let mut last: std::collections::HashMap<String, (std::time::Instant, u64)> = Default::default();
         let mut complained: std::collections::HashMap<String, std::time::Instant> = Default::default();
         loop {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            let rows = match app.blocking(|app| app.with_server(|db| db.watched_deliveries())).await {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-            for row in rows {
-                let key = format!("{}/{}/{}", row.project, row.task, row.repo);
-                let every = app
-                    .blocking({
-                        let (p, r) = (row.project.clone(), row.repo.clone());
-                        move |app| {
-                            let rec = app.with_server(|db| db.repo(&p, &r))?;
-                            Ok(store::host_of(app, &rec).map(|h| h.poll_secs).unwrap_or(60))
+            // The soonest a watched row is due again; nothing is due while none is watched.
+            let mut next = SAFETY_NET;
+            match app.blocking(|app| app.with_server(|db| db.watched_deliveries())).await {
+                Err(_) => next = Duration::from_secs(10),
+                Ok(rows) => {
+                    let keys: std::collections::HashSet<String> =
+                        rows.iter().map(|r| format!("{}/{}/{}", r.project, r.task, r.repo)).collect();
+                    last.retain(|k, _| keys.contains(k));
+                    complained.retain(|k, _| keys.contains(k));
+                    for row in rows {
+                        let key = format!("{}/{}/{}", row.project, row.task, row.repo);
+                        // A row that was looked at lately costs nothing: its host is asked only when it is due.
+                        if let Some((at, every)) = last.get(&key)
+                            && let Some(left) = Duration::from_secs(*every).checked_sub(at.elapsed())
+                        {
+                            next = next.min(left);
+                            continue;
                         }
-                    })
-                    .await
-                    .unwrap_or(60);
-                if last.get(&key).is_some_and(|t| t.elapsed() < Duration::from_secs(every)) {
-                    continue;
+                        let every = app
+                            .blocking({
+                                let (p, r) = (row.project.clone(), row.repo.clone());
+                                move |app| {
+                                    let rec = app.with_server(|db| db.repo(&p, &r))?;
+                                    Ok(store::host_of(app, &rec).map(|h| h.poll_secs).unwrap_or(60))
+                                }
+                            })
+                            .await
+                            .unwrap_or(60);
+                        last.insert(key.clone(), (std::time::Instant::now(), every));
+                        next = next.min(Duration::from_secs(every));
+                        if let Err(e) = watch_one(&app, &row).await
+                            && complained.get(&key).is_none_or(|t| t.elapsed() > Duration::from_secs(600))
+                        {
+                            complained.insert(key.clone(), std::time::Instant::now());
+                            eprintln!("genie git: {key}: {e}");
+                        }
+                    }
                 }
-                last.insert(key.clone(), std::time::Instant::now());
-                if let Err(e) = watch_one(&app, &row).await
-                    && complained.get(&key).is_none_or(|t| t.elapsed() > Duration::from_secs(600))
-                {
-                    complained.insert(key.clone(), std::time::Instant::now());
-                    eprintln!("genie git: {key}: {e}");
-                }
+            }
+            tokio::select! {
+                _ = app.wake_poller.notified() => {}
+                _ = tokio::time::sleep(next.max(Duration::from_millis(100))) => {}
             }
         }
     });

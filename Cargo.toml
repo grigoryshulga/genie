@@ -13,5 +13,18 @@ publish = false
 [profile.dev]
 debug = "line-tables-only"
 
+# Dependencies are built optimized: tests spend real time in them (argon2 password hashing, TLS,
+# SQLite), and they are compiled once and cached, unlike the workspace's own crates.
 [profile.dev.package."*"]
 debug = false
+opt-level = 2
+
+# The release binary is what the Docker image ships: built once, run for months. Thin LTO and one
+# codegen unit trade build time (about 2.5x) for a smaller binary (-9%); fat LTO saved another 1 MB for
+# 15% more build time. Symbols are stripped here (the Dockerfile used to do it): build with
+# CARGO_PROFILE_RELEASE_STRIP=false to profile. Not `panic = "abort"`: tokio keeps a panicking task
+# from taking the server down, and `state::block_on` re-raises a worker's panic with `resume_unwind`.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

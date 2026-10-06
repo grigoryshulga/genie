@@ -474,6 +474,8 @@ async fn update_project(
             })
         })
         .await?;
+    // Leaving `manual` lets the orchestrator take the mail that waited.
+    app.wake_runtime.notify_one();
     Ok(Json(json!(project)))
 }
 

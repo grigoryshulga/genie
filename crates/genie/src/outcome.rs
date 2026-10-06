@@ -55,6 +55,11 @@ impl Attempts {
         self.with(|m| m.get(key).is_none_or(|(_, until)| *until <= Instant::now()))
     }
 
+    /// How long until the agent may start again; `None` if it may now.
+    pub fn wait_for(&self, key: &AgentKey) -> Option<Duration> {
+        self.with(|m| m.get(key).and_then(|(_, until)| until.checked_duration_since(Instant::now())))
+    }
+
     /// A start that did not get as far as a run (no prepared turn, no process): it counts
     /// and waits, but nobody is told — a missing LiteLLM key is fixed by a person, and
     /// [`Attempts::retry_now`] lets the agent go at once.
@@ -155,6 +160,17 @@ fn tail(log: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_agent_says_how_long_it_waits() {
+        let attempts = Attempts::default();
+        let key = AgentKey::Orchestrator { project: "shop".into() };
+        assert_eq!(attempts.wait_for(&key), None);
+        attempts.failed_to_start(&key);
+        assert!(attempts.wait_for(&key).is_some_and(|d| d <= Duration::from_secs(1)));
+        attempts.retry_now();
+        assert_eq!(attempts.wait_for(&key), None);
+    }
 
     #[test]
     fn backoff_starts_at_once_and_levels_off_at_ten_minutes() {

@@ -22,10 +22,11 @@ pub mod tasks;
 pub mod teams;
 pub mod web;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
-use axum::http::{Method, StatusCode, Uri, header};
+use axum::extract::{ConnectInfo, FromRequestParts, Request, State};
+use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -97,9 +98,34 @@ impl<S: Send + Sync, T: serde::de::DeserializeOwned> axum::extract::FromRequest<
     }
 }
 
+/// The command line changed the data directory on its own (no token: it writes the databases
+/// itself): run the workers' next pass now instead of at their safety net. Reveals and changes
+/// nothing, so it asks for no login.
+///
+/// Loopback only: such a command line always runs on the server's machine (or in its container),
+/// so its connection comes from a loopback address. Without this check any client that can reach
+/// a non-loopback bind (allow_hosts, reverse proxy) could spam the endpoint, and every hit wakes
+/// all four workers into a full pass (SQLite scans over every project) — a cheap remote
+/// denial-of-service amplifier. 403, not 404: the guard headers already advertise the route's
+/// shape, and a plain refusal is the right signal when a CLI pings through a proxy by mistake.
+async fn wake(State(app): State<Arc<App>>, req: Request) -> Response {
+    let (mut parts, _) = req.into_parts();
+    // No connection info counts as remote: fail closed, like the loopback check in ctx.rs.
+    let loopback = ConnectInfo::<SocketAddr>::from_request_parts(&mut parts, &app).await.is_ok_and(|ConnectInfo(a)| a.ip().is_loopback());
+    if !loopback {
+        return ApiError::new(StatusCode::FORBIDDEN, "loopback connections only").into_response();
+    }
+    app.wake_engine.notify_one();
+    app.wake_runtime.notify_one();
+    app.wake_outbox.notify_one();
+    app.wake_poller.notify_one();
+    Json(json!({ "ok": true })).into_response()
+}
+
 pub fn router(app: Arc<App>) -> Router {
     let api = Router::new()
         .route("/health", get(|| async { Json(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") })) }))
+        .route("/wake", post(wake))
         .merge(account::routes())
         .merge(tasks::routes())
         .merge(ideas::routes())
@@ -120,9 +146,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/mcp", post(mcp_server::endpoint).get(mcp_server::no_stream).delete(mcp_server::no_stream));
     // Client-side routes (/board, /team/G-7…) fall back to the SPA entry.
     let router = match web::resolve(app.web_root.as_deref()) {
-        web::WebUi::BuiltIn => {
-            router.fallback(|method: Method, uri: Uri| async move { web::respond(web::WEB_ASSETS, &method, uri.path()) })
-        }
+        web::WebUi::BuiltIn => router.fallback(|method: Method, uri: Uri, headers: HeaderMap| async move {
+            web::respond(web::WEB_ASSETS, &method, uri.path(), &headers)
+        }),
         web::WebUi::Dir(dir) => router.fallback_service(ServeDir::new(&dir).fallback(ServeFile::new(dir.join("index.html")))),
         web::WebUi::Missing(why) => router.fallback(move || async move { (StatusCode::SERVICE_UNAVAILABLE, why) }),
     };

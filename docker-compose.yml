@@ -15,6 +15,7 @@ services:
       context: .
       args:
         EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
+        RUST_TOOLCHAIN: ${RUST_TOOLCHAIN:-}
     restart: unless-stopped
 
     # The port is published on the loopback interface only; put a TLS reverse proxy in front for
@@ -34,6 +35,7 @@ services:
       GENIE_ALLOW_HOSTS: ${GENIE_ALLOW_HOSTS:-}
       # off: agents run without the sandbox, on purpose (docker-compose.sandbox.yml switches it on)
       GENIE_SANDBOX: ${GENIE_SANDBOX:-off}
+      GENIE_AGENT_BUILD_JOBS: ${GENIE_AGENT_BUILD_JOBS:-8}
       TZ: ${TZ:-UTC}
 
     # A LiteLLM (or any service) running on the Docker host is reachable as host.docker.internal.
@@ -65,8 +67,9 @@ services:
       - SETUID # switch from root to the service user
       - SETGID
     pids_limit: ${GENIE_PIDS_LIMIT:-4096}
-    # Every live agent session is a Node process of a few hundred MB; size this for runtime.maxSessions
-    # (12 by default) or lower it: mem_limit: 8g
+    # Every live agent session is a Node process of ~0.5 GB; size this for runtime.maxSessions (12 by
+    # default): about maxSessions x 0.5 GB + 2 GB, i.e. GENIE_MEM_LIMIT=8g, or lower maxSessions.
+    # Unlimited by default so that existing installations are not OOM-killed (.env.example, docs/platform/docker.md).
     mem_limit: ${GENIE_MEM_LIMIT:-0}
 
     logging:

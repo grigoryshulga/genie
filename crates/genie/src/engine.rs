@@ -1,6 +1,9 @@
 //! Automation engine and built-in notifications.
 //!
-//! Each tick:
+//! The engine sleeps until it is woken (`App::wake_engine`: journal events, answered questions,
+//! finished jobs, rule changes) or until the soonest deadline of time-based work: a cron rule, a
+//! questionnaire's reminder or due time, a `wait`, a step's timeout, a retry (see [`Plan`]).
+//! Each pass:
 //! 1. **Intake**: read new journal events of every project after the engine's
 //!    cursor, create a run for each matching rule (unique per event, so a
 //!    re-read never starts a rule twice), then move the cursor.
@@ -18,7 +21,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use genie_core::automation::{self, Automation, Run, StepState};
 use genie_core::events::Event;
 use genie_core::inbox::NewQuestion;
@@ -28,24 +31,67 @@ use serde_json::{Value, json};
 
 use crate::notify::{self, Message};
 use crate::runtime::{self, SpawnRequest};
-use crate::state::{App, AppError, AppResult};
+use crate::state::{App, AppError, AppResult, SAFETY_NET, sleep_until};
 use crate::tasks::{self, Caller, StatusBody};
 
 const CURSOR: &str = "automations";
 const NOTIFY_CURSOR: &str = "notifier";
 const FLOW_CURSOR: &str = "team-flow";
 
+/// Passes in a row that ask for another at once; a bug that keeps asking falls back to the deadlines.
+const MAX_BACK_TO_BACK: u32 = 20;
+/// Wait before looking again at a step that failed and has retries left.
+const RETRY_AFTER: chrono::Duration = chrono::Duration::seconds(2);
+
+/// What a pass learned about when the engine has to run again without being woken.
+#[derive(Default)]
+pub struct Plan {
+    /// Something a run waits for happened inside the pass (a run ended and freed a slot of its
+    /// rule's concurrency): pass again at once.
+    again: bool,
+    /// The soonest moment something is due by itself.
+    at: Option<DateTime<Utc>>,
+}
+
+impl Plan {
+    /// When the engine has to run again unless woken before: `None` means only the safety net.
+    pub fn next_at(&self) -> Option<DateTime<Utc>> {
+        self.at
+    }
+
+    fn due(&mut self, at: DateTime<Utc>) {
+        self.at = Some(self.at.map_or(at, |t| t.min(at)));
+    }
+
+    /// The `deadline` or `until` a waiting step carries.
+    fn due_wait(&mut self, wait: &Value) {
+        for key in ["deadline", "until"] {
+            if let Some(at) = wait[key].as_str().and_then(|t| DateTime::parse_from_rfc3339(t).ok()) {
+                self.due(at.with_timezone(&Utc));
+            }
+        }
+    }
+}
+
 pub fn start(app: &Arc<App>) {
     let app = app.clone();
     tokio::spawn(async move {
+        let mut streak = 0;
         loop {
-            let res = app.blocking(tick).await;
-            if let Err(e) = res {
-                eprintln!("genie engine: {e}");
+            let plan = match app.blocking(pass).await {
+                Ok(plan) => plan,
+                Err(e) => {
+                    eprintln!("genie engine: {e}");
+                    Plan { at: Some(Utc::now() + chrono::Duration::seconds(10)), ..Plan::default() }
+                }
+            };
+            streak = if plan.again { streak + 1 } else { 0 };
+            if plan.again && streak < MAX_BACK_TO_BACK {
+                continue;
             }
             tokio::select! {
                 _ = app.wake_engine.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(2)) => {}
+                _ = tokio::time::sleep(sleep_until(plan.at, SAFETY_NET)) => {}
             }
         }
     });
@@ -53,6 +99,11 @@ pub fn start(app: &Arc<App>) {
 
 /// One engine pass (also used directly by tests).
 pub fn tick(app: &App) -> AppResult<()> {
+    pass(app).map(|_| ())
+}
+
+pub fn pass(app: &App) -> AppResult<Plan> {
+    let mut plan = Plan::default();
     for p in app.with_server(|db| db.projects())? {
         if let Err(e) = intake(app, &p.slug) {
             eprintln!("genie engine: {}: {e}", p.slug);
@@ -64,15 +115,18 @@ pub fn tick(app: &App) -> AppResult<()> {
             eprintln!("genie team flow: {}: {e}", p.slug);
         }
     }
-    schedules(app)?;
-    crate::questions::tick(app)?;
+    schedules(app, &mut plan)?;
+    if let Some(at) = crate::questions::tick(app)? {
+        plan.due(at);
+    }
     for run in app.with_server(|db| db.active_runs())? {
-        if let Err(e) = advance(app, &run) {
+        if let Err(e) = advance(app, &run, &mut plan) {
             let msg = e.to_string();
             let _ = app.with_server(|db| db.set_run_status(run.id, "failed", Some(&msg)));
+            plan.again = true;
         }
     }
-    Ok(())
+    Ok(plan)
 }
 
 // --- intake ----------------------------------------------------------------------------
@@ -185,7 +239,7 @@ pub fn start_run(app: &App, a: &Automation, key: &str, ctx: Value, depth: i64, s
     Ok(run)
 }
 
-fn schedules(app: &App) -> AppResult<()> {
+fn schedules(app: &App, plan: &mut Plan) -> AppResult<()> {
     let now = Utc::now();
     for a in app.with_server(|db| db.automations(None))?.into_iter().filter(|a| a.enabled && a.trigger_kind() == "schedule") {
         let expr = a.spec["on"]["schedule"].as_str().unwrap_or_default();
@@ -200,6 +254,9 @@ fn schedules(app: &App) -> AppResult<()> {
         if let Some(fire) = automation::due_fire(expr, tz, after, now) {
             let key = format!("schedule:{}", fire.to_rfc3339());
             start_run(app, &a, &key, json!({ "project": a.project, "schedule": { "at": fire.to_rfc3339() } }), 0, None)?;
+        }
+        if let Some(next) = automation::next_fire(expr, tz, now) {
+            plan.due(next);
         }
     }
     Ok(())
@@ -220,11 +277,13 @@ enum Outcome {
     Wait(Value),
 }
 
-fn advance(app: &App, run: &Run) -> AppResult<()> {
+fn advance(app: &App, run: &Run, plan: &mut Plan) -> AppResult<()> {
     let spec = run.trigger["spec"].clone();
     let steps = spec["steps"].as_array().cloned().unwrap_or_default();
     if run.status == "queued" {
         let limit = spec["limits"]["concurrency"].as_i64().unwrap_or(4);
+        // Held back by its rule's concurrency: a run of the rule that ends frees it (in a pass of
+        // this engine, or by a person's cancel, which wakes it).
         if app.with_server(|db| db.running_count(run.automation))? >= limit {
             return Ok(());
         }
@@ -253,6 +312,7 @@ fn advance(app: &App, run: &Run) -> AppResult<()> {
                 app.with_server(|db| {
                     db.set_run_status(run.id, "failed", Some(&format!("step {sid}: {}", state.error.clone().unwrap_or_default())))
                 })?;
+                plan.again = true;
                 return Ok(());
             }
             _ => {}
@@ -270,10 +330,14 @@ fn advance(app: &App, run: &Run) -> AppResult<()> {
                 ctx["steps"][&sid] = json!({ "status": "succeeded", "output": output });
             }
             Ok(Outcome::Wait(wait)) => {
-                app.with_server(|db| {
-                    db.update_step(state.id, "waiting", Some(&input), None, Some(&wait), None)?;
-                    db.set_run_status(run.id, "waiting", None)
-                })?;
+                // Still waiting for the same thing: nothing to write, only its deadline to keep.
+                if state.status != "waiting" {
+                    app.with_server(|db| {
+                        db.update_step(state.id, "waiting", Some(&input), None, Some(&wait), None)?;
+                        db.set_run_status(run.id, "waiting", None)
+                    })?;
+                }
+                plan.due_wait(&wait);
                 return Ok(());
             }
             Err(e) => {
@@ -281,6 +345,7 @@ fn advance(app: &App, run: &Run) -> AppResult<()> {
                 let retries = step["retry"].as_i64().unwrap_or(0);
                 if state.status != "waiting" && state.attempt < retries {
                     app.with_server(|db| db.update_step(state.id, "pending", Some(&input), None, None, Some(&msg)))?;
+                    plan.due(Utc::now() + RETRY_AFTER);
                     return Ok(());
                 }
                 app.with_server(|db| db.update_step(state.id, "failed", Some(&input), None, None, Some(&msg)))?;
@@ -289,11 +354,13 @@ fn advance(app: &App, run: &Run) -> AppResult<()> {
                     continue;
                 }
                 app.with_server(|db| db.set_run_status(run.id, "failed", Some(&format!("step {sid}: {msg}"))))?;
+                plan.again = true;
                 return Ok(());
             }
         }
     }
     app.with_server(|db| db.set_run_status(run.id, "succeeded", None))?;
+    plan.again = true;
     Ok(())
 }
 
@@ -514,27 +581,20 @@ fn execute(app: &App, run: &Run, step: &Value, kind: &str, input: &Value, state:
             let method = input["method"].as_str().unwrap_or("POST").to_uppercase();
             let body = input["body"].clone();
             let headers = input["headers"].clone();
-            let (status, text) = std::thread::scope(|s| {
-                s.spawn(|| {
-                    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
-                    rt.block_on(async {
-                        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
-                        let mut req = client.request(method.parse().map_err(|_| "bad method".to_string())?, &url);
-                        if let Some(h) = headers.as_object() {
-                            for (k, v) in h {
-                                req = req.header(k, v.as_str().unwrap_or_default());
-                            }
-                        }
-                        if !body.is_null() {
-                            req = req.json(&body);
-                        }
-                        let res = req.send().await.map_err(|e| e.to_string())?;
-                        let status = res.status().as_u16();
-                        Ok::<_, String>((status, res.text().await.unwrap_or_default()))
-                    })
-                })
-                .join()
-                .unwrap_or_else(|_| Err("http step panicked".into()))
+            let (status, text) = crate::state::block_on(async {
+                let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+                let mut req = client.request(method.parse().map_err(|_| "bad method".to_string())?, &url);
+                if let Some(h) = headers.as_object() {
+                    for (k, v) in h {
+                        req = req.header(k, v.as_str().unwrap_or_default());
+                    }
+                }
+                if !body.is_null() {
+                    req = req.json(&body);
+                }
+                let res = req.send().await.map_err(|e| e.to_string())?;
+                let status = res.status().as_u16();
+                Ok::<_, String>((status, res.text().await.unwrap_or_default()))
             })
             .map_err(invalid)?;
             if status >= 400 {

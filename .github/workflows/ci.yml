@@ -59,6 +59,9 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
+          # rust-cache keys on the dependencies and the toolchain, not on [profile]: a profile change
+          # would keep restoring the old build, which is never replaced (a key is written once).
+          key: ${{ hashFiles('Cargo.toml') }}
           # Pull requests reuse main's cache and do not write their own (no eviction churn).
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
@@ -82,17 +85,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ hashFiles('Cargo.toml') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # mold links the test binaries several times faster than the default linker.
+      - uses: rui314/setup-mold@v1
       # The agent sandbox: bubblewrap, with the unprivileged user namespaces Ubuntu restricts by default.
       - name: Sandbox
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends bubblewrap
+          # The runner's package lists are usually fresh enough; refresh them only when the install fails.
+          sudo apt-get install -y -q --no-install-recommends bubblewrap \
+            || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends bubblewrap; }
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Test
         # The live-session tests run the real pi harness inside the sandbox too. No doc tests: there are none.
         env:
           GENIE_REQUIRE_SANDBOX: 1
           GENIE_TEST_SANDBOX: bwrap
+          # Most tests wait on agent processes and timers, not the CPU: twice the runner's 4 cores
+          # (measured: 18 s → 15 s; 16 threads starts to starve the timing-sensitive tests).
+          RUST_TEST_THREADS: 8
         run: cargo test --workspace --lib --bins --tests
       # `cargo test` writes the API types for the web from the Rust structs (ts-rs).
       - name: API types for the web are committed

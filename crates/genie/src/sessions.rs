@@ -370,8 +370,9 @@ fn note_pending(app: &App, key: &AgentKey) -> bool {
         .unwrap_or(false)
 }
 
-/// Mail is waiting for `key`: wake its session, or start one.
-pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
+/// Mail is waiting for `key`: wake its session, or start one. Returns when to look at it again if
+/// nothing will wake the scheduler by then (the wake-up may not be taken; a backoff ends).
+pub async fn deliver(app: &Arc<App>, key: &AgentKey) -> Option<Duration> {
     if let Some(s) = app.sessions.get(key) {
         if s.is("idle") && app.attempts.failures(key) < app.cfg.runtime.max_attempts.max(1) {
             // The orchestrator answers whoever wrote: another person's mail restarts
@@ -381,15 +382,16 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
                 let now = app.blocking(move |app| Ok(crate::llm_key::orchestrator_initiator(app, &slug))).await.ok().flatten();
                 if now.is_some() && now != s.initiator {
                     s.stop("the mail is from another person");
-                    return;
+                    return None;
                 }
             }
             s.nudge();
+            return Some(NUDGE_AGAIN);
         }
-        return;
+        return None;
     }
     if !app.attempts.may_start(key) {
-        return;
+        return app.attempts.wait_for(key).map(|d| d + Duration::from_millis(50));
     }
     let live = app.sessions.all();
     if live.len() >= app.cfg.runtime.max_sessions.max(1) {
@@ -397,7 +399,7 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
         if let Some(oldest) = live.iter().filter(|s| s.is("idle")).max_by_key(|s| s.with_live(|l| l.state_at.elapsed())) {
             oldest.stop("making room for another agent");
         }
-        return;
+        return None;
     }
     match start(app, key).await {
         Ok(Some(s)) => s.nudge(),
@@ -405,8 +407,10 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) {
         Err(e) => {
             let n = app.attempts.failed_to_start(key);
             eprintln!("genie runtime: {}: cannot start a session for {} (attempt {n}): {e}", key.project(), key.label());
+            return app.attempts.wait_for(key).map(|d| d + Duration::from_millis(50));
         }
     }
+    None
 }
 
 /// Launch the session process for `key` (`None`: nothing to run).
@@ -560,6 +564,9 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
                     .await
                     .ok();
                 s.with_live(|l| l.turn = turn);
+                // A working session has a deadline (silence for `turnTimeoutSecs`) that only the
+                // scheduler's next pass works out.
+                app.wake_runtime.notify_one();
             }
         }
         "message_update" => {
@@ -790,7 +797,7 @@ async fn watchdog(app: &Arc<App>, s: &Arc<Session>, what: &str) {
 }
 
 /// Periodic care: interrupts, stuck steps, idle and orphaned sessions, stale deliveries.
-pub async fn sweep(app: &Arc<App>) -> AppResult<()> {
+pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult<()> {
     let projects = app.blocking(|app| app.with_server(|db| db.projects())).await?;
     for p in projects {
         let slug = p.slug.clone();
@@ -830,6 +837,13 @@ pub async fn sweep(app: &Arc<App>) -> AppResult<()> {
         if state == "idle" && idle_for >= idle_stop {
             s.stop("idle");
             continue;
+        }
+        // Their deadlines: nothing wakes the scheduler when a session has been idle or silent long enough.
+        match (state.as_str(), stall_abort) {
+            ("idle", _) => next.within(idle_stop - idle_for + Duration::from_millis(50)),
+            ("working", None) => next.within(stall.saturating_sub(silent_for) + Duration::from_millis(50)),
+            ("working", Some(at)) => next.within(Duration::from_secs(60).saturating_sub(at.elapsed()) + Duration::from_millis(50)),
+            _ => {}
         }
         if state == "working" && silent_for >= stall {
             match stall_abort {
