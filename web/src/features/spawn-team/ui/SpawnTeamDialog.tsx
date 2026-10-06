@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import { MAIL_TITLE, STAGE_TITLE, TemplateGraph, templatesFor, useAgentConfig, WORKSPACE_TITLE } from "@/entities/agent-config";
 import { useMeta } from "@/entities/project";
 import { STATUS_NAME, type Status } from "@/entities/task";
-import { useInvalidating, request } from "@/shared/api";
+import { keysFor, request, useInvalidating } from "@/shared/api";
 import { plural } from "@/shared/lib";
 import { Icon, Modal, useToast } from "@/shared/ui";
 
@@ -24,7 +24,11 @@ export function SpawnTeamDialog({ task, onClose }: { task: { id: string; title: 
   const [models, setModels] = useState<Record<string, string>>({});
   const [members, setMembers] = useState<{ role: string; model: string }[]>([]);
   const [note, setNote] = useState("");
-  const spawn = useInvalidating((body: unknown) => request<{ id: string }>("POST", "/api/teams", body));
+  const spawn = useInvalidating(
+    (body: unknown) => request<{ id: string }>("POST", "/api/teams", body),
+    // Spawning a team appends `team.spawned`; it also puts the team on the task's page.
+    keysFor({ type: "team.spawned" }),
+  );
   const template = templates.find((t) => t.id === (picked ?? templates[0]?.id));
   const roles = (cfg?.roles ?? []).filter((r) => r.class !== "orchestrator" && r.stages.includes(early ? "refinement" : "delivery"));
   const role = (id: string) => cfg?.roles.find((r) => r.id === id);

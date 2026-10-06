@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type JournalEvent, keysFor, keysForAll, matchesAny } from "../web/src/shared/api/invalidation.ts";
+import { type JournalEvent, keysFor, keysForAll, matchesAny, teamKeys, teamState } from "../web/src/shared/api/invalidation.ts";
 
 // The shapes of `keys` in shared/api/client.ts (not imported: it does not load without a bundler).
 const keys = {
@@ -102,6 +102,18 @@ test("a batch is the union of its events, without duplicates", () => {
   assert.equal(new Set(prefixes.map((p) => p.join("/"))).size, prefixes.length);
   assert.ok(matchesAny(prefixes, keys.task("T-1")) && matchesAny(prefixes, keys.task("T-2")));
   assert.deepEqual(keysForAll([]), []);
+});
+
+test("a member change refetches the team's own queries, not the task cards", () => {
+  // What the team api passes for a mutation that writes a team log line, no journal event.
+  assert.deepEqual(teamKeys(), [["teams"], ["team"], ["peek"]]);
+  assert.deepEqual(keysFor(ev("mail.sent")), teamKeys(), "mail uses the same keys");
+  assert.ok(matchesAny(teamKeys(), keys.team("t")) && matchesAny(teamKeys(), ["peek", "t", "dev"]));
+  assert.ok(!matchesAny(teamKeys(), keys.tasks), "a member change is not on a task card");
+  // A team appearing or going away does reach the cards.
+  assert.deepEqual(keysFor(ev("team.spawned", "T-1")), teamState());
+  assert.deepEqual(keysFor(ev("team.stopped", "T-1")), teamState());
+  assert.ok(matchesAny(teamState(), keys.tasks) && matchesAny(teamState(), keys.task("T-1")));
 });
 
 test("a prefix matches only whole key parts", () => {
