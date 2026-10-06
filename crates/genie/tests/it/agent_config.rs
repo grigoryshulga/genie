@@ -85,7 +85,7 @@ async fn admins_change_roles_and_templates_everyone_reads_them() {
         ]),
         "what each class starts from, for the web's checkboxes"
     );
-    assert!(cat["mcpAdapter"].is_boolean());
+    assert!(cat["mcpAdapterLoaded"].is_boolean());
 
     let (s, _, _) = call(r, "PUT", "/api/roles/qa").bearer(&member).json(json!({ "content": QA })).send().await;
     assert_eq!(s, StatusCode::FORBIDDEN, "only server admins change roles");

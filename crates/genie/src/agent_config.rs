@@ -1510,7 +1510,7 @@ impl AgentConfig {
         }
 
         // MCP connections.
-        let mut mcp = BTreeMap::new();
+        let mut mcp: BTreeMap<String, McpServer> = BTreeMap::new();
         let mcp_file = data.join("mcp.json");
         if exists(&mcp_file, overlay) {
             let parsed: Result<Value, String> =
@@ -1546,6 +1546,30 @@ impl AgentConfig {
                                     continue;
                                 }
                             };
+                            // pi's MCP support names a server's tools `mcp__<server>__<tool>`.
+                            if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+                                problem(
+                                    Level::Error,
+                                    item,
+                                    Some("mcp.json".into()),
+                                    "pi accepts only letters, digits, `_` and `-` in a connection's name".into(),
+                                );
+                                continue;
+                            }
+                            if let Some(other) = mcp.keys().find(|k| k.replace('-', "_") == id.replace('-', "_")) {
+                                let why = format!("pi takes names that differ only in `-` and `_` for one connection (`{other}`)");
+                                problem(Level::Error, item, Some("mcp.json".into()), why);
+                                continue;
+                            }
+                            const EXPOSURES: [&str; 5] = ["direct", "codemode", "codemode-deferred", "deferred", "hidden"];
+                            let bad_exposure = |v: &Value| !v.as_str().is_some_and(|e| EXPOSURES.contains(&e));
+                            if o.get("exposure").is_some_and(bad_exposure)
+                                || o.get("toolExposure").is_some_and(|t| t.as_object().is_none_or(|t| t.values().any(bad_exposure)))
+                            {
+                                let why = format!("`exposure` and the values of `toolExposure` are one of {}", EXPOSURES.join(", "));
+                                problem(Level::Error, item, Some("mcp.json".into()), why);
+                                continue;
+                            }
                             let mut config = o.clone();
                             config.remove("description");
                             config.remove("projects");
@@ -1851,16 +1875,23 @@ impl AgentConfig {
     }
 }
 
-/// Keep the configuration in step with the files: reload when they change.
+const WATCH_MIN: Duration = Duration::from_secs(3);
+const WATCH_MAX: Duration = Duration::from_secs(15);
+
+/// Keep the configuration in step with the files: reload when they change. Edits through the API
+/// reload at once; hand edits are noticed by looking at the files, every few seconds while they
+/// change and backing off while they are quiet.
 pub fn start_watcher(app: &Arc<App>) {
     let app = app.clone();
     tokio::spawn(async move {
+        let mut wait = WATCH_MIN;
         loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(wait).await;
             let res = app
                 .blocking(|app| {
                     let sig = signature(&app.data, &app.cfg);
-                    if sig != app.agents().signature {
+                    let changed = sig != app.agents().signature;
+                    if changed {
                         let cfg = app.reload_agents();
                         let errors = cfg.errors().count();
                         println!(
@@ -1870,9 +1901,13 @@ pub fn start_watcher(app: &Arc<App>) {
                             if errors > 0 { format!(", {errors} error(s): `genie agents check`") } else { String::new() }
                         );
                     }
-                    Ok(())
+                    Ok(changed)
                 })
                 .await;
+            wait = match res {
+                Ok(true) | Err(_) => WATCH_MIN,
+                Ok(false) => (wait * 2).min(WATCH_MAX),
+            };
             if let Err(e) = res {
                 eprintln!("genie: agent configuration: {e}");
             }
@@ -2131,6 +2166,23 @@ mod tests {
         assert_eq!(a.mcp_for("shop", dev).len(), 1, "sap is only for erp");
         assert_eq!(a.mcp["github"].resolved()["headers"]["Authorization"], "Bearer s3cret");
         assert!(serde_json::to_string(&a.mcp["github"]).unwrap().find("Bearer").is_none(), "the entry is never serialised");
+    }
+
+    #[test]
+    fn mcp_names_and_exposure_must_suit_pi() {
+        let (_d, a) = load(&[(
+            "mcp.json",
+            r#"{"mcpServers": {"sap dev": {"command": "x"}, "my-db": {"command": "x"}, "my_db": {"command": "x"},
+                                "fine": {"command": "x", "exposure": "codemode", "toolExposure": {"get_*": "direct"}},
+                                "odd": {"command": "x", "exposure": "sometimes"},
+                                "odder": {"command": "x", "toolExposure": {"get_*": 1}}}}"#,
+        )]);
+        let errs = errors(&a);
+        let about = |id: &str| errs.iter().any(|e| e.contains(&format!("mcp:{id}")));
+        assert!(about("sap dev") && about("odd") && about("odder"), "{errs:?}");
+        assert!(a.mcp.contains_key("fine") && a.mcp.contains_key("my-db"));
+        assert!(!a.mcp.contains_key("my_db"), "pi takes `my-db` and `my_db` for one server");
+        assert!(about("my_db"));
     }
 
     #[test]

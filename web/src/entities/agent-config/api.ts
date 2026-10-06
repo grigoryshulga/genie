@@ -62,12 +62,11 @@ export function useSkillFiles() {
   };
 }
 
-/** The project's latest tool calls through the MCP gateway, newest first. */
+/** The project's latest tool calls through the MCP gateway, newest first. Each is an `mcp.called` journal event, so the live stream refetches this: no polling. */
 export function useMcpCalls(project: string) {
   return useQuery({
     queryKey: ["mcp-calls", project],
     queryFn: () => request<McpCall[]>("GET", "/api/mcp/calls?limit=100"),
-    refetchInterval: 15_000,
   });
 }
 

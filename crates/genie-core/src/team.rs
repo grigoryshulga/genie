@@ -496,8 +496,7 @@ impl Bus<'_> {
             }
             let roster: Vec<String> = team.members.iter().map(|m| format!("{}:{}:{}", m.name, m.role, m.model.as_deref().unwrap_or("default"))).collect();
             self.log(&team.id, "team_created", json!({ "members": roster }))?;
-            events::append(
-                self.conn(),
+            self.t.append_event(
                 "team.spawned",
                 Some(&team.task),
                 actor,
@@ -571,8 +570,7 @@ impl Bus<'_> {
                 self.conn().execute("UPDATE members SET state = 'active' WHERE team = ?1 AND state = 'stopped'", [team])?;
             }
             self.log(team, if stopped { "team_stopped" } else { "team_started" }, json!({ "reason": reason, "by": actor }))?;
-            events::append(
-                self.conn(),
+            self.t.append_event(
                 if stopped { "team.stopped" } else { "team.started" },
                 Some(&task),
                 actor,
@@ -785,8 +783,7 @@ impl Bus<'_> {
             }
             let short: String = m.text.chars().take(500).collect();
             self.log(&team.id, "mail", json!({ "from": m.from, "to": m.to, "level": level, "intent": m.intent, "text": short }))?;
-            events::append(
-                self.conn(),
+            self.t.append_event(
                 events::MAIL_SENT,
                 Some(&team.task),
                 m.from,
@@ -805,7 +802,7 @@ impl Bus<'_> {
                 "INSERT INTO mail(team, at, sender, sender_role, recipient, text, urgent, kind, task) VALUES (NULL, ?1, ?2, ?3, 'orchestrator', ?4, 0, ?5, ?6)",
                 params![now(), from, from_role, text, kind, task],
             )?;
-            events::append(self.conn(), events::MAIL_SENT, task, from, from_role, json!({ "to": ORCHESTRATOR, "kind": kind }))?;
+            self.t.append_event(events::MAIL_SENT, task, from, from_role, json!({ "to": ORCHESTRATOR, "kind": kind }))?;
             Ok(())
         })
     }

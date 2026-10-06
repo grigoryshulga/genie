@@ -32,7 +32,7 @@ Open http://127.0.0.1:7420. Volumes, repositories, model keys, git access, proxi
 
 ### From source
 
-Requires Rust (stable), Node 23.6+ and git.
+Requires Rust (stable), Node 22.19+ and git.
 
 ```bash
 npm install && npm run build:web && cargo build --release -p genie   # the web UI is embedded into the binary
@@ -65,6 +65,7 @@ cargo test                                                   # core, API, agent 
 cargo clippy --all-targets -- -D warnings && cargo fmt --all --check
 npm test && npm run typecheck && npm run build:web
 npm run dev:web                                              # Vite dev server, proxies /api to port 7420
+GENIE_WEB_SOURCEMAP=1 npm run build:web                      # build with source maps for debugging in the browser
 ```
 
 Web API types are generated from the Rust structs. After changing them, run `cargo test` and commit `web/src/shared/api/generated`.

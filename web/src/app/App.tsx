@@ -1,27 +1,44 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
 import { LEGACY_VIEWS, type PresetId, PRESETS, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
-import { CommandPalette, type PaletteActions } from "@/features/command-palette";
-import { NewTaskDialog, type NewTaskPreset } from "@/features/create-task";
-import { AgentsPage } from "@/pages/agents";
-import { BoardPage } from "@/pages/board";
-import { EpicPage } from "@/pages/epic";
-import { EpicsPage } from "@/pages/epics";
-import { DocsPage } from "@/pages/docs";
+import type { PaletteActions } from "@/features/command-palette";
+import type { NewTaskPreset } from "@/features/create-task";
 import { InvitePage, LoginPage } from "@/pages/auth";
-import { FirstProjectPage, ProjectPage, ServerPage } from "@/pages/project";
-import { AnswerPage, AutomationsPage, NotificationsPage, ProposalsPage } from "@/pages/platform";
-import { ProfilePage } from "@/pages/profile";
+import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
-import { TaskPage } from "@/pages/task";
-import { TasksPage } from "@/pages/tasks";
-import { TeamView } from "@/pages/team";
-import { AgentChat } from "@/pages/agent";
 import { useLiveUpdates } from "@/shared/api";
 import { isTyping } from "@/shared/lib";
 import { Sidebar } from "@/widgets/sidebar";
-import { TaskDetail } from "@/widgets/task-detail";
+import { lazyPage } from "./lazyPage.ts";
+
+// Only the entry screen is eager: the gate (its login page and the shell) and the board,
+// which is what `/` redirects to. Every other page is a chunk fetched when its route is
+// first shown; the three dialogs/panels the shell renders on demand are chunks too.
+const TasksPage = lazyPage(() => import("@/pages/tasks").then((m) => m.TasksPage));
+const TaskPage = lazyPage(() => import("@/pages/task").then((m) => m.TaskPage));
+const TeamView = lazyPage(() => import("@/pages/team").then((m) => m.TeamView));
+const AgentChat = lazyPage(() => import("@/pages/agent").then((m) => m.AgentChat));
+const EpicsPage = lazyPage(() => import("@/pages/epics").then((m) => m.EpicsPage));
+const EpicPage = lazyPage(() => import("@/pages/epic").then((m) => m.EpicPage));
+const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
+const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
+const ProfilePage = lazyPage(() => import("@/pages/profile").then((m) => m.ProfilePage));
+const ProjectPage = lazyPage(() => import("@/pages/project").then((m) => m.ProjectPage));
+const ServerPage = lazyPage(() => import("@/pages/project").then((m) => m.ServerPage));
+const FirstProjectPage = lazyPage(() => import("@/pages/project").then((m) => m.FirstProjectPage));
+const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.AnswerPage));
+const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
+const NotificationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.NotificationsPage));
+const ProposalsPage = lazyPage(() => import("@/pages/platform").then((m) => m.ProposalsPage));
+const TaskDetail = lazyPage(() => import("@/widgets/task-detail").then((m) => m.TaskDetail));
+const CommandPalette = lazyPage(() => import("@/features/command-palette").then((m) => m.CommandPalette));
+const NewTaskDialog = lazyPage(() => import("@/features/create-task").then((m) => m.NewTaskDialog));
+
+/** What a page shows while its chunk loads; the same «Загрузка…» row the pages use. */
+function PageFallback() {
+  return <div className="empty">Загрузка…</div>;
+}
 
 function Shell() {
   const online = useLiveUpdates();
@@ -120,25 +137,37 @@ function Shell() {
   return (
     <div className={cls}>
       <Sidebar onNew={() => newTask()} online={online} />
-      <Outlet context={{ onNew: newTask, searchRef }} />
-      {openTaskId && <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />}
-      {dialog === "new" && (
-        <NewTaskDialog
-          preset={preset}
-          onClose={() => setDialog(undefined)}
-          onIdea={(team, member) => {
-            setDialog(undefined);
-            navigate(`/team/${encodeURIComponent(team)}/${encodeURIComponent(member)}`);
-          }}
-          onCreated={(id, type) => {
-            setDialog(undefined);
-            if (type === "epic") navigate(`/epic/${encodeURIComponent(id)}`);
-            else if (preset?.epic) navigate(`/epic/${encodeURIComponent(preset.epic)}`);
-            else navigate(`/tasks?task=${encodeURIComponent(id)}`);
-          }}
-        />
+      <Suspense fallback={<PageFallback />}>
+        <Outlet context={{ onNew: newTask, searchRef }} />
+      </Suspense>
+      {openTaskId && (
+        <Suspense fallback={null}>
+          <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />
+        </Suspense>
       )}
-      {dialog === "palette" && <CommandPalette onClose={() => setDialog(undefined)} actions={actions} />}
+      {dialog === "new" && (
+        <Suspense fallback={null}>
+          <NewTaskDialog
+            preset={preset}
+            onClose={() => setDialog(undefined)}
+            onIdea={(team, member) => {
+              setDialog(undefined);
+              navigate(`/team/${encodeURIComponent(team)}/${encodeURIComponent(member)}`);
+            }}
+            onCreated={(id, type) => {
+              setDialog(undefined);
+              if (type === "epic") navigate(`/epic/${encodeURIComponent(id)}`);
+              else if (preset?.epic) navigate(`/epic/${encodeURIComponent(preset.epic)}`);
+              else navigate(`/tasks?task=${encodeURIComponent(id)}`);
+            }}
+          />
+        </Suspense>
+      )}
+      {dialog === "palette" && (
+        <Suspense fallback={null}>
+          <CommandPalette onClose={() => setDialog(undefined)} actions={actions} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -190,7 +219,12 @@ function Gate() {
   if (session.error) return <LoginPage note={`Сервер недоступен: ${session.error.message}`} />;
   if (!session.data) return <LoginPage />;
   if (!session.data.projects.length) {
-    if (session.data.user.isAdmin) return <FirstProjectPage />;
+    if (session.data.user.isAdmin)
+      return (
+        <Suspense fallback={<PageFallback />}>
+          <FirstProjectPage />
+        </Suspense>
+      );
     return <LoginPage note="У вас пока нет доступа ни к одному проекту — попросите приглашение у администратора." />;
   }
   return <Shell />;
@@ -198,7 +232,15 @@ function Gate() {
 
 export const router = createBrowserRouter([
   { path: "/invite", element: <InvitePage /> },
-  { path: "/answer", element: <AnswerPage /> },
+  // `/answer` is outside the shell, so its page brings its own loading boundary.
+  {
+    path: "/answer",
+    element: (
+      <Suspense fallback={<PageFallback />}>
+        <AnswerPage />
+      </Suspense>
+    ),
+  },
   {
     path: "/",
     element: <Gate />,

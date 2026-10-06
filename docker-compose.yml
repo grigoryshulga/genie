@@ -67,8 +67,9 @@ services:
       - SETUID # switch from root to the service user
       - SETGID
     pids_limit: ${GENIE_PIDS_LIMIT:-4096}
-    # Every live agent session is a Node process of a few hundred MB; size this for runtime.maxSessions
-    # (12 by default) or lower it: mem_limit: 8g
+    # Every live agent session is a Node process of ~0.5 GB; size this for runtime.maxSessions (12 by
+    # default): about maxSessions x 0.5 GB + 2 GB, i.e. GENIE_MEM_LIMIT=8g, or lower maxSessions.
+    # Unlimited by default so that existing installations are not OOM-killed (.env.example, docs/platform/docker.md).
     mem_limit: ${GENIE_MEM_LIMIT:-0}
 
     logging:

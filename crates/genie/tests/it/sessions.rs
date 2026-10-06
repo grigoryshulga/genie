@@ -1,8 +1,9 @@
 //! Live agent sessions end to end: the real pi harness (`node_modules/.bin/pi`,
 //! RPC mode, the genie-bus extension) against a scripted OpenAI-compatible model
 //! served by the test. The model follows instructions found in the mail it gets:
-//! `RUN: <command>` runs a shell command; a question carrying `ANSWER=<word>` is
-//! answered with `genie mail reply`.
+//! `RUN: <command>` runs a shell command; `MCPCALL: {"tool": …, "args": …}` calls the
+//! named tool and `CODEMODE: <script>` runs a codemode script; a question carrying
+//! `ANSWER=<word>` is answered with `genie mail reply`.
 //!
 //! Skipped (with a note) when pi is not installed, except on CI.
 
@@ -28,6 +29,8 @@ struct Req {
     model: String,
     /// The system prompt.
     system: String,
+    /// The tools declared in the request.
+    tools: Vec<String>,
     /// `(role, text)` of every other message in the request.
     messages: Vec<(String, String)>,
 }
@@ -66,9 +69,13 @@ fn decide(messages: &[(String, String)]) -> Value {
         let cmd = text[i + 5..].lines().next().unwrap_or_default().trim().to_string();
         return json!({ "tool": "bash", "args": { "command": cmd } });
     }
-    if let Some(i) = text.rfind("MCP: ") {
-        let args: Value = serde_json::from_str(text[i + 5..].lines().next().unwrap_or_default().trim()).unwrap_or_default();
-        return json!({ "tool": "mcp", "args": args });
+    if let Some(i) = text.rfind("MCPCALL: ") {
+        let call: Value = serde_json::from_str(text[i + 9..].lines().next().unwrap_or_default().trim()).unwrap_or_default();
+        return json!({ "tool": call["tool"], "args": call["args"] });
+    }
+    if let Some(i) = text.rfind("CODEMODE: ") {
+        let code = text[i + 10..].lines().next().unwrap_or_default().trim().to_string();
+        return json!({ "tool": "codemode", "args": { "code": code } });
     }
     if let (Some(r), Some(a)) = (text.find("genie mail reply "), text.find("ANSWER=")) {
         let id: String = text[r + 17..].chars().take_while(|c| c.is_ascii_digit()).collect();
@@ -89,6 +96,8 @@ async fn completions(State(log): State<Log>, body: Bytes) -> axum::response::Res
         .map(|m| (m["role"].as_str().unwrap_or_default().to_string(), text_of(&m["content"])))
         .collect();
     let model = r["model"].as_str().unwrap_or_default().to_string();
+    let tools: Vec<String> =
+        r["tools"].as_array().into_iter().flatten().filter_map(|t| t["function"]["name"].as_str().map(str::to_string)).collect();
     // `PROVIDER-DOWN` anywhere in the conversation: the provider refuses every request.
     if messages.iter().any(|(_, t)| t.contains("PROVIDER-DOWN")) {
         let body = json!({ "error": { "message": "usage limit has been reached", "type": "invalid_request_error" } });
@@ -96,7 +105,7 @@ async fn completions(State(log): State<Log>, body: Bytes) -> axum::response::Res
     }
     let n = {
         let mut l = log.lock().unwrap();
-        l.push(Req { at: Instant::now(), model: model.clone(), system, messages: messages.clone() });
+        l.push(Req { at: Instant::now(), model: model.clone(), system, tools, messages: messages.clone() });
         l.len()
     };
     let out = decide(&messages);
@@ -493,29 +502,48 @@ async fn tool_result(log: &Log, needle: &str) -> String {
     .await
 }
 
+/// The tool result `model` got right after `needle` was sent.
+async fn tool_result_of(log: &Log, model: &str, needle: &str) -> String {
+    until(&format!("the tool result after {needle}"), 30, || {
+        let l = log.lock().unwrap();
+        let sent = l.iter().position(|r| r.model == model && r.last().1.contains(needle))?;
+        l[sent + 1..].iter().find(|r| r.model == model && r.last().0 == "tool").map(|r| r.last().1.clone())
+    })
+    .await
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     let Some(pi) = pi_bin() else {
         assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
         return;
     };
-    let fake_mcp = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-mcp.ts");
     let pi_path = pi.to_string_lossy().into_owned();
     let l = live(pi, |cfg| {
-        // The default session command (guard, skills, MCP config) on the test's pi, plus a
-        // stand-in for pi-mcp-adapter's `mcp` tool. Without the adapter pi still accepts --mcp-config.
+        // The default session command (guard, skills, MCP, trust) on the test's pi.
         let mut cmd = genie::config::RuntimeConfig::default().session_command;
         cmd[0][0] = pi_path;
-        cmd.push(vec!["-e".into(), fake_mcp.to_string_lossy().into_owned()]);
         cfg.runtime.session_command = cmd;
     })
     .await;
     let (app, log) = (&l.app, &l.log);
     install_dump(app, log);
     let data = app.data.clone();
+    let server = format!("{}/tests/fixtures/fake-mcp-server.mjs", env!("CARGO_MANIFEST_DIR"));
+    let stdio = |extra: Value| {
+        let mut e = json!({ "command": "node", "args": [server] });
+        e.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        e
+    };
 
-    // In this server the executor role has a skill, a denied command and one MCP connection.
-    write(&data.join("agents/executor.md"), "---\nskills: [owasp]\ndenyCommands: [\"git push*\"]\nmcp: [docs]\n---\n");
+    // In this server the executor role has a skill, a denied command and MCP connections: some tools
+    // of `tracker`, all of `wide`. The reviewer (no edit, no write) gets `cm`, which the admin left to
+    // codemode.
+    write(
+        &data.join("agents/executor.md"),
+        "---\nskills: [owasp]\ndenyCommands: [\"git push*\"]\nmcp: [\"tracker:get_*\", \"tracker:list_issues\", wide]\n---\n",
+    );
+    write(&data.join("agents/reviewer.md"), "---\ndenyCommands: [\"git push*\"]\nmcp: [cm]\n---\n");
     write(&data.join("skills/owasp/SKILL.md"), "---\nname: owasp\ndescription: OWASP checks.\n---\nx\n");
     write(
         &data.join("pi-agent/skills/user-wide/SKILL.md"),
@@ -524,11 +552,27 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     write(&data.join("work/.agents/skills/house-style/SKILL.md"), "---\nname: house-style\ndescription: The repository's style.\n---\nx\n");
     write(
         &data.join("mcp.json"),
-        &json!({ "mcpServers": { "docs": { "command": "docs-mcp" }, "secret": { "url": "https://secret.example/mcp" } } }).to_string(),
+        &json!({ "mcpServers": {
+            "tracker": stdio(json!({ "description": "The issue tracker" })),
+            "wide": stdio(json!({ "description": "The whole tracker" })),
+            "cm": stdio(json!({ "exposure": "codemode" })),
+            "secret": { "url": "https://secret.example/mcp" }
+        } })
+        .to_string(),
     );
+    // What the machine's user and the repository bring along: MCP servers of their own, an extension
+    // of the repository — which pi's trust file even trusts. None of it may reach an agent.
+    let work = data.join("work").canonicalize().unwrap();
+    write(&data.join("pi-agent/mcp.json"), &json!({ "mcpServers": { "userwide": stdio(json!({})) } }).to_string());
+    write(&work.join(".pi/mcp.json"), &json!({ "mcpServers": { "repo": stdio(json!({})) } }).to_string());
+    write(
+        &work.join(".pi/extensions/evil.ts"),
+        "export default (pi: any) => pi.registerTool({ name: \"evil_tool\", label: \"evil\", description: \"x\", parameters: { type: \"object\", properties: {} }, async execute() { return { content: [{ type: \"text\", text: \"EVIL\" }], details: {} }; } });\n",
+    );
+    write(&data.join("pi-agent/trust.json"), &json!({ work.to_string_lossy(): true }).to_string());
     app.reload_agents();
 
-    // Its skills and the repository's, and no others; its MCP connection in the prompt —
+    // Its skills and the repository's, and no others; its MCP connections in the prompt —
     // from the first request of the fresh session on.
     mail(app, "anna", "human", "bender", "RUN: echo ready", None);
     let req = until("bender's first request", 60, || request_with(log, "executor", "echo ready")).await;
@@ -536,7 +580,7 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     assert!(req.system.contains("<name>owasp</name>"), "the role's skill:\n{}", req.system);
     assert!(req.system.contains("<name>house-style</name>"), "the repository's skill");
     assert!(!req.system.contains("user-wide"), "no other skills");
-    assert!(req.system.contains("## MCP connections") && req.system.contains("`docs`"), "{}", req.system);
+    assert!(req.system.contains("## MCP connections") && req.system.contains("`tracker`"), "{}", req.system);
     // The command table of the role, from the catalog of operations.
     assert!(
         req.system.contains(
@@ -548,28 +592,125 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     // (`genie pr open --title` is the executor's own: it hands its work over.)
     assert!(!req.system.contains("genie agent ") && !req.system.contains("genie task create"), "the catalog's commands, those of the role");
 
+    // The role's connections only: the granted tools of `tracker` are declared and nothing else of it,
+    // `wide` is found with tool search, and nothing of the machine user's or the repository's —
+    // neither MCP servers nor the repository's extension — and no codemode.
+    let has = |n: &str| req.tools.iter().any(|t| t == n);
+    let any = |p: &str| req.tools.iter().any(|t| t.contains(p));
+    assert!(has("mcp__tracker__get_issue") && has("mcp__tracker__list_issues"), "{:?}", req.tools);
+    assert!(!has("mcp__tracker__delete_issue") && !has("mcp__tracker__whoami"), "ungranted tools are never exposed: {:?}", req.tools);
+    assert!(has("tool_search") && !any("mcp__wide__"), "a whole connection is searched: {:?}", req.tools);
+    assert!(!any("userwide") && !any("mcp__repo") && !any("secret") && !has("evil_tool"), "{:?}", req.tools);
+    assert!(!has("codemode"), "codemode is for connections the admin set to it: {:?}", req.tools);
+
     // A denied command is blocked, the rest of the shell works.
     mail(app, "anna", "human", "bender", "RUN: echo one && git push origin main", None);
     let out = tool_result(log, "git push origin main").await;
     assert!(out.contains("may not run `git push*`"), "{out}");
 
-    // MCP: the granted connection passes, another one and installing servers do not.
-    mail(app, "anna", "human", "bender", r#"MCP: {"server": "docs", "tool": "search", "args": {"q": "export"}}"#, None);
-    assert!(tool_result(log, r#""tool": "search""#).await.contains("FAKE-MCP"), "a granted connection");
-    mail(app, "anna", "human", "bender", r#"MCP: {"server": "secret", "tool": "dump"}"#, None);
-    let out = tool_result(log, r#""tool": "dump""#).await;
-    assert!(out.contains("secret is not granted") && !out.contains("FAKE-MCP"), "{out}");
-    mail(app, "anna", "human", "bender", r#"MCP: {"action": "install", "url": "https://evil.example/mcp"}"#, None);
-    assert!(tool_result(log, "evil.example").await.contains("do not install MCP servers"));
+    // MCP through the gateway: a granted tool passes.
+    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "mcp__tracker__get_issue", "args": {"id": 7}}"#, None);
+    assert!(tool_result(log, r#""id": 7"#).await.contains(r#"get_issue {"id":7}"#), "a granted tool");
+    // Tool search declares the tools of `wide`, which are then called like any.
+    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "tool_search", "args": {"query": "whoami"}}"#, None);
+    assert!(tool_result(log, "whoami").await.contains("mcp__wide__whoami"));
+    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "mcp__wide__whoami", "args": {}}"#, None);
+    assert!(tool_result(log, "mcp__wide__whoami").await.contains("pid"), "a tool found by search");
+    // A tool pi does not know is no MCP call.
+    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "mcp__userwide__whoami", "args": {}}"#, None);
+    let out = tool_result(log, "mcp__userwide__whoami").await;
+    assert!(!out.contains("pid") && !out.contains("EVIL"), "{out}");
 
-    // A rule changed while the agent runs applies at its next tool call, without a restart.
+    // A rule changed while the agent runs applies at its next tool call, without a restart: one
+    // tool and a whole connection taken away, a command denied.
     let pid = session_state(app, "bender").unwrap().2;
-    write(&data.join("agents/executor.md"), "---\nskills: [owasp]\ndenyCommands: [\"git push*\", \"curl *\"]\nmcp: [docs]\n---\n");
+    write(
+        &data.join("agents/executor.md"),
+        "---\nskills: [owasp]\ndenyCommands: [\"git push*\", \"curl *\"]\nmcp: [\"tracker:get_*\"]\n---\n",
+    );
     app.reload_agents();
     mail(app, "anna", "human", "bender", "RUN: curl https://example.com", None);
     let out = tool_result(log, "curl https://example.com").await;
     assert!(out.contains("may not run `curl *`"), "{out}");
+    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "mcp__tracker__list_issues", "args": {}}"#, None);
+    let out = tool_result(log, "mcp__tracker__list_issues").await;
+    assert!(out.contains("may use only these tools of tracker: get_*") && !out.contains("list_issues {"), "{out}");
+    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "mcp__wide__whoami", "args": {"again": true}}"#, None);
+    let out = tool_result(log, "again\": true").await;
+    assert!(out.contains("MCP connection wide is not granted") && !out.contains("pid"), "{out}");
     assert_eq!(session_state(app, "bender").unwrap().2, pid, "the same session");
+
+    // A read-only role with codemode: a script reaches its connection, and nothing else it must not
+    // — no edit or write (not there at all), no denied command (the guard sees the script's calls),
+    // no connection of another role, no server of the machine's user.
+    let script = "const run = async (f) => { try { await f(); return 'ok'; } catch (e) { return 'refused: ' + String(e && e.message || e).slice(0, 160); } }; \
+        text('whoami=' + await run(() => tools.mcp__cm__whoami({}))); \
+        text('write=' + await run(() => tools.write({ path: 'x.txt', content: 'y' }))); \
+        text('edit=' + await run(() => tools.edit({ path: 'x.txt', edits: [] }))); \
+        text('push=' + await run(() => tools.bash({ command: 'git push origin main' }))); \
+        text('echo=' + await run(() => tools.bash({ command: 'echo from-codemode' }))); \
+        text('tracker=' + await run(() => tools.mcp__tracker__whoami({}))); \
+        text('userwide=' + await run(() => tools.mcp__userwide__whoami({})));";
+    mail(app, "anna", "human", "yoda", &format!("CODEMODE: {script}"), None);
+    let out = tool_result_of(log, "reviewer", "whoami=").await;
+    let line = |k: &str| out.lines().find(|l| l.starts_with(&format!("{k}="))).unwrap_or_default().to_string();
+    assert_eq!(line("whoami"), "whoami=ok", "{out}");
+    assert!(line("write").contains("refused"), "{out}");
+    assert!(line("edit").contains("refused"), "{out}");
+    assert!(line("push").contains("may not run `git push*`"), "{out}");
+    assert_eq!(line("echo"), "echo=ok", "{out}");
+    assert!(line("tracker").contains("refused") && line("userwide").contains("refused"), "{out}");
+    let req = until("yoda's request", 10, || request_with(log, "reviewer", "whoami=")).await;
+    assert!(req.tools.iter().any(|t| t == "codemode") && !req.tools.iter().any(|t| t == "write" || t == "edit"), "{:?}", req.tools);
+    assert!(!req.tools.iter().any(|t| t.starts_with("mcp__")), "the connection stays behind codemode: {:?}", req.tools);
+}
+
+/// pi 1.0 cannot run pi-mcp-adapter next to its native MCP support (it would reach the machine
+/// user's MCP servers): a deployment that still has it loaded gets its tools blocked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_tools_of_a_still_installed_pi_mcp_adapter_are_blocked() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        return;
+    };
+    let adapter = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pi-mcp-adapter/index.ts");
+    let pi_path = pi.to_string_lossy().into_owned();
+    let l = live(pi, |cfg| {
+        let mut cmd = genie::config::RuntimeConfig::default().session_command;
+        cmd[0][0] = pi_path;
+        cmd.push(vec!["-e".into(), adapter.to_string_lossy().into_owned()]);
+        cfg.runtime.session_command = cmd;
+    })
+    .await;
+    let (app, log) = (&l.app, &l.log);
+    install_dump(app, log);
+    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "mcp", "args": {"server": "userwide", "tool": "x"}}"#, None);
+    let out = tool_result(log, r#""server": "userwide""#).await;
+    assert!(out.contains("pi-mcp-adapter must not be loaded") && !out.contains("FAKE-ADAPTER"), "{out}");
+}
+
+/// pi runs under a V8 heap cap added to the operator's own `NODE_OPTIONS`; what pi runs does not inherit it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_session_runs_under_a_heap_cap_its_commands_do_not_inherit() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        return;
+    };
+    let l = live(pi, |cfg| {
+        cfg.runtime.env.insert("NODE_OPTIONS".into(), "--no-warnings".into());
+    })
+    .await;
+    let (app, log) = (&l.app, &l.log);
+    mail(app, "anna", "human", "bender", "RUN: echo CAP=[$NODE_OPTIONS][$GENIE_NODE_HEAP_MB]", None);
+    let out = tool_result(log, "CAP=").await;
+    assert!(out.contains("CAP=[--no-warnings][]"), "the command sees the operator's options only: {out}");
+    let pid = session_state(app, "bender").unwrap().2;
+    let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap();
+    let environ = String::from_utf8_lossy(&environ);
+    assert!(environ.contains("NODE_OPTIONS=--no-warnings --max-old-space-size=2048"), "pi itself got the cap");
+    // What a bare session weighs, for sizing `nodeHeapMb` and `maxSessions` (docs/platform/docker.md).
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
+    eprintln!("pi session: {}", status.lines().filter(|l| l.starts_with("VmRSS") || l.starts_with("VmHWM")).collect::<Vec<_>>().join(" "));
 }
 
 /// The orchestrator console: `genie orchestrate` runs pi (here in RPC mode, so

@@ -94,6 +94,8 @@ async fn update(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>, Json
     ctx.access(&app, None).await?.admin()?;
     owned(&app, &ctx, id).await?;
     let a = app.blocking(move |app| app.with_server(|db| db.update_automation(id, &b.spec))).await?;
+    // A changed schedule or trigger is a new deadline for the engine.
+    app.wake_engine.notify_one();
     Ok(Json(json!(a)))
 }
 
@@ -113,6 +115,7 @@ async fn enable(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>, Json
     ctx.access(&app, None).await?.admin()?;
     owned(&app, &ctx, id).await?;
     let a = app.blocking(move |app| app.with_server(|db| db.set_automation_enabled(id, b.enabled))).await?;
+    app.wake_engine.notify_one();
     Ok(Json(json!(a)))
 }
 
@@ -181,6 +184,8 @@ async fn cancel(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>) -> A
         })
     })
     .await?;
+    // A cancelled run frees a slot of its rule's concurrency.
+    app.wake_engine.notify_one();
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -201,6 +206,7 @@ async fn install(State(app): State<Arc<App>>, ctx: Ctx, Path(name): Path<String>
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "no such playbook"))?;
     let (project, by) = (access.project.clone(), access.actor.name.clone());
     let a = app.blocking(move |app| app.with_server(|db| db.create_automation(&project, &spec, &by))).await?;
+    app.wake_engine.notify_one();
     Ok((StatusCode::CREATED, Json(json!(a))))
 }
 

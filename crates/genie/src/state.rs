@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
 
+use chrono::{DateTime, Utc};
+use genie_core::events;
 use genie_core::server_db::{Project, ServerDb};
 use genie_core::vault::Vault;
 use genie_core::{GenieError, Tracker};
@@ -40,19 +43,38 @@ impl std::fmt::Display for AppError {
     }
 }
 
+/// How long a background loop sleeps when nothing is due and nobody wakes it. Work wakes its loop
+/// (`App::wake_*`), and time-based work (a cron rule, a reminder, a backoff) sets the sleep to its
+/// own deadline, so this only covers what changes the data directory behind the server's back.
+pub const SAFETY_NET: Duration = Duration::from_secs(60);
+
+/// How long to sleep for the soonest of `deadlines`, but never longer than `net`.
+pub fn sleep_until(deadlines: impl IntoIterator<Item = DateTime<Utc>>, net: Duration) -> Duration {
+    let now = Utc::now();
+    deadlines.into_iter().map(|d| (d - now).to_std().unwrap_or_default()).fold(net, Duration::min)
+}
+
 pub type AppResult<T> = Result<T, AppError>;
 
 /// Run a future to its end from synchronous code — a worker of [`App::blocking`], the engine's
-/// tick, a test — on a thread of its own, so it never nests in the caller's runtime.
+/// tick, a test — on a thread of its own, so it never nests in the caller's runtime. A
+/// multi-thread runtime (the server's) drives the future itself; anywhere else (no runtime, or a
+/// current-thread test runtime, which is driven only by its own `block_on`) a runtime is built for
+/// the call. `Handle::block_on` directly would panic when the caller is a task, so it is not used
+/// on the caller's thread.
 pub fn block_on<F>(f: F) -> F::Output
 where
     F: std::future::Future + Send,
     F::Output: Send,
 {
+    let handle = tokio::runtime::Handle::try_current().ok().filter(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread);
     std::thread::scope(|s| {
-        s.spawn(|| tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime").block_on(f))
-            .join()
-            .unwrap_or_else(|e| std::panic::resume_unwind(e))
+        s.spawn(|| match &handle {
+            Some(h) => h.block_on(f),
+            None => tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime").block_on(f),
+        })
+        .join()
+        .unwrap_or_else(|e| std::panic::resume_unwind(e))
     })
 }
 
@@ -65,12 +87,17 @@ pub struct App {
     /// The knowledge vault shared by all projects of this installation.
     pub vault: Mutex<Vault>,
     projects: RwLock<HashMap<String, Arc<Mutex<Tracker>>>>,
-    /// Wakes the agent scheduler (new mail, finished turn, new job).
-    pub wake_runtime: Notify,
-    /// Wakes the automation engine (new events, answered questions, finished jobs).
-    pub wake_engine: Notify,
+    /// Wakes the agent scheduler (new mail, finished turn, new job). The background loops sleep
+    /// until a deadline of their own or this: whoever creates work for one calls the `notify_one`
+    /// (it keeps a permit, so a wake-up between two passes is not lost). Journal events do it by
+    /// themselves ([`App::project_tracker`]).
+    pub wake_runtime: Arc<Notify>,
+    /// Wakes the automation engine (new events, answered questions, finished jobs, rule changes).
+    pub wake_engine: Arc<Notify>,
     /// Wakes the delivery dispatcher (new outbox rows).
-    pub wake_outbox: Notify,
+    pub wake_outbox: Arc<Notify>,
+    /// Wakes the delivery poller (a task's delivery started to be watched).
+    pub wake_poller: Notify,
     /// Path of the running `genie` binary, given to agents so they can call back.
     pub exe: PathBuf,
     /// Live agent sessions (long-running harness processes).
@@ -85,6 +112,8 @@ pub struct App {
     pub mcp: crate::mcp_gateway::Gateway,
     /// Locks and fetch times of the repository mirrors and workspaces.
     pub git: crate::git::Git,
+    /// The journal pollers behind the live streams of the web UI.
+    pub live: crate::http::live::Hub,
 }
 
 impl App {
@@ -104,9 +133,10 @@ impl App {
             server: Mutex::new(server),
             vault: Mutex::new(vault),
             projects: RwLock::new(HashMap::new()),
-            wake_runtime: Notify::new(),
-            wake_engine: Notify::new(),
-            wake_outbox: Notify::new(),
+            wake_runtime: Default::default(),
+            wake_engine: Default::default(),
+            wake_outbox: Default::default(),
+            wake_poller: Notify::new(),
             exe,
             sessions: Default::default(),
             sched: Default::default(),
@@ -114,6 +144,7 @@ impl App {
             agents: RwLock::new(Arc::new(agents)),
             mcp: Default::default(),
             git: Default::default(),
+            live: Default::default(),
         }))
     }
 
@@ -159,7 +190,17 @@ impl App {
             return Ok(p.clone());
         }
         let project = self.with_server(|db| db.project(slug))?;
-        let tracker = Arc::new(Mutex::new(Tracker::open(&project.tracker_dir)?));
+        let tracker = Tracker::open(&project.tracker_dir)?;
+        // Every journal event is work for the engine (rules, notifications, team flow), and mail and
+        // team changes are work for the scheduler: nothing has to poll for them.
+        let (engine, runtime) = (self.wake_engine.clone(), self.wake_runtime.clone());
+        tracker.on_event(Arc::new(move |kind| {
+            engine.notify_one();
+            if kind == events::MAIL_SENT || kind.starts_with("team.") {
+                runtime.notify_one();
+            }
+        }));
+        let tracker = Arc::new(Mutex::new(tracker));
         // Opening a tracker may have migrated it: log it, like the server's start-up does.
         crate::cli::report_migrations(&self.data);
         let mut map = self.projects.write().map_err(|_| AppError::Internal("registry poisoned".into()))?;
@@ -225,5 +266,41 @@ impl App {
     pub fn with_vault<T>(&self, f: impl FnOnce(&mut Vault) -> Result<T, GenieError>) -> AppResult<T> {
         let mut v = self.vault.lock().map_err(|_| AppError::Internal("vault lock poisoned".into()))?;
         Ok(f(&mut v)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::block_on;
+    use std::time::Duration;
+
+    async fn after_a_timer() -> u8 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        7
+    }
+
+    #[test]
+    fn block_on_works_without_a_runtime() {
+        assert_eq!(block_on(after_a_timer()), 7);
+    }
+
+    #[tokio::test]
+    async fn block_on_works_on_a_blocking_worker_of_a_current_thread_runtime() {
+        assert_eq!(tokio::task::spawn_blocking(|| block_on(after_a_timer())).await.unwrap(), 7);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn block_on_works_on_a_blocking_worker_of_a_multi_thread_runtime() {
+        assert_eq!(tokio::task::spawn_blocking(|| block_on(after_a_timer())).await.unwrap(), 7);
+    }
+
+    #[tokio::test]
+    async fn block_on_does_not_panic_inside_a_task() {
+        assert_eq!(block_on(after_a_timer()), 7);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn block_on_does_not_panic_inside_a_task_of_a_multi_thread_runtime() {
+        assert_eq!(block_on(after_a_timer()), 7);
     }
 }

@@ -317,7 +317,8 @@ impl ServerDb {
     pub fn repo_opt(&self, project: &str, name: &str) -> Result<Option<ProjectRepo>> {
         Ok(self
             .conn()
-            .query_row("SELECT * FROM project_repos WHERE project = ?1 AND name = ?2", params![project, name], ProjectRepo::from_row)
+            .prepare_cached("SELECT * FROM project_repos WHERE project = ?1 AND name = ?2")?
+            .query_row(params![project, name], ProjectRepo::from_row)
             .optional()?)
     }
 
@@ -595,7 +596,7 @@ impl ServerDb {
     /// Deliveries the poller looks at: an open request, or a watched ref whose checks are not
     /// settled yet (`none` stays in: a fresh push may have no checks for the first moments).
     pub fn watched_deliveries(&self) -> Result<Vec<TaskRepo>> {
-        let mut stmt = self.conn().prepare(
+        let mut stmt = self.conn().prepare_cached(
             "SELECT * FROM task_repos
              WHERE cr_state = 'open'
                 OR (ci_sha IS NOT NULL AND (ci_state IS NULL OR ci_state IN ('pending', 'none')))

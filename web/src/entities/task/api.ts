@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { keys, request, useInvalidating } from "@/shared/api";
+import { invalidateKeys, keys, keysFor, request, useInvalidating } from "@/shared/api";
 import type { CommentBody, CreateBody, DocsImpact, StatusBody, UpdateBody } from "@/shared/api";
 import type { Task, TaskSummary } from "./model.ts";
 
@@ -39,19 +39,28 @@ export function useMoveTask() {
       return { prev };
     },
     onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(keys.tasks, ctx.prev),
-    onSettled: () => qc.invalidateQueries(),
+    // A move appends `task.status_changed`: the same queries the stream would refetch.
+    onSettled: () => invalidateKeys(qc, keysFor({ type: "task.status_changed" })),
   });
 }
 
 export const useComment = () =>
-  useInvalidating(({ id, ...body }: { id: string } & CommentBody) => request<Task>("POST", `/api/tasks/${encodeURIComponent(id)}/comments`, body));
+  useInvalidating(
+    ({ id, ...body }: { id: string } & CommentBody) => request<Task>("POST", `/api/tasks/${encodeURIComponent(id)}/comments`, body),
+    keysFor({ type: "task.commented" }),
+  );
 export const useCheck = () =>
-  useInvalidating((v: { id: string; n: number; done: boolean }) => request<Task>("POST", `/api/tasks/${encodeURIComponent(v.id)}/acceptance/${v.n}`, { done: v.done }));
+  useInvalidating(
+    (v: { id: string; n: number; done: boolean }) => request<Task>("POST", `/api/tasks/${encodeURIComponent(v.id)}/acceptance/${v.n}`, { done: v.done }),
+    keysFor({ type: "task.criterion_checked" }),
+  );
 export const usePatchTask = () =>
-  useInvalidating((v: { id: string; patch: UpdateBody }) => request<Task>("PATCH", `/api/tasks/${encodeURIComponent(v.id)}`, v.patch),
+  useInvalidating(
+    (v: { id: string; patch: UpdateBody }) => request<Task>("PATCH", `/api/tasks/${encodeURIComponent(v.id)}`, v.patch),
+    keysFor({ type: "task.updated" }),
   );
 export const useCreateTask = () =>
-  useInvalidating((v: CreateBody) => request<Task>("POST", "/api/tasks", v));
+  useInvalidating((v: CreateBody) => request<Task>("POST", "/api/tasks", v), keysFor({ type: "task.created" }));
 /** Delete a task for good; `cascade` takes its subtasks along (the server refuses otherwise). */
 export function useDeleteTask() {
   const qc = useQueryClient();
@@ -62,12 +71,15 @@ export function useDeleteTask() {
       // Drop the deleted tasks first: refetching one of them would only fail.
       for (const id of r.deleted) qc.removeQueries({ queryKey: keys.task(id) });
     },
-    onSettled: () => qc.invalidateQueries(),
+    // A deletion appends `task.deleted`: the same queries the stream would refetch.
+    onSettled: () => invalidateKeys(qc, keysFor({ type: "task.deleted" })),
   });
 }
 export const useAddArtifact = () =>
-  useInvalidating((v: { id: string; name: string; kind: string; text: string; note?: string }) =>
-    request<Task>("POST", `/api/tasks/${encodeURIComponent(v.id)}/artifacts`, { name: v.name, kind: v.kind, text: v.text, note: v.note }),
+  useInvalidating(
+    (v: { id: string; name: string; kind: string; text: string; note?: string }) =>
+      request<Task>("POST", `/api/tasks/${encodeURIComponent(v.id)}/artifacts`, { name: v.name, kind: v.kind, text: v.text, note: v.note }),
+    keysFor({ type: "task.artifact_added" }),
   );
 
 export async function fetchArtifact(task: string, n: number): Promise<{ name: string; kind: string; size: number; text?: string; mime?: string }> {

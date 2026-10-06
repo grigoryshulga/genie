@@ -162,3 +162,70 @@ fn the_ready_next_playbook_wakes_the_orchestrator_when_a_team_stops() {
     genie::engine::tick(&app).unwrap();
     assert_eq!(asked(&app), 1, "a stopped team asks the orchestrator for the next ready task");
 }
+
+fn open_app() -> (tempfile::TempDir, std::sync::Arc<App>) {
+    let dir = tempfile::tempdir().unwrap();
+    let app = App::open(dir.path(), Config::load(dir.path()).unwrap(), PathBuf::from("/nonexistent")).unwrap();
+    app.create_project("shop", "Shop", None, None, None).unwrap();
+    (dir, app)
+}
+
+/// Whether the loop behind `notify` has a wake-up waiting (the permit `notify_one` keeps).
+async fn woken(notify: &tokio::sync::Notify) -> bool {
+    tokio::time::timeout(std::time::Duration::from_millis(20), notify.notified()).await.is_ok()
+}
+
+#[tokio::test]
+async fn journal_events_wake_the_engine_and_mail_wakes_the_scheduler() {
+    let (_dir, app) = open_app();
+    assert!(!woken(&app.wake_engine).await && !woken(&app.wake_runtime).await, "nothing happened yet");
+    // The tracker opens on first use, and every event it appends wakes the engine, whoever wrote it.
+    let bot = Actor::new("bot", Role::Orchestrator);
+    let id = app.with_tracker("shop", |t| t.create(&bot, CreateInput { title: "first".into(), ..Default::default() })).unwrap().id;
+    assert!(woken(&app.wake_engine).await, "a task event wakes the engine");
+    assert!(!woken(&app.wake_runtime).await, "but not the scheduler");
+    app.with_tracker("shop", |t| t.bus().notify_orchestrator("genie", "system", "system", "look", Some(&id))).unwrap();
+    assert!(woken(&app.wake_engine).await && woken(&app.wake_runtime).await, "mail is work for both");
+}
+
+#[test]
+fn the_engine_sleeps_until_the_next_cron_fire_reminder_and_wait() {
+    let (_dir, app) = open_app();
+    let plan = genie::engine::pass(&app).unwrap();
+    assert_eq!(plan.next_at(), None, "an idle server has no deadline: only the safety net");
+
+    // A schedule: the next fire is its deadline.
+    let spec = json!({ "name": "Daily", "on": { "schedule": "0 9 * * *", "tz": "Europe/Moscow" }, "steps": [{ "id": "w", "wait": { "for": "1h" } }] });
+    app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
+    let fire = genie_core::automation::next_fire("0 9 * * *", Some("Europe/Moscow"), chrono::Utc::now()).unwrap();
+    assert_eq!(genie::engine::pass(&app).unwrap().next_at(), Some(fire));
+
+    // A questionnaire with a reminder (sooner than the fire) and a due time (later).
+    let anna = app.with_server(|db| db.create_user("anna", "Anna", None, None, false)).unwrap();
+    let questions = [genie_core::inbox::NewQuestion { text: "CSV or XLSX?".into(), ..Default::default() }];
+    let (qn, _) = app
+        .with_server(|db| {
+            db.create_questionnaire(
+                "shop",
+                None,
+                "analyst",
+                anna.id,
+                "web",
+                &questions,
+                None,
+                Some(chrono::Duration::seconds(30)),
+                Some(chrono::Duration::days(3)),
+            )
+        })
+        .unwrap();
+    let reminder = chrono::DateTime::parse_from_rfc3339(qn.remind_at.as_deref().unwrap()).unwrap().to_utc();
+    assert_eq!(genie::engine::pass(&app).unwrap().next_at(), Some(reminder.min(fire)));
+
+    // A run waiting for a duration: the end of the wait is a deadline, and a repeated look keeps it.
+    let waiting = json!({ "name": "Pause", "on": { "manual": true }, "steps": [{ "id": "w", "wait": { "for": "10s" } }] });
+    let rule = app.with_server(|db| db.create_automation("shop", &waiting, "anna")).unwrap();
+    genie::engine::start_run(&app, &rule, "manual:1", json!({ "project": "shop" }), 0, None).unwrap();
+    let at = genie::engine::pass(&app).unwrap().next_at().unwrap();
+    assert!(at <= chrono::Utc::now() + chrono::Duration::seconds(10), "{at}");
+    assert_eq!(genie::engine::pass(&app).unwrap().next_at(), Some(at));
+}
