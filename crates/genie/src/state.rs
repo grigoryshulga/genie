@@ -104,6 +104,9 @@ pub struct App {
     pub sessions: crate::sessions::Registry,
     /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
+    /// Turn slots (`runtime.maxConcurrent`), shared with the scheduler loop; members
+    /// and jobs leave the last one for the orchestrator. `GET /api/runtime` reads it.
+    pub slots: Arc<tokio::sync::Semaphore>,
     /// Failures in a row of each agent, turns and sessions alike, and their backoff.
     pub attempts: crate::outcome::Attempts,
     /// Roles, team templates, skills and MCP connections (reloaded when their files change).
@@ -130,6 +133,7 @@ impl App {
         }
         let agents = AgentConfig::load(data, &cfg, None);
         let prices = RwLock::new(crate::model_prices::State::load(&cfg, &server));
+        let slots = Arc::new(tokio::sync::Semaphore::new(cfg.runtime.max_concurrent.max(1)));
         Ok(Arc::new(App {
             data: data.to_path_buf(),
             cfg,
@@ -144,6 +148,7 @@ impl App {
             exe,
             sessions: Default::default(),
             sched: Default::default(),
+            slots,
             attempts: Default::default(),
             agents: RwLock::new(Arc::new(agents)),
             prices,

@@ -855,3 +855,16 @@ async fn the_budget_of_the_day_stops_every_team() {
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
     assert!(err["error"].as_str().unwrap().contains("today"), "{err}");
 }
+
+#[tokio::test]
+async fn the_runtime_view_shows_the_scheduler_queue() {
+    let h = Harness::new();
+    h.project("shop");
+    let (s, v, _) = call(&h.router, "GET", "/api/runtime").send().await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["running"], json!(0));
+    assert!(v["maxConcurrent"].as_u64().is_some_and(|n| n >= 1), "the slot count: {v}");
+    assert_eq!(v["orchestratorsWaiting"], json!(0));
+    assert_eq!(v["membersWaiting"], json!(0));
+    assert_eq!(v["jobsWaiting"], json!(0));
+}

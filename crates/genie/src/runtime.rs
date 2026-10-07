@@ -67,12 +67,41 @@ pub struct Sched(Mutex<SchedState>);
 #[derive(Default)]
 struct SchedState {
     running: HashSet<AgentKey>,
+    /// What the last pass saw waiting for a slot, by kind — the queue the web and
+    /// `genie server runtime` show (`waiting`).
+    waiting: [usize; 3],
 }
 
 impl Sched {
     fn with<T>(&self, f: impl FnOnce(&mut SchedState) -> T) -> T {
         f(&mut self.0.lock().unwrap_or_else(|e| e.into_inner()))
     }
+
+    /// The scheduler's own view: what runs, what waits, for `GET /api/runtime`.
+    pub fn snapshot(&self, max_concurrent: usize, permits: usize) -> RuntimeView {
+        self.with(|s| RuntimeView {
+            running: s.running.len(),
+            orchestrators_waiting: s.waiting[0],
+            members_waiting: s.waiting[1],
+            jobs_waiting: s.waiting[2],
+            max_concurrent,
+            permits,
+        })
+    }
+}
+
+/// What the scheduler is doing right now (`genie server runtime`, `GET /api/runtime`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeView {
+    pub running: usize,
+    pub orchestrators_waiting: usize,
+    pub members_waiting: usize,
+    pub jobs_waiting: usize,
+    /// `runtime.maxConcurrent`.
+    pub max_concurrent: usize,
+    /// Permits free right now (`maxConcurrent` − running, at most).
+    pub permits: usize,
 }
 
 /// Start background workers: crash recovery, then the scheduler.
@@ -111,7 +140,7 @@ pub fn start(app: &Arc<App>) {
     }
     let app = app.clone();
     tokio::spawn(async move {
-        let slots = Arc::new(Semaphore::new(app.cfg.runtime.max_concurrent.max(1)));
+        let slots = app.slots.clone();
         loop {
             let next = match schedule(&app, &slots).await {
                 Ok(next) => next,
@@ -201,7 +230,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
     if app.cfg.runtime.stall_secs > 0 {
         next.within(Duration::from_secs((app.cfg.runtime.stall_secs / 4).max(1)));
     }
-    let (candidates, console) = app
+    let (mut candidates, console) = app
         .blocking(|app| {
             let mut out = Vec::new();
             let mut console = None::<Duration>;
@@ -239,7 +268,22 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
     if let Some(d) = console {
         next.within(d + Duration::from_millis(50));
     }
-    for key in candidates {
+    // The orchestrator decides for everyone: when several wait, it goes first, and
+    // with more than one slot the members and jobs never take the last one — the
+    // orchestrator that wakes up into a full scheduler would otherwise starve
+    // until a member finishes (G-83: «один слот всегда свободен для оркестратора»).
+    candidates.sort_by_key(|k| !matches!(k, AgentKey::Orchestrator { .. }));
+    let reserve_last = app.cfg.runtime.max_concurrent > 1;
+    let kind = |k: &AgentKey| match k {
+        AgentKey::Orchestrator { .. } => 0usize,
+        AgentKey::Member { .. } => 1,
+        AgentKey::Job { .. } => 2,
+    };
+    let mut waiting = [0usize; 3];
+    let mut i = 0;
+    while i < candidates.len() {
+        let key = candidates[i].clone();
+        i += 1;
         if live && !matches!(key, AgentKey::Job { .. }) {
             if let Some(d) = crate::sessions::deliver(app, &key).await {
                 next.within(d);
@@ -256,7 +300,17 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
         if app.sched.with(|s| s.running.contains(&key)) {
             continue;
         }
-        let Ok(permit) = slots.clone().try_acquire_owned() else { break };
+        if reserve_last && slots.available_permits() <= 1 && !matches!(key, AgentKey::Orchestrator { .. }) {
+            waiting[kind(&key)] += 1;
+            continue;
+        }
+        let Ok(permit) = slots.clone().try_acquire_owned() else {
+            // No permits at all: everything left is the queue the counters show.
+            for k in &candidates[i..] {
+                waiting[kind(k)] += 1;
+            }
+            break;
+        };
         app.sched.with(|s| s.running.insert(key.clone()));
         let app = app.clone();
         tokio::spawn(async move {
@@ -267,6 +321,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
             app.wake_engine.notify_one();
         });
     }
+    app.sched.with(|s| s.waiting = waiting);
     Ok(next)
 }
 

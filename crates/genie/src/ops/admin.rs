@@ -27,7 +27,8 @@ pub fn register(all: &mut Vec<Entry>) {
         Doctor,
         Stats,
         VaultSync,
-        ModelPrices
+        ModelPrices,
+        RuntimeView
     );
 }
 
@@ -546,6 +547,35 @@ impl Op for VaultSync {
             text.push_str(&format!("\nchanged on both sides (the server's lines kept where they overlap): {}", both.join(", ")));
         }
         Ok(Out::new(text, v))
+    }
+}
+
+/// What the scheduler is doing right now: running turns, the queue waiting for a slot, the slots (server admins).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct RuntimeView {}
+
+impl Op for RuntimeView {
+    const GROUP: &'static str = "server";
+    const NAME: &'static str = "runtime";
+    const NEED: Need = Need::Admin;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("GET", "/runtime", None).await?;
+        let n = |k: &str| v[k].as_u64().unwrap_or(0);
+        let mut lines = vec![
+            format!("running: {} of {} slot(s)", n("running"), n("maxConcurrent")),
+            format!("free: {} slot(s)", n("permits")),
+            format!("waiting: {}", n("orchestratorsWaiting") + n("membersWaiting") + n("jobsWaiting")),
+        ];
+        if n("orchestratorsWaiting") + n("membersWaiting") + n("jobsWaiting") > 0 {
+            lines.push(format!(
+                "  orchestrators {}, members {}, jobs {}",
+                n("orchestratorsWaiting"),
+                n("membersWaiting"),
+                n("jobsWaiting")
+            ));
+            lines.push("the last slot stays free for the orchestrator".into());
+        }
+        Ok(Out::new(lines.join("\n"), v))
     }
 }
 

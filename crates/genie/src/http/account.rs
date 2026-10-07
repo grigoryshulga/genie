@@ -39,6 +39,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/projects/{slug}/invites", post(create_invite))
         .route("/doctor", get(doctor))
         .route("/model-prices", get(model_prices).post(refresh_model_prices))
+        .route("/runtime", get(runtime_view))
         .route("/stats", get(stats))
         .route("/vault/sync", get(vault_sync).post(vault_sync_now))
 }
@@ -541,6 +542,14 @@ async fn doctor(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>>
     ctx.server_admin()?;
     let checks = app.blocking(|app| Ok(crate::doctor::run(&app.data, &app.cfg, &app.agents(), app.web_root.as_deref()))).await?;
     Ok(Json(json!({ "checks": checks })))
+}
+
+/// What the scheduler is doing: running turns, the queue waiting for a slot by
+/// kind, and the slots themselves (`genie server runtime`).
+async fn runtime_view(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
+    ctx.server_admin()?;
+    let v = app.sched.snapshot(app.cfg.runtime.max_concurrent, app.slots.available_permits());
+    Ok(Json(serde_json::to_value(&v).unwrap_or_default()))
 }
 
 /// The model prices in effect: `modelPrices` of config.json over what LiteLLM
