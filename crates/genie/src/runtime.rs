@@ -86,6 +86,13 @@ pub fn start(app: &Arc<App>) {
         eprintln!("genie runtime: recovery failed: {e}");
     }
     crate::sessions::recover(app);
+    // Closed tasks from an earlier run may still hold worktrees (and their build
+    // directories) — free what the main branch already has.
+    for p in app.with_server(|db| db.projects()).unwrap_or_default() {
+        for line in sweep_worktrees(app, &p.slug) {
+            println!("genie runtime: {}: {line}", p.slug);
+        }
+    }
     let gateway = app.clone();
     tokio::spawn(async move {
         loop {
@@ -2103,7 +2110,9 @@ pub fn stop_team(app: &App, slug: &str, team: &str, reason: &str, by: &str) -> A
     Ok(report)
 }
 
-/// Stop teams whose task is closed (from blocking code).
+/// Stop teams whose task is closed (from blocking code) and free what the closed
+/// tasks no longer need: worktrees whose branch is in the main one go, with the
+/// branch (G-134 — a closed task used to keep its 17 GB `target/` forever).
 pub fn reap_closed_blocking(app: &App, slug: &str) -> AppResult<Vec<String>> {
     let closed: Vec<String> = app.with_tracker(slug, |t| {
         let mut out = Vec::new();
@@ -2117,7 +2126,84 @@ pub fn reap_closed_blocking(app: &App, slug: &str) -> AppResult<Vec<String>> {
     for team in &closed {
         stop_team(app, slug, team, "task_closed", "genie")?;
     }
-    Ok(closed)
+    let mut report: Vec<String> = closed.iter().map(|t| format!("team {t} stopped (task_closed)")).collect();
+    report.extend(sweep_worktrees(app, slug));
+    Ok(report)
+}
+
+/// Worktrees of closed tasks (`done`, `cancelled`): a git worktree goes when its
+/// branch is in the repository's main branch (the branch goes too); a workspace
+/// under the data directory goes as it is (its work is on the git host). Work not
+/// in the main branch yet stays — the report says so. Teams still running on a
+/// closed task are skipped (`reap_closed_blocking` stops them first).
+pub fn sweep_worktrees(app: &App, slug: &str) -> Vec<String> {
+    let Ok(ids) = app.with_tracker(slug, |t| {
+        let f = genie_core::ListFilter { status: vec![Status::Done, Status::Cancelled], include_closed: true, ..Default::default() };
+        t.list(&f).map(|list| list.into_iter().map(|s| s.id).collect::<Vec<_>>())
+    }) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for id in ids {
+        let Some(task) = app.with_tracker(slug, |t| t.get(&id)).ok() else { continue };
+        let Some(w) = task.worktree.clone() else { continue };
+        // A live team still works out of it (closing a task stops the team first;
+        // a race here means the sweep takes it on the next pass).
+        if let Some(team) = &task.team
+            && app.with_tracker(slug, |t| Ok(t.bus().get(team).map(|tm| tm.state == TeamState::Active).unwrap_or(false))).unwrap_or(false)
+        {
+            continue;
+        }
+        // A workspace (clones of hosted repositories): the work is on the host.
+        if Path::new(&w.path).starts_with(app.data.join("workspaces")) {
+            match std::fs::remove_dir_all(&w.path) {
+                Ok(()) => {
+                    let _ = app.with_tracker(slug, |t| t.clear_worktree(&task.id));
+                    out.push(format!("{}: workspace {} removed", task.id, w.path));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    let _ = app.with_tracker(slug, |t| t.clear_worktree(&task.id));
+                }
+                Err(e) => out.push(format!("{}: workspace {} not removed: {e}", task.id, w.path)),
+            }
+            continue;
+        }
+        // A git worktree of the project's repository: only merged work goes.
+        let Some(branch) = w.branch.as_deref().filter(|b| !b.is_empty()) else {
+            out.push(format!("{}: worktree {} kept (no branch recorded)", task.id, w.path));
+            continue;
+        };
+        let Some(repo) = app.with_server(|db| db.project(slug)).ok().and_then(|p| p.repo) else {
+            out.push(format!("{}: worktree {} kept (the project has no repository)", task.id, w.path));
+            continue;
+        };
+        let git = |args: &[&str]| std::process::Command::new("git").arg("-C").arg(&repo).args(args).output();
+        // Merged into the main branch (the repository's HEAD)? — `git branch -d`
+        // repeats the same check before deleting, so the two cannot disagree.
+        let merged = git(&["merge-base", "--is-ancestor", branch, "HEAD"]).map(|o| o.status.success()).unwrap_or(false);
+        if !merged {
+            out.push(format!("{}: worktree kept, {branch} is not in the main branch yet", task.id));
+            continue;
+        }
+        let mut removed = Vec::new();
+        if Path::new(&w.path).exists() {
+            match git(&["worktree", "remove", "--force", &w.path]) {
+                Ok(o) if o.status.success() => removed.push(format!("worktree {} removed", w.path)),
+                Ok(o) => out.push(format!("{}: worktree not removed: {}", task.id, String::from_utf8_lossy(&o.stderr).trim())),
+                Err(e) => out.push(format!("{}: worktree not removed: {e}", task.id)),
+            }
+        }
+        match git(&["branch", "-d", branch]) {
+            Ok(o) if o.status.success() => removed.push(format!("branch {branch} deleted")),
+            // Not there anymore, or git sees unmerged work after all: not an error.
+            _ => removed.push(format!("branch {branch} kept")),
+        }
+        if !removed.is_empty() {
+            let _ = app.with_tracker(slug, |t| t.clear_worktree(&task.id));
+            out.push(format!("{}: {}", task.id, removed.join(", ")));
+        }
+    }
+    out
 }
 
 /// Stop teams whose task is closed.

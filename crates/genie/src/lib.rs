@@ -89,6 +89,16 @@ fn boot_price_refresh(app: Arc<App>) {
     });
 }
 
+/// Say it in the server's log when a disk the server fills is running out —
+/// where nobody runs doctor by hand (`journalctl -u genie`).
+fn warn_low_disk(app: &App) {
+    let repos: Vec<(String, std::path::PathBuf)> =
+        app.with_server(|db| db.projects()).unwrap_or_default().into_iter().filter_map(|p| p.repo.map(|r| (p.slug, r.into()))).collect();
+    for w in crate::doctor::low_disk_warnings(&app.data, &repos, app.cfg.runtime.low_disk_gb) {
+        eprintln!("genie serve: {w}");
+    }
+}
+
 /// Completes on Ctrl-C (SIGINT) or, where the platform has it, SIGTERM (`docker stop`, systemd).
 async fn stop_signal() {
     #[cfg(unix)]
@@ -109,6 +119,10 @@ pub async fn serve_on(
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<(), String> {
     boot_price_refresh(app.clone());
+    {
+        let app = app.clone();
+        let _ = tokio::task::spawn_blocking(move || warn_low_disk(&app)).await;
+    }
     let router = http::router(app);
     axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown)

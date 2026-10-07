@@ -32,3 +32,4 @@ mod sessions;
 mod tasks;
 mod vault_sync;
 mod watchdog;
+mod worktrees;

@@ -72,6 +72,7 @@ pub fn run(data: &Path, cfg: &Config, agents: &AgentConfig, web: Option<&Path>) 
         }
     }
     let repos = people_and_projects(&mut out, data);
+    disks(&mut out, data, &repos, cfg.runtime.low_disk_gb);
     agents_and_models(&mut out, data, cfg, agents);
     match crate::sandbox::status(&cfg.runtime.sandbox) {
         (true, note) => out.ok("sandbox", note),
@@ -128,18 +129,46 @@ fn storage(out: &mut Out, data: &Path) {
                 format!("cannot write the data directory {}: {e}", data.display()),
                 "run the server as the user who owns it (--data or $GENIE_DATA)",
             );
-            return;
         }
     }
-    if let Some(free) = free_bytes(data) {
-        let gb = free as f64 / 1e9;
-        if free < 200_000_000 {
-            out.fail("data", format!("{gb:.1} GB free on the data disk"), "free some space: databases, worktrees and agent logs grow");
-        } else if free < 2_000_000_000 {
-            out.warn("data", format!("{gb:.1} GB free on the data disk"), "worktrees and agent logs grow; keep a few GB free");
-        } else {
-            out.ok("data", format!("{gb:.0} GB free on the data disk"));
+}
+
+/// Free space on the disks the server fills: the data directory and every project's
+/// repository (whose filesystem carries the teams' worktrees — the place that ran
+/// out once already). One line per filesystem; `low_gb` is `runtime.lowDiskGb`.
+fn disks(out: &mut Out, data: &Path, repos: &[(String, PathBuf)], low_gb: f64) {
+    let mut seen: Vec<String> = Vec::new();
+    let mut probe = |what: &str, path: &Path| {
+        let Some(free) = free_bytes(path) else { return };
+        let fs = Command::new("df").arg("-Pk").arg(path).output().ok().and_then(|o| {
+            let t = String::from_utf8_lossy(&o.stdout);
+            t.lines().nth(1).map(|l| l.split_whitespace().next().unwrap_or("").to_string())
+        });
+        let key = fs.unwrap_or_else(|| path.display().to_string());
+        if seen.contains(&key) {
+            return;
         }
+        seen.push(key);
+        let gb = free as f64 / 1e9;
+        if free < 1_000_000_000 {
+            out.fail(
+                "data",
+                format!("{gb:.1} GB free on the {what} disk ({}): databases, worktrees and agent logs stop first", path.display()),
+                "free some space: closed tasks' worktrees go on their own (G-134); `rm -rf` of a build cache is safe",
+            );
+        } else if gb < low_gb {
+            out.warn(
+                "data",
+                format!("{gb:.1} GB free on the {what} disk ({})", path.display()),
+                "worktrees and agent logs grow; keep a few GB free",
+            );
+        } else {
+            out.ok("data", format!("{gb:.0} GB free on the {what} disk ({})", path.display()));
+        }
+    };
+    probe("data", data);
+    for (slug, repo) in repos {
+        probe(&format!("{slug} worktree"), repo);
     }
 }
 
@@ -199,6 +228,25 @@ fn free_bytes(dir: &Path) -> Option<u64> {
     let text = String::from_utf8_lossy(&o.stdout);
     let kb: u64 = text.lines().nth(1)?.split_whitespace().nth(3)?.parse().ok()?;
     Some(kb * 1024)
+}
+
+/// The same free-space look at start: the server says so in its log (journalctl),
+/// where nobody runs doctor by hand.
+pub fn low_disk_warnings(data: &Path, repos: &[(String, PathBuf)], low_gb: f64) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut probe = |what: &str, path: &Path| {
+        if let Some(free) = free_bytes(path) {
+            let gb = free as f64 / 1e9;
+            if gb < low_gb {
+                out.push(format!("{gb:.1} GB free on the {what} disk ({}): worktrees and logs stop the server first", path.display()));
+            }
+        }
+    };
+    probe("data", data);
+    for (slug, repo) in repos {
+        probe(&format!("{slug} worktree"), repo);
+    }
+    out
 }
 
 /// People and projects; returns the projects' repositories.

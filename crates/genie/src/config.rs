@@ -141,6 +141,9 @@ pub struct RuntimeConfig {
     /// A team that neither works nor waits for anyone for this long is reported to the
     /// orchestrator. 0 turns the silent-team watchdog off.
     pub stall_secs: u64,
+    /// When free space on the data or repository filesystem falls below this many
+    /// gigabytes, the server says so at start and `genie doctor` warns.
+    pub low_disk_gb: f64,
     /// Checks that stay `pending` for this long are reported to the team once and the watch
     /// stops taking them as running (`stalled`). 0 turns the timeout off.
     pub ci_pending_secs: u64,
@@ -293,6 +296,7 @@ impl Default for RuntimeConfig {
             node_heap_mb: 2048,
             turn_timeout_secs: 1800,
             stall_secs: 900,
+            low_disk_gb: 5.0,
             ci_pending_secs: 1800,
             ci_reruns_per_request: 2,
             ci_reruns_per_task: 3,
