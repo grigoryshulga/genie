@@ -1246,9 +1246,15 @@ impl Tracker {
     }
 
     /// Forget a task's worktree (it was removed; the team field stays as history).
-    pub fn clear_worktree(&self, id: &str) -> Result<()> {
-        self.conn().execute("UPDATE tasks SET worktree = NULL WHERE id = ?1", params![id])?;
-        Ok(())
+    /// `what` says what went, for the task's history.
+    pub fn clear_worktree(&self, actor: &Actor, id: &str, what: &str) -> Result<()> {
+        let r = self.row(id)?;
+        self.db.tx(|| {
+            self.conn().execute("UPDATE tasks SET worktree = NULL WHERE id = ?1", params![r.id])?;
+            self.history(&r.id, actor, what, None, None, None)?;
+            self.touch(&r.id)?;
+            self.event(events::TASK_UPDATED, &r.id, actor, json!({ "fields": ["worktree"] }))
+        })
     }
 
     /// Counts per status, for sidebars and status lines.

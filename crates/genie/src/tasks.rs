@@ -389,10 +389,17 @@ pub fn set_status(app: &App, caller: &Caller, id: &str, body: StatusBody) -> App
     let action = body.action.map(|a| owner_action(app, &caller.project, id, a)).transpose()?;
     let opts = StatusOptions { note: body.note.filter(|n| !n.is_empty()), force, action };
     let task = app.with_tracker(&caller.project, |t| t.set_status(&caller.actor, id, to, opts))?;
-    if CLOSED.contains(&to)
-        && let Err(e) = crate::runtime::reap_closed_blocking(app, &caller.project)
-    {
-        eprintln!("genie runtime: reap {}: {e}", caller.project);
+    if CLOSED.contains(&to) {
+        // The task is closed: its team stops, and what it no longer needs goes with
+        // it — this task only (a full sweep is the server's start-up job, G-134).
+        if let Some(team) = task.team.clone()
+            && let Err(e) = crate::runtime::stop_closed_team(app, &caller.project, &team)
+        {
+            eprintln!("genie runtime: stop team {team} of {}: {e}", caller.project);
+        }
+        for line in crate::runtime::sweep_task(app, &caller.project, &task.id) {
+            println!("genie runtime: {}: {line}", caller.project);
+        }
     }
     changed(app);
     Ok(task)
