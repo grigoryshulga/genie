@@ -279,11 +279,10 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
         AgentKey::Member { .. } => 1,
         AgentKey::Job { .. } => 2,
     };
+    // Each key is counted as waiting only after its own checks: one that runs,
+    // backs off or was delivered to its live session is not in the queue.
     let mut waiting = [0usize; 3];
-    let mut i = 0;
-    while i < candidates.len() {
-        let key = candidates[i].clone();
-        i += 1;
+    for key in candidates {
         if live && !matches!(key, AgentKey::Job { .. }) {
             if let Some(d) = crate::sessions::deliver(app, &key).await {
                 next.within(d);
@@ -305,11 +304,9 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
             continue;
         }
         let Ok(permit) = slots.clone().try_acquire_owned() else {
-            // No permits at all: everything left is the queue the counters show.
-            for k in &candidates[i..] {
-                waiting[kind(k)] += 1;
-            }
-            break;
+            // No permits at all: this key and every later one that passes its checks wait.
+            waiting[kind(&key)] += 1;
+            continue;
         };
         app.sched.with(|s| s.running.insert(key.clone()));
         let app = app.clone();

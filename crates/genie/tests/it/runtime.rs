@@ -135,8 +135,73 @@ async fn the_last_slot_stays_free_for_the_orchestrator() {
         app.sched.snapshot(3, app.slots.available_permits()).running == 3
     })
     .await;
-    let view = l.app.sched.snapshot(3, l.app.slots.available_permits());
-    assert_eq!(view.running, 3, "two members and the orchestrator");
+    // The third member still waits, now with no slot left; the orchestrator is not in the queue.
+    wait_for(&l.app, "the queue after the orchestrator started", Duration::from_secs(5), |app| {
+        let v = app.sched.snapshot(3, app.slots.available_permits());
+        v.running == 3 && v.permits == 0 && v.members_waiting == 1 && v.orchestrators_waiting == 0
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_orchestrator_waiting_for_a_slot_is_counted() {
+    // One slot, held by a slow member: the orchestrator that gets mail waits, and
+    // the queue counters say so (the key whose slot was refused is in the queue).
+    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/slow-agent.sh");
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.command = vec![vec!["bash".into(), script.to_string_lossy().into_owned()], vec!["{message}".into()]];
+        cfg.runtime.env.insert("GENIE_SLEEP".into(), "8".into());
+    })
+    .await;
+    l.app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    l.app
+        .with_tracker("shop", |t| {
+            let task = t.create(
+                &Actor::new("anna", Role::Human),
+                CreateInput { title: "load".into(), status: Some(Status::Ready), ..Default::default() },
+            )?;
+            t.bus().create(
+                "anna",
+                "human",
+                NewTeam {
+                    id: task.id.clone(),
+                    task: task.id.clone(),
+                    cwd: "/tmp".into(),
+                    members: vec![NewMember { name: "m1".into(), role: "executor".into(), ..Default::default() }],
+                    ..Default::default()
+                },
+            )?;
+            t.bus().send(SendMail {
+                team: &task.id,
+                from: "anna",
+                from_role: "human",
+                to: "m1",
+                text: "work",
+                kind: "owner",
+                ..Default::default()
+            })?;
+            Ok(())
+        })
+        .unwrap();
+    l.app.wake_runtime.notify_one();
+    wait_for(&l.app, "the member holding the only slot", Duration::from_secs(30), |app| {
+        app.sched.snapshot(1, app.slots.available_permits()).running == 1
+    })
+    .await;
+    l.app.with_server(|db| db.set_autonomy("shop", "autonomous")).unwrap();
+    l.app
+        .with_tracker("shop", |t| {
+            t.bus().notify_orchestrator("anna", "human", "owner", "decide something", None)?;
+            Ok(())
+        })
+        .unwrap();
+    l.app.wake_runtime.notify_one();
+    wait_for(&l.app, "the orchestrator in the queue", Duration::from_secs(5), |app| {
+        let v = app.sched.snapshot(1, app.slots.available_permits());
+        v.running == 1 && v.orchestrators_waiting == 1 && v.members_waiting == 0
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
