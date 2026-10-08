@@ -75,14 +75,14 @@ pub async fn serve(app: Arc<App>) -> Result<(), String> {
 /// fetch that is not an administrator's action. An unconfigured server
 /// (no `litellm.baseUrl`, no service token) simply skips it.
 fn boot_price_refresh(app: Arc<App>) {
-    if app.cfg.litellm.base_url.is_none() || std::env::var(model_prices::INFO_TOKEN).unwrap_or_default().is_empty() {
+    if app.cfg.litellm.base_url.is_none() || model_prices::info_token(&app.cfg).is_none() {
         return;
     }
     tokio::spawn(async move {
         match model_prices::refresh(&app).await {
             Ok(n) => println!("genie serve: {n} model price(s) received from LiteLLM"),
             Err(e) => {
-                model_prices::record_error(&app, &e);
+                // refresh() has recorded the error already; say it in the log only.
                 eprintln!("genie serve: model prices not received: {e}");
             }
         }

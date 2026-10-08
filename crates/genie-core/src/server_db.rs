@@ -666,10 +666,10 @@ impl ServerDb {
         })
     }
 
-    /// Why the last fetch failed, for doctor and the costs page (the prices that
-    /// already work stay as they are).
-    pub fn set_prices_error(&self, at: &str, error: &str) -> Result<()> {
-        self.set_meta("pricesFetchedAt", at)?;
+    /// Why the last fetch failed, for doctor and the costs page. It never
+    /// touches `pricesFetchedAt` — that stays the last successful fetch, and a
+    /// project that was never fetched shows none rather than the failed attempt.
+    pub fn set_prices_error(&self, error: &str) -> Result<()> {
         self.set_meta("pricesFetchError", error)
     }
 
@@ -1288,6 +1288,24 @@ impl ServerDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A failed fetch never overwrites `pricesFetchedAt`: that stays the last
+    /// successful fetch (or none), while the error is remembered on its own.
+    #[test]
+    fn a_failed_price_fetch_leaves_the_last_fetch_alone() {
+        let (_d, db) = db();
+        db.set_prices_error("the token is refused").unwrap();
+        assert_eq!(db.prices_fetch_state().unwrap(), (None, Some("the token is refused".into())));
+        let price = crate::usage::ModelPrice { input: 1.0, output: 2.0, cache_read: None, cache_write: None };
+        db.set_model_prices(&[("litellm/deep".into(), price)], "2026-02-03T04:05:06Z").unwrap();
+        let (at, err) = db.prices_fetch_state().unwrap();
+        assert_eq!(at.as_deref(), Some("2026-02-03T04:05:06Z"));
+        assert_eq!(err, None, "a successful fetch clears the error");
+        db.set_prices_error("the proxy is down").unwrap();
+        let (at, err) = db.prices_fetch_state().unwrap();
+        assert_eq!(at.as_deref(), Some("2026-02-03T04:05:06Z"), "the failed attempt is not the fetch time");
+        assert_eq!(err.as_deref(), Some("the proxy is down"));
+    }
 
     #[test]
     fn the_console_is_held_renewed_taken_over_and_given_back() {

@@ -763,6 +763,9 @@ pub(crate) fn agent_command(
         // Keep the TypeScript pi extension (if installed) out of server-run agents.
         .env("GENIE_ROLE", "off")
         .env_remove("GENIE_DIR");
+    // The LiteLLM service token reads model info; agents price nothing themselves.
+    let info_file = format!("{}_FILE", crate::model_prices::INFO_TOKEN);
+    cmd.env_remove(crate::model_prices::INFO_TOKEN).env_remove(info_file);
     // Agents hold no credentials for git hosts: their clones talk to the server's proxy.
     let through_proxy = app.with_server(|db| db.repos(project)).is_ok_and(|r| !r.is_empty());
     for var in crate::git::hosts::secret_vars(through_proxy) {

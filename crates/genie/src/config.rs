@@ -32,6 +32,10 @@ pub struct Litellm {
     /// The proxy's base URL, the same one pi's `litellm` provider uses
     /// (…/v1); `None` switches fetching off.
     pub base_url: Option<String>,
+    /// The service token that may read `/model/info` and nothing else, when
+    /// config.json should carry it; the server's `LITELLM_INFO_TOKEN`
+    /// environment variable (how docker hands secrets over) is the other way.
+    pub info_token: Option<String>,
 }
 
 /// The price of `model` (`provider/model`): its own entry, else an entry naming

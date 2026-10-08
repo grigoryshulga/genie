@@ -6,7 +6,7 @@
 
 use crate::common;
 
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::State;
@@ -16,12 +16,6 @@ use axum::{Json, Router};
 use common::{Harness, call};
 use genie::config::ModelPrice;
 use serde_json::{Value, json};
-
-static TOKEN: Once = Once::new();
-
-fn info_token() {
-    TOKEN.call_once(|| unsafe { std::env::set_var("LITELLM_INFO_TOKEN", "info-token") });
-}
 
 type Models = Arc<Mutex<Value>>;
 
@@ -61,11 +55,11 @@ fn price_of(v: &Value, model: &str) -> Value {
 
 #[tokio::test]
 async fn prices_arrive_at_boot_merge_with_modelprices_and_refresh_by_an_administrator() {
-    info_token();
     let models: Models = Arc::new(Mutex::new(models_before_change()));
     let base = fake_litellm(models.clone()).await;
     let h = Harness::with_config(|cfg| {
         cfg.litellm.base_url = Some(base);
+        cfg.litellm.info_token = Some("info-token".into());
         // A manual price for the input and output only: the cache must come from LiteLLM,
         // and the manual cacheRead (0.5) must override what LiteLLM says (0.2).
         cfg.model_prices
@@ -122,10 +116,10 @@ async fn prices_arrive_at_boot_merge_with_modelprices_and_refresh_by_an_administ
 
 #[tokio::test]
 async fn a_refusing_token_is_an_error_and_a_dead_litellm_keeps_the_manual_prices() {
-    info_token();
     // Port 9 (discard): nothing listens there, the connection is refused at once.
     let h = Harness::with_config(|cfg| {
         cfg.litellm.base_url = Some("http://127.0.0.1:9".into());
+        cfg.litellm.info_token = Some("info-token".into());
         cfg.model_prices.insert("litellm/gpt-6-sol".into(), ModelPrice { input: 2.0, output: 10.0, cache_read: None, cache_write: None });
     });
     let (st, v, _) = call(&h.router, "POST", "/api/model-prices").send().await;
@@ -145,12 +139,72 @@ async fn a_refusing_token_is_an_error_and_a_dead_litellm_keeps_the_manual_prices
 
 #[tokio::test]
 async fn a_wrong_service_token_is_explained() {
-    info_token();
     let models: Models = Arc::new(Mutex::new(models_before_change()));
     let base = fake_litellm(models).await;
-    let h = Harness::with_config(|cfg| cfg.litellm.base_url = Some(base));
+    let h = Harness::with_config(|cfg| {
+        cfg.litellm.base_url = Some(base);
+        cfg.litellm.info_token = Some("info-token".into());
+    });
     // The harness-wide token is right; a wrong one comes from a server started
     // elsewhere — here the fetch is made directly, with the wrong key.
     let err = genie::model_prices::fetch(h.app.cfg.litellm.base_url.as_deref().unwrap(), "wrong").await.unwrap_err();
     assert!(err.contains("401"), "{err}");
+}
+
+#[tokio::test]
+async fn a_failed_refresh_keeps_the_time_of_the_last_successful_fetch() {
+    let models: Models = Arc::new(Mutex::new(models_before_change()));
+    let base = fake_litellm(models.clone()).await;
+    let h = Harness::with_config(|cfg| {
+        cfg.litellm.base_url = Some(base);
+        cfg.litellm.info_token = Some("info-token".into());
+    });
+    let (st, _, _) = call(&h.router, "POST", "/api/model-prices").send().await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, v, _) = call(&h.router, "GET", "/api/model-prices").send().await;
+    let fetched_at = v["fetchedAt"].clone();
+    assert!(fetched_at.as_str().is_some_and(|a| !a.is_empty()), "{v}");
+
+    // LiteLLM starts answering nonsense (a proxy upgrade gone wrong): the pull
+    // fails, the failure is remembered — and `fetchedAt` stays the last success.
+    *models.lock().unwrap() = Value::Null;
+    let (st, v, _) = call(&h.router, "POST", "/api/model-prices").send().await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (_, v, _) = call(&h.router, "GET", "/api/model-prices").send().await;
+    assert_eq!(v["fetchedAt"], fetched_at, "the failed attempt is not the fetch time: {v}");
+    assert!(v["lastError"].as_str().is_some_and(|e| e.contains("model/info")), "{v}");
+    // And the prices received before still price the spend.
+    let eff = h.app.prices().unwrap();
+    assert_eq!(eff["litellm/gpt-6-sol"].input, 2.0);
+}
+
+#[tokio::test]
+async fn the_price_source_tells_what_config_json_overrides() {
+    let models: Models = Arc::new(Mutex::new(models_before_change()));
+    // One model without a manual entry: its price is all LiteLLM's.
+    models.lock().unwrap().as_array_mut().unwrap().push(json!({
+        "model_name": "plain-chat", "model_info": {
+            "mode": "chat", "input_cost_per_token": 1e-7, "output_cost_per_token": 2e-7 }
+    }));
+    let base = fake_litellm(models.clone()).await;
+    let h = Harness::with_config(|cfg| {
+        cfg.litellm.base_url = Some(base);
+        cfg.litellm.info_token = Some("info-token".into());
+        // A bare name without the provider lands on the fetched entry (the tail
+        // rule) and takes only the input and output; the cache stays LiteLLM's.
+        cfg.model_prices.insert("gpt-6-sol".into(), ModelPrice { input: 9.0, output: 19.0, cache_read: None, cache_write: None });
+        // A fully priced manual entry leaves LiteLLM nothing to fill in.
+        cfg.model_prices
+            .insert("litellm/deep-vision".into(), ModelPrice { input: 1.0, output: 2.0, cache_read: Some(0.1), cache_write: Some(0.2) });
+    });
+    let (st, _, _) = call(&h.router, "POST", "/api/model-prices").send().await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, v, _) = call(&h.router, "GET", "/api/model-prices").send().await;
+    let entry = |model: &str| v["models"].as_array().unwrap().iter().find(|m| m["model"] == json!(model)).unwrap().clone();
+    let sol = entry("litellm/gpt-6-sol");
+    assert_eq!(sol["source"], "config.json + LiteLLM (cache)", "{v}");
+    assert_eq!(sol["price"]["input"], 9.0);
+    assert_eq!(sol["price"]["cacheRead"], 0.2, "the cache tariff comes from LiteLLM: {sol}");
+    assert_eq!(entry("litellm/deep-vision")["source"], "config.json");
+    assert_eq!(entry("litellm/plain-chat")["source"], "LiteLLM");
 }

@@ -10,6 +10,8 @@ use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use genie_core::server_db::{ProjectRole, SESSION_DAYS};
 use serde::Deserialize;
+
+use crate::model_prices;
 use serde_json::{Value, json};
 
 use super::ctx::{Ctx, PROJECT_COOKIE, SESSION_COOKIE, Who};
@@ -564,13 +566,17 @@ async fn model_prices(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<V
                 .prices
                 .iter()
                 .map(|(model, p)| {
-                    let source = if manual.contains_key(model) {
-                        match (p.cache_read.is_some(), manual[model].cache_read.is_some()) {
-                            (true, false) => "config.json + LiteLLM (cache)",
-                            _ => "config.json",
+                    // The same tail rule the lookup uses: a manual `deep-vision`
+                    // overrides the fetched `litellm/deep-vision`, input and output
+                    // always; what it leaves unset, LiteLLM fills in (the cache).
+                    let source = match model_prices::resolved_key(manual, model) {
+                        Some(key) => {
+                            let m = &manual[&key];
+                            let cache =
+                                (p.cache_read.is_some() && m.cache_read.is_none()) || (p.cache_write.is_some() && m.cache_write.is_none());
+                            if cache { "config.json + LiteLLM (cache)" } else { "config.json" }
                         }
-                    } else {
-                        "LiteLLM"
+                        None => "LiteLLM",
                     };
                     json!({ "model": model, "price": p, "source": source })
                 })

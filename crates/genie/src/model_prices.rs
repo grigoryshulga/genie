@@ -23,23 +23,54 @@ use crate::state::App;
 /// variables). Unlike `LITELLM_API_KEY`, it never reaches agents.
 pub const INFO_TOKEN: &str = "LITELLM_INFO_TOKEN";
 
+/// The service token: `litellm.infoToken` of config.json, else the server's
+/// `{INFO_TOKEN}` environment variable.
+pub fn info_token(cfg: &Config) -> Option<String> {
+    cfg.litellm
+        .info_token
+        .clone()
+        .filter(|t| !t.trim().is_empty())
+        .or_else(|| std::env::var(INFO_TOKEN).ok().filter(|t| !t.trim().is_empty()))
+}
+
+/// The key of `prices` that [`crate::config::price_of`] answers from for `model`:
+/// the model's own entry, else one naming it without the provider, else the same
+/// model through another provider.
+pub(crate) fn resolved_key(prices: &BTreeMap<String, ModelPrice>, model: &str) -> Option<String> {
+    fn tail(m: &str) -> String {
+        m.rsplit_once('/').map_or(m.to_string(), |(_, t)| t.to_string())
+    }
+    if prices.contains_key(model) {
+        return Some(model.to_string());
+    }
+    let bare = tail(model);
+    if prices.contains_key(&bare) {
+        return Some(bare);
+    }
+    prices.iter().find(|(k, _)| tail(k) == bare).map(|(k, _)| k.clone())
+}
+
 /// The prices in effect: `modelPrices` of config.json over what LiteLLM
 /// returned, per field. Manual `input`/`output` always win; a manual cache
 /// price wins when it is set, and LiteLLM's fills the gap when it is not.
+/// A manual entry lands on the entry a lookup would find for it (the same
+/// tail rule as [`crate::config::price_of`]): `deepseek-chat` in config.json
+/// fixes the price of the fetched `litellm/deepseek-chat`.
 pub fn effective(cfg: &Config, fetched: &[(String, ModelPrice)]) -> Prices {
     let mut prices: BTreeMap<String, ModelPrice> = fetched.iter().cloned().collect();
     for (model, manual) in &cfg.model_prices {
-        match prices.remove(model) {
+        match resolved_key(&prices, model) {
             // A manual entry alone, or a fully manual model: as written.
             None => {
                 prices.insert(model.clone(), *manual);
             }
-            Some(mut p) => {
+            Some(key) => {
+                let mut p = prices.remove(&key).unwrap();
                 p.input = manual.input;
                 p.output = manual.output;
                 p.cache_read = manual.cache_read.or(p.cache_read);
                 p.cache_write = manual.cache_write.or(p.cache_write);
-                prices.insert(model.clone(), p);
+                prices.insert(key, p);
             }
         }
     }
@@ -140,10 +171,8 @@ pub async fn fetch(base: &str, token: &str) -> Result<Vec<(String, ModelPrice)>,
 /// prices in effect. The count of priced models is returned for the answer.
 pub async fn refresh(app: &App) -> Result<usize, String> {
     let base = app.cfg.litellm.base_url.clone().ok_or_else(|| "litellm.baseUrl is not set in config.json".to_string())?;
-    let token = std::env::var(INFO_TOKEN).unwrap_or_default();
-    if token.is_empty() {
-        return Err(format!("{INFO_TOKEN} is not set: give the server a service token that may read LiteLLM's model info"));
-    }
+    let token = info_token(&app.cfg)
+        .ok_or_else(|| format!("{INFO_TOKEN} is not set: give the server a service token that may read LiteLLM's model info (litellm.infoToken of config.json or the environment)"))?;
     let fetched = match fetch(&base, &token).await {
         Ok(f) => f,
         Err(e) => {
@@ -160,12 +189,11 @@ pub async fn refresh(app: &App) -> Result<usize, String> {
     Ok(n)
 }
 
-/// Remember why a fetch failed, without touching the prices that work.
+/// Remember why a fetch failed, without touching the prices that work — or
+/// `fetched_at`, which stays the last successful fetch (never this attempt).
 pub fn record_error(app: &App, error: &str) {
-    let at = genie_core::db::now();
-    let _ = app.with_server(|db| db.set_prices_error(&at, error));
+    let _ = app.with_server(|db| db.set_prices_error(error));
     if let Ok(mut state) = app.prices.write() {
-        state.fetched_at = Some(at);
         state.last_error = Some(error.to_string());
     }
 }
@@ -208,5 +236,20 @@ mod tests {
         let c = cfg(&[("claude-bridge/sonnet", 3.0, 15.0, Some(0.3), Some(3.75))]);
         let p = effective(&c, &[]);
         assert_eq!(p["claude-bridge/sonnet"].output, 15.0);
+    }
+
+    #[test]
+    fn a_manual_name_without_the_provider_fixes_the_litellm_entry() {
+        let fetched = vec![
+            ("litellm/deepseek-chat".into(), ModelPrice { input: 2.0, output: 8.0, cache_read: Some(0.2), cache_write: None }),
+            ("litellm/other".into(), ModelPrice { input: 1.0, output: 2.0, cache_read: None, cache_write: None }),
+        ];
+        // config.json knows the model by its bare name; the override must land
+        // on the entry the lookups answer from, cache included.
+        let c = cfg(&[("deepseek-chat", 1.0, 4.0, None, None)]);
+        let p = effective(&c, &fetched);
+        assert_eq!(p["litellm/deepseek-chat"], ModelPrice { input: 1.0, output: 4.0, cache_read: Some(0.2), cache_write: None });
+        assert!(!p.contains_key("deepseek-chat"), "no second entry under the manual name");
+        assert_eq!(p["litellm/other"], fetched[1].1);
     }
 }

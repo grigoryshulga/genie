@@ -36,9 +36,11 @@ async fn wait_for(app: &App, what: &str, timeout: Duration, mut done: impl FnMut
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn agents_deliver_through_the_proxy_and_a_person_merges() {
-    // Secrets the server has and agents must not: the host's token and the tools' usual ones.
+    // Secrets the server has and agents must not: the host's token, the LiteLLM
+    // service token and the tools' usual ones.
     unsafe {
         std::env::set_var("GITHUB_TOKEN", "ghp_should_not_leak");
+        std::env::set_var("LITELLM_INFO_TOKEN", "info-token-should-not-leak");
     }
     let dir = tempfile::tempdir().unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -122,7 +124,12 @@ async fn agents_deliver_through_the_proxy_and_a_person_merges() {
         })
         .unwrap()
     };
-    assert_eq!(show("env.txt").trim(), "no host tokens", "the host's token never reached the agent: {}", show("env.txt"));
+    assert_eq!(
+        show("env.txt").trim(),
+        "no host tokens",
+        "the host's token and the LiteLLM service token never reached the agent: {}",
+        show("env.txt")
+    );
     assert!(
         show("repos.txt").contains("genie/G-1") && show("repos.txt").contains("person merges"),
         "the agent is told its rules: {}",

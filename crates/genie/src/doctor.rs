@@ -788,6 +788,39 @@ mod tests {
         assert_eq!(levels(&out.0, "network"), [Level::Ok, Level::Fail], "a public address the Host check refuses: {:?}", out.0);
     }
 
+
+    #[test]
+    fn budgets_warn_about_models_whose_cache_price_is_missing() {
+        let data = tempfile::tempdir().unwrap();
+        // A program nobody has keeps pi out of the check; the budgets area is what matters.
+        // Every role models "manual/only": the only model budgets have to price.
+        let roles = ["analyst", "documenter", "executor", "orchestrator", "planner", "researcher", "reviewer", "tester"];
+        let role_models: serde_json::Value =
+            roles.iter().map(|r| (r.to_string(), serde_json::json!({ "model": "manual/only" }))).collect::<serde_json::Map<_, _>>().into();
+        let json = |prices: serde_json::Value| {
+            serde_json::json!({
+                "budgets": { "perTask": 5.0 },
+                "roleModels": role_models,
+                "modelPrices": { "manual/only": prices },
+                "runtime": { "command": [["definitely-not-an-agent"], ["{message}"]] }
+            })
+        };
+        let agents = |c: &Config| AgentConfig::load(data.path(), c, None);
+        // Priced, but without the cache tariffs: the cache dollars stay invisible to budgets.
+        let mut out = Out(Vec::new());
+        let c = cfg(json(serde_json::json!({ "input": 1.0, "output": 2.0 })));
+        agents_and_models(&mut out, data.path(), &c, &agents(&c));
+        let budgets: Vec<&Check> = out.0.iter().filter(|c| c.area == "budgets").collect();
+        assert_eq!(budgets.len(), 1, "{:?}", out.0);
+        assert!(budgets[0].text.contains("manual/only"), "{:?}", budgets[0]);
+        assert!(budgets[0].text.contains("no cache price"), "{:?}", budgets[0]);
+        // Fully priced: no warning about it.
+        let mut out = Out(Vec::new());
+        let c = cfg(json(serde_json::json!({ "input": 1.0, "output": 2.0, "cacheRead": 0.1, "cacheWrite": 1.25 })));
+        agents_and_models(&mut out, data.path(), &c, &agents(&c));
+        assert!(out.0.iter().all(|c| c.area != "budgets"), "{:?}", out.0);
+    }
+
     #[test]
     fn a_fresh_data_directory_is_ready_but_for_people_and_projects() {
         let data = tempfile::tempdir().unwrap();
