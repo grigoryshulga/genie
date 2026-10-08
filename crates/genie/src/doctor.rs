@@ -139,12 +139,8 @@ fn storage(out: &mut Out, data: &Path) {
 fn disks(out: &mut Out, data: &Path, repos: &[(String, PathBuf)], low_gb: f64) {
     let mut seen: Vec<String> = Vec::new();
     let mut probe = |what: &str, path: &Path| {
-        let Some(free) = free_bytes(path) else { return };
-        let fs = Command::new("df").arg("-Pk").arg(path).output().ok().and_then(|o| {
-            let t = String::from_utf8_lossy(&o.stdout);
-            t.lines().nth(1).map(|l| l.split_whitespace().next().unwrap_or("").to_string())
-        });
-        let key = fs.unwrap_or_else(|| path.display().to_string());
+        let Some((dev, free)) = free_bytes(path) else { return };
+        let key = dev;
         if seen.contains(&key) {
             return;
         }
@@ -222,20 +218,28 @@ fn schemas(out: &mut Out, data: &Path) {
     }
 }
 
-/// Free space on the file system of `dir` (`df`, POSIX output).
-fn free_bytes(dir: &Path) -> Option<u64> {
+/// Free space on the file system of `dir` (`df`, POSIX output), with the
+/// file system's device so several paths on one disk warn once.
+fn free_bytes(dir: &Path) -> Option<(String, u64)> {
     let o = Command::new("df").arg("-Pk").arg(dir).output().ok()?;
     let text = String::from_utf8_lossy(&o.stdout);
-    let kb: u64 = text.lines().nth(1)?.split_whitespace().nth(3)?.parse().ok()?;
-    Some(kb * 1024)
+    let mut fields = text.lines().nth(1)?.split_whitespace();
+    let dev = fields.next()?.to_string();
+    let kb: u64 = fields.nth(2)?.parse().ok()?;
+    Some((dev, kb * 1024))
 }
 
 /// The same free-space look at start: the server says so in its log (journalctl),
 /// where nobody runs doctor by hand.
 pub fn low_disk_warnings(data: &Path, repos: &[(String, PathBuf)], low_gb: f64) -> Vec<String> {
     let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     let mut probe = |what: &str, path: &Path| {
-        if let Some(free) = free_bytes(path) {
+        if let Some((dev, free)) = free_bytes(path) {
+            // Data and worktrees usually share one disk: say it once, not per project.
+            if !seen.insert(dev) {
+                return;
+            }
             let gb = free as f64 / 1e9;
             if gb < low_gb {
                 out.push(format!("{gb:.1} GB free on the {what} disk ({}): worktrees and logs stop the server first", path.display()));
@@ -379,15 +383,14 @@ fn effective_prices(data: &Path, cfg: &Config) -> crate::spend::Prices {
 /// last fetch's error if there was one (spend then prices with what it has).
 fn model_prices(out: &mut Out, data: &Path, cfg: &Config) {
     let base = cfg.litellm.base_url.as_deref().filter(|b| !b.trim().is_empty());
-    let token = std::env::var(crate::model_prices::INFO_TOKEN).unwrap_or_default();
     let Some(base) = base else {
         return out.ok("models", "model prices: modelPrices of config.json (LiteLLM not configured)");
     };
-    if token.is_empty() {
+    if crate::model_prices::info_token(cfg).is_none() {
         return out.warn(
             "models",
-            format!("model prices: litellm.baseUrl is set, but {} is not", crate::model_prices::INFO_TOKEN),
-            "give the server a service token that may read LiteLLM's model info and no more",
+            format!("model prices: litellm.baseUrl is set, but no service token for {} is", crate::model_prices::INFO_TOKEN),
+            "give the server a service token that may read LiteLLM's model info and no more (litellm.infoToken of config.json or the environment)",
         );
     }
     let state = ServerDb::open(&data.join("server.db")).ok().map(|db| crate::model_prices::State::load(cfg, &db)).unwrap_or_default();
@@ -515,6 +518,25 @@ fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentCon
                     unpriced.iter().copied().collect::<Vec<_>>().join(", ")
                 ),
                 "pull the tariffs from LiteLLM (litellm.baseUrl + LITELLM_INFO_TOKEN) or add the models to modelPrices in config.json (dollars per million tokens)",
+            );
+        }
+        // A model priced without its cache tariffs hides whole cache dollars: with Anthropic
+        // writing the cache alone costs more than the input it is computed from.
+        let uncached: BTreeSet<&str> = wanted
+            .iter()
+            .map(|(m, _)| m.as_str())
+            .filter(|m| {
+                !m.is_empty() && crate::config::price_of(&prices, m).is_some_and(|p| p.cache_read.is_none() || p.cache_write.is_none())
+            })
+            .collect();
+        if !uncached.is_empty() {
+            out.warn(
+                "budgets",
+                format!(
+                    "budgets count dollars, but these models have no cache price and cache tokens are not counted: {}",
+                    uncached.iter().copied().collect::<Vec<_>>().join(", ")
+                ),
+                "pull the tariffs from LiteLLM (litellm.baseUrl + LITELLM_INFO_TOKEN) or add cacheRead and cacheWrite to the models in modelPrices (dollars per million tokens)",
             );
         }
     }
@@ -788,6 +810,20 @@ mod tests {
         assert_eq!(levels(&out.0, "network"), [Level::Ok, Level::Fail], "a public address the Host check refuses: {:?}", out.0);
     }
 
+    #[test]
+    fn low_disk_warnings_name_a_filesystem_once() {
+        let d = tempfile::tempdir().unwrap();
+        let data = d.path().join("data");
+        let repo = d.path().join("repo.worktrees");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+        // One disk: one warning, and it says which path was probed.
+        let w = low_disk_warnings(&data, &[("shop".into(), repo.clone())], 1e12);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].contains("data"), "{w:?}");
+        // Plenty of space: nothing.
+        assert!(low_disk_warnings(&data, &[("shop".into(), repo)], 0.0).is_empty());
+    }
 
     #[test]
     fn budgets_warn_about_models_whose_cache_price_is_missing() {
