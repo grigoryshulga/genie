@@ -256,11 +256,6 @@ CREATE TABLE IF NOT EXISTS proposals (
   decided_at TEXT,
   decision_note TEXT
 );
-CREATE TABLE IF NOT EXISTS locks (
-  name TEXT PRIMARY KEY,
-  holder TEXT NOT NULL,
-  expires TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS config_changes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   at TEXT NOT NULL,
@@ -1239,32 +1234,6 @@ impl ServerDb {
         })
     }
 
-    // --- leases --------------------------------------------------------------
-
-    /// Take or renew a named lease (e.g. the orchestrator of a project). Returns
-    /// false when someone else holds an unexpired lease.
-    pub fn acquire_lock(&self, name: &str, holder: &str, ttl: ChronoDuration) -> Result<bool> {
-        let changed = self.conn().execute(
-            "INSERT INTO locks(name, holder, expires) VALUES (?1, ?2, ?3)
-             ON CONFLICT(name) DO UPDATE SET holder = excluded.holder, expires = excluded.expires
-             WHERE locks.holder = excluded.holder OR locks.expires <= ?4",
-            params![name, holder, time_in(ttl), now()],
-        )?;
-        Ok(changed > 0)
-    }
-
-    pub fn release_lock(&self, name: &str, holder: &str) -> Result<()> {
-        self.conn().execute("DELETE FROM locks WHERE name = ?1 AND holder = ?2", params![name, holder])?;
-        Ok(())
-    }
-
-    pub fn lock_holder(&self, name: &str) -> Result<Option<String>> {
-        Ok(self
-            .conn()
-            .query_row("SELECT holder FROM locks WHERE name = ?1 AND expires > ?2", params![name, now()], |r| r.get(0))
-            .optional()?)
-    }
-
     /// A task deleted from its tracker leaves nothing behind here: queued and running jobs for it
     /// are cancelled, open questionnaires about it are closed, its notifications go and its
     /// repositories are no longer watched (branches and requests stay on the host). Agent turns
@@ -1493,7 +1462,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_roles_and_leases() {
+    fn projects_roles() {
         let (_d, db) = db();
         assert!(db.create_project("Bad Slug", "", "/x", None, None).is_err());
         let p = db.create_project("shop", "", "/x", None, None).unwrap();
@@ -1504,11 +1473,6 @@ mod tests {
         assert_eq!(db.project_role("shop", &viewer).unwrap(), None);
         db.set_membership("shop", viewer.id, ProjectRole::Viewer).unwrap();
         assert!(!db.project_role("shop", &viewer).unwrap().unwrap().can_write());
-        assert!(db.acquire_lock("orch:shop", "server", ChronoDuration::seconds(30)).unwrap());
-        assert!(!db.acquire_lock("orch:shop", "cockpit", ChronoDuration::seconds(30)).unwrap());
-        assert!(db.acquire_lock("orch:shop", "server", ChronoDuration::seconds(30)).unwrap(), "the holder renews");
-        db.release_lock("orch:shop", "server").unwrap();
-        assert!(db.acquire_lock("orch:shop", "cockpit", ChronoDuration::seconds(30)).unwrap());
     }
 
     /// The `detail` lines (the fourth column) `EXPLAIN QUERY PLAN` gives for one statement.
