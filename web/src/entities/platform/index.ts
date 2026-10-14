@@ -103,15 +103,24 @@ export const useProposal = (id?: number) =>
 export const useChannels = () =>
   useQuery({ queryKey: ["channels"], queryFn: () => request<{ links: { channel: string; address: string }[]; telegram: boolean; email: boolean }>("GET", "/api/me/channels") });
 
-/** The person's LiteLLM key as the server shows it: never the value itself. */
-export interface LitellmKey {
+/** A provider whose API key a person may keep: pi reads it from `keyVar`. */
+export interface LlmProvider {
+  id: string;
+  title: string;
+  keyVar: string;
+  /** The key is owed: an agent on this provider does not start without it. */
+  strict: boolean;
+}
+
+/** A person's key of a provider as the server shows it: never the value itself. */
+export interface LlmKeyInfo {
   hint: string;
   updated: string;
   unreadable?: boolean;
 }
 
-export const useLitellmKey = () =>
-  useQuery({ queryKey: ["litellm-key"], queryFn: () => request<{ key: LitellmKey | null }>("GET", "/api/me/litellm-key") });
+export const useLlmKeys = () =>
+  useQuery({ queryKey: ["llm-keys"], queryFn: () => request<{ providers: LlmProvider[]; keys: Record<string, LlmKeyInfo> }>("GET", "/api/me/llm-keys") });
 
 export const RUN_STATUS: Record<string, string> = {
   queued: "в очереди",

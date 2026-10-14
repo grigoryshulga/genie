@@ -1,4 +1,5 @@
-//! Accounts and projects: login, invitations, users, projects, memberships.
+//! Accounts and projects: login, invitations, users, projects, memberships —
+//! and the model keys of a person's profile.
 
 use std::sync::Arc;
 
@@ -27,7 +28,8 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/auth/password", post(change_password))
         .route("/auth/tokens", get(list_tokens).post(create_token))
         .route("/auth/tokens/{id}", delete(revoke_token))
-        .route("/me/litellm-key", get(litellm_key).put(set_litellm_key).delete(delete_litellm_key))
+        .route("/me/llm-keys", get(llm_keys))
+        .route("/me/llm-keys/{provider}", put(set_llm_key).delete(delete_llm_key))
         .route("/session/project", post(select_project))
         .route("/users", get(list_users).post(create_user))
         .route("/users/{id}", patch(update_user))
@@ -201,32 +203,58 @@ async fn revoke_token(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>
     Ok(Json(json!({ "ok": true })))
 }
 
-/// The caller's LiteLLM key, as far as it may be shown: set or not, its last characters.
-async fn litellm_key(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
+/// The caller's model keys, as far as they may be shown: the providers a key can
+/// be kept for, and which of them are set (never the keys themselves).
+async fn llm_keys(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
-    let info = app.blocking(move |app| app.with_server(|db| db.user_secret_info(user.id, genie_core::secrets::LITELLM))).await?;
-    Ok(Json(json!({ "key": info })))
+    let keys = app
+        .blocking(move |app| {
+            app.with_server(|db| {
+                let mut keys = serde_json::Map::new();
+                for p in crate::llm_key::PROVIDERS {
+                    if let Some(info) = db.user_secret_info(user.id, p.id)? {
+                        keys.insert(p.id.into(), serde_json::to_value(info)?);
+                    }
+                }
+                Ok::<_, genie_core::GenieError>(keys)
+            })
+        })
+        .await?;
+    Ok(Json(json!({ "providers": crate::llm_key::PROVIDERS, "keys": keys })))
+}
+
+/// A provider of the registry a key can be kept for, by its id.
+fn keyed_provider(id: &str) -> Result<&'static crate::llm_key::Provider, ApiError> {
+    crate::llm_key::provider(id).ok_or_else(|| ApiError::bad("not a provider a key can be kept for"))
 }
 
 #[derive(Deserialize)]
-struct LitellmKeyBody {
+struct LlmKeyBody {
     key: String,
 }
 
-/// Set the caller's LiteLLM key: the agents started on their behalf use it.
-async fn set_litellm_key(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<LitellmKeyBody>) -> ApiResult<Json<Value>> {
+/// Set the caller's key of one provider (`litellm`, `anthropic`, …): the agents
+/// started on their behalf use it.
+async fn set_llm_key(
+    State(app): State<Arc<App>>,
+    ctx: Ctx,
+    Path(provider): Path<String>,
+    Json(b): Json<LlmKeyBody>,
+) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
+    let p = keyed_provider(&provider)?;
     if user.id == 0 {
-        return Err(ApiError::bad("a LiteLLM key needs a real user: genie user add <login> --admin"));
+        return Err(ApiError::bad(format!("a {} key needs a real user: genie user add <login> --admin", p.id)));
     }
     if b.key.trim().is_empty() {
         return Err(ApiError::bad("the key is empty"));
     }
+    let id = p.id;
     let info = app
         .blocking(move |app| {
             app.with_server(|db| {
-                db.set_user_secret(user.id, genie_core::secrets::LITELLM, &b.key)?;
-                db.user_secret_info(user.id, genie_core::secrets::LITELLM)
+                db.set_user_secret(user.id, id, &b.key)?;
+                db.user_secret_info(user.id, id)
             })
         })
         .await?;
@@ -235,9 +263,11 @@ async fn set_litellm_key(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<Li
     Ok(Json(json!({ "key": info })))
 }
 
-async fn delete_litellm_key(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
+async fn delete_llm_key(State(app): State<Arc<App>>, ctx: Ctx, Path(provider): Path<String>) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
-    app.blocking(move |app| app.with_server(|db| db.delete_user_secret(user.id, genie_core::secrets::LITELLM))).await?;
+    let p = keyed_provider(&provider)?;
+    let id = p.id;
+    app.blocking(move |app| app.with_server(|db| db.delete_user_secret(user.id, id))).await?;
     Ok(Json(json!({ "key": null })))
 }
 

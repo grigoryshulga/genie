@@ -1,12 +1,12 @@
 // The person's own settings, one tab each: the account (photo, name, login, mail),
-// signing in (password), Telegram, the LiteLLM key agents use on one's behalf, and
-// personal tokens for the CLI and MCP.
+// signing in (password), Telegram, the model keys agents use on one's behalf
+// (the LiteLLM proxy and the providers pi supports), and personal tokens.
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { NavLink, useParams } from "react-router";
 import { PersonAvatar, PROJECT_ROLE_NAME, usePatchUser, useSetAvatar } from "@/entities/project";
-import { useChannels, useLitellmKey } from "@/entities/platform";
+import { useChannels, useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
@@ -18,7 +18,7 @@ const TABS = [
   { id: "", title: "Аккаунт" },
   { id: "security", title: "Вход и пароль" },
   { id: "telegram", title: "Telegram" },
-  { id: "litellm", title: "Ключ LiteLLM" },
+  { id: "keys", title: "Провайдеры и ключи" },
   { id: "tokens", title: "Токены CLI и MCP" },
 ] as const;
 
@@ -70,8 +70,8 @@ export function ProfilePage() {
           <SecurityTab />
         ) : tab === "telegram" ? (
           <TelegramTab />
-        ) : tab === "litellm" ? (
-          <LitellmTab />
+        ) : tab === "keys" ? (
+          <KeysTab />
         ) : tab === "tokens" ? (
           <TokensTab />
         ) : (
@@ -358,29 +358,47 @@ function TelegramTab() {
   );
 }
 
-function LitellmTab() {
-  const key = useLitellmKey().data?.key;
+function KeysTab() {
+  const { data } = useLlmKeys();
   const act = useAct();
-  const [value, setValue] = useState("");
-  return (
-    <div className="st-body">
-      <div className="st-head">
-        <h2>Ключ LiteLLM</h2>
-        <p>
-          Агенты, которые работают от вашего имени (команды и задачи, запущенные вами или по вашим задачам, и оркестратор, когда отвечает вам), ходят в LiteLLM с этим
-          ключом. Без него агенты на моделях <code>litellm/…</code> не запускаются.
-        </p>
-      </div>
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [adding, setAdding] = useState("");
+  const providers = data?.providers ?? [];
+  const keys = data?.keys ?? {};
+  const strict = providers.find((p) => p.strict);
+  const rest = providers.filter((p) => !p.strict);
+  const shown = rest.filter((p) => keys[p.id] || p.id === adding);
+  const unset = rest.filter((p) => !keys[p.id]);
+
+  const save = (p: LlmProvider, key: string) =>
+    act(async () => {
+      await request("PUT", `/api/me/llm-keys/${p.id}`, { key });
+      setValues((v) => ({ ...v, [p.id]: "" }));
+      setAdding("");
+    }, `Ключ ${p.title} сохранён`);
+
+  const card = (p: LlmProvider) => {
+    const key = keys[p.id];
+    const value = values[p.id] ?? "";
+    return (
       <form
         className="st-card"
+        key={p.id}
         onSubmit={(e) => {
           e.preventDefault();
-          void act(async () => {
-            await request("PUT", "/api/me/litellm-key", { key: value });
-            setValue("");
-          }, "Ключ LiteLLM сохранён");
+          void save(p, value);
         }}
       >
+        <div className="st-row">
+          <div className="lbl">
+            <b>{p.title}</b>
+            <span>
+              {p.strict
+                ? "Прокси этого сервера. Агенты на моделях litellm/… без него не запускаются; ждущие агенты стартуют сразу после сохранения."
+                : `Провайдер pi: агент на модели этого провайдера (${p.id}/…) получает ключ в переменной ${p.keyVar} — поверх серверного. Без вашего ключа он работает на серверном.`}
+            </span>
+          </div>
+        </div>
         {key && (
           <div className="st-row">
             <div className="lbl">
@@ -395,28 +413,86 @@ function LitellmTab() {
                   Ключ задан{key.hint ? ` (${key.hint})` : ""}, обновлён {timeAgo(key.updated)}.
                 </span>
               )}
-              <button type="button" className="btn ghost" onClick={() => void act(() => request("DELETE", "/api/me/litellm-key"), "Ключ LiteLLM удалён")}>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => void act(() => request("DELETE", `/api/me/llm-keys/${p.id}`), `Ключ ${p.title} удалён`)}
+              >
                 Удалить
               </button>
             </div>
           </div>
         )}
         <div className="st-row">
-          <label className="lbl" htmlFor="pf-litellm">
+          <label className="lbl" htmlFor={`pf-key-${p.id}`}>
             <b>{key ? "Новый ключ" : "Ключ"}</b>
-            <span>Агенты, которые ждали ключа, запустятся сразу после сохранения.</span>
+            <span>Агенты на моделях {p.id}/…, которые работают от вашего имени, ходят к провайдеру с ним.</span>
           </label>
           <div className="ctl">
-            <input id="pf-litellm" type="password" className="st-input" autoComplete="off" placeholder="sk-…" value={value} onChange={(e) => setValue(e.target.value)} required />
+            <input
+              id={`pf-key-${p.id}`}
+              type="password"
+              className="st-input"
+              autoComplete="off"
+              placeholder="sk-…"
+              value={value}
+              onChange={(e) => setValues((v) => ({ ...v, [p.id]: e.target.value }))}
+              required
+            />
           </div>
         </div>
         <div className="st-foot">
+          {!key && p.id === adding && (
+            <button type="button" className="btn ghost" onClick={() => setAdding("")}>
+              Отмена
+            </button>
+          )}
           <span className="grow" />
           <button className="btn primary" disabled={!value.trim()}>
-            {key ? "Заменить ключ" : "Сохранить ключ"}
+            {key ? `Заменить ключ ${p.title}` : `Сохранить ключ ${p.title}`}
           </button>
         </div>
       </form>
+    );
+  };
+
+  return (
+    <div className="st-body">
+      <div className="st-head">
+        <h2>Провайдеры и ключи</h2>
+        <p>
+          Агенты, которые работают от вашего имени (команды и задачи, запущенные вами или по вашим задачам, и оркестратор, когда отвечает вам), ходят к моделям с этими
+          ключами. Ключ LiteLLM обязателен для моделей <code>litellm/…</code>. Ключи остальных провайдеров, которых поддерживает pi, необязательны: они действуют для
+          моделей своего провайдера (<code>anthropic/…</code> — ключ Anthropic) и перекрывают серверный.
+        </p>
+      </div>
+      {strict && card(strict)}
+      {shown.map(card)}
+      {unset.length > 0 && (
+        <div className="st-card">
+          <div className="st-row">
+            <label className="lbl" htmlFor="pf-add-provider">
+              <b>Другой провайдер</b>
+              <span>Anthropic, OpenAI, Google, xAI и другие провайдеры pi: выберите, чтобы указать свой ключ.</span>
+            </label>
+            <div className="ctl">
+              <select
+                id="pf-add-provider"
+                className="st-input"
+                value={adding}
+                onChange={(e) => setAdding(e.target.value)}
+              >
+                <option value="">— выбрать провайдера —</option>
+                {unset.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
