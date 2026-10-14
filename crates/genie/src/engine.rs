@@ -387,229 +387,272 @@ fn strings(v: &Value) -> Vec<String> {
     }
 }
 
+/// Execute one step of a run: mark it running, then dispatch to the handler for its kind.
 fn execute(app: &App, run: &Run, step: &Value, kind: &str, input: &Value, state: &StepState) -> AppResult<Outcome> {
     app.with_server(|db| db.update_step(state.id, "running", Some(input), None, None, None))?;
     let project = run.project.as_str();
     let actor = automation_actor(run);
     let caller = Caller::automation(project, actor.clone());
-    let need_task = || task_of(input, run).ok_or_else(|| invalid("no task: pass `task` or trigger on a task event"));
     match kind {
-        "task.status" => {
-            let task = need_task()?;
-            let to = input["to"].as_str().unwrap_or_default().parse().map_err(AppError::Genie)?;
-            let note = input["note"].as_str().map(str::to_string);
-            let body = StatusBody { force: Some(input["force"] == json!(true)), ..StatusBody::to(to, note) };
-            let t = tasks::set_status(app, &caller, &task, body)?;
-            Ok(Outcome::Done(json!({ "task": t.id, "status": t.status })))
-        }
-        "task.comment" => {
-            let task = need_task()?;
-            let t = tasks::comment(app, &caller, &task, tasks::from_step(input, &[])?)?;
-            Ok(Outcome::Done(json!({ "task": t.id })))
-        }
-        "task.create" => {
-            let t = tasks::create(app, &caller, tasks::from_step(input, &[])?)?;
-            Ok(Outcome::Done(json!({ "id": t.id })))
-        }
-        "task.update" => {
-            let task = need_task()?;
-            let t = tasks::update(app, &caller, &task, tasks::from_step(input, &[])?)?;
-            Ok(Outcome::Done(json!({ "task": t.id })))
-        }
-        "task.get" => {
-            let task = need_task()?;
-            let t = app.with_tracker(project, |t| t.get(&task))?;
-            Ok(Outcome::Done(serde_json::to_value(t).unwrap_or(Value::Null)))
-        }
-        "task.ready" => {
-            // The task itself, and the tasks that wait for it: closing a dependency frees them.
-            let task = need_task()?;
-            let mut candidates = vec![task.clone()];
-            candidates.extend(app.with_tracker(project, |t| t.dependents(&task))?);
-            let (mut moved, mut held) = (Vec::new(), Vec::new());
-            for id in candidates {
-                let t = app.with_tracker(project, |t| t.get(&id))?;
-                if !READY_FROM.contains(&t.status) {
-                    continue;
-                }
-                let holds = holds(app, project, &t)?;
-                if !holds.is_empty() {
-                    held.push(json!({ "task": t.id, "holds": holds }));
-                    continue;
-                }
-                let note =
-                    "Nothing holds it: no block, dependencies done, no open questions or jobs; moved to ready automatically".to_string();
-                tasks::set_status(app, &caller, &t.id, StatusBody::to(Status::Ready, Some(note)))?;
-                moved.push(t.id);
-            }
-            Ok(Outcome::Done(json!({ "moved": moved, "held": held })))
-        }
-        "notify" => {
-            let ctx = &run.trigger["context"];
-            let users = notify::resolve(app, project, &strings(&input["to"]), ctx)?;
-            let task = task_of(input, run);
-            let msg = Message {
-                kind: input["kind"].as_str().unwrap_or("automation").into(),
-                title: input["title"]
-                    .as_str()
-                    .unwrap_or(&format!("genie · {}", run.trigger["spec"]["name"].as_str().unwrap_or("automation")))
-                    .into(),
-                body: input["text"].as_str().unwrap_or_default().into(),
-                project: Some(project.into()),
-                link: input["link"].as_str().map(str::to_string).or_else(|| task.as_ref().map(|t| format!("/active?task={t}"))),
-                task,
-                channels: strings(&input["channels"]).into_iter().filter(|c| c != "preferred").collect(),
-                ..Default::default()
-            };
-            let n = notify::send(app, &users, &msg, Some(&format!("run:{}:{}", run.id, state.idx)))?;
-            Ok(Outcome::Done(json!({ "recipients": users.len(), "queued": n })))
-        }
-        "agent" => {
-            let role = input["role"].as_str().unwrap_or("analyst").to_string();
-            let def = app.agents().role_for(project, &role)?.clone();
-            if def.class == Role::Orchestrator {
-                return Err(invalid("agent: the orchestrator does not run one-shot jobs"));
-            }
-            let goal = input["goal"].as_str().unwrap_or_default().to_string();
-            let task = task_of(input, run);
-            let initiator = crate::llm_key::automation_initiator(app, run, task.as_deref());
-            let job = app.with_server(|db| {
-                db.create_job(NewJob {
-                    project: project.into(),
-                    task,
-                    run_step: Some(state.id),
-                    role,
-                    model: input["model"].as_str().map(str::to_string),
-                    goal,
-                    inputs: input["inputs"].clone(),
-                    output_schema: input.get("output").cloned().filter(|v| !v.is_null()),
-                    workspace: input["workspace"].as_str().unwrap_or("none").into(),
-                    initiator,
-                })
-            })?;
-            app.wake_runtime.notify_one();
-            let deadline = Utc::now() + duration_or(step, "timeout", chrono::Duration::minutes(60));
-            Ok(Outcome::Wait(json!({ "job": job.id, "deadline": deadline.to_rfc3339() })))
-        }
-        "team" => {
-            let task = need_task()?;
-            let req = SpawnRequest {
-                task: task.clone(),
-                template: input["template"].as_str().map(str::to_string),
-                members: serde_json::from_value(input["members"].clone()).unwrap_or_default(),
-                models: serde_json::from_value(input["models"].clone()).unwrap_or_default(),
-                note: input["note"].as_str().map(str::to_string),
-                by: actor.clone(),
-                initiator: crate::llm_key::automation_initiator(app, run, Some(&task)),
-            };
-            let team = runtime::spawn_team(app, project, req)?;
-            let wait_for = strings(&input["waitFor"]);
-            if wait_for.is_empty() {
-                return Ok(Outcome::Done(json!({ "team": team.id })));
-            }
-            let deadline = Utc::now() + duration_or(step, "timeout", chrono::Duration::hours(24));
-            Ok(Outcome::Wait(json!({ "team": team.id, "task": task, "statuses": wait_for, "deadline": deadline.to_rfc3339() })))
-        }
-        "ask" => {
-            let ctx = &run.trigger["context"];
-            let users = notify::resolve(app, project, &strings(&input["to"]), ctx)?;
-            let Some(&recipient) = users.first() else { return Err(invalid("ask: nobody to ask (the person has no account?)")) };
-            let questions: Vec<NewQuestion> = input["questions"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-                .iter()
-                .filter_map(|q| match q {
-                    Value::String(s) => Some(NewQuestion { text: s.clone(), ..Default::default() }),
-                    q => q["text"].as_str().map(|t| NewQuestion {
-                        text: t.into(),
-                        why: q["why"].as_str().unwrap_or_default().into(),
-                        options: strings(&q["options"]),
-                    }),
-                })
-                .collect();
-            if questions.is_empty() {
-                return Ok(Outcome::Done(json!({ "answers": [], "asked": false })));
-            }
-            let task = task_of(input, run);
-            let id = crate::questions::ask(
-                app,
-                crate::questions::Ask {
-                    project,
-                    task: task.as_deref(),
-                    asked_by: input["from"].as_str().unwrap_or("genie"),
-                    recipient,
-                    questions,
-                    run_step: Some(state.id),
-                    remind_after: input["remindAfter"].as_str().and_then(automation::parse_duration),
-                    timeout: input["timeout"].as_str().and_then(automation::parse_duration),
-                },
-            )?;
-            Ok(Outcome::Wait(json!({ "questionnaire": id })))
-        }
-        "wake_orchestrator" => {
-            let text = input["text"].as_str().unwrap_or_default().to_string();
-            let task = task_of(input, run);
-            app.with_tracker(project, |t| t.bus().notify_orchestrator(&actor.name, "system", "system", &text, task.as_deref()))?;
-            app.wake_runtime.notify_one();
-            Ok(Outcome::Done(json!({})))
-        }
-        "changelog.add" => {
-            let text = input["text"].as_str().unwrap_or_default().trim().to_string();
-            if text.is_empty() {
-                return Ok(Outcome::Done(json!({ "added": false })));
-            }
-            let path = crate::knowledge::changelog_add(
-                app,
-                project,
-                input["group"].as_str().unwrap_or("changed"),
-                &text,
-                task_of(input, run).as_deref(),
-            )?;
-            Ok(Outcome::Done(json!({ "added": true, "path": path })))
-        }
-        "release" => {
-            let version = input["version"].as_str().unwrap_or_default().to_string();
-            let notes = crate::knowledge::release(app, project, &version, &actor.name)?;
-            Ok(Outcome::Done(json!({ "version": version, "notes": notes })))
-        }
-        "http" => {
-            let url = input["url"].as_str().unwrap_or_default().to_string();
-            if !(url.starts_with("http://") || url.starts_with("https://")) {
-                return Err(invalid("http: url must be http(s)"));
-            }
-            let method = input["method"].as_str().unwrap_or("POST").to_uppercase();
-            let body = input["body"].clone();
-            let headers = input["headers"].clone();
-            let (status, text) = crate::state::block_on(async {
-                let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
-                let mut req = client.request(method.parse().map_err(|_| "bad method".to_string())?, &url);
-                if let Some(h) = headers.as_object() {
-                    for (k, v) in h {
-                        req = req.header(k, v.as_str().unwrap_or_default());
-                    }
-                }
-                if !body.is_null() {
-                    req = req.json(&body);
-                }
-                let res = req.send().await.map_err(|e| e.to_string())?;
-                let status = res.status().as_u16();
-                Ok::<_, String>((status, res.text().await.unwrap_or_default()))
-            })
-            .map_err(invalid)?;
-            if status >= 400 {
-                return Err(invalid(format!("http: {status}")));
-            }
-            let parsed: Value = serde_json::from_str(&text).unwrap_or(Value::String(text.chars().take(4000).collect()));
-            Ok(Outcome::Done(json!({ "status": status, "body": parsed })))
-        }
-        "wait" => {
-            let d =
-                input["for"].as_str().and_then(automation::parse_duration).ok_or_else(|| invalid("wait: `for` duration such as 24h"))?;
-            Ok(Outcome::Wait(json!({ "until": (Utc::now() + d).to_rfc3339() })))
-        }
+        "task.status" => step_task_status(app, run, &caller, input),
+        "task.comment" => step_task_comment(app, run, &caller, input),
+        "task.create" => step_task_create(app, &caller, input),
+        "task.update" => step_task_update(app, run, &caller, input),
+        "task.get" => step_task_get(app, project, run, input),
+        "task.ready" => step_task_ready(app, project, run, &caller, input),
+        "notify" => step_notify(app, project, run, input, state),
+        "agent" => step_agent(app, project, run, step, input, state),
+        "team" => step_team(app, project, run, step, &actor, input),
+        "ask" => step_ask(app, project, run, input, state),
+        "wake_orchestrator" => step_wake_orchestrator(app, project, run, &actor, input),
+        "changelog.add" => step_changelog_add(app, project, run, input),
+        "release" => step_release(app, project, &actor, input),
+        "http" => step_http(input),
+        "wait" => step_wait(input),
         other => Err(invalid(format!("unknown step kind {other}"))),
     }
+}
+
+/// The task most step kinds operate on: fail the step when none is given or implied by the trigger.
+fn need_task(input: &Value, run: &Run) -> AppResult<String> {
+    task_of(input, run).ok_or_else(|| invalid("no task: pass `task` or trigger on a task event"))
+}
+
+/// Move the task to the requested status, optionally forcing past the guards.
+fn step_task_status(app: &App, run: &Run, caller: &Caller, input: &Value) -> AppResult<Outcome> {
+    let task = need_task(input, run)?;
+    let to = input["to"].as_str().unwrap_or_default().parse().map_err(AppError::Genie)?;
+    let note = input["note"].as_str().map(str::to_string);
+    let body = StatusBody { force: Some(input["force"] == json!(true)), ..StatusBody::to(to, note) };
+    let t = tasks::set_status(app, caller, &task, body)?;
+    Ok(Outcome::Done(json!({ "task": t.id, "status": t.status })))
+}
+
+/// Leave a comment on the task.
+fn step_task_comment(app: &App, run: &Run, caller: &Caller, input: &Value) -> AppResult<Outcome> {
+    let task = need_task(input, run)?;
+    let t = tasks::comment(app, caller, &task, tasks::from_step(input, &[])?)?;
+    Ok(Outcome::Done(json!({ "task": t.id })))
+}
+
+/// Create a fresh task out of the step input alone.
+fn step_task_create(app: &App, caller: &Caller, input: &Value) -> AppResult<Outcome> {
+    let t = tasks::create(app, caller, tasks::from_step(input, &[])?)?;
+    Ok(Outcome::Done(json!({ "id": t.id })))
+}
+
+/// Patch the task's fields.
+fn step_task_update(app: &App, run: &Run, caller: &Caller, input: &Value) -> AppResult<Outcome> {
+    let task = need_task(input, run)?;
+    let t = tasks::update(app, caller, &task, tasks::from_step(input, &[])?)?;
+    Ok(Outcome::Done(json!({ "task": t.id })))
+}
+
+/// Return the task as JSON, for later steps of the run to read.
+fn step_task_get(app: &App, project: &str, run: &Run, input: &Value) -> AppResult<Outcome> {
+    let task = need_task(input, run)?;
+    let t = app.with_tracker(project, |t| t.get(&task))?;
+    Ok(Outcome::Done(serde_json::to_value(t).unwrap_or(Value::Null)))
+}
+
+/// Move the task to ready, and with it every task waiting on it, unless something still holds each one.
+fn step_task_ready(app: &App, project: &str, run: &Run, caller: &Caller, input: &Value) -> AppResult<Outcome> {
+    // The task itself, and the tasks that wait for it: closing a dependency frees them.
+    let task = need_task(input, run)?;
+    let mut candidates = vec![task.clone()];
+    candidates.extend(app.with_tracker(project, |t| t.dependents(&task))?);
+    let (mut moved, mut held) = (Vec::new(), Vec::new());
+    for id in candidates {
+        let t = app.with_tracker(project, |t| t.get(&id))?;
+        if !READY_FROM.contains(&t.status) {
+            continue;
+        }
+        let holds = holds(app, project, &t)?;
+        if !holds.is_empty() {
+            held.push(json!({ "task": t.id, "holds": holds }));
+            continue;
+        }
+        let note = "Nothing holds it: no block, dependencies done, no open questions or jobs; moved to ready automatically".to_string();
+        tasks::set_status(app, caller, &t.id, StatusBody::to(Status::Ready, Some(note)))?;
+        moved.push(t.id);
+    }
+    Ok(Outcome::Done(json!({ "moved": moved, "held": held })))
+}
+
+/// Queue a message for the resolved recipients; the default title names the rule that fired.
+fn step_notify(app: &App, project: &str, run: &Run, input: &Value, state: &StepState) -> AppResult<Outcome> {
+    let ctx = &run.trigger["context"];
+    let users = notify::resolve(app, project, &strings(&input["to"]), ctx)?;
+    let task = task_of(input, run);
+    let msg = Message {
+        kind: input["kind"].as_str().unwrap_or("automation").into(),
+        title: input["title"]
+            .as_str()
+            .unwrap_or(&format!("genie · {}", run.trigger["spec"]["name"].as_str().unwrap_or("automation")))
+            .into(),
+        body: input["text"].as_str().unwrap_or_default().into(),
+        project: Some(project.into()),
+        link: input["link"].as_str().map(str::to_string).or_else(|| task.as_ref().map(|t| format!("/active?task={t}"))),
+        task,
+        channels: strings(&input["channels"]).into_iter().filter(|c| c != "preferred").collect(),
+        ..Default::default()
+    };
+    let n = notify::send(app, &users, &msg, Some(&format!("run:{}:{}", run.id, state.idx)))?;
+    Ok(Outcome::Done(json!({ "recipients": users.len(), "queued": n })))
+}
+
+/// Start a one-shot agent job and park the step until the job finishes.
+fn step_agent(app: &App, project: &str, run: &Run, step: &Value, input: &Value, state: &StepState) -> AppResult<Outcome> {
+    let role = input["role"].as_str().unwrap_or("analyst").to_string();
+    let def = app.agents().role_for(project, &role)?.clone();
+    if def.class == Role::Orchestrator {
+        return Err(invalid("agent: the orchestrator does not run one-shot jobs"));
+    }
+    let goal = input["goal"].as_str().unwrap_or_default().to_string();
+    let task = task_of(input, run);
+    let initiator = crate::llm_key::automation_initiator(app, run, task.as_deref());
+    let job = app.with_server(|db| {
+        db.create_job(NewJob {
+            project: project.into(),
+            task,
+            run_step: Some(state.id),
+            role,
+            model: input["model"].as_str().map(str::to_string),
+            goal,
+            inputs: input["inputs"].clone(),
+            output_schema: input.get("output").cloned().filter(|v| !v.is_null()),
+            workspace: input["workspace"].as_str().unwrap_or("none").into(),
+            initiator,
+        })
+    })?;
+    app.wake_runtime.notify_one();
+    let deadline = Utc::now() + duration_or(step, "timeout", chrono::Duration::minutes(60));
+    Ok(Outcome::Wait(json!({ "job": job.id, "deadline": deadline.to_rfc3339() })))
+}
+
+/// Spawn a team; with `waitFor` statuses the step parks until the task reaches one of them.
+fn step_team(app: &App, project: &str, run: &Run, step: &Value, actor: &Actor, input: &Value) -> AppResult<Outcome> {
+    let task = need_task(input, run)?;
+    let req = SpawnRequest {
+        task: task.clone(),
+        template: input["template"].as_str().map(str::to_string),
+        members: serde_json::from_value(input["members"].clone()).unwrap_or_default(),
+        models: serde_json::from_value(input["models"].clone()).unwrap_or_default(),
+        note: input["note"].as_str().map(str::to_string),
+        by: actor.clone(),
+        initiator: crate::llm_key::automation_initiator(app, run, Some(&task)),
+    };
+    let team = runtime::spawn_team(app, project, req)?;
+    let wait_for = strings(&input["waitFor"]);
+    if wait_for.is_empty() {
+        return Ok(Outcome::Done(json!({ "team": team.id })));
+    }
+    let deadline = Utc::now() + duration_or(step, "timeout", chrono::Duration::hours(24));
+    Ok(Outcome::Wait(json!({ "team": team.id, "task": task, "statuses": wait_for, "deadline": deadline.to_rfc3339() })))
+}
+
+/// Ask one person questions and park the step until they answer.
+fn step_ask(app: &App, project: &str, run: &Run, input: &Value, state: &StepState) -> AppResult<Outcome> {
+    let ctx = &run.trigger["context"];
+    let users = notify::resolve(app, project, &strings(&input["to"]), ctx)?;
+    let Some(&recipient) = users.first() else { return Err(invalid("ask: nobody to ask (the person has no account?)")) };
+    let questions: Vec<NewQuestion> = input["questions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|q| match q {
+            Value::String(s) => Some(NewQuestion { text: s.clone(), ..Default::default() }),
+            q => q["text"].as_str().map(|t| NewQuestion {
+                text: t.into(),
+                why: q["why"].as_str().unwrap_or_default().into(),
+                options: strings(&q["options"]),
+            }),
+        })
+        .collect();
+    if questions.is_empty() {
+        return Ok(Outcome::Done(json!({ "answers": [], "asked": false })));
+    }
+    let task = task_of(input, run);
+    let id = crate::questions::ask(
+        app,
+        crate::questions::Ask {
+            project,
+            task: task.as_deref(),
+            asked_by: input["from"].as_str().unwrap_or("genie"),
+            recipient,
+            questions,
+            run_step: Some(state.id),
+            remind_after: input["remindAfter"].as_str().and_then(automation::parse_duration),
+            timeout: input["timeout"].as_str().and_then(automation::parse_duration),
+        },
+    )?;
+    Ok(Outcome::Wait(json!({ "questionnaire": id })))
+}
+
+/// Drop a message into the orchestrator's bus and wake the runtime to act on it.
+fn step_wake_orchestrator(app: &App, project: &str, run: &Run, actor: &Actor, input: &Value) -> AppResult<Outcome> {
+    let text = input["text"].as_str().unwrap_or_default().to_string();
+    let task = task_of(input, run);
+    app.with_tracker(project, |t| t.bus().notify_orchestrator(&actor.name, "system", "system", &text, task.as_deref()))?;
+    app.wake_runtime.notify_one();
+    Ok(Outcome::Done(json!({})))
+}
+
+/// Append a line to the project changelog; empty text adds nothing.
+fn step_changelog_add(app: &App, project: &str, run: &Run, input: &Value) -> AppResult<Outcome> {
+    let text = input["text"].as_str().unwrap_or_default().trim().to_string();
+    if text.is_empty() {
+        return Ok(Outcome::Done(json!({ "added": false })));
+    }
+    let path =
+        crate::knowledge::changelog_add(app, project, input["group"].as_str().unwrap_or("changed"), &text, task_of(input, run).as_deref())?;
+    Ok(Outcome::Done(json!({ "added": true, "path": path })))
+}
+
+/// Cut a release of the project, with notes generated from recent history.
+fn step_release(app: &App, project: &str, actor: &Actor, input: &Value) -> AppResult<Outcome> {
+    let version = input["version"].as_str().unwrap_or_default().to_string();
+    let notes = crate::knowledge::release(app, project, &version, &actor.name)?;
+    Ok(Outcome::Done(json!({ "version": version, "notes": notes })))
+}
+
+/// Call an http(s) endpoint; a status of 400 or more fails the step, non-JSON bodies are kept as text.
+fn step_http(input: &Value) -> AppResult<Outcome> {
+    let url = input["url"].as_str().unwrap_or_default().to_string();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(invalid("http: url must be http(s)"));
+    }
+    let method = input["method"].as_str().unwrap_or("POST").to_uppercase();
+    let body = input["body"].clone();
+    let headers = input["headers"].clone();
+    let (status, text) = crate::state::block_on(async {
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+        let mut req = client.request(method.parse().map_err(|_| "bad method".to_string())?, &url);
+        if let Some(h) = headers.as_object() {
+            for (k, v) in h {
+                req = req.header(k, v.as_str().unwrap_or_default());
+            }
+        }
+        if !body.is_null() {
+            req = req.json(&body);
+        }
+        let res = req.send().await.map_err(|e| e.to_string())?;
+        let status = res.status().as_u16();
+        Ok::<_, String>((status, res.text().await.unwrap_or_default()))
+    })
+    .map_err(invalid)?;
+    if status >= 400 {
+        return Err(invalid(format!("http: {status}")));
+    }
+    let parsed: Value = serde_json::from_str(&text).unwrap_or(Value::String(text.chars().take(4000).collect()));
+    Ok(Outcome::Done(json!({ "status": status, "body": parsed })))
+}
+
+/// Park the step for a duration, so the engine can sleep until it is due.
+fn step_wait(input: &Value) -> AppResult<Outcome> {
+    let d = input["for"].as_str().and_then(automation::parse_duration).ok_or_else(|| invalid("wait: `for` duration such as 24h"))?;
+    Ok(Outcome::Wait(json!({ "until": (Utc::now() + d).to_rfc3339() })))
 }
 
 /// Statuses `task.ready` moves a task from: refinement that nothing else waits for.
