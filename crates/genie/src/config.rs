@@ -163,9 +163,7 @@ pub struct RuntimeConfig {
     pub delivery_budget: usize,
     /// Extra environment for agent processes.
     pub env: BTreeMap<String, String>,
-    /// Obsolete: pi's own MCP support replaced pi-mcp-adapter (pi 1.0). Read so that existing
-    /// config files stay valid; ignored, `genie doctor` says to remove it.
-    pub mcp_adapter: Option<bool>,
+
     /// Agents reach MCP connections through the genie gateway (default): secrets
     /// stay on the server and every call is in the project's journal. `false`:
     /// the harness gets the connections themselves.
@@ -223,32 +221,15 @@ impl<'de> Deserialize<'de> for SandboxConfig {
 }
 
 impl RuntimeConfig {
-    /// Whether pi still loads pi-mcp-adapter: a command loading it, or pi's settings — its
-    /// packages and extensions — or its extensions directory list it. It replaces pi's native
-    /// MCP support (it registers `/mcp`), which is what agents get their connections through.
-    pub fn mcp_adapter_loaded(&self) -> bool {
-        const NAME: &str = "pi-mcp-adapter";
-        if self.command.iter().chain(&self.session_command).flatten().any(|a| a.contains(NAME)) {
-            return true;
-        }
+    /// The pi agent directory set on purpose (runtime.env or the environment), `~/` expanded:
+    /// `None` when the operator left it to genie, which then runs agents on its own profile.
+    pub fn pi_dir_override(&self) -> Option<PathBuf> {
+        let raw = self.env.get("PI_CODING_AGENT_DIR").cloned().or_else(|| std::env::var("PI_CODING_AGENT_DIR").ok())?;
         let home = std::env::var("HOME").unwrap_or_default();
-        let dir = match self.env.get("PI_CODING_AGENT_DIR").cloned().or_else(|| std::env::var("PI_CODING_AGENT_DIR").ok()) {
-            Some(d) => match d.strip_prefix("~/") {
-                Some(rest) => PathBuf::from(&home).join(rest),
-                None => PathBuf::from(d),
-            },
-            None => PathBuf::from(&home).join(".pi").join("agent"),
-        };
-        let settings: serde_json::Value =
-            std::fs::read_to_string(dir.join("settings.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-        let listed = ["packages", "extensions"]
-            .iter()
-            .filter_map(|k| settings[*k].as_array())
-            .flatten()
-            .any(|e| e.as_str().or_else(|| e["source"].as_str()).is_some_and(|s| s.contains(NAME)));
-        listed
-            || std::fs::read_dir(dir.join("extensions"))
-                .is_ok_and(|rd| rd.flatten().any(|e| e.file_name().to_string_lossy().contains(NAME)))
+        Some(match raw.strip_prefix("~/") {
+            Some(rest) => PathBuf::from(&home).join(rest),
+            None => PathBuf::from(raw),
+        })
     }
 
     /// Whether members and the orchestrator run as live sessions.
@@ -308,7 +289,6 @@ impl Default for RuntimeConfig {
             ask_timeout_secs: 180,
             delivery_budget: genie_core::team::DELIVERY_BUDGET,
             env: BTreeMap::new(),
-            mcp_adapter: None,
             mcp_gateway: true,
             enabled: true,
             sandbox: SandboxConfig::default(),
@@ -527,33 +507,5 @@ mod tests {
         std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"sandbox": {"writable": ["~/.m2"]}}}"#).unwrap();
         let s = Config::load(dir.path()).unwrap().runtime.sandbox;
         assert_eq!((s.mode.as_str(), s.writable), ("auto", vec!["~/.m2".to_string()]));
-    }
-
-    #[test]
-    fn pi_mcp_adapter_is_found_in_pis_settings() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut rt = RuntimeConfig::default();
-        rt.env.insert("PI_CODING_AGENT_DIR".into(), dir.path().to_string_lossy().into_owned());
-        assert!(!rt.mcp_adapter_loaded(), "no settings");
-        let settings = |v: &str| std::fs::write(dir.path().join("settings.json"), v).unwrap();
-        settings(r#"{"packages": ["npm:pi-web-access"]}"#);
-        assert!(!rt.mcp_adapter_loaded());
-        settings(r#"{"packages": ["npm:pi-web-access", "npm:pi-mcp-adapter@3.1.0"]}"#);
-        assert!(rt.mcp_adapter_loaded(), "pi install npm:pi-mcp-adapter");
-        settings(r#"{"packages": [{"source": "git:github.com/nicobailon/pi-mcp-adapter", "extensions": ["index.ts"]}]}"#);
-        assert!(rt.mcp_adapter_loaded(), "a filtered package entry");
-        settings("{}");
-        std::fs::create_dir_all(dir.path().join("extensions/pi-mcp-adapter")).unwrap();
-        assert!(rt.mcp_adapter_loaded(), "the extensions directory");
-        // The obsolete setting is still read, and says nothing about pi.
-        rt.mcp_adapter = Some(false);
-        assert!(rt.mcp_adapter_loaded());
-    }
-
-    #[test]
-    fn the_obsolete_mcp_adapter_setting_still_parses() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"mcpAdapter": true}}"#).unwrap();
-        assert_eq!(Config::load(dir.path()).unwrap().runtime.mcp_adapter, Some(true));
     }
 }

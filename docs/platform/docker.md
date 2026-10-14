@@ -124,7 +124,7 @@ docker compose cp config.json genie:/data/config.json && docker compose restart 
 
 Харнесс агентов в образе — [Pi-Bolt](https://github.com/opensec-git/Pi-Bolt): тот же Pi, скомпилированный в один нативный бинарник (те же команды, сессии, настройки, провайдеры и расширения). Версия и SHA-256 его npm-пакета закреплены в `Dockerfile` (`PI_BOLT_VERSION`/`PI_BOLT_SHA256`); сборка стейджа ходит только на registry.npmjs.org. В контейнере он доступен как `pi` (шаблоны команд genie и `genie doctor` знают его под этим именем) и как `pi-bolt`. Плюс для genie: старт процесса ~13× быстрее (ходы в режиме turns спавнят процесс на каждый ход), долгая сессия держит кратно меньше памяти, запись больших файлов инструментами — на порядок быстрее; сборка без JIT грузит расширения genie-bus/guard через интерпретатор, что живым тестам не заметно. Замена на npm-pi — поставьте `@earendil-works/pi-coding-agent` и уберите симлинк `/usr/local/bin/pi`.
 
-Ключи pi берёт из переменных окружения (список — в документации pi, `providers.md`) или из `~/.pi/agent/auth.json`. Свои провайдеры (например, LiteLLM) описываются в `~/.pi/agent/models.json`:
+pi берёт ключи из переменных окружения (список — в документации pi, `providers.md`) или из `auth.json` профиля. Свои провайдеры (например, LiteLLM) описываются в `models.json`:
 
 ```bash
 docker compose cp models.json genie:/data/home/.pi/agent/models.json
@@ -135,9 +135,9 @@ docker compose exec -u genie genie chmod 600 /data/home/.pi/agent/models.json
 
 Образ выключает проверку версий pi и его телеметрию (`PI_SKIP_VERSION_CHECK=1`, `PI_TELEMETRY=0`); переопределяется в `.env`.
 
-Агентам genie передаёт `--no-approve`: проектные ресурсы pi (`.pi/extensions`, `.pi/settings.json`, `.pi/mcp.json`, `.pi/SYSTEM.md`…) не загружаются, что бы ни говорили `defaultProjectTrust` и сохранённое `/trust` (`trust.json`). Навыки роли и репозитория genie передаёт агенту явно (`--skill`).
+**Профиль pi агентов — свой у genie** (`<data>/pi-agent`, в контейнере `/data/pi-agent`): агенты не наследуют настройки пользователя сервера. При старте агента genie создаёт профиль и держит его чистым — из `settings.json` профиля вырезаются списки `packages` и `extensions` (остальное, например блок `litellm`, остаётся), так что pi не подхватывает ни одного стороннего расширения; `models.json` и `auth.json` копируются туда один раз из `/data/home/.pi/agent`, если они там есть — приведённые выше команды менять не нужно. Хотите другой каталог — задайте `runtime.env.PI_CODING_AGENT_DIR`; интерактивный pi пульта (`genie orchestrate`) по-прежнему использует профиль пользователя.
 
-Обновление с образа, где pi ставился вместе с `pi-mcp-adapter`: при старте контейнер убирает адаптер из `~/.pi/agent/settings.json` (на pi 1.0 он подменял встроенную поддержку MCP). Настройка `runtime.mcpAdapter` в `config.json` больше ничего не значит; `genie doctor` просит её убрать, как и `--mcp-config {mcpConfig}` из собственных `runtime.command` и `runtime.sessionCommand`.
+Агентам genie передаёт `--no-approve`: проектные ресурсы pi (`.pi/extensions`, `.pi/settings.json`, `.pi/mcp.json`, `.pi/SYSTEM.md`…) не загружаются, что бы ни говорили `defaultProjectTrust` и сохранённое `/trust` (`trust.json`). Навыки роли и репозитория genie передаёт агенту явно (`--skill`). Настройка `runtime.mcpAdapter` и поддержка `pi-mcp-adapter` удалены: встроенный MCP pi (которым управляет genie-guard) — единственный путь подключений.
 
 ## LiteLLM и секреты
 

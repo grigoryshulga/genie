@@ -457,20 +457,6 @@ fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentCon
             ),
         }
     }
-    if cfg.runtime.mcp_adapter_loaded() {
-        out.warn(
-            "pi",
-            "pi loads pi-mcp-adapter, which replaces pi's native MCP support (pi 1.0): agents may see MCP servers outside their role, their tools are blocked",
-            "pi remove npm:pi-mcp-adapter (the Docker image does it at start)",
-        );
-    }
-    if cfg.runtime.mcp_adapter.is_some() {
-        out.warn(
-            "pi",
-            "runtime.mcpAdapter is obsolete: agents get their MCP connections through pi's built-in MCP support",
-            "remove runtime.mcpAdapter from config.json",
-        );
-    }
     if cfg.runtime.session_command.iter().chain(&cfg.runtime.command).flatten().any(|a| a == "--mcp-config") {
         out.warn(
             "pi",

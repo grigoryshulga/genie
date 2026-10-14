@@ -146,9 +146,6 @@ impl Op for Check {
     async fn run(self, cx: &Cx) -> Result<Out, String> {
         let v = cx.call("GET", "/agent-config/report", None).await?;
         let mut out = vec![s(&v, "report").to_string()];
-        if v["mcpAdapterLoaded"] == json!(true) {
-            out.push("warning: pi loads pi-mcp-adapter, which replaces pi's native MCP support: `pi remove npm:pi-mcp-adapter`".into());
-        }
         let sandbox = &v["sandbox"];
         out.push(format!("{}: {}", if sandbox["active"] == json!(true) { "sandbox" } else { "warning" }, s(sandbox, "note")));
         let errors = v["errors"].as_u64().unwrap_or(0);
