@@ -665,29 +665,6 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     assert!(!req.tools.iter().any(|t| t.starts_with("mcp__")), "the connection stays behind codemode: {:?}", req.tools);
 }
 
-/// pi 1.0 cannot run pi-mcp-adapter next to its native MCP support (it would reach the machine
-/// user's MCP servers): a deployment that still has it loaded gets its tools blocked.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn the_tools_of_a_still_installed_pi_mcp_adapter_are_blocked() {
-    let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
-        return;
-    };
-    let adapter = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pi-mcp-adapter/index.ts");
-    let pi_path = pi.to_string_lossy().into_owned();
-    let l = live(pi, |cfg| {
-        let mut cmd = genie::config::RuntimeConfig::default().session_command;
-        cmd[0][0] = pi_path;
-        cmd.push(vec!["-e".into(), adapter.to_string_lossy().into_owned()]);
-        cfg.runtime.session_command = cmd;
-    })
-    .await;
-    let (app, log) = (&l.app, &l.log);
-    install_dump(app, log);
-    mail(app, "anna", "human", "bender", r#"MCPCALL: {"tool": "mcp", "args": {"server": "userwide", "tool": "x"}}"#, None);
-    let out = tool_result(log, r#""server": "userwide""#).await;
-    assert!(out.contains("pi-mcp-adapter must not be loaded") && !out.contains("FAKE-ADAPTER"), "{out}");
-}
 
 /// pi runs under a V8 heap cap added to the operator's own `NODE_OPTIONS`; what pi runs does not inherit it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

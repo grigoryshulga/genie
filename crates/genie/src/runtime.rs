@@ -679,6 +679,61 @@ pub(crate) fn agent_dir(app: &App, key: &AgentKey) -> PathBuf {
     app.data.join("runtime").join(key.project()).join(key.label().replace('/', "_"))
 }
 
+/// The pi directory agents run with: the operator's choice (`runtime.env` or the
+/// environment), or genie's own `<data>/pi-agent` — a profile empty of packages,
+/// extensions and skills, so pi loads exactly what the agent is given by flag.
+pub(crate) fn pi_dir(app: &App) -> PathBuf {
+    app.cfg.runtime.pi_dir_override().unwrap_or_else(|| app.data.join("pi-agent"))
+}
+
+/// The pi directory the operator's interactive pi uses: where a deployment that never
+/// chose one keeps its models and logins for seeding genie's profile from.
+fn legacy_pi_dir() -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    (!home.is_empty()).then(|| PathBuf::from(home).join(".pi").join("agent"))
+}
+
+/// Make the profile at `dir` exactly what agents need: `settings.json` without `packages`
+/// or `extensions` lists (the rest of the file — a litellm block, a theme — stays), and
+/// `models.json`/`auth.json` copied in once from `legacy` when they are there. Returns
+/// whether anything pi could discover and load on its own was taken away.
+fn seed_pi_profile(dir: &Path, legacy: Option<&Path>) -> bool {
+    use std::io::ErrorKind::NotFound;
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let mut stripped = false;
+    let settings = dir.join("settings.json");
+    match std::fs::read_to_string(&settings) {
+        Ok(text) => {
+            if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&text)
+                && let Some(obj) = v.as_object_mut()
+                && (obj.contains_key("packages") || obj.contains_key("extensions"))
+            {
+                let _ = obj.remove("packages");
+                let _ = obj.remove("extensions");
+                if let Ok(out) = serde_json::to_string(&v) {
+                    let _ = std::fs::write(&settings, out);
+                    stripped = true;
+                }
+            }
+        }
+        Err(e) if e.kind() == NotFound => {
+            let _ = std::fs::write(&settings, "{\"packages\":[]}");
+        }
+        Err(_) => {}
+    }
+    if let Some(legacy) = legacy {
+        for name in ["models.json", "auth.json"] {
+            let (src, dst) = (legacy.join(name), dir.join(name));
+            if !dst.exists() && src.is_file() {
+                let _ = std::fs::copy(&src, &dst);
+            }
+        }
+    }
+    stripped
+}
+
 /// The harness command for an agent, ready to spawn — the same for a turn and a session
 /// but for the command template (`runtime.command` / `runtime.sessionCommand`) and what
 /// it is given (`{message}` / `{extension}`). Returns it with the agent's runtime directory.
@@ -694,7 +749,11 @@ pub(crate) async fn agent_process(
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
     let prompt_file = dir.join("prompt.md");
     tokio::fs::write(&prompt_file, &spec.prompt).await.map_err(|e| e.to_string())?;
-    let files = spec.kit.write(app, &dir, &spec.role_id).map_err(|e| e.to_string())?;
+    let files = spec.kit.write(app, &dir).map_err(|e| e.to_string())?;
+    // Agents run on genie's own pi profile (or the operator's chosen one): keep it clean
+    // before the harness reads it — no packages or extension lists, models seeded once.
+    let legacy = app.cfg.runtime.pi_dir_override().is_none().then(legacy_pi_dir).flatten();
+    seed_pi_profile(&pi_dir(app), legacy.as_deref());
     let sessions = app.data.join("sessions").join(key.project());
     tokio::fs::create_dir_all(&sessions).await.map_err(|e| e.to_string())?;
     let mut vars: HashMap<&str, String> = HashMap::from([
@@ -795,6 +854,9 @@ pub(crate) fn agent_command(
     for (k, v) in &app.cfg.runtime.env {
         cmd.env(k, v);
     }
+    // Agents always say which pi profile they run with — genie's own by default, so nothing
+    // outside it (the operator's interactive setup) leaks into an agent process.
+    cmd.env("PI_CODING_AGENT_DIR", pi_dir(app));
     if is_pi {
         let own = app.cfg.runtime.env.get("NODE_OPTIONS").cloned().or_else(|| std::env::var("NODE_OPTIONS").ok());
         if let Some(options) = heap_cap(own.as_deref(), app.cfg.runtime.node_heap_mb) {
@@ -872,8 +934,10 @@ fn sandbox_plan(app: &App, project: &str, cwd: &Path, dir: &Path) -> Result<Opti
             plan.set(&git.join(f), ReadOnly);
         }
     }
-    let pi_dir = app.cfg.runtime.env.get("PI_CODING_AGENT_DIR").cloned().or_else(|| std::env::var("PI_CODING_AGENT_DIR").ok());
-    sandbox::defaults(&mut plan, cfg, &home, pi_dir.map(|d| sandbox::expand(&d, &home)).as_deref());
+    // The sandbox shows the profile agents run with — genie's own by default — writable:
+    // pi keeps its logs and login refreshes there.
+    let pi = pi_dir(app);
+    sandbox::defaults(&mut plan, cfg, &home, Some(&pi));
     Ok(Some(plan))
 }
 
@@ -1025,17 +1089,12 @@ fn repo_skill_dirs(cwd: &Path) -> Vec<PathBuf> {
 
 impl Kit {
     /// Write the agent's rules and MCP config into its runtime directory `dir`.
-    pub(crate) fn write(&self, app: &App, dir: &Path, role: &str) -> std::io::Result<KitFiles> {
+    pub(crate) fn write(&self, app: &App, dir: &Path) -> std::io::Result<KitFiles> {
         let text = |v: &serde_json::Value| serde_json::to_string_pretty(v).unwrap_or_default();
         let files =
             KitFiles { policy: dir.join("policy.json"), mcp_config: dir.join("mcp.json"), guard: crate::sessions::write_guard(app)? };
         write_private(&files.policy, &text(&self.policy))?;
         write_private(&files.mcp_config, &text(&self.mcp))?;
-        if app.cfg.runtime.mcp_adapter_loaded() && self.mcp["mcpServers"].as_object().is_some_and(|m| !m.is_empty()) {
-            warn_once(&format!(
-                "genie runtime: pi loads pi-mcp-adapter, which does not belong next to its native MCP support: the guard blocks its tools, so the role {role} has only the connections genie hands it (`pi remove npm:pi-mcp-adapter`)"
-            ));
-        }
         Ok(files)
     }
 
@@ -2555,5 +2614,45 @@ mod tests {
         assert_eq!(build_command(&groups, &vars, &lists), vec!["pi", "-e", "/g.ts"]);
         // An unknown placeholder stays as text.
         assert_eq!(build_command(&[g(&["{?nope}", "{x}"])], &vars, &lists), vec!["{?nope}", "{x}"]);
+    }
+
+    #[test]
+    fn the_pi_profile_starts_empty_and_strips_extension_lists() {
+        let dir = tempfile::tempdir().unwrap();
+        seed_pi_profile(dir.path(), None);
+        let settings: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["packages"], serde_json::json!([]), "nothing for pi to discover and load");
+
+        std::fs::write(
+            dir.path().join("settings.json"),
+            r#"{"packages":["npm:pi-web-access"],"theme":"omarchy-system","litellm":{"providers":{"litellm":{"baseUrl":"https://x"}}}}"#,
+        )
+        .unwrap();
+        seed_pi_profile(dir.path(), None);
+        let settings: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join("settings.json")).unwrap()).unwrap();
+        assert!(settings.get("packages").is_none() && settings.get("extensions").is_none(), "extension lists are gone");
+        assert_eq!(settings["theme"], "omarchy-system", "the operator's own settings stay");
+        assert_eq!(settings["litellm"]["providers"]["litellm"]["baseUrl"], "https://x");
+    }
+
+    #[test]
+    fn the_pi_profile_takes_the_operators_models_and_logins_once() {
+        let (dir, legacy) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        std::fs::write(legacy.path().join("models.json"), r#"{"providers":{"litellm":{}}}"#).unwrap();
+        std::fs::write(legacy.path().join("auth.json"), r#"{"zai":{}}"#).unwrap();
+        seed_pi_profile(dir.path(), Some(legacy.path()));
+        assert_eq!(std::fs::read_to_string(dir.path().join("models.json")).unwrap(), r#"{"providers":{"litellm":{}}}"#);
+        assert!(dir.path().join("auth.json").is_file());
+        // Seeding copies once: what the agent's pi wrote stays.
+        std::fs::write(legacy.path().join("models.json"), r#"{"changed":true}"#).unwrap();
+        std::fs::write(dir.path().join("models.json"), r#"{"agent":{"wrote":true}}"#).unwrap();
+        seed_pi_profile(dir.path(), Some(legacy.path()));
+        assert_eq!(std::fs::read_to_string(dir.path().join("models.json")).unwrap(), r#"{"agent":{"wrote":true}}"#);
+        // The legacy profile's other files are not taken.
+        std::fs::write(legacy.path().join("trust.json"), "{}").unwrap();
+        seed_pi_profile(dir.path(), Some(legacy.path()));
+        assert!(!dir.path().join("trust.json").exists());
     }
 }

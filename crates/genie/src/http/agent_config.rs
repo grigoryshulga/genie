@@ -241,7 +241,6 @@ async fn catalogue(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Valu
     v["automations"] = app.blocking(|app| Ok(automation_usage(app))).await?;
     v["project"] = json!(access.project);
     v["admin"] = json!(ctx.server_admin().is_ok());
-    v["mcpAdapterLoaded"] = json!(app.cfg.runtime.mcp_adapter_loaded());
     v["mcpGateway"] = json!(app.cfg.runtime.mcp_gateway);
     let (active, note) = crate::sandbox::status(&app.cfg.runtime.sandbox);
     v["sandbox"] = json!({ "active": active, "note": note });
@@ -272,7 +271,6 @@ async fn report(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>>
                 "report": agent_config::report(&agents),
                 "problems": agents.problems,
                 "errors": agents.errors().count(),
-                "mcpAdapterLoaded": app.cfg.runtime.mcp_adapter_loaded(),
                 "sandbox": { "active": active, "note": note },
                 "roles": roles,
                 "teams": teams,
