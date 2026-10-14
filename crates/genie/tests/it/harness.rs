@@ -68,9 +68,10 @@ impl Live {
         let policy = lines.next().unwrap().strip_prefix("policy=").unwrap().to_string();
         let mcp_config = lines.next().unwrap().strip_prefix("mcpconfig=").unwrap().to_string();
         let secrets = lines.next().unwrap().strip_prefix("secrets=").unwrap().to_string();
+        let pi_profile = lines.next().unwrap().strip_prefix("piprofile=").unwrap().to_string();
         let rest: Vec<&str> = lines.collect();
         let args: Vec<String> = rest.join("\n").split("\narg=").map(|a| a.trim_start_matches("arg=").to_string()).collect();
-        Recorded { cwd, policy: PathBuf::from(policy), mcp_config: PathBuf::from(mcp_config), secrets, args }
+        Recorded { cwd, policy: PathBuf::from(policy), mcp_config: PathBuf::from(mcp_config), secrets, pi_profile, args }
     }
 }
 
@@ -81,6 +82,8 @@ struct Recorded {
     mcp_config: PathBuf,
     /// `<docs token>,<wiki token>` as the agent's environment has them.
     secrets: String,
+    /// `PI_CODING_AGENT_DIR`: the pi profile the agent runs with.
+    pi_profile: String,
     args: Vec<String>,
 }
 
@@ -146,7 +149,7 @@ async fn live(max_attempts: u32) -> Live {
     cfg.runtime.sandbox.mode = "off".into();
     cfg.port = listener.local_addr().unwrap().port();
     std::fs::create_dir_all(data.join("rec")).unwrap();
-    let script = r#"out="$GENIE_REC/$GENIE_AGENT_NAME"; { pwd -P; echo "policy=${GENIE_POLICY:-}"; echo "mcpconfig=${GENIE_MCP_CONFIG:-}"; echo "secrets=${GENIE_TEST_DOCS_TOKEN-unset},${GENIE_TEST_WIKI_TOKEN-unset}"; printf 'arg=%s\n' "$@"; } > "$out"; "$GENIE_BIN" agent output '{"summary":"ok"}'"#;
+    let script = r#"out="$GENIE_REC/$GENIE_AGENT_NAME"; { pwd -P; echo "policy=${GENIE_POLICY:-}"; echo "mcpconfig=${GENIE_MCP_CONFIG:-}"; echo "secrets=${GENIE_TEST_DOCS_TOKEN-unset},${GENIE_TEST_WIKI_TOKEN-unset}"; echo "piprofile=${PI_CODING_AGENT_DIR:-}"; printf 'arg=%s\n' "$@"; } > "$out"; "$GENIE_BIN" agent output '{"summary":"ok"}'"#;
     let mut command = RuntimeConfig::default().command;
     command[0] = vec!["bash".into(), "-c".into(), script.into(), "harness".into()];
     cfg.runtime.command = command;
@@ -154,9 +157,6 @@ async fn live(max_attempts: u32) -> Live {
     cfg.runtime.max_attempts = max_attempts;
     cfg.runtime.env.insert("GENIE_BIN".into(), env!("CARGO_BIN_EXE_genie").into());
     cfg.runtime.env.insert("GENIE_REC".into(), data.join("rec").to_string_lossy().into_owned());
-    let pi_dir = data.join("pi-agent");
-    write(&pi_dir.join("settings.json"), &json!({ "packages": [] }).to_string());
-    cfg.runtime.env.insert("PI_CODING_AGENT_DIR".into(), pi_dir.to_string_lossy().into_owned());
     let app = App::open(data, cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", Some(&repo.to_string_lossy()), None, Some("SHOP")).unwrap();
     app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
@@ -195,6 +195,10 @@ async fn the_harness_gets_the_roles_skills_mcp_and_rules_and_jobs_work_where_the
     assert_eq!(std::fs::read_to_string(data.join("runtime/genie-guard.ts")).unwrap(), genie::sessions::GUARD);
     assert!(r.has("--no-approve"), "no project-local extensions, settings or MCP, whatever pi's trust file says: {:?}", r.args);
     assert!(!r.has("--mcp-config"), "pi's built-in MCP support has no such flag");
+    // Agents run on genie's own pi profile by default: it loads nothing pi discovers itself.
+    assert_eq!(PathBuf::from(&r.pi_profile), data.join("pi-agent"), "PI_CODING_AGENT_DIR of an agent");
+    let settings: Value = serde_json::from_str(&std::fs::read_to_string(data.join("pi-agent/settings.json")).unwrap()).unwrap();
+    assert_eq!(settings["packages"], json!([]), "the profile genie seeds has nothing to load");
     let policy: Value = serde_json::from_str(&std::fs::read_to_string(&r.policy).unwrap()).unwrap();
     assert_eq!(
         policy,

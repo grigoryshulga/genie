@@ -486,11 +486,6 @@ const splitGrant = (g: string) => (g.includes(":") ? [g.slice(0, g.indexOf(":"))
 function McpCard({ role: r, cfg, onEdit }: { role: RoleDef; cfg: Catalogue; onEdit?: () => void }) {
   return (
     <Card title="MCP" onEdit={onEdit}>
-      {cfg.mcpAdapterLoaded && r.mcp.length > 0 && (
-        <p className="ag-warn-line" title="Уберите на сервере: pi remove npm:pi-mcp-adapter">
-          pi загружает pi-mcp-adapter: он подменяет встроенную поддержку MCP, его инструменты агентам закрыты.
-        </p>
-      )}
       {r.mcp.length ? (
         <ul className="ag-grant-list">
           {r.mcp.map((g) => {

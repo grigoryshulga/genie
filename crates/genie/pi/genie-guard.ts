@@ -11,8 +11,7 @@
 // - edit and write when the role or the job's workspace is read-only;
 // - MCP calls (pi's built-in MCP tools `mcp__<server>__<tool>`, also those
 //   a codemode script makes) to connections and tools the role was not
-//   granted, and tools of pi-mcp-adapter, which pi 1.0 cannot run next to its
-//   native MCP support.
+//   granted.
 //
 // It also gives the agent its MCP connections: pi's built-in MCP extension is
 // replaced by an instance of the same code that reads no `mcp.json` of the
@@ -327,15 +326,12 @@ export default async function genieGuard(pi: any) {
   }
   current();
 
-  /** The source of a tool of pi-mcp-adapter, which has no place next to pi's native MCP support. */
-  const adapterTool = (name: string) =>
-    !CORE_TOOLS.has(name) && /pi-mcp-adapter/.test(String(pi.getAllTools().find((t: any) => t.name === name)?.sourceInfo?.path ?? ""));
-
-  pi.on("tool_call", (event: any) => {
-    const tool = String(event?.toolName ?? "");
-    const input = (event?.input ?? {}) as Record<string, unknown>;
+  pi.on("tool_call", (event: unknown) => {
+    const e = event && typeof event === "object" ? (event as Record<string, unknown>) : {};
+    const tool = typeof e.toolName === "string" ? e.toolName : "";
+    const input = e.input && typeof e.input === "object" ? (e.input as Record<string, unknown>) : {};
     const p = current();
-    const mcp = owners.has(tool) || tool.startsWith("mcp__") || RESOURCE_TOOLS.includes(tool) || adapterTool(tool);
+    const mcp = owners.has(tool) || tool.startsWith("mcp__") || RESOURCE_TOOLS.includes(tool);
     if (!p) {
       return mcp ? { block: true, reason: "genie: the agent's rules could not be read; MCP is closed" } : undefined;
     }
@@ -343,7 +339,7 @@ export default async function genieGuard(pi: any) {
       return { block: true, reason: `genie: the role ${p.role} works read-only here; ${tool} is not available` };
     }
     if ((tool === "bash" || tool === "powershell") && p.denyCommands.length) {
-      const hit = deniedBy(String(input.command ?? ""), p.denyCommands);
+      const hit = deniedBy(typeof input.command === "string" ? input.command : "", p.denyCommands);
       if (hit) return { block: true, reason: `genie: the role ${p.role} may not run \`${hit}\` (denyCommands)` };
     }
     if (!mcp) return undefined;
@@ -352,7 +348,7 @@ export default async function genieGuard(pi: any) {
     if (owner) why = mcpDenial(p, owner.server, owner.tool);
     else if (RESOURCE_TOOLS.includes(tool)) why = resourceDenial(p, tool, input);
     // Neither registered for the role's connections nor pi's resource tools: not from genie's MCP wiring.
-    else why = `genie: the tool ${tool} is not one of the role's MCP connections (pi-mcp-adapter must not be loaded next to pi's native MCP)`;
+    else why = `genie: the tool ${tool} is not one of the role's MCP connections`;
     return why ? { block: true, reason: why } : undefined;
   });
 }
