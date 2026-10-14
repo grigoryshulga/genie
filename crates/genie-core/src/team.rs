@@ -1103,12 +1103,6 @@ pub fn display_name(name: &str) -> String {
     }
 }
 
-/// Pick a free name for a role; `taken` is extended.
-pub fn pick_name(role: &str, taken: &mut std::collections::HashSet<String>) -> String {
-    let pool: Vec<String> = name_pool(role).iter().map(|s| s.to_string()).collect();
-    pick_from(&pool, taken)
-}
-
 /// Pick a free name from a pool (a configured role's names): a random free one,
 /// else the first with a number. `taken` is extended.
 pub fn pick_from(pool: &[String], taken: &mut std::collections::HashSet<String>) -> String {
@@ -1527,12 +1521,14 @@ mod tests {
     #[test]
     fn names_are_unique_and_displayable() {
         let mut taken: std::collections::HashSet<String> = ["sherlock".to_string()].into();
-        let a = pick_name("analyst", &mut taken);
+        let pool: Vec<String> = name_pool("analyst").iter().map(|s| s.to_string()).collect();
+        let a = pick_from(&pool, &mut taken);
         assert_ne!(a, "sherlock");
         assert_eq!(display_name("walle"), "WALL-E");
         assert_eq!(display_name("big-bird"), "Big Bird");
-        let mut all: std::collections::HashSet<String> = name_pool("tester").iter().map(|s| s.to_string()).collect();
-        assert_eq!(pick_name("tester", &mut all), "murphy2");
+        let testers: Vec<String> = name_pool("tester").iter().map(|s| s.to_string()).collect();
+        let mut all: std::collections::HashSet<String> = testers.iter().cloned().collect();
+        assert_eq!(pick_from(&testers, &mut all), "murphy2");
     }
 
     /// Move every sign of life two hours into the past: the team has been quiet since then.
