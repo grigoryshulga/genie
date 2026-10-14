@@ -224,11 +224,7 @@ impl RuntimeConfig {
     /// The pi agent directory set on purpose (runtime.env or the environment), `~/` expanded:
     /// `None` when the operator left it to genie, which then runs agents on its own profile.
     pub fn pi_dir_override(&self) -> Option<PathBuf> {
-        let raw = self
-            .env
-            .get("PI_CODING_AGENT_DIR")
-            .cloned()
-            .or_else(|| std::env::var("PI_CODING_AGENT_DIR").ok())?;
+        let raw = self.env.get("PI_CODING_AGENT_DIR").cloned().or_else(|| std::env::var("PI_CODING_AGENT_DIR").ok())?;
         let home = std::env::var("HOME").unwrap_or_default();
         Some(match raw.strip_prefix("~/") {
             Some(rest) => PathBuf::from(&home).join(rest),
@@ -512,6 +508,4 @@ mod tests {
         let s = Config::load(dir.path()).unwrap().runtime.sandbox;
         assert_eq!((s.mode.as_str(), s.writable), ("auto", vec!["~/.m2".to_string()]));
     }
-
-
 }
