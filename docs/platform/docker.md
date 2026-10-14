@@ -122,7 +122,9 @@ docker compose cp config.json genie:/data/config.json && docker compose restart 
 
 ## Модели и pi
 
-pi берёт ключи из переменных окружения (список — в документации pi, `providers.md`) или из `~/.pi/agent/auth.json`. Свои провайдеры (например, LiteLLM) описываются в `~/.pi/agent/models.json`:
+Харнесс агентов в образе — [Pi-Bolt](https://github.com/opensec-git/Pi-Bolt): тот же Pi, скомпилированный в один нативный бинарник (те же команды, сессии, настройки, провайдеры и расширения). Версия и SHA-256 его npm-пакета закреплены в `Dockerfile` (`PI_BOLT_VERSION`/`PI_BOLT_SHA256`); сборка стейджа ходит только на registry.npmjs.org. В контейнере он доступен как `pi` (шаблоны команд genie и `genie doctor` знают его под этим именем) и как `pi-bolt`. Плюс для genie: старт процесса ~13× быстрее (ходы в режиме turns спавнят процесс на каждый ход), долгая сессия держит кратно меньше памяти, запись больших файлов инструментами — на порядок быстрее; сборка без JIT грузит расширения genie-bus/guard через интерпретатор, что живым тестам не заметно. Замена на npm-pi — поставьте `@earendil-works/pi-coding-agent` и уберите симлинк `/usr/local/bin/pi`.
+
+Ключи pi берёт из переменных окружения (список — в документации pi, `providers.md`) или из `~/.pi/agent/auth.json`. Свои провайдеры (например, LiteLLM) описываются в `~/.pi/agent/models.json`:
 
 ```bash
 docker compose cp models.json genie:/data/home/.pi/agent/models.json

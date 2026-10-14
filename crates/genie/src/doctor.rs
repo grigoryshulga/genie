@@ -336,14 +336,15 @@ fn list_models(pi: &Path, cfg: &Config) -> Option<BTreeSet<String>> {
     )
 }
 
-/// The models agents can be given: pi's catalogue when pi answers (`None` when
-/// it is not on the PATH or does not answer).
+/// The models agents can be given: pi's catalogue when the harness answers (`None` when
+/// it is not on the PATH or does not answer). The harness is pi or Pi-Bolt, the compiled
+/// build of pi — both speak `--list-models`.
 pub fn pi_models(cfg: &Config) -> Option<BTreeSet<String>> {
     let pi = [&cfg.runtime.session_command, &cfg.runtime.command]
         .iter()
         .filter_map(|c| c.first().and_then(|g| g.first()))
         .filter_map(|program| find_program(program, cfg))
-        .find(|p| p.file_name().is_some_and(|n| n == "pi"))?;
+        .find(|p| p.file_name().is_some_and(|n| n == "pi" || n == "pi-bolt"))?;
     list_models(&pi, cfg)
 }
 
@@ -445,7 +446,7 @@ fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentCon
             Some(p) => {
                 let version = output(&p, &["--version"], cfg).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
                 out.ok("pi", format!("{program}: {}{}", p.display(), version.map(|v| format!(", version {v}")).unwrap_or_default()));
-                if program == "pi" || p.file_name().is_some_and(|n| n == "pi") {
+                if program == "pi" || program == "pi-bolt" || p.file_name().is_some_and(|n| n == "pi" || n == "pi-bolt") {
                     pi = Some(p);
                 }
             }
