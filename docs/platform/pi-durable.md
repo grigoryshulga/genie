@@ -89,7 +89,7 @@ const settled = await (await root.submit({ type: "input", content: "…", reques
 
 ## 7. Что это значит для genie
 
-Факты о текущей интеграции: агенты genie — долгоживущие подпроцессы `pi --mode rpc` с расширением genie-bus (`crates/genie/src/sessions.rs`, [[platform/agent-bus]]), разовые задания — `pi --print` на ход (`crates/genie/src/config.rs`), версия зафиксирована lock-файлом на 1.0.2, в docker — Node 24 ([[platform/docker]]).
+Факты о текущей интеграции: агенты genie — долгоживущие подпроцессы `pi --mode rpc` с расширением genie-bus (`crates/genie/src/sessions.rs`, [[platform/agent-bus]]), разовые задания — `pi --print` на ход (`crates/genie/src/config.rs`), версия зафиксирована lock-файлом на 1.2.0 (обновлена с 1.0.2 2026-10-14, полный прогон живых тестов зелёный), в docker — Node 24 ([[platform/docker]]).
 
 Дальше — **предположения**, не план:
 

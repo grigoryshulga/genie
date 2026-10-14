@@ -15,8 +15,8 @@
     "node": ">=22.19.0"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^1.0.2",
-    "@earendil-works/pi-coding-agent": "^1.0.2"
+    "@earendil-works/pi-ai": "^1.2.0",
+    "@earendil-works/pi-coding-agent": "^1.2.0"
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",
