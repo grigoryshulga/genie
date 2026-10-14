@@ -15,7 +15,7 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "json
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.6.7", features = ["derive", "string"] }
-futures-util = { version = "0.3.34", default-features = false }
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 genie-core = { path = "../genie-core" }
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls", "rustls-platform-verifier", "aws-lc-rs"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
