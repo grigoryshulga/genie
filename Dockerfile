@@ -26,14 +26,24 @@ COPY web ./web
 RUN npm run build:web
 
 # ---- pi -----------------------------------------------------------------------------------------
-# The harness agents run, with the dependencies genie's tests run against: package-lock.json pins pi and
-# all it needs (pi stopped shipping an npm-shrinkwrap.json in 1.0.1, so `npm install -g pi@x` no longer
-# pins them). Production dependencies only: that is pi and its packages.
-FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim AS pi
+# The harness agents run: Pi-Bolt, the Pi coding agent compiled ahead of time into one native
+# executable — the same commands, sessions, settings, providers and extensions, with agents
+# starting ~13× sooner and long sessions using a fraction of the memory. The release's npm
+# package is pinned by its SHA-256; only registry.npmjs.org is contacted (the wrapper package's
+# own installer would also fetch GitHub, which a build network may not reach).
+FROM debian:${DEBIAN_RELEASE}-slim AS pi
+ARG PI_BOLT_VERSION=0.8.5
+ARG PI_BOLT_SHA256=409dcca13b31474e3f66890d3ce3f194efad5c8f1cc4e800d126bdb712608542
 WORKDIR /opt/genie/pi
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL "https://registry.npmjs.org/pi-bolt-linux-x64/-/pi-bolt-linux-x64-${PI_BOLT_VERSION}.tgz" -o bolt.tgz \
+ && echo "${PI_BOLT_SHA256}  bolt.tgz" | sha256sum -c - \
+ && tar xzf bolt.tgz package/pi-bolt-linux-x64.tar.xz \
+ && tar xJf package/pi-bolt-linux-x64.tar.xz \
+ && rm -rf bolt.tgz package \
+ && pi-bolt-linux-x64/pi --version
 
 # ---- server -------------------------------------------------------------------------------------
 # Debian-based on purpose: rusqlite (bundled SQLite) and aws-lc need a C toolchain, and glibc here
@@ -91,10 +101,13 @@ RUN userdel -r node \
  && groupadd --gid 1000 genie \
  && useradd --uid 1000 --gid genie --home-dir /data/home --no-create-home --shell /bin/bash genie
 
-# pi, from the stage above: the version and every dependency are the ones of package-lock.json.
-# MCP needs nothing more: pi has its own MCP support, which genie's guard extension wires up per agent.
-COPY --from=pi /opt/genie/pi /opt/genie/pi
-RUN ln -s /opt/genie/pi/node_modules/.bin/pi /usr/local/bin/pi \
+# Pi-Bolt, from the stage above: one native executable with its WASM helper, pinned by the
+# SHA-256 in that stage, exposed as `pi` — genie's command templates and doctor find it under
+# the name they know (and `pi-bolt` for the operator). MCP needs nothing more: pi has its own
+# MCP support, which genie's guard extension wires up per agent.
+COPY --from=pi /opt/genie/pi/pi-bolt-linux-x64 /opt/genie/pi-bolt
+RUN ln -s /opt/genie/pi-bolt/pi /usr/local/bin/pi \
+ && ln -s /opt/genie/pi-bolt/pi /usr/local/bin/pi-bolt \
  && pi --version
 
 COPY docker/gitconfig /etc/gitconfig
