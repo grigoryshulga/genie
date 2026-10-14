@@ -1462,11 +1462,13 @@ fn rel_path(data: &Path, p: &Path) -> String {
     p.strip_prefix(data).map(|r| r.to_string_lossy().into_owned()).unwrap_or_else(|_| p.to_string_lossy().into_owned())
 }
 
+/// One problem of the loader; the order of `problems` is what `genie agents check` prints.
+fn push_problem(problems: &mut Vec<Problem>, level: Level, item: String, path: Option<String>, message: String) {
+    problems.push(Problem { level, item, path, message });
+}
+
 /// Skills from `<data>/skills` and the extra paths of `skills.paths` in the config.
 fn load_skills(data: &Path, cfg: &Config, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTreeMap<String, SkillDef> {
-    let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-        problems.push(Problem { level, item, path, message });
-    };
     let mut skills = BTreeMap::new();
     let mut files = Vec::new();
     for d in skill_dirs(data, cfg) {
@@ -1481,11 +1483,12 @@ fn load_skills(data: &Path, cfg: &Config, overlay: &Overlay, problems: &mut Vec<
                 let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.text());
                 let name = get("name").unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
                 let Some(description) = get("description").filter(|d| !d.trim().is_empty()) else {
-                    problem(Level::Error, format!("skill:{name}"), Some(path), "SKILL.md needs a `description`".into());
+                    push_problem(problems, Level::Error, format!("skill:{name}"), Some(path), "SKILL.md needs a `description`".into());
                     continue;
                 };
                 if skills.contains_key(&name) {
-                    problem(
+                    push_problem(
+                        problems,
                         Level::Warning,
                         format!("skill:{name}"),
                         Some(path),
@@ -1495,7 +1498,7 @@ fn load_skills(data: &Path, cfg: &Config, overlay: &Overlay, problems: &mut Vec<
                 }
                 skills.insert(name.clone(), SkillDef { name, description, dir });
             }
-            Err(e) => problem(Level::Error, "skill".into(), Some(path), e),
+            Err(e) => push_problem(problems, Level::Error, "skill".into(), Some(path), e),
         }
     }
     skills
@@ -1504,9 +1507,6 @@ fn load_skills(data: &Path, cfg: &Config, overlay: &Overlay, problems: &mut Vec<
 /// MCP connections from `<data>/mcp.json`, in the `mcpServers` format pi shares with
 /// Claude Desktop. Keys the server itself does not know are kept for the client.
 fn load_mcp(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTreeMap<String, McpServer> {
-    let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-        problems.push(Problem { level, item, path, message });
-    };
     let mut mcp: BTreeMap<String, McpServer> = BTreeMap::new();
     let mcp_file = data.join("mcp.json");
     if exists(&mcp_file, overlay) {
@@ -1518,7 +1518,7 @@ fn load_mcp(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTre
                     for (id, entry) in servers {
                         let item = format!("mcp:{id}");
                         let Some(o) = entry.as_object() else {
-                            problem(Level::Error, item, Some("mcp.json".into()), "expected an object".into());
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), "expected an object".into());
                             continue;
                         };
                         let transport = if o.contains_key("url") {
@@ -1526,26 +1526,33 @@ fn load_mcp(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTre
                         } else if o.contains_key("command") {
                             "stdio"
                         } else {
-                            problem(Level::Error, item, Some("mcp.json".into()), "needs `command` (stdio) or `url` (http)".into());
+                            push_problem(
+                                problems,
+                                Level::Error,
+                                item,
+                                Some("mcp.json".into()),
+                                "needs `command` (stdio) or `url` (http)".into(),
+                            );
                             continue;
                         };
                         let mut errs = Vec::new();
                         let projects = string_list(o.get("projects").unwrap_or(&Value::Null), "projects", &mut errs);
                         if let Some(e) = errs.pop() {
-                            problem(Level::Error, item, Some("mcp.json".into()), e);
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), e);
                             continue;
                         }
                         let gateway = match o.get("gateway") {
                             None => true,
                             Some(Value::Bool(b)) => *b,
                             Some(_) => {
-                                problem(Level::Error, item, Some("mcp.json".into()), "`gateway` is true or false".into());
+                                push_problem(problems, Level::Error, item, Some("mcp.json".into()), "`gateway` is true or false".into());
                                 continue;
                             }
                         };
                         // pi's MCP support names a server's tools `mcp__<server>__<tool>`.
                         if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-                            problem(
+                            push_problem(
+                                problems,
                                 Level::Error,
                                 item,
                                 Some("mcp.json".into()),
@@ -1555,7 +1562,7 @@ fn load_mcp(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTre
                         }
                         if let Some(other) = mcp.keys().find(|k| k.replace('-', "_") == id.replace('-', "_")) {
                             let why = format!("pi takes names that differ only in `-` and `_` for one connection (`{other}`)");
-                            problem(Level::Error, item, Some("mcp.json".into()), why);
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), why);
                             continue;
                         }
                         const EXPOSURES: [&str; 5] = ["direct", "codemode", "codemode-deferred", "deferred", "hidden"];
@@ -1564,7 +1571,7 @@ fn load_mcp(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTre
                             || o.get("toolExposure").is_some_and(|t| t.as_object().is_none_or(|t| t.values().any(bad_exposure)))
                         {
                             let why = format!("`exposure` and the values of `toolExposure` are one of {}", EXPOSURES.join(", "));
-                            problem(Level::Error, item, Some("mcp.json".into()), why);
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), why);
                             continue;
                         }
                         let mut config = o.clone();
@@ -1584,9 +1591,15 @@ fn load_mcp(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTre
                         );
                     }
                 }
-                None => problem(Level::Error, "mcp.json".into(), Some("mcp.json".into()), "expected {\"mcpServers\": {…}}".into()),
+                None => push_problem(
+                    problems,
+                    Level::Error,
+                    "mcp.json".into(),
+                    Some("mcp.json".into()),
+                    "expected {\"mcpServers\": {…}}".into(),
+                ),
             },
-            Err(e) => problem(Level::Error, "mcp.json".into(), Some("mcp.json".into()), e),
+            Err(e) => push_problem(problems, Level::Error, "mcp.json".into(), Some("mcp.json".into()), e),
         }
     }
     mcp
@@ -1611,16 +1624,13 @@ fn load_roles(
 /// The raw role text by id: built-ins first, then the data directory (a file with a
 /// built-in id overlays it field by field). Returns the ids that failed to load.
 fn collect_role_sources(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> (HashMap<String, RoleSource>, HashSet<String>) {
-    let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-        problems.push(Problem { level, item, path, message });
-    };
     let mut sources: HashMap<String, RoleSource> = HashMap::new();
     for (id, text) in BUILTIN_ROLES {
         match parse_role(text) {
             Ok((raw, _)) => {
                 sources.insert(id.to_string(), RoleSource { raw, origin: Origin::Builtin, path: None });
             }
-            Err(e) => problem(Level::Error, format!("role:{id}"), None, format!("built-in role: {e}")),
+            Err(e) => push_problem(problems, Level::Error, format!("role:{id}"), None, format!("built-in role: {e}")),
         }
     }
     let mut broken_roles: HashSet<String> = HashSet::new();
@@ -1628,14 +1638,14 @@ fn collect_role_sources(data: &Path, overlay: &Overlay, problems: &mut Vec<Probl
         let item = format!("role:{id}");
         let shown = rel_path(data, &path);
         if !valid_id(&id) {
-            problem(Level::Error, item, Some(shown), "the file name is the role id: [a-z][a-z0-9-]*.md".into());
+            push_problem(problems, Level::Error, item, Some(shown), "the file name is the role id: [a-z][a-z0-9-]*.md".into());
             continue;
         }
         let parsed = read(&path, overlay).map_err(|e| e.to_string()).and_then(|t| parse_role(&t));
         match parsed {
             Ok((raw, warnings)) => {
                 for w in warnings {
-                    problem(Level::Warning, item.clone(), Some(shown.clone()), w);
+                    push_problem(problems, Level::Warning, item.clone(), Some(shown.clone()), w);
                 }
                 let entry = match sources.remove(&id) {
                     Some(b) => RoleSource { raw: b.raw.overlay(&raw), origin: Origin::Override, path: Some(shown) },
@@ -1644,7 +1654,7 @@ fn collect_role_sources(data: &Path, overlay: &Overlay, problems: &mut Vec<Probl
                 sources.insert(id, entry);
             }
             Err(e) => {
-                problem(Level::Error, item, Some(shown), e);
+                push_problem(problems, Level::Error, item, Some(shown), e);
                 broken_roles.insert(id);
             }
         }
@@ -1660,9 +1670,6 @@ fn resolve_roles(
     previous: Option<&AgentConfig>,
     problems: &mut Vec<Problem>,
 ) -> BTreeMap<String, RoleDef> {
-    let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-        problems.push(Problem { level, item, path, message });
-    };
     let mut resolver = RoleResolver { sources, done: HashMap::new() };
     let mut ids: Vec<&String> = sources.keys().collect();
     ids.sort();
@@ -1675,7 +1682,7 @@ fn resolve_roles(
             Err(errors) => {
                 let src = &sources[id];
                 for e in &errors {
-                    problem(Level::Error, format!("role:{id}"), src.path.clone(), e.clone());
+                    push_problem(problems, Level::Error, format!("role:{id}"), src.path.clone(), e.clone());
                 }
                 broken.insert(id.clone());
             }
@@ -1708,19 +1715,22 @@ fn check_role_references(
     mcp: &BTreeMap<String, McpServer>,
     problems: &mut Vec<Problem>,
 ) {
-    let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-        problems.push(Problem { level, item, path, message });
-    };
     for r in roles.values() {
         for s in r.skills.iter().flatten() {
             if !skills.contains_key(s) {
-                problem(Level::Warning, format!("role:{}", r.id), r.path.clone(), format!("skill `{s}` is not installed"));
+                push_problem(problems, Level::Warning, format!("role:{}", r.id), r.path.clone(), format!("skill `{s}` is not installed"));
             }
         }
         for g in &r.mcp {
             let server = g.split(':').next().unwrap_or_default();
             if g != "*" && !mcp.contains_key(server) {
-                problem(Level::Warning, format!("role:{}", r.id), r.path.clone(), format!("MCP connection `{server}` is not in mcp.json"));
+                push_problem(
+                    problems,
+                    Level::Warning,
+                    format!("role:{}", r.id),
+                    r.path.clone(),
+                    format!("MCP connection `{server}` is not in mcp.json"),
+                );
             }
         }
     }
@@ -1740,24 +1750,20 @@ fn load_teams(
     build_teams(raw_teams, broken, roles, cfg.limits.max_members_per_team, previous, problems)
 }
 
+/// The raw team templates by id: the JSON as read, its origin and the shown path.
+type RawTeams = BTreeMap<String, (Value, Origin, Option<String>)>;
+
 /// The raw team templates by id, with origin and shown path, before parsing. A legacy
 /// `teams` entry (a partial override of a built-in preset, the old deep merge) keeps
 /// the preset's other fields. Returns the ids of files that failed to load.
-fn collect_team_sources(
-    data: &Path,
-    overlay: &Overlay,
-    problems: &mut Vec<Problem>,
-) -> (BTreeMap<String, (Value, Origin, Option<String>)>, HashSet<String>) {
-    let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-        problems.push(Problem { level, item, path, message });
-    };
-    let mut raw_teams: BTreeMap<String, (Value, Origin, Option<String>)> = BTreeMap::new();
+fn collect_team_sources(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> (RawTeams, HashSet<String>) {
+    let mut raw_teams = RawTeams::new();
     for (id, text) in BUILTIN_TEAMS {
         match serde_json::from_str::<Value>(text) {
             Ok(v) => {
                 raw_teams.insert(id.to_string(), (v, Origin::Builtin, None));
             }
-            Err(e) => problem(Level::Error, format!("team:{id}"), None, format!("built-in template: {e}")),
+            Err(e) => push_problem(problems, Level::Error, format!("team:{id}"), None, format!("built-in template: {e}")),
         }
     }
     let legacy: Option<Value> = read(&data.join("config.json"), overlay).ok().and_then(|t| serde_json::from_str(&t).ok());
@@ -1782,7 +1788,13 @@ fn collect_team_sources(
     for (id, path) in md_files(&data.join("teams"), "json", overlay) {
         let shown = rel_path(data, &path);
         if !valid_id(&id) {
-            problem(Level::Error, format!("team:{id}"), Some(shown), "the file name is the template id: [a-z][a-z0-9-]*.json".into());
+            push_problem(
+                problems,
+                Level::Error,
+                format!("team:{id}"),
+                Some(shown),
+                "the file name is the template id: [a-z][a-z0-9-]*.json".into(),
+            );
             continue;
         }
         match read(&path, overlay).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string())) {
@@ -1791,7 +1803,7 @@ fn collect_team_sources(
                 raw_teams.insert(id, (v, origin, Some(shown)));
             }
             Err(e) => {
-                problem(Level::Error, format!("team:{id}"), Some(shown), e);
+                push_problem(problems, Level::Error, format!("team:{id}"), Some(shown), e);
                 broken_teams.insert(id);
             }
         }
@@ -1802,16 +1814,13 @@ fn collect_team_sources(
 /// Parse and check each template, then assemble the `TeamDef`s; a broken one keeps its
 /// last valid version (marked `stale`).
 fn build_teams(
-    raw_teams: BTreeMap<String, (Value, Origin, Option<String>)>,
+    raw_teams: RawTeams,
     mut broken_teams: HashSet<String>,
     roles: &BTreeMap<String, RoleDef>,
     max_members: usize,
     previous: Option<&AgentConfig>,
     problems: &mut Vec<Problem>,
 ) -> BTreeMap<String, TeamDef> {
-    let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-        problems.push(Problem { level, item, path, message });
-    };
     let mut teams = BTreeMap::new();
     for (id, (v, origin, path)) in raw_teams {
         let item = format!("team:{id}");
@@ -1820,7 +1829,7 @@ fn build_teams(
             Ok(x) => x,
             Err(errors) => {
                 for e in errors {
-                    problem(Level::Error, item.clone(), path.clone(), e);
+                    push_problem(problems, Level::Error, item.clone(), path.clone(), e);
                 }
                 broken_teams.insert(id);
                 continue;
@@ -1829,7 +1838,7 @@ fn build_teams(
         let (errors, more, relations) = check_team(&raw, roles, max_members);
         if !errors.is_empty() {
             for e in errors {
-                problem(Level::Error, item.clone(), path.clone(), e);
+                push_problem(problems, Level::Error, item.clone(), path.clone(), e);
             }
             broken_teams.insert(id);
             continue;
@@ -1839,7 +1848,7 @@ fn build_teams(
         // working copy on purpose) stays on the template, not in the problem list.
         if origin != Origin::Builtin {
             for w in &warnings {
-                problem(Level::Warning, item.clone(), path.clone(), w.clone());
+                push_problem(problems, Level::Warning, item.clone(), path.clone(), w.clone());
             }
         }
         teams.insert(

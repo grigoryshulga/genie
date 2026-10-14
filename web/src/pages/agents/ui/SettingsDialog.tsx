@@ -6,8 +6,7 @@ import { FILES_TITLE, type RoleDetail, STAGE_TITLE } from "@/entities/agent-conf
 import { useMeta, useProjects } from "@/entities/project";
 import { ModelPicker } from "@/features/agent-model";
 import { ChipInput, Icon } from "@/shared/ui";
-import { useAction } from "./common.tsx";
-import { EditDialog, useRoleEdit } from "./EditDialog.tsx";
+import { EditDialog, useRoleSave } from "./EditDialog.tsx";
 
 const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -39,9 +38,7 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
     instructions: r.instructions ?? "",
   };
   const [f, setF] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const edit = useRoleEdit(detail);
-  const act = useAction();
+  const [busy, saveFields] = useRoleSave(detail, onClose);
   const meta = useMeta().data;
   const projects = useProjects().data;
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -64,9 +61,7 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
     items("denyCommands");
     items("names");
     if (!fields.length) return onClose();
-    setBusy(true);
-    if (await act(() => edit(fields), "Настройки роли сохранены")) onClose();
-    setBusy(false);
+    await saveFields(fields, "Настройки роли сохранены");
   };
   const hint = (text: string) => <span className="hint">{text}</span>;
   return (

@@ -1607,6 +1607,13 @@ fn pick_name(role: &RoleDef, taken: &mut std::collections::HashSet<String>) -> S
     team::pick_from(&role.names, taken)
 }
 
+/// What a spawn asks for: the template the roster came from (when it did) and
+/// the roster itself — members with their template keys, `None` when asked directly.
+struct Roster {
+    template: Option<TeamDef>,
+    asked: Vec<(Option<String>, MemberSpec)>,
+}
+
 /// The task a team is asked for, refused when no team may take it: epics are
 /// split into tasks first and closed tasks are done.
 fn spawnable_task(app: &App, slug: &str, req: &SpawnRequest) -> AppResult<Task> {
@@ -1624,7 +1631,7 @@ fn spawnable_task(app: &App, slug: &str, req: &SpawnRequest) -> AppResult<Task> 
 /// `standard` when neither template nor members are given, none when members
 /// are named) and the roster itself: the template's members — keeping their
 /// keys, so per-member model overrides find them — or the members asked for.
-fn asked_roster(agents: &AgentConfig, slug: &str, req: &SpawnRequest) -> AppResult<(Option<TeamDef>, Vec<(Option<String>, MemberSpec)>)> {
+fn asked_roster(agents: &AgentConfig, slug: &str, req: &SpawnRequest) -> AppResult<Roster> {
     let template = match (&req.template, req.members.is_empty()) {
         (Some(id), _) => Some(agents.team_for(slug, id)?.clone()),
         (None, true) => Some(agents.team_for(slug, "standard")?.clone()),
@@ -1658,7 +1665,15 @@ fn asked_roster(agents: &AgentConfig, slug: &str, req: &SpawnRequest) -> AppResu
     if asked.is_empty() {
         return Err(GenieError::invalid("a team needs at least one member").into());
     }
-    Ok((template, asked))
+    Ok(Roster { template, asked })
+}
+
+/// The task a team is spawned for, its project and whether that task is still
+/// in refinement — what the checks, the workspace and the staging all need.
+struct SpawnContext<'a> {
+    task: &'a Task,
+    project: &'a Project,
+    refinement: bool,
 }
 
 /// Everything that can still refuse the spawn, checked before anything is
@@ -1669,9 +1684,8 @@ fn checked_roles(
     app: &App,
     slug: &str,
     agents: &AgentConfig,
-    task: &Task,
+    ctx: &SpawnContext,
     asked: &[(Option<String>, MemberSpec)],
-    refinement: bool,
 ) -> AppResult<Vec<RoleDef>> {
     let limits = &app.cfg.limits;
     if asked.len() > limits.max_members_per_team {
@@ -1685,7 +1699,9 @@ fn checked_roles(
         }
         roles.push(r.clone());
     }
-    if refinement && let Some(r) = roles.iter().find(|r| !r.stages.contains(&Stage::Refinement)) {
+    if ctx.refinement
+        && let Some(r) = roles.iter().find(|r| !r.stages.contains(&Stage::Refinement))
+    {
         let early: Vec<&str> = agents
             .roles
             .values()
@@ -1694,15 +1710,15 @@ fn checked_roles(
             .collect();
         return Err(GenieError::invalid(format!(
             "{} is not ready ({}); role {} works only on ready tasks. Before `ready` only these roles may work on it: {} (e.g. template research)",
-            task.id,
-            task.status,
+            ctx.task.id,
+            ctx.task.status,
             r.id,
             early.join(", ")
         ))
         .into());
     }
-    if let Some(team) = app.with_tracker(slug, |t| t.bus().active_team_of(&task.id))? {
-        return Err(GenieError::invalid(format!("{} already has an active team {team}", task.id)).into());
+    if let Some(team) = app.with_tracker(slug, |t| t.bus().active_team_of(&ctx.task.id))? {
+        return Err(GenieError::invalid(format!("{} already has an active team {team}", ctx.task.id)).into());
     }
     let active = app.with_tracker(slug, |t| t.bus().active_count())?;
     if active as usize >= limits.max_active_teams {
@@ -1711,18 +1727,18 @@ fn checked_roles(
         );
     }
     if limits.max_active_teams_per_epic > 0
-        && let Some(epic) = &task.parent
+        && let Some(epic) = &ctx.task.parent
     {
         let in_epic = app.with_tracker(slug, |t| t.bus().active_count_in_epic(epic))?;
         if in_epic as usize >= limits.max_active_teams_per_epic {
             return Err(GenieError::invalid(format!(
                 "limit: at most {} active teams per epic ({epic}); {} stays in its status until one of them stops",
-                limits.max_active_teams_per_epic, task.id
+                limits.max_active_teams_per_epic, ctx.task.id
             ))
             .into());
         }
     }
-    if let Some(over) = crate::budget::check(app, slug, Some(&task.id))? {
+    if let Some(over) = crate::budget::check(app, slug, Some(&ctx.task.id))? {
         return Err(GenieError::invalid(over.explain()).into());
     }
     Ok(roles)
@@ -1734,33 +1750,31 @@ fn checked_roles(
 fn team_workspace(
     app: &App,
     slug: &str,
-    project: &Project,
     team_id: &str,
     workspace: Workspace,
-    refinement: bool,
-    task: &Task,
+    ctx: &SpawnContext,
 ) -> AppResult<(Option<TeamWorktree>, String)> {
     let has_repos = !app.with_server(|db| db.repos(slug))?.is_empty();
-    let worktree = match (&project.repo, workspace) {
-        _ if has_repos => match (workspace, refinement) {
+    let worktree = match (&ctx.project.repo, workspace) {
+        _ if has_repos => match (workspace, ctx.refinement) {
             // The project's repositories: a clone of each at its mount, on the task's branch.
             (Workspace::Worktree, false) => {
-                let (root, placed) = crate::git::service::task_workspace(app, slug, team_id, Some(&task.id))?;
+                let (root, placed) = crate::git::service::task_workspace(app, slug, team_id, Some(&ctx.task.id))?;
                 let branch = placed.iter().find_map(|p| p.branch.clone()).unwrap_or_default();
                 Some(TeamWorktree { path: root.to_string_lossy().into_owned(), branch, base: None })
             }
             _ => None,
         },
-        (Some(repo), Workspace::Worktree) if !refinement => Some(create_worktree(app, Path::new(repo), team_id, &task.id)?),
+        (Some(repo), Workspace::Worktree) if !ctx.refinement => Some(create_worktree(app, Path::new(repo), team_id, &ctx.task.id)?),
         _ => None,
     };
-    let cwd = match (&worktree, &project.repo, workspace) {
+    let cwd = match (&worktree, &ctx.project.repo, workspace) {
         (None, _, Workspace::Scratch) if has_repos => {
             let d = app.data.join("workspaces").join(slug).join(team_id);
             std::fs::create_dir_all(&d).map_err(|e| AppError::Internal(format!("{}: {e}", d.display())))?;
             d.to_string_lossy().into_owned()
         }
-        (None, _, _) if has_repos => project_workspace(app, project, team_id).to_string_lossy().into_owned(),
+        (None, _, _) if has_repos => project_workspace(app, ctx.project, team_id).to_string_lossy().into_owned(),
         (Some(w), _, _) => w.path.clone(),
         (None, Some(_), Workspace::Scratch) => {
             let d = app.data.join("workspaces").join(slug).join(team_id);
@@ -1768,7 +1782,7 @@ fn team_workspace(
             d.to_string_lossy().into_owned()
         }
         (None, Some(repo), _) => repo.clone(),
-        (None, None, _) => project_workspace(app, project, team_id).to_string_lossy().into_owned(),
+        (None, None, _) => project_workspace(app, ctx.project, team_id).to_string_lossy().into_owned(),
     };
     Ok((worktree, cwd))
 }
@@ -1837,25 +1851,23 @@ fn team_spec(
 fn assign_and_stage(
     t: &genie_core::Tracker,
     system: &Actor,
-    task: &Task,
-    project: &Project,
     team_id: &str,
-    refinement: bool,
     worktree: Option<&TeamWorktree>,
     members: &[NewMember],
+    ctx: &SpawnContext,
 ) -> Result<(), GenieError> {
     let wt = worktree.map(|w| genie_core::Worktree { path: w.path.clone(), branch: Some(w.branch.clone()) });
     let names: Vec<String> = members.iter().map(|m| m.name.clone()).collect();
-    t.assign_team(system, &task.id, Some(team_id), wt.as_ref(), Some(&names))?;
+    t.assign_team(system, &ctx.task.id, Some(team_id), wt.as_ref(), Some(&names))?;
     // The project's way of integrating results, unless the task has its own.
-    if !refinement && task.merge_strategy.trim().is_empty() && !project.integration.trim().is_empty() {
-        let input = genie_core::UpdateInput { merge_strategy: Some(project.integration.clone()), ..Default::default() };
-        t.update(system, &task.id, input)?;
+    if !ctx.refinement && ctx.task.merge_strategy.trim().is_empty() && !ctx.project.integration.trim().is_empty() {
+        let input = genie_core::UpdateInput { merge_strategy: Some(ctx.project.integration.clone()), ..Default::default() };
+        t.update(system, &ctx.task.id, input)?;
     }
-    if matches!(task.status, Status::Inbox | Status::Draft) {
+    if matches!(ctx.task.status, Status::Inbox | Status::Draft) {
         t.set_status(
             system,
-            &task.id,
+            &ctx.task.id,
             Status::Refining,
             StatusOptions { note: Some(format!("research team {team_id} started")), force: true, ..Default::default() },
         )?;
@@ -1890,11 +1902,12 @@ pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_c
     // Chosen outside the tracker's lock: the knowledge base has its own.
     let docs = crate::context::l1(app, slug, &task);
     let refinement = matches!(task.status, Status::Inbox | Status::Draft | Status::Refining);
-    let (template, asked) = asked_roster(&agents, slug, &req)?;
-    let roles = checked_roles(app, slug, &agents, &task, &asked, refinement)?;
+    let ctx = SpawnContext { task: &task, project: &project, refinement };
+    let Roster { template, asked } = asked_roster(&agents, slug, &req)?;
+    let roles = checked_roles(app, slug, &agents, &ctx, &asked)?;
     let team_id = app.with_tracker(slug, |t| t.bus().free_id(&task.id))?;
     let workspace = template.as_ref().map(|t| t.workspace).unwrap_or(Workspace::Worktree);
-    let (worktree, cwd) = team_workspace(app, slug, &project, &team_id, workspace, refinement, &task)?;
+    let (worktree, cwd) = team_workspace(app, slug, &team_id, workspace, &ctx)?;
     // Names and keys; the spec keeps the template's relations (or derives them).
     let mut taken = app.with_tracker(slug, |t| t.bus().taken_names())?;
     let (spec_members, members) = allocate_members(&mut taken, &asked, &roles);
@@ -1915,7 +1928,7 @@ pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_c
                 spec: Some(spec.to_value()),
             },
         )?;
-        assign_and_stage(t, &system, &task, &project, &team_id, refinement, worktree.as_ref(), &members)?;
+        assign_and_stage(t, &system, &team_id, worktree.as_ref(), &members, &ctx)?;
         let epic = t.epic_context(&task.id)?.epic;
         let k = Kickoff {
             team: &team_id,

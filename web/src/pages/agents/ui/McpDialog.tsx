@@ -4,8 +4,7 @@
 
 import { useState } from "react";
 import { type Catalogue, type RoleDetail } from "@/entities/agent-config";
-import { useAction } from "./common.tsx";
-import { EditDialog, useRoleEdit } from "./EditDialog.tsx";
+import { EditDialog, useRoleSave } from "./EditDialog.tsx";
 
 type Grant = { mode: "none" | "all" | "tools"; tools: string };
 
@@ -21,9 +20,7 @@ export function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: C
         }),
       ),
   );
-  const [busy, setBusy] = useState(false);
-  const edit = useRoleEdit(detail);
-  const act = useAction();
+  const [busy, saveFields] = useRoleSave(detail, onClose);
   const unknown = r.mcp.filter((g) => g !== "*" && !cfg.mcp.some((s) => s.id === g.split(":")[0]));
   const save = async () => {
     const out: string[] = [...unknown];
@@ -32,9 +29,7 @@ export function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: C
       if (g.mode === "all") out.push(s.id);
       if (g.mode === "tools") out.push(...g.tools.split(/[,\n]/).map((x) => x.trim()).filter(Boolean).map((t) => `${s.id}:${t}`));
     }
-    setBusy(true);
-    if (await act(() => edit([["mcp", out.length ? out : undefined]]), "Доступ к MCP сохранён")) onClose();
-    setBusy(false);
+    await saveFields([["mcp", out.length ? out : undefined]], "Доступ к MCP сохранён");
   };
   return (
     <EditDialog title={`MCP роли ${r.id}`} note="Закрытое подключение перестаёт работать сразу; новое агент получит со следующего старта сессии" busy={busy} onClose={onClose} onSave={() => void save()}>

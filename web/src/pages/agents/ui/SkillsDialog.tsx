@@ -3,23 +3,15 @@
 
 import { useState } from "react";
 import { type Catalogue, type RoleDetail } from "@/entities/agent-config";
-import { useAction } from "./common.tsx";
-import { EditDialog, useRoleEdit } from "./EditDialog.tsx";
+import { EditDialog, useRoleSave } from "./EditDialog.tsx";
 
 export function SkillsDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogue; onClose: () => void }) {
   const r = detail.role;
   const [only, setOnly] = useState(r.skills !== undefined);
   const [chosen, setChosen] = useState<string[]>(r.skills ?? []);
-  const [busy, setBusy] = useState(false);
-  const edit = useRoleEdit(detail);
-  const act = useAction();
-  const save = async () => {
-    setBusy(true);
-    if (await act(() => edit([["skills", only ? chosen : undefined]]), "Навыки роли сохранены")) onClose();
-    setBusy(false);
-  };
+  const [busy, save] = useRoleSave(detail, onClose);
   return (
-    <EditDialog title={`Навыки роли ${r.id}`} note="Агенты получат навыки со следующего старта сессии" busy={busy} onClose={onClose} onSave={() => void save()}>
+    <EditDialog title={`Навыки роли ${r.id}`} note="Агенты получат навыки со следующего старта сессии" busy={busy} onClose={onClose} onSave={() => void save([["skills", only ? chosen : undefined]], "Навыки роли сохранены")}>
       <div className="ag-choice">
         <label>
           <input type="radio" checked={!only} onChange={() => setOnly(false)} />
