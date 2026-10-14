@@ -338,8 +338,8 @@ struct Prepared {
     message: String,
     /// Per-turn agent token, revoked when the turn ends.
     token: String,
-    /// Its `LITELLM_API_KEY`: its initiator's ([`crate::llm_key`]).
-    llm: crate::llm_key::Key,
+    /// Its model keys: its initiator's ([`crate::llm_key`]).
+    llm: crate::llm_key::Keys,
 }
 
 /// Run one turn.
@@ -510,7 +510,14 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
 
 /// The key of a turn's agent; when it cannot have one, the turn ends without
 /// running and its mail waits for the next attempt.
-fn turn_key(app: &App, slug: &str, turn: i64, label: &str, initiator: Option<&str>, model: Option<&str>) -> AppResult<crate::llm_key::Key> {
+fn turn_key(
+    app: &App,
+    slug: &str,
+    turn: i64,
+    label: &str,
+    initiator: Option<&str>,
+    model: Option<&str>,
+) -> AppResult<crate::llm_key::Keys> {
     crate::llm_key::resolve(app, slug, label, initiator, model).map_err(|e| {
         let _ = app.with_tracker(slug, |t| t.bus().release_lease(turn));
         let _ = app.with_server(|db| db.finish_turn(turn, "failed", None, Some(&e), None));
@@ -681,7 +688,7 @@ pub(crate) async fn agent_process(
     spec: &AgentSpec,
     mode: Mode<'_>,
     token: &str,
-    llm: &crate::llm_key::Key,
+    llm: &crate::llm_key::Keys,
 ) -> Result<(tokio::process::Command, PathBuf), String> {
     let dir = agent_dir(app, key);
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
@@ -2508,7 +2515,7 @@ mod tests {
             ("bender", Some("G-1"), Some("G-1"), Some("m-1"))
         );
         assert_eq!(spec.session_id, "g-1-bender");
-        let llm = crate::llm_key::Key::Server;
+        let llm = crate::llm_key::Keys::Server;
         let argv =
             |cmd: &tokio::process::Command| -> Vec<String> { cmd.as_std().get_args().map(|a| a.to_string_lossy().into_owned()).collect() };
         let (turn, turn_dir) = agent_process(&app, &key, &spec, Mode::Turn { message: "two letters" }, "tok", &llm).await.unwrap();
