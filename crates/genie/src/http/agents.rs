@@ -356,7 +356,8 @@ async fn chat_usage(State(app): State<Arc<App>>, ctx: Ctx, Path((team, member)):
     let label = key_of(&access.project, &team, &member).label();
     let slug = access.project.clone();
     let rows = app.blocking(move |app| app.with_tracker(&slug, |t| t.usage_of_agent(&label))).await?;
-    Ok(Json(json!({ "spend": crate::spend::Spend::of(&app.cfg.model_prices, &rows) })))
+    let prices = app.blocking(|app| app.prices()).await?;
+    Ok(Json(json!({ "spend": crate::spend::Spend::of(&prices, &rows) })))
 }
 
 /// What an agent is doing now; `deep` adds the latest messages of its conversation

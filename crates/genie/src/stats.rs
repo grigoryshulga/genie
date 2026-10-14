@@ -232,7 +232,7 @@ fn usage_stats(p: &mut ProjectStats, db: &Path, since: &str, prices: &Prices) ->
         if let Some(d) = p.daily.iter_mut().find(|d| d.day == r.day) {
             d.tokens += r.tokens.total();
             if let Some(price) = crate::config::price_of(prices, &r.model) {
-                let c = price.cost(&r.tokens);
+                let (c, _) = price.split(&r.tokens);
                 d.cost += c;
                 *d.cost_by_model.entry(r.model.clone()).or_default() += c;
             }

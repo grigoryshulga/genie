@@ -1245,6 +1245,18 @@ impl Tracker {
         self.get(&r.id)
     }
 
+    /// Forget a task's worktree (it was removed; the team field stays as history).
+    /// `what` says what went, for the task's history.
+    pub fn clear_worktree(&self, actor: &Actor, id: &str, what: &str) -> Result<()> {
+        let r = self.row(id)?;
+        self.db.tx(|| {
+            self.conn().execute("UPDATE tasks SET worktree = NULL WHERE id = ?1", params![r.id])?;
+            self.history(&r.id, actor, what, None, None, None)?;
+            self.touch(&r.id)?;
+            self.event(events::TASK_UPDATED, &r.id, actor, json!({ "fields": ["worktree"] }))
+        })
+    }
+
     /// Counts per status, for sidebars and status lines.
     pub fn counts(&self) -> Result<std::collections::BTreeMap<String, i64>> {
         let mut stmt = self.conn().prepare_cached("SELECT status, COUNT(*) FROM tasks GROUP BY status")?;

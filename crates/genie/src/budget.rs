@@ -55,7 +55,10 @@ impl Exceeded {
 }
 
 fn dollars(app: &App, rows: &[genie_core::usage::UsageRow]) -> f64 {
-    Spend::of(&app.cfg.model_prices, rows).cost
+    // A poisoned lock (a writer panicked) falls back to the manual prices rather
+    // than skipping the budget check.
+    let prices = app.prices().unwrap_or_else(|_| app.cfg.model_prices.clone());
+    Spend::of(&prices, rows).cost
 }
 
 /// The first used-up budget that covers work on `task` (its task, its epic, the day), if any.

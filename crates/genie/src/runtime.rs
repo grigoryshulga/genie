@@ -67,12 +67,46 @@ pub struct Sched(Mutex<SchedState>);
 #[derive(Default)]
 struct SchedState {
     running: HashSet<AgentKey>,
+    /// What the last pass saw waiting for a slot, by kind — the queue the web and
+    /// `genie server runtime` show (`waiting`).
+    waiting: [usize; 3],
 }
 
 impl Sched {
     fn with<T>(&self, f: impl FnOnce(&mut SchedState) -> T) -> T {
         f(&mut self.0.lock().unwrap_or_else(|e| e.into_inner()))
     }
+
+    /// Whether a turn of any member of `team` is running now.
+    pub fn team_running(&self, project: &str, team: &str) -> bool {
+        self.with(|s| s.running.iter().any(|k| matches!(k, AgentKey::Member { project: p, team: t, .. } if p == project && t == team)))
+    }
+
+    /// The scheduler's own view: what runs, what waits, for `GET /api/runtime`.
+    pub fn snapshot(&self, max_concurrent: usize, permits: usize) -> RuntimeView {
+        self.with(|s| RuntimeView {
+            running: s.running.len(),
+            orchestrators_waiting: s.waiting[0],
+            members_waiting: s.waiting[1],
+            jobs_waiting: s.waiting[2],
+            max_concurrent,
+            permits,
+        })
+    }
+}
+
+/// What the scheduler is doing right now (`genie server runtime`, `GET /api/runtime`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeView {
+    pub running: usize,
+    pub orchestrators_waiting: usize,
+    pub members_waiting: usize,
+    pub jobs_waiting: usize,
+    /// `runtime.maxConcurrent`.
+    pub max_concurrent: usize,
+    /// Permits free right now (`maxConcurrent` − running, at most).
+    pub permits: usize,
 }
 
 /// Start background workers: crash recovery, then the scheduler.
@@ -86,6 +120,17 @@ pub fn start(app: &Arc<App>) {
         eprintln!("genie runtime: recovery failed: {e}");
     }
     crate::sessions::recover(app);
+    // Closed tasks from an earlier run may still hold worktrees (and their build
+    // directories) — free what the main branch already has. Git is slow on big
+    // repositories: off the async workers.
+    let sweeper = app.clone();
+    tokio::task::spawn_blocking(move || {
+        for p in sweeper.with_server(|db| db.projects()).unwrap_or_default() {
+            for line in sweep_worktrees(&sweeper, &p.slug) {
+                println!("genie runtime: {}: {line}", p.slug);
+            }
+        }
+    });
     let gateway = app.clone();
     tokio::spawn(async move {
         loop {
@@ -104,7 +149,7 @@ pub fn start(app: &Arc<App>) {
     }
     let app = app.clone();
     tokio::spawn(async move {
-        let slots = Arc::new(Semaphore::new(app.cfg.runtime.max_concurrent.max(1)));
+        let slots = app.slots.clone();
         loop {
             let next = match schedule(&app, &slots).await {
                 Ok(next) => next,
@@ -194,7 +239,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
     if app.cfg.runtime.stall_secs > 0 {
         next.within(Duration::from_secs((app.cfg.runtime.stall_secs / 4).max(1)));
     }
-    let (candidates, console) = app
+    let (mut candidates, console) = app
         .blocking(|app| {
             let mut out = Vec::new();
             let mut console = None::<Duration>;
@@ -232,6 +277,20 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
     if let Some(d) = console {
         next.within(d + Duration::from_millis(50));
     }
+    // The orchestrator decides for everyone: when several wait, it goes first, and
+    // with more than one slot the members and jobs never take the last one — the
+    // orchestrator that wakes up into a full scheduler would otherwise starve
+    // until a member finishes (G-83: «один слот всегда свободен для оркестратора»).
+    candidates.sort_by_key(|k| !matches!(k, AgentKey::Orchestrator { .. }));
+    let reserve_last = app.cfg.runtime.max_concurrent > 1;
+    let kind = |k: &AgentKey| match k {
+        AgentKey::Orchestrator { .. } => 0usize,
+        AgentKey::Member { .. } => 1,
+        AgentKey::Job { .. } => 2,
+    };
+    // Each key is counted as waiting only after its own checks: one that runs,
+    // backs off or was delivered to its live session is not in the queue.
+    let mut waiting = [0usize; 3];
     for key in candidates {
         if live && !matches!(key, AgentKey::Job { .. }) {
             if let Some(d) = crate::sessions::deliver(app, &key).await {
@@ -249,7 +308,15 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
         if app.sched.with(|s| s.running.contains(&key)) {
             continue;
         }
-        let Ok(permit) = slots.clone().try_acquire_owned() else { break };
+        if reserve_last && slots.available_permits() <= 1 && !matches!(key, AgentKey::Orchestrator { .. }) {
+            waiting[kind(&key)] += 1;
+            continue;
+        }
+        let Ok(permit) = slots.clone().try_acquire_owned() else {
+            // No permits at all: this key and every later one that passes its checks wait.
+            waiting[kind(&key)] += 1;
+            continue;
+        };
         app.sched.with(|s| s.running.insert(key.clone()));
         let app = app.clone();
         tokio::spawn(async move {
@@ -260,6 +327,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
             app.wake_engine.notify_one();
         });
     }
+    app.sched.with(|s| s.waiting = waiting);
     Ok(next)
 }
 
@@ -695,6 +763,9 @@ pub(crate) fn agent_command(
         // Keep the TypeScript pi extension (if installed) out of server-run agents.
         .env("GENIE_ROLE", "off")
         .env_remove("GENIE_DIR");
+    // The LiteLLM service token reads model info; agents price nothing themselves.
+    let info_file = format!("{}_FILE", crate::model_prices::INFO_TOKEN);
+    cmd.env_remove(crate::model_prices::INFO_TOKEN).env_remove(info_file);
     // Agents hold no credentials for git hosts: their clones talk to the server's proxy.
     let through_proxy = app.with_server(|db| db.repos(project)).is_ok_and(|r| !r.is_empty());
     for var in crate::git::hosts::secret_vars(through_proxy) {
@@ -2103,30 +2174,194 @@ pub fn stop_team(app: &App, slug: &str, team: &str, reason: &str, by: &str) -> A
     Ok(report)
 }
 
-/// Stop teams whose task is closed (from blocking code).
-pub fn reap_closed_blocking(app: &App, slug: &str) -> AppResult<Vec<String>> {
-    let closed: Vec<String> = app.with_tracker(slug, |t| {
-        let mut out = Vec::new();
-        for team in t.bus().list(false)? {
-            if t.get(&team.task).map(|task| CLOSED.contains(&task.status)).unwrap_or(true) {
-                out.push(team.id);
-            }
-        }
-        Ok(out)
-    })?;
-    for team in &closed {
-        stop_team(app, slug, team, "task_closed", "genie")?;
-    }
-    Ok(closed)
+/// Stop the team of a task that just closed (from blocking code; the close path
+/// in [`crate::tasks::set_status`] calls this before sweeping the task itself).
+pub fn stop_closed_team(app: &App, slug: &str, team: &str) -> AppResult<Vec<String>> {
+    stop_team(app, slug, team, "task_closed", "genie")
 }
 
-/// Stop teams whose task is closed.
-pub async fn reap_closed(app: &Arc<App>, project: &str) {
-    let slug = project.to_string();
-    let res = app.blocking(move |app| reap_closed_blocking(app, &slug)).await;
-    if let Err(e) = res {
-        eprintln!("genie runtime: reap {project}: {e}");
+/// The sweep the server runs at start: every closed task of the project (`done`,
+/// `cancelled`) frees what [`sweep_task`] lets go — tasks closed before their
+/// worktree went are freed too. Blocking (git); run it off the async workers.
+pub fn sweep_worktrees(app: &App, slug: &str) -> Vec<String> {
+    let Ok(ids) = app.with_tracker(slug, |t| {
+        let f = genie_core::ListFilter { status: vec![Status::Done, Status::Cancelled], include_closed: true, ..Default::default() };
+        t.list(&f).map(|list| list.into_iter().map(|s| s.id).collect::<Vec<_>>())
+    }) else {
+        return Vec::new();
+    };
+    ids.iter().flat_map(|id| sweep_task(app, slug, id)).collect()
+}
+
+/// Free what a closed task no longer needs (G-134 — a closed task used to keep its
+/// 17 GB `target/` forever), never its work:
+/// - a git worktree of the project's repository goes, with its branch, when the
+///   branch is in the repository's main branch and the worktree has no uncommitted
+///   or untracked changes (ignored build output — `target/`, `node_modules` — does
+///   not count, it goes with the directory);
+/// - a workspace under the data directory goes when none of its repositories has
+///   uncommitted changes or commits that are on no remote (not on the git host).
+///
+/// Anything else stays, and the report says why. A task whose team still works (an
+/// active team, a running turn) is left for the next sweep. Closing a task sweeps
+/// that task alone; the server sweeps them all at start ([`sweep_worktrees`]).
+pub fn sweep_task(app: &App, slug: &str, id: &str) -> Vec<String> {
+    let Ok(task) = app.with_tracker(slug, |t| t.get(id)) else { return Vec::new() };
+    let Some(w) = task.worktree.clone().filter(|_| CLOSED.contains(&task.status)) else { return Vec::new() };
+    if let Some(team) = &task.team
+        && (app.sched.team_running(slug, team)
+            || app.with_tracker(slug, |t| Ok(t.bus().get(team).map(|tm| tm.state == TeamState::Active).unwrap_or(false))).unwrap_or(false))
+    {
+        return vec![format!("{}: worktree {} kept for now, team {team} is still working", task.id, w.path)];
     }
+    let forget = |what: &str| {
+        let _ = app.with_tracker(slug, |t| t.clear_worktree(&Actor::new("genie", Role::Orchestrator), &task.id, what));
+    };
+    let path = Path::new(&w.path);
+    // A workspace (clones of hosted repositories): it goes once all of its work is on the host.
+    if path.starts_with(app.data.join("workspaces")) {
+        if !path.exists() {
+            forget("workspace already gone");
+            return Vec::new();
+        }
+        let unsaved = workspace_unsaved(path);
+        if !unsaved.is_empty() {
+            return vec![format!("{}: workspace {} kept: {}", task.id, w.path, unsaved.join("; "))];
+        }
+        return match std::fs::remove_dir_all(path) {
+            Ok(()) => {
+                forget(&format!("workspace {} removed", w.path));
+                vec![format!("{}: workspace {} removed", task.id, w.path)]
+            }
+            Err(e) => vec![format!("{}: workspace {} not removed: {e}", task.id, w.path)],
+        };
+    }
+    // A git worktree of the project's repository: only work already in the main branch goes.
+    let Some(branch) = w.branch.as_deref().filter(|b| !b.is_empty()) else {
+        return vec![format!("{}: worktree {} kept (no branch recorded)", task.id, w.path)];
+    };
+    let Some(repo) = app.with_server(|db| db.project(slug)).ok().and_then(|p| p.repo) else {
+        return vec![format!("{}: worktree {} kept (the project has no repository)", task.id, w.path)];
+    };
+    let repo = Path::new(&repo);
+    let git = |dir: &Path, args: &[&str]| std::process::Command::new("git").arg("-C").arg(dir).args(args).stdin(Stdio::null()).output();
+    let ok = |dir: &Path, args: &[&str]| git(dir, args).is_ok_and(|o| o.status.success());
+    let branch_ref = format!("refs/heads/{branch}");
+    let has_branch = ok(repo, &["rev-parse", "--verify", "-q", &branch_ref]);
+    if !has_branch && !path.exists() {
+        forget(&format!("worktree {} and branch {branch} already gone", w.path));
+        return Vec::new();
+    }
+    if !has_branch {
+        return vec![format!("{}: worktree {} kept, its branch {branch} is gone", task.id, w.path)];
+    }
+    let Some((main, refs)) = main_branch(repo) else {
+        return vec![format!(
+            "{}: worktree {} kept, the repository's main branch is unknown (no origin/HEAD, main or master)",
+            task.id, w.path
+        )];
+    };
+    if !refs.iter().any(|r| ok(repo, &["merge-base", "--is-ancestor", &branch_ref, r])) {
+        return vec![format!("{}: worktree kept, {branch} is not in {main} yet", task.id)];
+    }
+    let mut removed = Vec::new();
+    if path.exists() {
+        // Uncommitted or untracked work keeps the worktree whatever the branch says
+        // (a task closed before its first commit has a branch that is "merged").
+        match git(path, &["status", "--porcelain"]) {
+            Ok(o) if o.status.success() && o.stdout.trim_ascii().is_empty() => {}
+            Ok(o) if o.status.success() => return vec![format!("{}: worktree {} kept: uncommitted changes", task.id, w.path)],
+            Ok(o) => return vec![format!("{}: worktree {} kept: {}", task.id, w.path, String::from_utf8_lossy(&o.stderr).trim())],
+            Err(e) => return vec![format!("{}: worktree {} kept: {e}", task.id, w.path)],
+        }
+        // No --force: git itself refuses a worktree that is not clean.
+        match git(repo, &["worktree", "remove", &w.path]) {
+            Ok(o) if o.status.success() => removed.push(format!("worktree {} removed", w.path)),
+            Ok(o) => return vec![format!("{}: worktree not removed: {}", task.id, String::from_utf8_lossy(&o.stderr).trim())],
+            Err(e) => return vec![format!("{}: worktree not removed: {e}", task.id)],
+        }
+    }
+    // Its commits are in the main branch (checked above), so the branch carries nothing else.
+    match git(repo, &["branch", "-D", branch]) {
+        Ok(o) if o.status.success() => removed.push(format!("branch {branch} deleted")),
+        _ => removed.push(format!("branch {branch} kept")),
+    }
+    let what = removed.join(", ");
+    forget(&what);
+    vec![format!("{}: {what}", task.id)]
+}
+
+/// The repository's main branch and the refs that hold it: the branch `origin/HEAD`
+/// names, else `main`, else `master` — its local branch and its remote-tracking
+/// branch, whichever exist. Not the checkout's HEAD: a project checkout on a
+/// feature branch would make unmerged work look merged. `None` when there is none.
+fn main_branch(repo: &Path) -> Option<(String, Vec<String>)> {
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    let named = git(&["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"])
+        .and_then(|r| r.strip_prefix("origin/").map(str::to_string))
+        .filter(|b| !b.is_empty());
+    for name in named.into_iter().chain(["main".to_string(), "master".to_string()]) {
+        let refs: Vec<String> = [format!("refs/heads/{name}"), format!("refs/remotes/origin/{name}")]
+            .into_iter()
+            .filter(|r| git(&["rev-parse", "--verify", "-q", r]).is_some())
+            .collect();
+        if !refs.is_empty() {
+            return Some((name, refs));
+        }
+    }
+    None
+}
+
+/// What would be lost with a workspace: every repository in it (the root and the
+/// ones mounted inside) with uncommitted or untracked changes, or with commits on
+/// no remote branch. Build directories are not searched for repositories.
+fn workspace_unsaved(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut dirs = vec![(root.to_path_buf(), 0)];
+    while let Some((dir, depth)) = dirs.pop() {
+        let rel = dir.strip_prefix(root).ok().filter(|r| !r.as_os_str().is_empty()).map_or(".".into(), |r| r.display().to_string());
+        if dir.join(".git").exists() {
+            let git = |args: &[&str]| std::process::Command::new("git").arg("-C").arg(&dir).args(args).stdin(Stdio::null()).output();
+            match git(&["status", "--porcelain"]) {
+                Ok(o) if o.status.success() && o.stdout.trim_ascii().is_empty() => {}
+                Ok(o) if o.status.success() => out.push(format!("{rel} has uncommitted changes")),
+                Ok(o) => out.push(format!("{rel}: {}", String::from_utf8_lossy(&o.stderr).trim())),
+                Err(e) => out.push(format!("{rel}: {e}")),
+            }
+            match git(&["log", "--branches", "--not", "--remotes", "--format=%h"]) {
+                Ok(o) if o.status.success() => {
+                    let n = String::from_utf8_lossy(&o.stdout).lines().count();
+                    if n > 0 {
+                        out.push(format!("{rel} has {n} commit(s) not on the git host"));
+                    }
+                }
+                Ok(o) => out.push(format!("{rel}: {}", String::from_utf8_lossy(&o.stderr).trim())),
+                Err(e) => out.push(format!("{rel}: {e}")),
+            }
+        }
+        if depth >= 6 {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for e in entries.flatten() {
+            let name = e.file_name();
+            if e.file_type().is_ok_and(|t| t.is_dir()) && ![".git", "target", "node_modules"].contains(&name.to_string_lossy().as_ref()) {
+                dirs.push((e.path(), depth + 1));
+            }
+        }
+    }
+    out
 }
 
 /// Remove a team's worktree or workspace (its branches stay); returns what happened, for a report.

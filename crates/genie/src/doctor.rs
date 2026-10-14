@@ -57,6 +57,7 @@ pub fn run(data: &Path, cfg: &Config, agents: &AgentConfig, web: Option<&Path>) 
     let mut out = Out(Vec::new());
     storage(&mut out, data);
     schemas(&mut out, data);
+    model_prices(&mut out, data, cfg);
     match (crate::http::web::resolve(web), web) {
         (crate::http::web::WebUi::BuiltIn, Some(dir)) => out.warn(
             "web",
@@ -71,7 +72,8 @@ pub fn run(data: &Path, cfg: &Config, agents: &AgentConfig, web: Option<&Path>) 
         }
     }
     let repos = people_and_projects(&mut out, data);
-    agents_and_models(&mut out, cfg, agents);
+    disks(&mut out, data, &repos, cfg.runtime.low_disk_gb);
+    agents_and_models(&mut out, data, cfg, agents);
     match crate::sandbox::status(&cfg.runtime.sandbox) {
         (true, note) => out.ok("sandbox", note),
         (false, note) if cfg.runtime.sandbox.mode == "off" => out.warn("sandbox", note, "set runtime.sandbox to \"auto\" once bubblewrap works here"),
@@ -127,18 +129,42 @@ fn storage(out: &mut Out, data: &Path) {
                 format!("cannot write the data directory {}: {e}", data.display()),
                 "run the server as the user who owns it (--data or $GENIE_DATA)",
             );
-            return;
         }
     }
-    if let Some(free) = free_bytes(data) {
-        let gb = free as f64 / 1e9;
-        if free < 200_000_000 {
-            out.fail("data", format!("{gb:.1} GB free on the data disk"), "free some space: databases, worktrees and agent logs grow");
-        } else if free < 2_000_000_000 {
-            out.warn("data", format!("{gb:.1} GB free on the data disk"), "worktrees and agent logs grow; keep a few GB free");
-        } else {
-            out.ok("data", format!("{gb:.0} GB free on the data disk"));
+}
+
+/// Free space on the disks the server fills: the data directory and every project's
+/// repository (whose filesystem carries the teams' worktrees — the place that ran
+/// out once already). One line per filesystem; `low_gb` is `runtime.lowDiskGb`.
+fn disks(out: &mut Out, data: &Path, repos: &[(String, PathBuf)], low_gb: f64) {
+    let mut seen: Vec<String> = Vec::new();
+    let mut probe = |what: &str, path: &Path| {
+        let Some((dev, free)) = free_bytes(path) else { return };
+        let key = dev;
+        if seen.contains(&key) {
+            return;
         }
+        seen.push(key);
+        let gb = free as f64 / 1e9;
+        if free < 1_000_000_000 {
+            out.fail(
+                "data",
+                format!("{gb:.1} GB free on the {what} disk ({}): databases, worktrees and agent logs stop first", path.display()),
+                "free some space: closed tasks' worktrees go on their own (G-134); `rm -rf` of a build cache is safe",
+            );
+        } else if gb < low_gb {
+            out.warn(
+                "data",
+                format!("{gb:.1} GB free on the {what} disk ({})", path.display()),
+                "worktrees and agent logs grow; keep a few GB free",
+            );
+        } else {
+            out.ok("data", format!("{gb:.0} GB free on the {what} disk ({})", path.display()));
+        }
+    };
+    probe("data", data);
+    for (slug, repo) in repos {
+        probe(&format!("{slug} worktree"), repo);
     }
 }
 
@@ -192,12 +218,39 @@ fn schemas(out: &mut Out, data: &Path) {
     }
 }
 
-/// Free space on the file system of `dir` (`df`, POSIX output).
-fn free_bytes(dir: &Path) -> Option<u64> {
+/// Free space on the file system of `dir` (`df`, POSIX output), with the
+/// file system's device so several paths on one disk warn once.
+fn free_bytes(dir: &Path) -> Option<(String, u64)> {
     let o = Command::new("df").arg("-Pk").arg(dir).output().ok()?;
     let text = String::from_utf8_lossy(&o.stdout);
-    let kb: u64 = text.lines().nth(1)?.split_whitespace().nth(3)?.parse().ok()?;
-    Some(kb * 1024)
+    let mut fields = text.lines().nth(1)?.split_whitespace();
+    let dev = fields.next()?.to_string();
+    let kb: u64 = fields.nth(2)?.parse().ok()?;
+    Some((dev, kb * 1024))
+}
+
+/// The same free-space look at start: the server says so in its log (journalctl),
+/// where nobody runs doctor by hand.
+pub fn low_disk_warnings(data: &Path, repos: &[(String, PathBuf)], low_gb: f64) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut probe = |what: &str, path: &Path| {
+        if let Some((dev, free)) = free_bytes(path) {
+            // Data and worktrees usually share one disk: say it once, not per project.
+            if !seen.insert(dev) {
+                return;
+            }
+            let gb = free as f64 / 1e9;
+            if gb < low_gb {
+                out.push(format!("{gb:.1} GB free on the {what} disk ({}): worktrees and logs stop the server first", path.display()));
+            }
+        }
+    };
+    probe("data", data);
+    for (slug, repo) in repos {
+        probe(&format!("{slug} worktree"), repo);
+    }
+    out
 }
 
 /// People and projects; returns the projects' repositories.
@@ -318,7 +371,46 @@ fn output(program: &Path, args: &[&str], cfg: &Config) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
+/// The prices in effect where doctor runs: `modelPrices` over what was fetched
+/// from LiteLLM (kept in `server.db`; an unreadable database prices manually).
+fn effective_prices(data: &Path, cfg: &Config) -> crate::spend::Prices {
+    ServerDb::open(&data.join("server.db"))
+        .map(|db| crate::model_prices::State::load(cfg, &db).prices)
+        .unwrap_or_else(|_| crate::model_prices::effective(cfg, &[]))
+}
+
+/// The tariffs from LiteLLM: configured at all, received at least once, and the
+/// last fetch's error if there was one (spend then prices with what it has).
+fn model_prices(out: &mut Out, data: &Path, cfg: &Config) {
+    let base = cfg.litellm.base_url.as_deref().filter(|b| !b.trim().is_empty());
+    let Some(base) = base else {
+        return out.ok("models", "model prices: modelPrices of config.json (LiteLLM not configured)");
+    };
+    if crate::model_prices::info_token(cfg).is_none() {
+        return out.warn(
+            "models",
+            format!("model prices: litellm.baseUrl is set, but no service token for {} is", crate::model_prices::INFO_TOKEN),
+            "give the server a service token that may read LiteLLM's model info and no more (litellm.infoToken of config.json or the environment)",
+        );
+    }
+    let state = ServerDb::open(&data.join("server.db")).ok().map(|db| crate::model_prices::State::load(cfg, &db)).unwrap_or_default();
+    let n = state.prices.len();
+    match (&state.fetched_at, &state.last_error) {
+        (_, Some(e)) => out.warn(
+            "models",
+            format!("model prices: the last fetch from {base} failed: {e} (pricing with {n} price(s) already in hand)"),
+            "check the service token and LiteLLM, then pull the config again (the costs page or `genie server prices --refresh`)",
+        ),
+        (Some(at), None) => out.ok("models", format!("model prices: {n} model(s) priced from LiteLLM at {at}")),
+        (None, None) => out.warn(
+            "models",
+            format!("model prices: not received from {base} yet"),
+            "pull the config (the costs page or `genie server prices --refresh`); until then modelPrices of config.json prices what it can",
+        ),
+    }
+}
+
+fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentConfig) {
     let errors = agents.errors().count();
     if errors > 0 {
         out.fail(
@@ -415,11 +507,9 @@ fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
     }
     let b = cfg.budgets;
     if b.per_task > 0.0 || b.per_epic > 0.0 || b.per_day > 0.0 {
-        let unpriced: BTreeSet<&str> = wanted
-            .iter()
-            .map(|(m, _)| m.as_str())
-            .filter(|m| !m.is_empty() && crate::config::price_of(&cfg.model_prices, m).is_none())
-            .collect();
+        let prices = effective_prices(data, cfg);
+        let unpriced: BTreeSet<&str> =
+            wanted.iter().map(|(m, _)| m.as_str()).filter(|m| !m.is_empty() && crate::config::price_of(&prices, m).is_none()).collect();
         if !unpriced.is_empty() {
             out.warn(
                 "budgets",
@@ -427,7 +517,26 @@ fn agents_and_models(out: &mut Out, cfg: &Config, agents: &AgentConfig) {
                     "budgets count dollars, but these models have no price and are not counted: {}",
                     unpriced.iter().copied().collect::<Vec<_>>().join(", ")
                 ),
-                "add them to modelPrices in config.json (dollars per million tokens)",
+                "pull the tariffs from LiteLLM (litellm.baseUrl + LITELLM_INFO_TOKEN) or add the models to modelPrices in config.json (dollars per million tokens)",
+            );
+        }
+        // A model priced without its cache tariffs hides whole cache dollars: with Anthropic
+        // writing the cache alone costs more than the input it is computed from.
+        let uncached: BTreeSet<&str> = wanted
+            .iter()
+            .map(|(m, _)| m.as_str())
+            .filter(|m| {
+                !m.is_empty() && crate::config::price_of(&prices, m).is_some_and(|p| p.cache_read.is_none() || p.cache_write.is_none())
+            })
+            .collect();
+        if !uncached.is_empty() {
+            out.warn(
+                "budgets",
+                format!(
+                    "budgets count dollars, but these models have no cache price and cache tokens are not counted: {}",
+                    uncached.iter().copied().collect::<Vec<_>>().join(", ")
+                ),
+                "pull the tariffs from LiteLLM (litellm.baseUrl + LITELLM_INFO_TOKEN) or add cacheRead and cacheWrite to the models in modelPrices (dollars per million tokens)",
             );
         }
     }
@@ -699,6 +808,53 @@ mod tests {
         let mut out = Out(Vec::new());
         network(&mut out, &cfg(serde_json::json!({ "publicUrl": "https://genie.example.com" })));
         assert_eq!(levels(&out.0, "network"), [Level::Ok, Level::Fail], "a public address the Host check refuses: {:?}", out.0);
+    }
+
+    #[test]
+    fn low_disk_warnings_name_a_filesystem_once() {
+        let d = tempfile::tempdir().unwrap();
+        let data = d.path().join("data");
+        let repo = d.path().join("repo.worktrees");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+        // One disk: one warning, and it says which path was probed.
+        let w = low_disk_warnings(&data, &[("shop".into(), repo.clone())], 1e12);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].contains("data"), "{w:?}");
+        // Plenty of space: nothing.
+        assert!(low_disk_warnings(&data, &[("shop".into(), repo)], 0.0).is_empty());
+    }
+
+    #[test]
+    fn budgets_warn_about_models_whose_cache_price_is_missing() {
+        let data = tempfile::tempdir().unwrap();
+        // A program nobody has keeps pi out of the check; the budgets area is what matters.
+        // Every role models "manual/only": the only model budgets have to price.
+        let roles = ["analyst", "documenter", "executor", "orchestrator", "planner", "researcher", "reviewer", "tester"];
+        let role_models: serde_json::Value =
+            roles.iter().map(|r| (r.to_string(), serde_json::json!({ "model": "manual/only" }))).collect::<serde_json::Map<_, _>>().into();
+        let json = |prices: serde_json::Value| {
+            serde_json::json!({
+                "budgets": { "perTask": 5.0 },
+                "roleModels": role_models,
+                "modelPrices": { "manual/only": prices },
+                "runtime": { "command": [["definitely-not-an-agent"], ["{message}"]] }
+            })
+        };
+        let agents = |c: &Config| AgentConfig::load(data.path(), c, None);
+        // Priced, but without the cache tariffs: the cache dollars stay invisible to budgets.
+        let mut out = Out(Vec::new());
+        let c = cfg(json(serde_json::json!({ "input": 1.0, "output": 2.0 })));
+        agents_and_models(&mut out, data.path(), &c, &agents(&c));
+        let budgets: Vec<&Check> = out.0.iter().filter(|c| c.area == "budgets").collect();
+        assert_eq!(budgets.len(), 1, "{:?}", out.0);
+        assert!(budgets[0].text.contains("manual/only"), "{:?}", budgets[0]);
+        assert!(budgets[0].text.contains("no cache price"), "{:?}", budgets[0]);
+        // Fully priced: no warning about it.
+        let mut out = Out(Vec::new());
+        let c = cfg(json(serde_json::json!({ "input": 1.0, "output": 2.0, "cacheRead": 0.1, "cacheWrite": 1.25 })));
+        agents_and_models(&mut out, data.path(), &c, &agents(&c));
+        assert!(out.0.iter().all(|c| c.area != "budgets"), "{:?}", out.0);
     }
 
     #[test]

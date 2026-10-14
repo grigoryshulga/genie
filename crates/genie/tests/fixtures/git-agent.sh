@@ -28,8 +28,8 @@ case "$GENIE_AGENT_ROLE" in
     if grep -q "## Kickoff" <<<"$msg"; then
       # The agent reports what it sees as artifacts of its task (the only place a sandboxed agent can write to besides its workspace).
       say() { g task artifact --kind other --name "$1" --text "$2"; }
-      # What the agent's environment holds: no token of the git host.
-      say env.txt "$(env | grep -E 'GENIE_TEST_HOST_TOKEN|GITHUB_TOKEN|GH_TOKEN' || echo 'no host tokens')"
+      # What the agent's environment holds: no token of the git host, no service token for LiteLLM.
+      say env.txt "$(env | grep -E 'GENIE_TEST_HOST_TOKEN|GITHUB_TOKEN|GH_TOKEN|LITELLM_INFO_TOKEN' || echo 'no host tokens')"
       say repos.txt "$(g repos list)"
       g task status in_progress
       echo "csv export" > feature.txt

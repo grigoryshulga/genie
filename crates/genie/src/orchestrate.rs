@@ -87,6 +87,9 @@ pub async fn run(o: Orchestrate) -> Result<i32, String> {
         .env("GENIE_BIN", std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| "genie".into()))
         .env_remove("GENIE_TASK")
         .env_remove("GENIE_TEAM")
+        // The server's LiteLLM service token prices models; the console needs none of it.
+        .env_remove(crate::model_prices::INFO_TOKEN)
+        .env_remove(format!("{}_FILE", crate::model_prices::INFO_TOKEN))
         // Keep the TypeScript pi extension of the older, serverless genie out.
         .env("GENIE_ROLE", "off")
         .spawn();

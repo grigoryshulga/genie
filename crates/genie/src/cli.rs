@@ -267,7 +267,12 @@ pub async fn run() -> Result<(), String> {
         }
         Command::Stats { days } => {
             let cfg = Config::load(&data)?;
-            let stats = crate::stats::collect(&data, days, project.as_deref(), &cfg.model_prices)?;
+            // The direct command line prices with what the server last received from
+            // LiteLLM, the same prices the running server would use.
+            let prices = ServerDb::open(&data.join("server.db"))
+                .map(|db| crate::model_prices::State::load(&cfg, &db).prices)
+                .unwrap_or_else(|_| crate::model_prices::effective(&cfg, &[]));
+            let stats = crate::stats::collect(&data, days, project.as_deref(), &prices)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&stats).map_err(|e| e.to_string())?);
             } else {

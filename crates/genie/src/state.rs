@@ -104,10 +104,16 @@ pub struct App {
     pub sessions: crate::sessions::Registry,
     /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
+    /// Turn slots (`runtime.maxConcurrent`), shared with the scheduler loop; members
+    /// and jobs leave the last one for the orchestrator. `GET /api/runtime` reads it.
+    pub slots: Arc<tokio::sync::Semaphore>,
     /// Failures in a row of each agent, turns and sessions alike, and their backoff.
     pub attempts: crate::outcome::Attempts,
     /// Roles, team templates, skills and MCP connections (reloaded when their files change).
     agents: RwLock<Arc<AgentConfig>>,
+    /// The model prices in effect: `modelPrices` of config.json over what
+    /// LiteLLM returned (loaded at start, refreshed by an administrator's action).
+    pub prices: RwLock<crate::model_prices::State>,
     /// The agents' connections through the MCP gateway.
     pub mcp: crate::mcp_gateway::Gateway,
     /// Locks and fetch times of the repository mirrors and workspaces.
@@ -126,6 +132,8 @@ impl App {
             vault.ensure_space(&p.slug, p.repo.as_deref().map(Path::new))?;
         }
         let agents = AgentConfig::load(data, &cfg, None);
+        let prices = RwLock::new(crate::model_prices::State::load(&cfg, &server));
+        let slots = Arc::new(tokio::sync::Semaphore::new(cfg.runtime.max_concurrent.max(1)));
         Ok(Arc::new(App {
             data: data.to_path_buf(),
             cfg,
@@ -140,12 +148,20 @@ impl App {
             exe,
             sessions: Default::default(),
             sched: Default::default(),
+            slots,
             attempts: Default::default(),
             agents: RwLock::new(Arc::new(agents)),
+            prices,
             mcp: Default::default(),
             git: Default::default(),
             live: Default::default(),
         }))
+    }
+
+    /// The model prices in effect: `modelPrices` of config.json over what
+    /// LiteLLM returned. What spend, budgets and the web price with.
+    pub fn prices(&self) -> AppResult<crate::spend::Prices> {
+        Ok(self.prices.read().map_err(|_| AppError::Internal("prices lock poisoned".into()))?.prices())
     }
 
     /// Print the errors of the agent configuration (when the server starts).
