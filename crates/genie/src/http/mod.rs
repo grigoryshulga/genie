@@ -15,6 +15,7 @@ pub mod git;
 pub mod ideas;
 pub mod images;
 pub mod live;
+pub mod mcp_admin;
 pub mod mcp_gateway;
 pub mod mcp_server;
 pub mod repos;
@@ -136,6 +137,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(automations::routes())
         .merge(console::routes())
         .merge(agent_config::routes())
+        .merge(mcp_admin::routes())
         .merge(mcp_gateway::routes())
         .merge(repos::routes())
         .merge(live::routes())

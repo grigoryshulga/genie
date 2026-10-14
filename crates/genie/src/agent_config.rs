@@ -422,6 +422,10 @@ pub struct McpServer {
     pub transport: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub projects: Option<Vec<String>>,
+    /// Tools the administrator closed for everyone: glob patterns (`hiddenTools`
+    /// in `mcp.json`), kept out of listings and calls whatever a role grants.
+    #[serde(rename = "hiddenTools", skip_serializing_if = "Vec::is_empty")]
+    pub hidden: Vec<String>,
     /// Agents reach it through the genie gateway (default), which keeps its
     /// secrets and records the calls; `"gateway": false` hands the harness the
     /// entry itself.
@@ -462,21 +466,27 @@ impl McpServer {
         out
     }
 
-    /// The entry with `${env:NAME}` replaced from the server's environment.
-    pub fn resolved(&self) -> Value {
-        fn walk(v: &Value) -> Value {
+    /// The entry with `${env:NAME}` replaced: the values a server administrator
+    /// keeps in the server's database first, then the server's own environment.
+    pub fn resolved_with(&self, extra: &std::collections::BTreeMap<String, String>) -> Value {
+        fn walk(v: &Value, extra: &std::collections::BTreeMap<String, String>) -> Value {
             match v {
-                Value::String(s) => Value::String(expand_env(s)),
-                Value::Array(a) => Value::Array(a.iter().map(walk).collect()),
-                Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), walk(v))).collect()),
+                Value::String(s) => Value::String(expand_env(s, extra)),
+                Value::Array(a) => Value::Array(a.iter().map(|x| walk(x, extra)).collect()),
+                Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), walk(v, extra))).collect()),
                 other => other.clone(),
             }
         }
-        walk(&self.config)
+        walk(&self.config, extra)
+    }
+
+    /// The entry with `${env:NAME}` replaced from the server's environment alone.
+    pub fn resolved(&self) -> Value {
+        self.resolved_with(&Default::default())
     }
 }
 
-fn expand_env(s: &str) -> String {
+fn expand_env(s: &str, extra: &std::collections::BTreeMap<String, String>) -> String {
     let mut out = String::new();
     let mut rest = s;
     while let Some(start) = rest.find("${env:") {
@@ -484,7 +494,9 @@ fn expand_env(s: &str) -> String {
         let after = &rest[start + 6..];
         match after.find('}') {
             Some(end) => {
-                out.push_str(&std::env::var(&after[..end]).unwrap_or_default());
+                let name = &after[..end];
+                let value = extra.get(name).cloned().unwrap_or_else(|| std::env::var(name).unwrap_or_default());
+                out.push_str(&value);
                 rest = &after[end + 1..];
             }
             None => {
@@ -1570,10 +1582,21 @@ impl AgentConfig {
                                 problem(Level::Error, item, Some("mcp.json".into()), why);
                                 continue;
                             }
+                            let mut hidden_errs = Vec::new();
+                            let hidden = string_list(o.get("hiddenTools").unwrap_or(&Value::Null), "hiddenTools", &mut hidden_errs)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .filter(|p| !p.is_empty())
+                                .collect::<Vec<_>>();
+                            if let Some(e) = hidden_errs.pop() {
+                                problem(Level::Error, item, Some("mcp.json".into()), e);
+                                continue;
+                            }
                             let mut config = o.clone();
                             config.remove("description");
                             config.remove("projects");
                             config.remove("gateway");
+                            config.remove("hiddenTools");
                             mcp.insert(
                                 id.clone(),
                                 McpServer {
@@ -1581,6 +1604,7 @@ impl AgentConfig {
                                     description: opt_str(o, "description").unwrap_or_default(),
                                     transport: transport.into(),
                                     projects,
+                                    hidden,
                                     gateway,
                                     config: Value::Object(config),
                                 },
@@ -2153,7 +2177,7 @@ mod tests {
         let (_d, a) = load(&[
             (
                 "mcp.json",
-                r#"{"mcpServers": {"sap": {"command": "npx", "args": ["x"], "projects": ["erp"], "description": "SAP"},
+                r#"{"mcpServers": {"sap": {"command": "npx", "args": ["x"], "projects": ["erp"], "description": "SAP", "hiddenTools": ["dangerous_*", "drop_table"]},
                                     "github": {"type": "http", "url": "https://x", "headers": {"Authorization": "Bearer ${env:GENIE_TEST_MCP_TOKEN}"}},
                                     "broken": {"args": []}}}"#,
             ),
@@ -2166,6 +2190,12 @@ mod tests {
         assert_eq!(a.mcp_for("shop", dev).len(), 1, "sap is only for erp");
         assert_eq!(a.mcp["github"].resolved()["headers"]["Authorization"], "Bearer s3cret");
         assert!(serde_json::to_string(&a.mcp["github"]).unwrap().find("Bearer").is_none(), "the entry is never serialised");
+        assert_eq!(a.mcp["sap"].hidden, ["dangerous_*", "drop_table"]);
+        assert!(a.mcp["sap"].config.get("hiddenTools").is_none(), "a genie field stays out of the entry");
+        assert!(serde_json::to_string(&a.mcp["sap"]).unwrap().contains("hiddenTools"), "hidden patterns are shown to the web");
+        // A value kept in the server's database comes before the environment.
+        let extra = std::iter::once(("GENIE_TEST_MCP_TOKEN".to_string(), "from-db".to_string())).collect();
+        assert_eq!(a.mcp["github"].resolved_with(&extra)["headers"]["Authorization"], "Bearer from-db");
     }
 
     #[test]

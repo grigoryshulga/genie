@@ -229,6 +229,11 @@ fieldset:disabled .ag-perm { cursor: default; }
 .ag-history-body pre.bd { margin: 0; white-space: pre-wrap; font: 11.5px/1.5 var(--mono); color: var(--text-2); max-height: 360px; overflow: auto; }
 .ag-history-body .btn { align-self: flex-start; }
 
+/* MCP: picking a role's tools of a connection (the dialog of McpDialog) */
+.mc-role-tools { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 0 24px; }
+.mc-role-tools .chips { min-height: 30px; }
+.mc-role-tools .ag-checks { padding-left: 0; }
+
 @media (max-width: 900px) {
   .ag-page { padding: 16px; }
   .ag-banner { padding: 12px 16px; }

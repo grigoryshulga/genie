@@ -11,6 +11,7 @@ import {
   CLASS_TITLE,
   FILES_TITLE,
   FIXED_PERMISSIONS,
+  globMatch,
   ORIGIN_TITLE,
   PERMISSION_GROUPS,
   type RoleDef,
@@ -508,11 +509,6 @@ function McpCard({ role: r, cfg, onEdit }: { role: RoleDef; cfg: Catalogue; onEd
 }
 
 const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
-const list = (s: string) =>
-  s
-    .split(/[,\n]/)
-    .map((x) => x.trim())
-    .filter(Boolean);
 
 /** A dialog that edits part of the role file. */
 function EditDialog({ title, note, busy, narrow, onClose, onSave, children }: { title: string; note?: string; busy?: boolean; narrow?: boolean; onClose: () => void; onSave: () => void; children: ReactNode }) {
@@ -720,7 +716,7 @@ function SkillsDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catal
   );
 }
 
-type Grant = { mode: "none" | "all" | "tools"; tools: string };
+type Grant = { mode: "none" | "all" | "tools"; tools: string[] };
 
 function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogue; onClose: () => void }) {
   const r = detail.role;
@@ -730,7 +726,7 @@ function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogu
         cfg.mcp.map((s) => {
           const whole = r.mcp.includes(s.id) || r.mcp.includes("*");
           const tools = r.mcp.filter((g) => g.startsWith(`${s.id}:`)).map((g) => g.slice(s.id.length + 1));
-          return [s.id, { mode: whole ? "all" : tools.length ? "tools" : "none", tools: tools.join(", ") } satisfies Grant];
+          return [s.id, { mode: whole ? "all" : tools.length ? "tools" : "none", tools } satisfies Grant];
         }),
       ),
   );
@@ -743,7 +739,7 @@ function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogu
     for (const s of cfg.mcp) {
       const g = grants[s.id];
       if (g.mode === "all") out.push(s.id);
-      if (g.mode === "tools") out.push(...list(g.tools).map((t) => `${s.id}:${t}`));
+      if (g.mode === "tools") out.push(...g.tools.map((t) => `${s.id}:${t}`));
     }
     setBusy(true);
     if (await act(() => edit([["mcp", out.length ? out : undefined]]), "Доступ к MCP сохранён")) onClose();
@@ -755,16 +751,60 @@ function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogu
         {cfg.mcp.map((s) => {
           const g = grants[s.id];
           const set = (v: Partial<Grant>) => setGrants((x) => ({ ...x, [s.id]: { ...x[s.id], ...v } }));
+          const cached = s.tools ?? [];
+          // Grants the cached listing does not know: an exact tool that is gone, or a pattern.
+          const extra = g.tools.filter((p) => !cached.some((t) => globMatch(p, t.name)));
+          const toggle = (tool: string) => {
+            const matched = g.tools.filter((p) => globMatch(p, tool));
+            set({ tools: matched.length ? g.tools.filter((p) => !matched.includes(p)) : [...g.tools, tool] });
+          };
           return (
-            <div key={s.id} className="ag-grant">
-              <span className="mono">{s.id}</span>
-              <span className="muted">{s.description}</span>
-              <select value={g.mode} onChange={(e) => set({ mode: e.target.value as Grant["mode"] })} aria-label={`Доступ к ${s.id}`}>
-                <option value="none">нет доступа</option>
-                <option value="all">все инструменты</option>
-                <option value="tools">только инструменты…</option>
-              </select>
-              {g.mode === "tools" && <input value={g.tools} onChange={(e) => set({ tools: e.target.value })} placeholder="get_*, list_commits" aria-label={`Инструменты ${s.id}`} />}
+            <div key={s.id}>
+              <div className="ag-grant">
+                <span className="mono">{s.id}</span>
+                <span className="muted">{s.description}</span>
+                <select value={g.mode} onChange={(e) => set({ mode: e.target.value as Grant["mode"] })} aria-label={`Доступ к ${s.id}`}>
+                  <option value="none">нет доступа</option>
+                  <option value="all">все инструменты</option>
+                  <option value="tools">только выбранные</option>
+                </select>
+              </div>
+              {g.mode === "tools" &&
+                (cached.length > 0 ? (
+                  <div className="mc-role-tools">
+                    {extra.length > 0 && (
+                      <div className="chips mono" aria-label={`Выдано сверх списка ${s.id}`}>
+                        {extra.map((p) => (
+                          <span key={p} className="chip">
+                            {p}
+                            <button type="button" aria-label={`Убрать ${p}`} onClick={() => set({ tools: g.tools.filter((x) => x !== p) })}>
+                              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <path d="M4 4l8 8M12 4l-8 8" />
+                              </svg>
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="ag-checks">
+                      {cached.map((t) => {
+                        const on = g.tools.some((p) => globMatch(p, t.name));
+                        return (
+                          <label key={t.name} title={t.description}>
+                            <input type="checkbox" checked={on} onChange={() => toggle(t.name)} />
+                            <span className="mono">{t.name}</span>
+                            <span className="muted">{t.description}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mc-role-tools">
+                    <ChipInput values={g.tools} onChange={(tools) => set({ tools })} placeholder="шаблоны через запятую, например get_*" mono />
+                    <p className="muted ag-note">Проверьте подключение на странице «Сервер», чтобы выбирать инструменты списком.</p>
+                  </div>
+                ))}
             </div>
           );
         })}

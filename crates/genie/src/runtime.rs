@@ -991,12 +991,21 @@ pub(crate) struct KitFiles {
 
 /// The rules the guard enforces for a role (`files` may be narrower than the role's: a read-only job).
 pub(crate) fn policy(agents: &AgentConfig, project: &str, role: &RoleDef, files: FileAccess) -> serde_json::Value {
-    let mcp: serde_json::Map<String, serde_json::Value> = agents
-        .mcp_for(project, role)
-        .into_iter()
-        .map(|(s, tools)| (s.id.clone(), tools.map_or(serde_json::Value::Null, |t| json!(t))))
-        .collect();
-    json!({ "role": role.id, "files": files, "denyCommands": role.deny_commands, "mcp": mcp })
+    let mut granted: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    // Closed tools travel beside the grants: what the administrator hid, no role reaches
+    // (the gateway holds the line for connections through it, the guard for the rest).
+    let mut closed: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    for (s, tools) in agents.mcp_for(project, role) {
+        granted.insert(s.id.clone(), tools.map_or(serde_json::Value::Null, |t| json!(t)));
+        if !s.hidden.is_empty() {
+            closed.insert(s.id.clone(), json!(s.hidden));
+        }
+    }
+    let mut policy = json!({ "role": role.id, "files": files, "denyCommands": role.deny_commands, "mcp": granted });
+    if !closed.is_empty() {
+        policy["mcpHidden"] = json!(closed);
+    }
+    policy
 }
 
 /// The kit of an agent working in `cwd`.
@@ -1005,6 +1014,8 @@ pub(crate) fn kit(app: &App, agents: &AgentConfig, project: &str, role: &RoleDef
         role.skills.iter().flatten().filter_map(|name| agents.skills.get(name)).map(|s| s.dir.to_string_lossy().into_owned()).collect();
     skills.extend(repo_skill_dirs(cwd).into_iter().map(|d| d.to_string_lossy().into_owned()));
     let mut codemode = false;
+    // A direct connection's `${env:…}` resolves with the values the server keeps.
+    let env = app.mcp_env();
     let servers: serde_json::Map<String, serde_json::Value> = agents
         .mcp_for(project, role)
         .into_iter()
@@ -1015,7 +1026,7 @@ pub(crate) fn kit(app: &App, agents: &AgentConfig, project: &str, role: &RoleDef
                 let url = format!("http://127.0.0.1:{}/api/mcp-gateway/{}", app.cfg.port, s.id);
                 json!({ "url": url, "headers": { "Authorization": "Bearer ${GENIE_TOKEN}" } })
             } else {
-                s.resolved()
+                s.resolved_with(&env)
             };
             if let Some(o) = entry.as_object_mut() {
                 // The admin's choice of exposure is the connection's, whoever opens it.

@@ -48,6 +48,19 @@ test("MCP calls reach only granted connections and tools", () => {
   assert.match(mcpDenial({ ...policy, mcp: {} }, "github", "get_issue") ?? "", /may use MCP connections: none/);
 });
 
+test("tools the administrator closed stay closed whatever a role grants", () => {
+  const closed: Policy = { ...policy, mcpHidden: { semgrep: ["dangerous_*", "drop_scan"], github: ["get_secret*"] } };
+  // A whole connection's tool…
+  assert.match(mcpDenial(closed, "semgrep", "dangerous_wipe") ?? "", /administrator closed the tool dangerous_wipe of semgrep/);
+  assert.match(mcpDenial(closed, "semgrep", "drop_scan") ?? "", /closed/);
+  assert.equal(mcpDenial(closed, "semgrep", "scan"), undefined, "an open tool of the same connection works");
+  // …and one a role was granted.
+  assert.match(mcpDenial(closed, "github", "get_secret") ?? "", /closed/, "the grant gives back nothing the administrator took away");
+  assert.equal(mcpDenial(closed, "github", "get_issue"), undefined);
+  // A policy of an older genie has no mcpHidden at all.
+  assert.equal(mcpDenial(policy, "semgrep", "dangerous_wipe"), undefined);
+});
+
 test("a pi MCP tool is traced to its connection by its label", () => {
   assert.deepEqual(mcpOwner("github/get_issue"), { server: "github", tool: "get_issue" });
   assert.deepEqual(mcpOwner("docs-eu/files/read"), { server: "docs-eu", tool: "files/read" }, "the tool's own name may hold a slash");

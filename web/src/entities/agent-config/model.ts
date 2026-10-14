@@ -86,6 +86,66 @@ export interface McpServer {
   projects?: string[];
   /** Agents reach it through the genie gateway; `false`: the harness gets the entry itself. */
   gateway: boolean;
+  /** Glob patterns of tools agents never see; absent when empty. */
+  hiddenTools?: string[];
+  /** The tools of the last check with the closed ones already removed; absent when it was never checked. */
+  tools?: { name: string; description?: string }[];
+  /** When the connection was last checked; absent when never. */
+  checkedAt?: string;
+}
+
+/** One connection as `mcp.json` holds it: genie's fields plus whatever else the entry has. */
+export type McpEntry = Record<string, unknown>;
+
+/** A connection on the admin side (GET /api/mcp-admin): its entry plus what the server knows. */
+export interface McpAdminServer {
+  id: string;
+  description: string;
+  transport: "http" | "stdio";
+  /** `null`: the connection is available in every project. */
+  projects: string[] | null;
+  gateway: boolean;
+  hiddenTools: string[];
+  /** Names of the `${env:NAME}` variables the entry refers to. */
+  envRefs: string[];
+  entry: McpEntry;
+  /** The cached listing of the last check: every tool, closed ones included. */
+  tools: { name: string; description?: string }[];
+  checkedAt: string | null;
+}
+
+/** An environment variable MCP entries refer to, as the admin tab shows it. */
+export interface McpSecretInfo {
+  name: string;
+  /** How the stored value is masked, or why it cannot be shown. */
+  hint?: string;
+  updated?: string;
+  unreadable?: boolean;
+  /** The connections that read it. */
+  usedBy: string[];
+}
+
+/** GET /api/mcp-admin: connections, their secrets and the file itself (server administrators). */
+export interface McpAdmin {
+  servers: McpAdminServer[];
+  secrets: McpSecretInfo[];
+  /** Names entries refer to with no value stored. */
+  secretsUnset: string[];
+  file: FileState;
+  problems: Problem[];
+}
+
+/** One row of the gateway usage report: the calls a day saw of one tool. */
+export interface McpUsageRow {
+  day: string;
+  project: string;
+  server: string;
+  tool: string;
+  calls: number;
+  errors: number;
+  ms: number;
+  bytesIn: number;
+  bytesOut: number;
 }
 
 /** A connection started as agents would get it: its tools, or why it does not start. */
@@ -97,6 +157,8 @@ export interface McpCheck {
   protocolVersion?: string | null;
   instructions?: string | null;
   tools?: { name: string; description?: string | null }[];
+  /** When this listing was taken. */
+  checkedAt?: string;
 }
 
 /** A tool call through the gateway: an `mcp.called` event of the project's journal. */
@@ -107,7 +169,7 @@ export interface McpCall {
   actorRole: string;
   /** The team (task) of a team member. */
   subject?: string;
-  payload: { server: string; tool: string; ok: boolean; ms: number; role: string; args?: string; error?: string; refused?: boolean; job?: number };
+  payload: { server: string; tool: string; ok: boolean; ms: number; role: string; args?: string; error?: string; refused?: boolean; closed?: boolean; bytesIn?: number; bytesOut?: number; job?: number };
 }
 
 /** `*` matches any text, `?` one character (as the gateway matches tool grants). */

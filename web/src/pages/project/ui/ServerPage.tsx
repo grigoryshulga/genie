@@ -30,6 +30,7 @@ import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { Icon } from "@/shared/ui";
 import { BarChart } from "./BarChart.tsx";
+import { McpAdminSection } from "./McpAdmin.tsx";
 import { Menu } from "./Menu.tsx";
 import { Costs } from "./ServerCosts.tsx";
 import { useAct } from "./ProjectPage.tsx";
@@ -48,6 +49,7 @@ export function ServerPage() {
     { id: "stats", title: "Статистика" },
     { id: "projects", title: "Проекты", n: projects },
     ...(local ? [] : [{ id: "accounts", title: "Учётные записи", n: accounts }]),
+    { id: "mcp", title: "MCP" },
     { id: "vault", title: "База знаний" },
   ];
   return (
@@ -75,6 +77,8 @@ export function ServerPage() {
           <Projects current={session?.project} />
         ) : tab === "accounts" && !local ? (
           <Accounts me={session?.user.login} />
+        ) : tab === "mcp" ? (
+          <McpAdminSection />
         ) : tab === "vault" ? (
           <Knowledge />
         ) : (

@@ -5,11 +5,8 @@ import { Fragment, useState } from "react";
 import { Link } from "react-router";
 import {
   type Catalogue,
-  checkMcp,
-  type McpCheck,
   type RoleDef,
   splitFrontmatter,
-  toolUsers,
   useDeleteConfig,
   useMcpCalls,
   useMcpConfig,
@@ -18,7 +15,7 @@ import {
   useSkillFiles,
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
-import { bytes, plural, timeAgo } from "@/shared/lib";
+import { bytes, timeAgo } from "@/shared/lib";
 import { ConfirmDialog, Icon, Markdown, Modal } from "@/shared/ui";
 import { Badge, FileEditor, History, Problems, Section, useAction } from "./common.tsx";
 
@@ -239,31 +236,11 @@ function SkillFileView({ name, path, onClose }: { name: string; path: string; on
   );
 }
 
-const MCP_EXAMPLE = `{
-  "mcpServers": {
-    "github": {
-      "description": "GitHub: issues, pull requests, code",
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/",
-      "headers": { "Authorization": "Bearer \${env:GITHUB_MCP_TOKEN}" }
-    }
-  }
-}
-`;
-
 export function McpTab({ cfg }: { cfg: Catalogue }) {
   const mcp = useMcpConfig();
-  const [editing, setEditing] = useState(false);
-  const [checks, setChecks] = useState<Record<string, McpCheck | "busy">>({});
   const d = mcp.data;
   const servers = d?.servers ?? cfg.mcp;
   const users = (id: string) => cfg.roles.filter((r) => r.mcp.some((g) => g === "*" || g === id || g.startsWith(`${id}:`)));
-  const check = async (id: string) => {
-    setChecks((c) => ({ ...c, [id]: "busy" }));
-    const result = await checkMcp(id).catch((e: unknown): McpCheck => ({ ok: false, ms: 0, error: e instanceof Error ? e.message : String(e) }));
-    setChecks((c) => ({ ...c, [id]: result }));
-  };
-  const cols = d?.admin ? 5 : 4;
   return (
     <div className="ag-page">
       <div className="ag-page-head">
@@ -275,10 +252,10 @@ export function McpTab({ cfg }: { cfg: Catalogue }) {
           </p>
         </div>
         {d?.admin && (
-          <button type="button" className="btn" onClick={() => setEditing(true)}>
-            <Icon.file size={13} />
-            mcp.json
-          </button>
+          <Link to="/server/mcp" className="btn">
+            <Icon.server size={13} />
+            Управление подключениями
+          </Link>
         )}
       </div>
       {d?.problems && <Problems items={d.problems} />}
@@ -290,59 +267,41 @@ export function McpTab({ cfg }: { cfg: Catalogue }) {
               <th>Как</th>
               <th>Проекты</th>
               <th>Роли с доступом</th>
-              {d?.admin && <th aria-label="Проверка" />}
             </tr>
           </thead>
           <tbody>
             {servers.map((s) => {
-              const result = checks[s.id];
               const through = cfg.mcpGateway && s.gateway;
               return (
-                <Fragment key={s.id}>
-                  <tr>
-                    <td>
-                      <span className="mono">{s.id}</span>
-                      {s.description && <div className="muted">{s.description}</div>}
-                    </td>
-                    <td>
-                      <div className="ag-how">
-                        {s.transport === "http" ? "HTTP" : "команда"}
-                        <span title={through ? "Секреты остаются на сервере, вызовы — в журнале проекта" : "Харнесс получает подключение с секретами; вызовы не видны genie"}>
-                          <Badge tone={through ? "green" : "amber"}>{through ? "через genie" : "напрямую"}</Badge>
-                        </span>
-                      </div>
-                    </td>
-                    <td>{s.projects?.join(", ") ?? "все"}</td>
-                    <td>
-                      {users(s.id).map((r, i) => (
-                        <span key={r.id}>
-                          {i > 0 && ", "}
-                          <Link to={`/agents?tab=roles&id=${r.id}`}>{r.title}</Link>
-                        </span>
-                      ))}
-                      {!users(s.id).length && <span className="muted">ни одной роли</span>}
-                    </td>
-                    {d?.admin && (
-                      <td className="ag-cell-action">
-                        <button type="button" className="btn" disabled={result === "busy"} onClick={() => void check(s.id)}>
-                          {result === "busy" ? "Проверяю…" : "Проверить"}
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                  {result && result !== "busy" && (
-                    <tr className="ag-check-row">
-                      <td colSpan={cols}>
-                        <CheckResult server={s.id} result={result} roles={cfg.roles} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                <tr key={s.id}>
+                  <td>
+                    <span className="mono">{s.id}</span>
+                    {s.description && <div className="muted">{s.description}</div>}
+                  </td>
+                  <td>
+                    <div className="ag-how">
+                      {s.transport === "http" ? "HTTP" : "команда"}
+                      <span title={through ? "Секреты остаются на сервере, вызовы — в журнале проекта" : "Харнесс получает подключение с секретами; вызовы не видны genie"}>
+                        <Badge tone={through ? "green" : "amber"}>{through ? "через genie" : "напрямую"}</Badge>
+                      </span>
+                    </div>
+                  </td>
+                  <td>{s.projects?.join(", ") ?? "все"}</td>
+                  <td>
+                    {users(s.id).map((r, i) => (
+                      <span key={r.id}>
+                        {i > 0 && ", "}
+                        <Link to={`/agents?tab=roles&id=${r.id}`}>{r.title}</Link>
+                      </span>
+                    ))}
+                    {!users(s.id).length && <span className="muted">ни одной роли</span>}
+                  </td>
+                </tr>
               );
             })}
             {!servers.length && (
               <tr>
-                <td colSpan={cols} className="muted">
+                <td colSpan={4} className="muted">
                   Подключений пока нет.
                 </td>
               </tr>
@@ -355,61 +314,6 @@ export function McpTab({ cfg }: { cfg: Catalogue }) {
         <Section title="История изменений">
           <History item="mcp" admin />
         </Section>
-      )}
-      {editing && d?.file && (
-        <FileEditor
-          kind="mcp"
-          id=""
-          title="mcp.json"
-          hint={
-            <>
-              Поля genie: <span className="mono">description</span>, <span className="mono">projects</span> и <span className="mono">gateway</span> (
-              <span className="mono">false</span> — отдать подключение харнессу напрямую, без шлюза). Секреты не пишите в файл — только{" "}
-              <span className="mono">{"${env:ИМЯ}"}</span>.
-            </>
-          }
-          initial={d.file.content ?? MCP_EXAMPLE}
-          baseHash={d.file.hash}
-          problems={d.problems}
-          onClose={() => setEditing(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-/** What a check found: the tools and which roles get each, or why the connection does not start. */
-function CheckResult({ server, result, roles }: { server: string; result: McpCheck; roles: RoleDef[] }) {
-  if (!result.ok) {
-    return (
-      <div className="ag-check bad" role="alert">
-        <Badge tone="red">не запускается</Badge>
-        <pre>{result.error}</pre>
-      </div>
-    );
-  }
-  const tools = result.tools ?? [];
-  const info = [result.serverInfo?.name, result.serverInfo?.version].filter(Boolean).join(" ");
-  const count = `${tools.length} ${plural(tools.length, "инструмент", "инструмента", "инструментов")}`;
-  return (
-    <div className="ag-check">
-      <div className="ag-check-head">
-        <Badge tone="green">работает</Badge>
-        <span className="muted">{[info, count, `${result.ms} мс`].filter(Boolean).join(" · ")}</span>
-      </div>
-      {tools.length > 0 && (
-        <ul className="ag-tools" aria-label={`Инструменты ${server}`}>
-          {tools.map((t) => {
-            const who = toolUsers(roles, server, t.name);
-            return (
-              <li key={t.name}>
-                <span className="mono">{t.name}</span>
-                <span className="d muted">{t.description}</span>
-                <span className={`who${who.length ? "" : " none"}`}>{who.length ? who.join(", ") : "ни одной роли"}</span>
-              </li>
-            );
-          })}
-        </ul>
       )}
     </div>
   );
