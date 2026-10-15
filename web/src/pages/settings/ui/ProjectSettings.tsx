@@ -25,6 +25,7 @@ import { useRepos } from "@/entities/repo";
 import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
+import { TelegramSettings } from "./TelegramSettings.tsx";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
@@ -45,6 +46,7 @@ export function ProjectSettingsPage() {
     { id: "agents", title: "Работа агентов" },
     { id: "repos", title: "Репозитории", n: repos },
     { id: "people", title: "Люди", n: members },
+    { id: "telegram", title: "Telegram" },
   ];
   return (
     <main className="main">
@@ -67,6 +69,8 @@ export function ProjectSettingsPage() {
       <div className="scroll">
         {!project ? (
           <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>
+        ) : section === "telegram" ? (
+          <TelegramSettings key={project.slug} project={project.slug} admin={admin} />
         ) : section === "agents" ? (
           <AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} />
         ) : section === "repos" ? (

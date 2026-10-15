@@ -446,7 +446,8 @@ pub fn comment(app: &App, caller: &Caller, id: &str, body: CommentBody) -> AppRe
             link: Some(format!("/active?task={}", task.id)),
             ..Default::default()
         };
-        crate::notify::send(app, &users, &msg, None)?;
+        let dedupe = task.comments.last().map(|c| format!("comment:{}:{}:{}", caller.project, task.id, c.id));
+        crate::notify::send(app, &users, &msg, dedupe.as_deref())?;
     }
     changed(app);
     Ok(task)
@@ -525,4 +526,36 @@ pub fn from_step<T: serde::de::DeserializeOwned>(input: &Value, skip: &[&str]) -
         }
     }
     serde_json::from_value(v).map_err(|e| AppError::Genie(genie_core::GenieError::invalid(e.to_string())))
+}
+
+/// A personal subscription, independent of assignment. Authors always receive updates.
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TaskWatch {
+    pub watching: bool,
+    pub author: bool,
+}
+
+pub fn watch(app: &App, caller: &Caller, id: &str, value: Option<bool>) -> AppResult<TaskWatch> {
+    if !caller.is_person() {
+        return Err(AppError::Forbidden("Only people can follow tasks".into()));
+    }
+    let user = app.with_server(|db| {
+        let user = db
+            .user_by_login(&caller.actor.name)?
+            .ok_or_else(|| genie_core::GenieError::invalid("Create an account before following tasks"))?;
+        if user.disabled || db.project_role(&caller.project, &user)?.is_none() {
+            return Err(genie_core::GenieError::Denied("No access to this project".into()));
+        }
+        Ok(user)
+    })?;
+    let task = app.with_tracker(&caller.project, |tr| tr.get(id))?;
+    let author = task.history.iter().find(|h| h.event == "created" && h.role == Role::Human).is_some_and(|h| h.actor == user.login);
+    app.with_server(|db| {
+        if let Some(value) = value {
+            db.set_task_watch(&caller.project, &task.id, user.id, value)?;
+        }
+        Ok(TaskWatch { author, watching: author || db.task_watchers(&caller.project, &task.id)?.contains(&user.id) })
+    })
 }

@@ -23,7 +23,10 @@ pub struct Ask<'a> {
 
 /// Create a questionnaire and send it; returns its id.
 pub fn ask(app: &App, a: Ask<'_>) -> AppResult<i64> {
-    let channel = if app.with_server(|db| db.channel_address(a.recipient, "telegram"))?.is_some() && app.cfg.telegram.is_some() {
+    let channel = if app.with_server(|db| db.project_bot(a.project))?.is_none()
+        && app.with_server(|db| db.channel_address(a.recipient, "telegram"))?.is_some()
+        && app.cfg.telegram.is_some()
+    {
         "telegram"
     } else {
         "web"

@@ -7,7 +7,7 @@ status: current
 
 # Docker deployment
 
-The image contains Genie, its web UI, Git, and Pi-Bolt, available as `pi`. Docker Compose publishes port 7420 on loopback and persists server data and workspaces in named volumes.
+The image contains Genie, its web UI, Git, and Pi-Bolt, available as `pi`. The UI assets are built and served separately from the Rust binary, so a web-only image rebuild can reuse the cached server build. Docker Compose publishes port 7420 on loopback and persists server data and workspaces in named volumes.
 
 Node, npm/npx and Yarn remain available for project tools and stdio MCP servers.
 Pi-Bolt supplies the Pi SDK import used by Genie's guard extension internally;

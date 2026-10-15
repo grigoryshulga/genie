@@ -102,7 +102,7 @@ export const useProposal = (id?: number) =>
   });
 
 export const useChannels = () =>
-  useQuery({ queryKey: ["channels"], queryFn: () => request<{ links: { channel: string; address: string }[]; telegram: boolean; email: boolean }>("GET", "/api/me/channels") });
+  useQuery({ queryKey: ["channels"], refetchInterval: 5000, queryFn: () => request<{ links: { channel: string; address: string }[]; telegram: boolean; email: boolean }>("GET", "/api/me/channels") });
 
 /** A provider whose API key a person may keep: pi reads it from `keyVar`. */
 export interface LlmProvider {
@@ -145,3 +145,5 @@ export const RUN_STATUS: Record<string, string> = {
   pending: "ожидает",
 };
 
+
+export * from "./telegram.ts";

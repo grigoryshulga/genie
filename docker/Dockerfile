@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 #
-# Genie server: one image with the Rust server (the web UI built in) and the pi harness that runs the agents.
+# Genie server: the Rust server, separately served web assets, and the pi harness that runs the agents.
 # Guide: docs/platform/docker.md
 #
 #   docker build -t genie -f docker/Dockerfile .
 #   docker compose -f docker/docker-compose.yml up -d
-#                                   (see docker/docker-compose.yml and docker/.env.example)
+#   Local tracker: docker compose -p genie-tracker -f docker/docker-compose.tracker.yml up -d --build
 #
 # Build arguments (all optional):
 #   EXTRA_APT_PACKAGES         toolchains your agents need, e.g. "python3 python3-venv build-essential"
@@ -25,7 +25,8 @@ COPY web/package.json ./web/package.json
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --workspace genie-web --include-workspace-root=false --ignore-scripts --no-audit --no-fund
 COPY web ./web
-RUN npm run build:web
+RUN npm run build:web \
+ && node web/compress-assets.mjs web/dist
 
 # ---- pi -----------------------------------------------------------------------------------------
 # The harness agents run: Pi-Bolt, the Pi coding agent compiled ahead of time into one native
@@ -66,8 +67,6 @@ COPY crates/genie/build.rs ./crates/genie/build.rs
 # real sources can never be mistaken for the stubs. Without that clean, a source copied with an older
 # mtime than the stub artifact in this layer is considered up to date and a stub binary is linked.
 # `cargo clean -p` is deliberate: matching artifact paths by hand would miss fingerprints.
-# `cargo build --release --locked -p genie` with no `web/dist` runs the build script over an empty
-# asset list, which the real build below re-runs because `GENIE_WEB_DIST` changed.
 RUN set -eux; \
     mkdir -p crates/genie-core/src crates/genie/src; \
     : > crates/genie-core/src/lib.rs; \
@@ -76,12 +75,12 @@ RUN set -eux; \
     cargo build --release --locked -p genie; \
     cargo clean --release -p genie -p genie-core; \
     test ! -e target/release/genie
-# config/, agents/, crates/genie/pi/ and the web UI are embedded into the binary (include_str!, build.rs).
+# config/, agents/ and crates/genie/pi/ are embedded into the binary.
+# Keep web assets in the runtime layer so UI-only edits reuse the entire Rust build.
 COPY config ./config
 COPY agents ./agents
 COPY crates ./crates
-COPY --from=web /src/web/dist ./web/dist
-RUN GENIE_WEB_DIST=web/dist cargo build --release --locked -p genie \
+RUN cargo build --release --locked -p genie \
  && install -D -m 0755 target/release/genie /out/genie \
  && test -n "$(/out/genie --version)" \
  && test -n "$(/out/genie --help)"
@@ -149,6 +148,7 @@ COPY docker/configure.mjs docker/load-secrets.sh /usr/local/lib/genie/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker/genie-cli.sh /usr/local/bin/genie
 COPY --from=server /out/genie /opt/genie/bin/genie
+COPY --from=web --chown=genie:genie /src/web/dist /opt/genie/web
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh /usr/local/bin/genie
 
 RUN mkdir -p /data /workspace \
@@ -181,4 +181,4 @@ LABEL org.opencontainers.image.title="genie" \
 
 # Starts as root (volume ownership, uid mapping), drops to the service user, then runs under tini.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["serve"]
+CMD ["serve", "--web", "/opt/genie/web"]

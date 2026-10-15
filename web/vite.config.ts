@@ -1,12 +1,12 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// The build (web/dist) goes into the genie binary (crates/genie/build.rs); `genie
-// serve --web web/dist` serves a fresh one without rebuilding genie. During
-// development run `genie serve` (port 7420) and `npm run dev:web`; API calls are
-// proxied to it. Source maps are not built by default because the binary never
-// embeds them; `GENIE_WEB_SOURCEMAP=1 npm run build:web` turns them on for
-// debugging a build served with `genie serve --web web/dist`.
+// Point Vite at an existing Genie server for HMR without rebuilding or restarting it.
+// The default matches the local source-development server; set this to 7422 for genie-tracker.
+const apiProxyTarget = process.env.GENIE_API_PROXY_TARGET ?? "http://127.0.0.1:7420";
+
+// Source builds may embed web/dist; Docker serves its separately built /opt/genie/web directory.
+// Source maps are off by default; GENIE_WEB_SOURCEMAP=1 enables them for local debugging.
 export default defineConfig({
   root: import.meta.dirname,
   plugins: [react()],
@@ -32,5 +32,13 @@ export default defineConfig({
       },
     },
   },
-  server: { port: 5173, proxy: { "/api": { target: "http://127.0.0.1:7420", headers: { host: "127.0.0.1:7420" } } } },
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: apiProxyTarget,
+        headers: { host: new URL(apiProxyTarget).host },
+      },
+    },
+  },
 });
