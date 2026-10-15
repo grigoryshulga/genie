@@ -9,7 +9,7 @@ import { useTeams } from "@/entities/team";
 import { timeAgo, useTick } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 
-export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean }) {
+export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: () => void; online: boolean; compact: boolean; onToggleCompact: () => void }) {
   useTick();
   const meta = useMeta().data;
   const session = useSession().data;
@@ -34,8 +34,8 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
   const me = session?.mode === "users" ? session.user.name || session.user.login : "Локальный режим";
 
   return (
-    <nav className="sidebar" aria-label="Навигация">
-      <div className={`project${many ? " switch" : ""}`} title={project ? (project.hasRepo ? "Проект с репозиторием кода" : "Проект без кода") : undefined}>
+    <nav className={`sidebar${compact ? " compact" : ""}`} aria-label="Навигация">
+      <div className={`project${many ? " switch" : ""}`} title={project ? `${project.name} · ${project.hasRepo ? "проект с репозиторием кода" : "проект без кода"}` : "genie"}>
         <span className="logo-mark">
           <Icon.mark size={15} />
         </span>
@@ -58,7 +58,7 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
         )}
       </div>
 
-      <button type="button" className="new-task" onClick={onNew}>
+      <button type="button" className="new-task" onClick={onNew} title="Новая задача">
         <Icon.plus size={14} />
         <span className="grow" style={{ textAlign: "left" }}>
           Новая задача
@@ -67,11 +67,11 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
       </button>
 
       <div className="nav-group">
-        <NavLink to="/board" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+        <NavLink to="/board" title="Доска" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
           <Icon.board size={15} />
           <span className="grow">Доска</span>
         </NavLink>
-        <NavLink to="/tasks" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+        <NavLink to="/tasks" title="Задачи" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
           <Icon.list size={15} />
           <span className="grow">Задачи</span>
           {waiting > 0 && (
@@ -81,7 +81,7 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
           )}
           <span className="count">{open || ""}</span>
         </NavLink>
-        <NavLink to="/epics" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/epic/") ? " on" : ""}`}>
+        <NavLink to="/epics" title="Эпики" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/epic/") ? " on" : ""}`}>
           <EpicIcon size={15} />
           <span className="grow">Эпики</span>
           <span className="count">{openEpics || ""}</span>
@@ -92,13 +92,14 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
         <span className="nav-label">Знания</span>
         <NavLink
           to="/docs"
+          title="Документация"
           className={({ isActive }) => `nav-item${(isActive || pathname.startsWith("/docs")) && !pathname.startsWith("/docs/proposals") ? " on" : ""}`}
         >
           <BookIcon size={15} />
           <span className="grow">Документация</span>
           <span className="count">{docs ? docsCount : ""}</span>
         </NavLink>
-        <NavLink to="/docs/proposals" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+        <NavLink to="/docs/proposals" title="Предложения" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
           <Icon.proposal size={15} />
           <span className="grow">Предложения</span>
           <span className="count">{proposals || ""}</span>
@@ -108,16 +109,16 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
       <div className="nav-group">
         <span className="nav-label">Команда и правила</span>
         {agents.isSuccess && (
-          <NavLink to="/agents" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+          <NavLink to="/agents" title="Агенты" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
             <Icon.userPlus size={15} />
             <span className="grow">Агенты</span>
           </NavLink>
         )}
-        <NavLink to="/automations" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+        <NavLink to="/automations" title="Автоматизации" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
           <Icon.bolt size={15} />
           <span className="grow">Автоматизации</span>
         </NavLink>
-        <NavLink to="/notifications" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+        <NavLink to="/notifications" title="Уведомления" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
           <Icon.bell size={15} />
           <span className="grow">Уведомления</span>
           {unread > 0 && <span className="unread-dot" role="img" aria-label={`непрочитанных: ${unread}`} />}
@@ -132,7 +133,7 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
             const working = t.members.some((m) => m.activity === "working");
             const waiting = status === "needs_owner";
             return (
-              <NavLink key={t.id} to={`/team/${encodeURIComponent(t.id)}`} className={({ isActive }) => `team-link${isActive ? " on" : ""}`}>
+              <NavLink key={t.id} to={`/team/${encodeURIComponent(t.id)}`} title={`${t.id} · ${waiting ? "ждёт вас" : status ? statusShort(status) : ""}`} className={({ isActive }) => `team-link${isActive ? " on" : ""}`}>
                 {waiting ? <span className="dot-amber" /> : working ? <span className="spin" /> : <span className="dot-idle" />}
                 <span className="mono">{t.id}</span>
                 <span className={`st${waiting ? " amber" : ""}`}>{waiting ? "ждёт вас" : status ? statusShort(status) : ""}</span>
@@ -168,6 +169,9 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
             <Icon.logout size={14} />
           </button>
         )}
+        <button type="button" className="icon-btn sidebar-toggle" aria-label={compact ? "Развернуть меню" : "Свернуть меню"} title={compact ? "Развернуть меню" : "Свернуть меню"} onClick={onToggleCompact}>
+          <Icon.chevron size={14} />
+        </button>
       </div>
     </nav>
   );
