@@ -9,7 +9,7 @@ aliases: [platform, genie server, jira replacement]
 
 # Genie как платформа — видение и целевая архитектура
 
-Страницы темы: [[platform/decisions|решения]] · [[platform/backend|бэкенд на Rust]] · [[platform/knowledge-vault|хранилище знаний]] · [[platform/automations|автоматизации]] · [[platform/agent-roles-and-teams|роли и шаблоны команд]] · [[platform/roadmap|дорожная карта]].
+Страницы темы: [[platform/decisions|решения]] · [[platform/backend|бэкенд на Rust]] · [[platform/knowledge-vault|хранилище знаний]] · [[platform/automations|автоматизации]] · [[platform/agent-roles-and-teams|роли и шаблоны команд]] · [[platform/settings|настройки и администрирование]] · [[platform/roadmap|дорожная карта]].
 
 ## Цель
 

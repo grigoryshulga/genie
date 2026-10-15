@@ -53,6 +53,7 @@ The docs are in Russian.
 | Running a pilot with a team | [pilot.md](docs/platform/pilot.md) |
 | Vision and architecture | [vision.md](docs/platform/vision.md), [backend.md](docs/platform/backend.md) |
 | Roles and teams | [agent-roles-and-teams.md](docs/platform/agent-roles-and-teams.md), [agent-bus.md](docs/platform/agent-bus.md) |
+| Settings and administration | [settings.md](docs/platform/settings.md) |
 | Knowledge vault | [knowledge-vault.md](docs/platform/knowledge-vault.md) |
 | Automations | [automations.md](docs/platform/automations.md) |
 | Decisions | [decisions.md](docs/platform/decisions.md) |
