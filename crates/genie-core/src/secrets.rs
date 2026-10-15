@@ -296,7 +296,11 @@ impl ServerDb {
     /// All MCP environment variables in the clear, for resolving `${env:…}`.
     pub fn mcp_env(&self) -> Result<std::collections::BTreeMap<String, String>> {
         let mut out = std::collections::BTreeMap::new();
-        let rows: Vec<(String, String)> = self.conn().prepare("SELECT name, sealed FROM mcp_secrets")?.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<std::result::Result<_, _>>()?;
+        let rows: Vec<(String, String)> = self
+            .conn()
+            .prepare("SELECT name, sealed FROM mcp_secrets")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
         if rows.is_empty() {
             return Ok(out);
         }

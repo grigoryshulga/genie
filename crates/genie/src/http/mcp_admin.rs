@@ -36,9 +36,7 @@ pub fn routes() -> Router<Arc<App>> {
 pub(crate) fn tool_cache(app: &App) -> HashMap<String, (Vec<Value>, String)> {
     app.with_server(|db| db.mcp_tools())
         .map(|rows| {
-            rows.into_iter()
-                .map(|(server, tools, checked)| (server, (serde_json::from_str(&tools).unwrap_or_default(), checked)))
-                .collect()
+            rows.into_iter().map(|(server, tools, checked)| (server, (serde_json::from_str(&tools).unwrap_or_default(), checked))).collect()
         })
         .unwrap_or_default()
 }
@@ -57,10 +55,8 @@ pub(crate) fn servers_with_tools(app: &App, agents: &crate::agent_config::AgentC
             if let Some((tools, checked)) = cache.get(&s.id)
                 && let Some(o) = v.as_object_mut()
             {
-                let open: Vec<&Value> = tools
-                    .iter()
-                    .filter(|t| t["name"].as_str().is_some_and(|n| !crate::mcp_gateway::hidden(&s.hidden, n)))
-                    .collect();
+                let open: Vec<&Value> =
+                    tools.iter().filter(|t| t["name"].as_str().is_some_and(|n| !crate::mcp_gateway::hidden(&s.hidden, n))).collect();
                 o.insert("tools".into(), json!(open));
                 o.insert("checkedAt".into(), json!(checked));
             }
@@ -167,8 +163,9 @@ fn mcp_root(app: &App) -> Result<(Value, String, bool), ApiError> {
     let (current, hash) = file_state(&app.data.join("mcp.json"));
     let existed = current.is_some();
     let root = match &current {
-        Some(text) => serde_json::from_str::<Value>(text)
-            .map_err(|e| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, format!("mcp.json is broken ({e}); fix the file before editing connections")))?,
+        Some(text) => serde_json::from_str::<Value>(text).map_err(|e| {
+            ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, format!("mcp.json is broken ({e}); fix the file before editing connections"))
+        })?,
         None => json!({ "mcpServers": {} }),
     };
     Ok((root, hash, existed))
@@ -201,9 +198,9 @@ fn put_server_sync(app: &App, user: &str, id: &str, b: ServerBody) -> Result<Val
         return Err(ApiError::bad("pass the connection as `entry`, an object"));
     }
     let (mut root, hash, existed) = mcp_root(app)?;
-    let servers = root["mcpServers"]
-        .as_object_mut()
-        .ok_or_else(|| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "mcp.json has no {\"mcpServers\": {…}} object; fix the file first"))?;
+    let servers = root["mcpServers"].as_object_mut().ok_or_else(|| {
+        ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "mcp.json has no {\"mcpServers\": {…}} object; fix the file first")
+    })?;
     valid_mcp_id(id, servers)?;
     servers.insert(id.to_string(), b.entry);
     // A structured edit always builds on the file as it is now.
@@ -213,7 +210,12 @@ fn put_server_sync(app: &App, user: &str, id: &str, b: ServerBody) -> Result<Val
 }
 
 /// Remove one connection of `mcp.json` and forget its cached tool listing.
-async fn delete_server(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Query(q): Query<DeleteQuery>) -> ApiResult<Json<Value>> {
+async fn delete_server(
+    State(app): State<Arc<App>>,
+    ctx: Ctx,
+    Path(id): Path<String>,
+    Query(q): Query<DeleteQuery>,
+) -> ApiResult<Json<Value>> {
     let user = ctx.server_admin()?.login.clone();
     let out = app.blocking(move |app| Ok(delete_server_sync(app, &user, &id, &q.base_hash))).await?;
     Ok(Json(out?))
@@ -221,9 +223,9 @@ async fn delete_server(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<Str
 
 fn delete_server_sync(app: &App, user: &str, id: &str, base_hash: &Option<String>) -> Result<Value, ApiError> {
     let (mut root, hash, _) = mcp_root(app)?;
-    let servers = root["mcpServers"]
-        .as_object_mut()
-        .ok_or_else(|| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "mcp.json has no {\"mcpServers\": {…}} object; fix the file first"))?;
+    let servers = root["mcpServers"].as_object_mut().ok_or_else(|| {
+        ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "mcp.json has no {\"mcpServers\": {…}} object; fix the file first")
+    })?;
     if servers.remove(id).is_none() {
         return Err(ApiError::new(StatusCode::NOT_FOUND, format!("MCP connection {id} not found")));
     }
