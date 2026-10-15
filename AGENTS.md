@@ -11,7 +11,7 @@ Follow this sequence for every repository task. Read [CODING_STANDARDS.md](CODIN
 
 ## 2. Track work in genie
 
-- Use the repository tracker: container `genie-tracker`, project `genie`, prefix `GNE`, manual mode, web UI `http://127.0.0.1:7422`. Invoke `docker exec -i genie-tracker genie --project genie ...` as shown in the CLI guide.
+- Use the repository tracker: container `genie-tracker`, project `genie`, prefix `GNE`, manual mode, web UI `http://127.0.0.1:7422`. Use the native host CLI: `genie --project genie ...`, connected over HTTP as shown in the CLI guide. Docker is used only to operate the server, not for task commands.
 - Confirm the server and project explicitly; the CLI's default project may belong to another repository. Reuse the assigned task, or search for an existing task before creating one with a description and acceptance criteria.
 - Move the task through its permitted workflow into `in_progress` before implementation. Record milestones with CLI `progress` comments, including decisions, validation results, and blockers.
 - Keep acceptance criteria current and attach verification evidence. Use the CLI guide for commands and role restrictions.
