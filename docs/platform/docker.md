@@ -81,7 +81,7 @@ The host and container port must match because Genie validates the `Host` header
 
 ## Models and credentials
 
-Set personal provider keys in **Settings → Personal → Providers and keys**. Administrators can set shared defaults in **Settings → Management → Providers**. Personal keys override shared keys. Stored keys are encrypted with `/data/secrets.key`.
+Use **+** in **Settings → Personal → Providers and keys** to connect with OAuth or an API key when the provider supports it; LiteLLM is in the same list. Administrators can add shared API keys in **Settings → Management → Providers**. Personal credentials override shared keys. Credentials stored in the database are encrypted with `/data/secrets.key`.
 
 Environment keys such as `OPENAI_API_KEY` and `LITELLM_API_KEY` support local mode before accounts exist. On an authenticated server, agents use the keys resolved for their user; the server environment key is not their fallback.
 

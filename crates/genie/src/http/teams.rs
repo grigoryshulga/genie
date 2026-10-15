@@ -1,7 +1,7 @@
 //! Teams, mail and agent turns. The team JSON matches the TypeScript server so
 //! the SPA's team screen works unchanged.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -399,8 +399,20 @@ fn without_thinking(model: &str) -> &str {
 }
 
 /// pi's catalogue, read at most every few minutes (it starts a process).
-static PI_MODELS: std::sync::Mutex<Option<(std::time::Instant, Option<BTreeSet<String>>)>> = std::sync::Mutex::new(None);
+static PI_MODELS: std::sync::LazyLock<std::sync::Mutex<HashMap<Option<i64>, (std::time::Instant, Option<BTreeSet<String>>)>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 const PI_MODELS_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Drop the catalogue after a user's or the server's credentials change.
+pub fn invalidate_models(user: Option<i64>) {
+    let mut cache = PI_MODELS.lock().unwrap_or_else(|e| e.into_inner());
+    match user {
+        Some(user) => {
+            cache.remove(&Some(user));
+        }
+        None => cache.clear(),
+    }
+}
 
 #[derive(Deserialize, Default)]
 struct ModelsQuery {
@@ -410,18 +422,54 @@ struct ModelsQuery {
 /// The models an agent can be given: pi's catalogue and the models the agent
 /// configuration already names (`listed: false` when pi does not list them).
 async fn models(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<ModelsQuery>) -> ApiResult<Json<Value>> {
-    ctx.access(&app, None).await?;
+    let access = ctx.access(&app, None).await?;
+    let user_id = access.user.as_ref().map(|u| u.id).filter(|id| *id > 0);
     let cached = PI_MODELS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .clone()
+        .get(&user_id)
         .filter(|(at, _)| q.refresh.as_deref() != Some("1") && at.elapsed() < PI_MODELS_TTL)
-        .map(|(_, list)| list);
+        .map(|(_, list)| list.clone());
     let catalogue = match cached {
         Some(list) => list,
         None => {
-            let list = app.blocking(|app| Ok(crate::doctor::pi_models(&app.cfg))).await?;
-            *PI_MODELS.lock().unwrap_or_else(|e| e.into_inner()) = Some((std::time::Instant::now(), list.clone()));
+            let list = app
+                .blocking(move |app| {
+                    let mut env = HashMap::new();
+                    let mut oauth = serde_json::Map::new();
+                    if let Some(user_id) = user_id {
+                        crate::llm_key::sync_user_pi_profile(app, user_id).map_err(genie_core::GenieError::invalid)?;
+                    }
+                    app.with_server(|db| {
+                        for p in crate::llm_key::PROVIDERS {
+                            if p.api_key {
+                                if let Some(key) = db.global_secret(p.id)? {
+                                    env.insert(p.key_var.to_string(), key);
+                                }
+                                if let Some(user_id) = user_id
+                                    && let Some(key) = db.user_secret(user_id, p.id)?
+                                {
+                                    env.insert(p.key_var.to_string(), key);
+                                }
+                            }
+                            if p.oauth
+                                && let Some(user_id) = user_id
+                                && let Some(raw) = db.user_secret(user_id, &crate::llm_key::oauth_secret(p.id))?
+                            {
+                                if let Ok(value) = serde_json::from_str::<Value>(&raw) {
+                                    oauth.insert(p.id.to_string(), value);
+                                }
+                            }
+                        }
+                        Ok::<_, genie_core::GenieError>(())
+                    })?;
+                    Ok(crate::doctor::pi_models_for(&app.cfg, &env, &oauth, Some(&crate::runtime::pi_dir(app))))
+                })
+                .await?;
+            let now = std::time::Instant::now();
+            let mut cache = PI_MODELS.lock().unwrap_or_else(|e| e.into_inner());
+            cache.retain(|_, (at, _)| now.duration_since(*at) < PI_MODELS_TTL);
+            cache.insert(user_id, (now, list.clone()));
             list
         }
     };

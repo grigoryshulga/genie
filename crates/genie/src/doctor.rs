@@ -323,8 +323,13 @@ fn find_program(program: &str, cfg: &Config) -> Option<PathBuf> {
 }
 
 /// The models pi can use (`provider/model`), from `pi --list-models`.
-fn list_models(pi: &Path, cfg: &Config) -> Option<BTreeSet<String>> {
-    let list = output(pi, &["--list-models"], cfg)?;
+fn list_models(
+    pi: &Path,
+    cfg: &Config,
+    env: &std::collections::HashMap<String, String>,
+    profile: Option<&Path>,
+) -> Option<BTreeSet<String>> {
+    let list = output_with_env(pi, &["--list-models"], cfg, env, profile)?;
     Some(
         list.lines()
             .skip(1)
@@ -340,20 +345,104 @@ fn list_models(pi: &Path, cfg: &Config) -> Option<BTreeSet<String>> {
 /// it is not on the PATH or does not answer). The harness is pi or Pi-Bolt, the compiled
 /// build of pi — both speak `--list-models`.
 pub fn pi_models(cfg: &Config) -> Option<BTreeSet<String>> {
-    let pi = [&cfg.runtime.session_command, &cfg.runtime.command]
+    pi_models_for(cfg, &std::collections::HashMap::new(), &serde_json::Map::new(), None)
+}
+
+/// The Pi model catalogue for one caller. Their API keys are process-local
+/// overrides, while OAuth credentials are written to a short-lived private profile.
+pub fn pi_models_for(
+    cfg: &Config,
+    env: &std::collections::HashMap<String, String>,
+    oauth: &serde_json::Map<String, serde_json::Value>,
+    base_profile: Option<&Path>,
+) -> Option<BTreeSet<String>> {
+    let pi = pi_program(cfg)?;
+    let profile = if oauth.is_empty() { None } else { Some(model_profile(base_profile?, oauth)?) };
+    let result = list_models(&pi, cfg, env, profile.as_deref());
+    if let Some(profile) = profile {
+        let _ = std::fs::remove_dir_all(profile);
+    }
+    result
+}
+
+/// The harness executable for a `pi` or Pi-Bolt command.
+pub fn pi_program(cfg: &Config) -> Option<PathBuf> {
+    [&cfg.runtime.session_command, &cfg.runtime.command]
         .iter()
         .filter_map(|c| c.first().and_then(|g| g.first()))
         .filter_map(|program| find_program(program, cfg))
-        .find(|p| p.file_name().is_some_and(|n| n == "pi" || n == "pi-bolt"))?;
-    list_models(&pi, cfg)
+        .find(|p| p.file_name().is_some_and(|n| n == "pi" || n == "pi-bolt"))
 }
+
+fn model_profile(base: &Path, personal: &serde_json::Map<String, serde_json::Value>) -> Option<PathBuf> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let dir = std::env::temp_dir().join(format!("genie-models-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    std::fs::create_dir(&dir).ok()?;
+    restrict_dir(&dir);
+    for name in ["models.json"] {
+        let src = base.join(name);
+        if src.is_file() && std::fs::copy(src, dir.join(name)).is_err() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return None;
+        }
+    }
+    let mut auth = std::fs::read(base.join("auth.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    auth.extend(personal.clone());
+    let bytes = serde_json::to_vec(&auth).ok()?;
+    let path = dir.join("auth.json");
+    if std::fs::write(&path, bytes).is_err() {
+        let _ = std::fs::remove_dir_all(&dir);
+        return None;
+    }
+    restrict_file(&path);
+    Some(dir)
+}
+
+#[cfg(unix)]
+fn restrict_dir(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+}
+
+#[cfg(not(unix))]
+fn restrict_dir(_path: &Path) {}
+
+#[cfg(unix)]
+fn restrict_file(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+}
+
+#[cfg(not(unix))]
+fn restrict_file(_path: &Path) {}
 
 /// A command's output within a time limit (pi reading its catalogue, git).
 fn output(program: &Path, args: &[&str], cfg: &Config) -> Option<String> {
+    output_with_env(program, args, cfg, &std::collections::HashMap::new(), None)
+}
+
+fn output_with_env(
+    program: &Path,
+    args: &[&str],
+    cfg: &Config,
+    env: &std::collections::HashMap<String, String>,
+    profile: Option<&Path>,
+) -> Option<String> {
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(std::process::Stdio::null());
     for (k, v) in &cfg.runtime.env {
         cmd.env(k, v);
+    }
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    if let Some(profile) = profile {
+        cmd.env("PI_CODING_AGENT_DIR", profile);
     }
     let mut child = cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().ok()?;
     let start = std::time::Instant::now();
@@ -523,7 +612,7 @@ fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentCon
         }
     }
     let Some(pi) = pi else { return };
-    let Some(available) = list_models(&pi, cfg) else {
+    let Some(available) = list_models(&pi, cfg, &std::collections::HashMap::new(), None) else {
         out.warn("models", "pi --list-models did not answer", "run it as the server user to see why");
         return;
     };

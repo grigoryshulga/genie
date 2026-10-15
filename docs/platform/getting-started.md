@@ -67,7 +67,7 @@ model: provider/model-id
 ---
 ```
 
-Replace the model ID with one available to pi. Configure provider keys in **Settings → Personal → Providers and keys**, or shared defaults in **Settings → Management → Providers**. A personal key overrides a shared key. On a server with users, agents use the credentials resolved for the person they work for.
+Replace the model ID with one available to pi. In **Settings → Personal → Providers and keys**, use **+** to connect with OAuth or an API key when the provider supports it. LiteLLM is available in the same list. Administrators can add shared API keys in **Settings → Management → Providers**. A personal credential overrides a shared key. On a server with users, agents use the credentials resolved for the person they work for.
 
 Check the installation as the service user, with its data directory and `PATH`:
 

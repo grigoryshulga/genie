@@ -102,6 +102,8 @@ pub struct App {
     pub exe: PathBuf,
     /// Live agent sessions (long-running harness processes).
     pub sessions: crate::sessions::Registry,
+    /// Per-user Pi OAuth sessions started from the provider settings dialog.
+    pub llm_oauth: crate::llm_oauth::Registry,
     /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
     /// Turn slots (`runtime.maxConcurrent`), shared with the scheduler loop; members
@@ -125,7 +127,10 @@ pub struct App {
 impl App {
     pub fn open(data: &Path, cfg: Config, web_root: impl Into<Option<PathBuf>>) -> AppResult<Arc<App>> {
         std::fs::create_dir_all(data).map_err(|e| AppError::Internal(format!("{}: {e}", data.display())))?;
+        crate::llm_oauth::cleanup_stale(data);
         let server = ServerDb::open(&data.join("server.db"))?;
+        let user_ids = server.users()?.into_iter().map(|user| user.id).collect::<Vec<_>>();
+        crate::llm_oauth::cleanup_orphaned_profiles(data, &user_ids);
         let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("genie"));
         let mut vault = Vault::open(&cfg.vault_path(data), &data.join("vault-index.db"), cfg.vault.commit.unwrap_or(true))?;
         for p in server.projects()? {
@@ -147,6 +152,7 @@ impl App {
             wake_poller: Notify::new(),
             exe,
             sessions: Default::default(),
+            llm_oauth: Default::default(),
             sched: Default::default(),
             slots,
             attempts: Default::default(),
