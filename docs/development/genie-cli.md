@@ -38,7 +38,7 @@ docker compose -f docker/docker-compose.tracker.yml up -d
 curl --fail http://127.0.0.1:7422/api/health
 ```
 
-The compose file uses the locally installed `genie-local:latest` image. On a fresh machine, build it with `docker build -t genie-local:latest -f docker/Dockerfile .`, or set `GENIE_TRACKER_IMAGE` to an available compatible image. Data is kept in the named Docker volume `genie-tracker_data`; retain this volume when stopping or recreating the container. `manual` is persisted in the project database, not a global container setting.
+The compose file builds and uses the local `genie-local:latest` image. Rebuild and recreate the tracker from this checkout with `docker compose -p genie-tracker -f docker/docker-compose.tracker.yml up -d --build`; after the first build, web-only changes reuse the cached Rust server layer. To use an available compatible image instead, set `GENIE_TRACKER_IMAGE` and run Compose with `--no-build`. Data is kept in the named Docker volume `genie-tracker_data`; retain this volume when stopping or recreating the container. `manual` is persisted in the project database, not a global container setting.
 
 On a fresh volume only, create the project, then set its mode:
 

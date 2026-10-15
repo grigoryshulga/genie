@@ -37,7 +37,9 @@ case "$GENIE_AGENT_ROLE" in
       g task status in_progress
       g task artifact --kind test-report --name tests.md --text "cargo test: ok"
       g task status review --note "ready for review"
-      reviewer=$(g team show | awk '/\(reviewer\)/{print $2; exit}')
+      # Consume all output so `genie team show` cannot write into a pipe whose
+      # reader has already exited (which intermittently gives it SIGPIPE).
+      reviewer=$(g team show | awk '/\(reviewer\)/ && !found { reviewer=$2; found=1 } END { if (found) print reviewer }')
       g mail send "$reviewer" "please review" --intent question
     fi
     ;;

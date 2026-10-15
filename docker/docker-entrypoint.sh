@@ -98,7 +98,7 @@ case "$cmd" in
       ! env | grep -Eq '^(ANTHROPIC|OPENAI|GEMINI|DEEPSEEK|MISTRAL|GROQ|XAI|OPENROUTER|AZURE_OPENAI|AWS_BEARER_TOKEN_BEDROCK|GOOGLE_CLOUD|CEREBRAS|TOGETHER|FIREWORKS|HF|COPILOT_GITHUB)[A-Z_]*=.+'; then
       log "note: no model credentials found (provider API key variables, auth.json or models.json in $agent_dir): the web UI works, agents cannot call models"
     fi
-    # The web UI is built into genie.
+    # The UI can be embedded in genie or supplied by a runtime image with --web.
     args=(serve)
     has_port=0
     for a in "$@"; do

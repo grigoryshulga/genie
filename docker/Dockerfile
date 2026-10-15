@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 #
-# Genie server: one image with the Rust server (the web UI built in) and the pi harness that runs the agents.
+# Genie server: the Rust server, separately served web assets, and the pi harness that runs the agents.
 # Guide: docs/platform/docker.md
 #
 #   docker build -t genie -f docker/Dockerfile .
 #   docker compose -f docker/docker-compose.yml up -d
-#                                   (see docker/docker-compose.yml and docker/.env.example)
+#   Local tracker: docker compose -p genie-tracker -f docker/docker-compose.tracker.yml up -d --build
 #
 # Build arguments (all optional):
 #   EXTRA_APT_PACKAGES         toolchains your agents need, e.g. "python3 python3-venv build-essential"
@@ -24,7 +24,8 @@ COPY package.json package-lock.json tsconfig.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts --no-audit --no-fund
 COPY web ./web
-RUN npm run build:web
+RUN npm run build:web \
+ && node web/compress-assets.mjs web/dist
 
 # ---- pi -----------------------------------------------------------------------------------------
 # The harness agents run: Pi-Bolt, the Pi coding agent compiled ahead of time into one native
@@ -52,15 +53,15 @@ RUN apt-get update \
 FROM rust:${RUST_VERSION}-${DEBIAN_RELEASE} AS server
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
-# config/, agents/, crates/genie/pi/ and the web UI are embedded into the binary (include_str!, build.rs).
+# config/, agents/ and crates/genie/pi/ are embedded into the binary (include_str!, build.rs).
+# The web UI remains in the separate web/runtime layer so UI-only edits reuse this Rust build.
 COPY config ./config
 COPY agents ./agents
 COPY crates ./crates
-COPY --from=web /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    GENIE_WEB_DIST=web/dist cargo build --release --locked -p genie \
+    cargo build --release --locked -p genie \
  && install -D -m 0755 target/release/genie /out/genie
 
 # ---- runtime ------------------------------------------------------------------------------------
@@ -118,6 +119,7 @@ COPY docker/configure.mjs docker/load-secrets.sh /usr/local/lib/genie/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker/genie-cli.sh /usr/local/bin/genie
 COPY --from=server /out/genie /opt/genie/bin/genie
+COPY --from=web --chown=genie:genie /src/web/dist /opt/genie/web
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh /usr/local/bin/genie
 
 RUN mkdir -p /data /workspace \
@@ -150,4 +152,4 @@ LABEL org.opencontainers.image.title="genie" \
 
 # Starts as root (volume ownership, uid mapping), drops to the service user, then runs under tini.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["serve"]
+CMD ["serve", "--web", "/opt/genie/web"]

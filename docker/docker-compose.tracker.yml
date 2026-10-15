@@ -5,6 +5,9 @@ name: genie-tracker
 services:
   genie:
     image: ${GENIE_TRACKER_IMAGE:-genie-local:latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: genie-tracker
     restart: unless-stopped
     ports:
