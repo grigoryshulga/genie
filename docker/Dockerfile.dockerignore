@@ -1,6 +1,6 @@
 # Build context for `docker build -f docker/Dockerfile .`: only what the image needs.
-# The Rust stage needs Cargo.*, crates/, config/ and agents/ (embedded into the binary);
-# the web stage needs package*.json, tsconfig.json and web/.
+# The Rust stage needs Cargo.*, crates/, config/ and agents/; the web stage needs
+# package*.json, tsconfig.json and web/.
 
 .git
 .github

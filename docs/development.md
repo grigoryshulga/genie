@@ -20,7 +20,26 @@ GENIE_WEB_DIST=web/dist cargo build -p genie
 cargo run -p genie -- serve
 ```
 
-For web development, run `npm run dev:web` in another terminal. Vite proxies `/api` to the server on port 7420. `genie serve --web web/dist` serves an external web build without rebuilding the binary.
+For web development, run Vite's HMR server without rebuilding or restarting Genie:
+
+```bash
+npm run dev:web
+```
+
+By default Vite proxies `/api` to `http://127.0.0.1:7420`. To work against the primary local tracker instead, set its target:
+
+```bash
+GENIE_API_PROXY_TARGET=http://127.0.0.1:7422 npm run dev:web
+```
+
+The UI updates immediately while requests use the selected Genie server. For production-image validation, the Docker web stage builds and compresses the static assets independently from the Rust binary. After the first image build, a web-only Docker rebuild reuses the cached Rust stage. To rebuild and recreate the local tracker with its explicit project and Compose file:
+
+```bash
+docker compose -p genie-tracker -f docker/docker-compose.tracker.yml up -d --build
+curl -fsS http://127.0.0.1:7422/api/health
+```
+
+`genie serve --web web/dist` also serves a local static build without rebuilding the binary.
 
 ## Checks
 

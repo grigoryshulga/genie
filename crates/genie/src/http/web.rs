@@ -1,9 +1,9 @@
-//! The web UI: built into the binary (`build.rs` takes `web/dist`), or served
-//! from a directory — the one given with `genie serve --web <dir>` (a fresh
-//! `npm run build:web` without rebuilding genie), or `web/dist` of the working
-//! directory when the binary was built without the UI. A `--web` directory
-//! without a built UI (a unit file from before the UI was built in) gives way
-//! to the built-in one.
+//! The web UI: built into source binaries (`build.rs` takes `web/dist`), or
+//! served from a directory — the one given with `genie serve --web <dir>` or
+//! `web/dist` of the working directory when the binary was built without the UI.
+//! Docker keeps the UI in a separate layer and passes it with `--web`, allowing
+//! a web-only image rebuild to reuse the Rust binary layer. Directory builds may
+//! include `.gz` and `.br` sidecars for precompressed delivery.
 //!
 //! The built-in files carry the gzip and brotli copies `build.rs` made: nothing
 //! is compressed here, the bytes are picked according to `Accept-Encoding`.

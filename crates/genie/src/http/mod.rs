@@ -151,7 +151,12 @@ pub fn router(app: Arc<App>) -> Router {
         web::WebUi::BuiltIn => router.fallback(|method: Method, uri: Uri, headers: HeaderMap| async move {
             web::respond(web::WEB_ASSETS, &method, uri.path(), &headers)
         }),
-        web::WebUi::Dir(dir) => router.fallback_service(ServeDir::new(&dir).fallback(ServeFile::new(dir.join("index.html")))),
+        web::WebUi::Dir(dir) => router.fallback_service(
+            ServeDir::new(&dir)
+                .precompressed_gzip()
+                .precompressed_br()
+                .fallback(ServeFile::new(dir.join("index.html")).precompressed_gzip().precompressed_br()),
+        ),
         web::WebUi::Missing(why) => router.fallback(move || async move { (StatusCode::SERVICE_UNAVAILABLE, why) }),
     };
     router.layer(middleware::from_fn_with_state(app.clone(), guard)).with_state(app)
