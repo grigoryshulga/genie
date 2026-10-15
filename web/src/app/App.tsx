@@ -8,7 +8,6 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
-import { RequireServerAdmin, SettingsShell } from "@/widgets/settings-shell";
 import { isTyping, rememberWorkRoute } from "@/shared/lib";
 import { Sidebar } from "@/widgets/sidebar";
 import { lazyPage } from "./lazyPage.ts";
@@ -29,6 +28,7 @@ const AutomationsSettingsPage = lazyPage(() => import("@/pages/settings").then((
 const AgentsAdminPage = lazyPage(() => import("@/pages/settings").then((m) => m.AgentsAdminPage));
 const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
 const ServerSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerSettingsPage));
+const SettingsShell = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.SettingsShell));
 const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m.FirstProjectPage));
 const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.AnswerPage));
 const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
@@ -243,6 +243,14 @@ function Gate() {
       <Outlet />
     </OnlineProvider>
   );
+}
+
+/** The server section of the settings: server administrators only. A route-level policy, so it lives with the routes. */
+function RequireServerAdmin({ children }: { children: ReactNode }) {
+  const session = useSession();
+  if (session.isLoading) return <div className="empty">Загрузка…</div>;
+  if (!session.data?.user.isAdmin) return <div className="empty">Раздел «Сервер» — для администраторов сервера.</div>;
+  return children;
 }
 
 /** `/profile/…` — the personal settings before the settings mode (PD21); old notifications still carry these links. */

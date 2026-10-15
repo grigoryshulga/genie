@@ -257,7 +257,6 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
   const mcp = useMcpConfig();
   const d = mcp.data;
   const servers = d?.servers ?? cfg.mcp;
-  const admin = !!d?.admin && !readOnly;
   const users = (id: string) => cfg.roles.filter((r) => r.mcp.some((g) => g === "*" || g === id || g.startsWith(`${id}:`)));
   return (
     <div className="ag-page">
@@ -269,12 +268,7 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
               : "Шлюз genie выключен (runtime.mcpGateway): харнесс получает подключения вместе с секретами, вызовы genie не видит."}
           </p>
         </div>
-        {admin && (
-          <Link to="/settings/server/mcp" className="btn">
-            <Icon.server size={13} />
-            Управление подключениями
-          </Link>
-        )}
+        {/* Управление подключениями — в «Настройки» → «Сервер» → «MCP»; каталог не редактирует. */}
       </div>
       {d?.problems && <Problems items={d.problems} />}
       <div className="ag-table-wrap">
@@ -328,11 +322,6 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
         </table>
       </div>
       {cfg.mcpGateway && <Calls project={cfg.project} roles={cfg.roles} />}
-      {admin && (
-        <Section title="История изменений">
-          <History item="mcp" admin />
-        </Section>
-      )}
     </div>
   );
 }

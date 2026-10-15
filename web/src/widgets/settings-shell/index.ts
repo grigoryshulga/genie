@@ -1,1 +1,1 @@
-export { RequireServerAdmin, SettingsShell } from "./ui/SettingsShell.tsx";
+export { SettingsShell } from "./ui/SettingsShell.tsx";

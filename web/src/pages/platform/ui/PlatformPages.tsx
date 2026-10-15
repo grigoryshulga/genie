@@ -190,7 +190,7 @@ export function AutomationsPage() {
   const rules = useAutomations();
   const [sp, setSp] = useSearchParams();
   const act = useRefreshingAct();
-  const selected = Number(sp.get("rule") ?? "") || rules.data?.[0]?.id;
+  const selected = Number(sp.get("rule") ?? "") || undefined;
   const current = rules.data?.find((r) => r.id === selected);
   const runNow = (rule: Automation) => void act(() => request("POST", `/api/automations/${rule.id}/run`, {}), "Запущено");
   return (
@@ -208,6 +208,15 @@ export function AutomationsPage() {
       </header>
       <div className="split">
         <section className="split-list" aria-label="Правила">
+          {rules.data?.length ? (
+            <button type="button" className={`pick${current ? "" : " on"}`} onClick={() => setSp({})}>
+              <span className="t">
+                <Icon.list size={13} />
+                <span>Все правила · общий журнал</span>
+              </span>
+              <span className="s">запуски всех правил подряд, с отменой</span>
+            </button>
+          ) : null}
           {rules.data?.map((r) => (
             <button type="button" key={r.id} className={`pick${r.id === current?.id ? " on" : ""}`} onClick={() => setSp({ rule: String(r.id) })}>
               <span className="t">
