@@ -239,6 +239,79 @@ async fn an_agent_reaches_only_its_granted_tools_and_every_call_is_recorded() {
     assert_eq!(s, StatusCode::FORBIDDEN);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hidden_tools_are_closed_for_every_grant_and_usage_counts_what_reached_the_server() {
+    if !node() {
+        return;
+    }
+    secret_env();
+    let h = Harness::new();
+    h.project("shop");
+    write(
+        &h,
+        "mcp.json",
+        &json!({ "mcpServers": {
+            "tracker": { "command": "node", "args": [fixture()], "env": { "TRACKER_TOKEN": "${env:GENIE_TEST_TRACKER_TOKEN}" }, "hiddenTools": ["delete_*"] }
+        }})
+        .to_string(),
+    );
+    write(&h, "agents/lead.md", "---\nbase: reviewer\nmcp: [tracker]\n---\nx\n");
+    let cfg = h.app.reload_agents();
+    assert_eq!(cfg.errors().count(), 0, "{:?}", cfg.problems);
+    let lead = token(&h, "lead", "lead", Some("SHOP-1"));
+    let place = h.dir.path().join("worktrees/SHOP-1");
+    std::fs::create_dir_all(&place).unwrap();
+    h.app.mcp.place(&genie::mcp_gateway::agent_key("shop", Some("SHOP-1"), "lead"), &place);
+
+    // The closed tool is out of the listing even for a grant of the whole connection…
+    let (_, v) = rpc(&h, "tracker", &lead, "tools/list", json!({})).await;
+    let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(!names.contains(&"delete_issue"), "{names:?}");
+
+    // …and calling it is refused as closed, whatever the role was granted.
+    let (_, v) = rpc(&h, "tracker", &lead, "tools/call", json!({ "name": "delete_issue", "arguments": {} })).await;
+    assert_eq!(v["error"]["code"], -32602);
+    assert!(v["error"]["message"].as_str().unwrap().contains("administrator closed the tool delete_issue"), "{v}");
+
+    // The agent's listing became the server's cache (the write is asynchronous):
+    // the whole listing is there — the closed tool is only left out of the client view.
+    let mut cached = h.app.with_server(|db| db.mcp_tools()).unwrap();
+    for _ in 0..40 {
+        if cached.iter().any(|(s, _, _)| s == "tracker") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        cached = h.app.with_server(|db| db.mcp_tools()).unwrap();
+    }
+    let (_, tools, checked) = cached.iter().find(|(s, _, _)| s == "tracker").unwrap();
+    let tools: Value = serde_json::from_str(tools).unwrap();
+    let names: Vec<&str> = tools.as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"delete_issue"), "the server's own cache holds the whole listing: {names:?}");
+    assert!(!checked.is_empty());
+
+    // A call that reached the server is counted with its traffic; a closed one is not.
+    assert!(text(&tool(&h, "tracker", &lead, "get_issue", json!({ "id": "1" })).await).contains("get_issue"));
+    let usage = h.app.with_server(|db| db.mcp_usage(1)).unwrap();
+    let row = usage.iter().find(|u| u.tool == "get_issue").unwrap();
+    assert_eq!((row.calls, row.errors, row.project.as_str(), row.server.as_str()), (1, 0, "shop", "tracker"));
+    assert!(row.bytes_in > 0 && row.bytes_out > 0, "the call moved something both ways: {row:?}");
+    assert!(usage.iter().all(|u| u.tool != "delete_issue"), "a closed call reached no server");
+
+    // The journal has both, the closed one marked as such; the payload carries the traffic.
+    let log = calls(&h).await;
+    let closed = log.iter().find(|e| e["payload"]["tool"] == "delete_issue").unwrap();
+    assert_eq!(closed["payload"]["closed"], json!(true));
+    assert!(log.iter().all(|e| e["payload"]["tool"] != "delete_issue" || e["payload"]["refused"].is_null()));
+    let get = log.iter().find(|e| e["payload"]["tool"] == "get_issue").unwrap();
+    assert!(get["payload"]["bytesIn"].as_u64().unwrap() > 0 && get["payload"]["bytesOut"].as_u64().unwrap() > 0);
+
+    // A value sealed in the server's database comes before its environment: the next
+    // call opens a new connection with it.
+    h.app.with_server(|db| db.set_mcp_secret("GENIE_TEST_TRACKER_TOKEN", "db-sealed-tr4cker")).unwrap();
+    let me: Value = serde_json::from_str(&text(&tool(&h, "tracker", &lead, "whoami", json!({})).await)).unwrap();
+    assert_eq!(me["token"], "db-sealed-tr4cker");
+}
+
 /// An MCP server over Streamable HTTP: it wants the secret, hands out a session
 /// and answers some requests with an event stream.
 #[derive(Default)]

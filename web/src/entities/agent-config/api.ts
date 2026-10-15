@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, request } from "@/shared/api";
-import type { Catalogue, ConfigChange, McpCall, McpCheck, McpDetail, Preview, RoleDetail, SkillDetail, TemplateDetail } from "./model.ts";
+import type { Catalogue, ConfigChange, McpAdmin, McpCall, McpCheck, McpDetail, McpEntry, McpUsageRow, Preview, RoleDetail, SkillDetail, TemplateDetail } from "./model.ts";
 
 export const agentKeys = {
   all: ["agent-config"] as const,
@@ -9,6 +9,8 @@ export const agentKeys = {
   template: (id: string) => ["agent-config", "template", id] as const,
   skill: (name: string) => ["agent-config", "skill", name] as const,
   mcp: ["agent-config", "mcp"] as const,
+  mcpAdmin: ["agent-config", "mcp-admin"] as const,
+  mcpUsage: (days: number) => ["agent-config", "mcp-usage", days] as const,
   history: (item?: string) => ["agent-config", "history", item ?? ""] as const,
 };
 
@@ -73,6 +75,58 @@ export function useMcpCalls(project: string) {
 /** Start a connection as agents would get it and list its tools (administrators). */
 export function checkMcp(id: string) {
   return request<McpCheck>("POST", `/api/mcp/${encodeURIComponent(id)}/check`);
+}
+
+/** The MCP tab of /server in one answer: connections, secrets, the file (server administrators). */
+export function useMcpAdmin() {
+  return useQuery({ queryKey: agentKeys.mcpAdmin, queryFn: () => request<McpAdmin>("GET", "/api/mcp-admin") });
+}
+
+/** Gateway tool calls of the last `days` days, one row per day and tool; the web adds them up. */
+export function useMcpUsage(days: number) {
+  return useQuery({
+    queryKey: agentKeys.mcpUsage(days),
+    queryFn: () => request<{ days: number; rows: McpUsageRow[] }>("GET", `/api/mcp-admin/usage?days=${days}`),
+  });
+}
+
+/** After a change to mcp.json or its secrets: the catalogue, the client MCP views and the admin tab. */
+async function refetchMcp(qc: QueryClient) {
+  await Promise.all([agentKeys.all, agentKeys.mcp, agentKeys.mcpAdmin].map((key) => qc.invalidateQueries({ queryKey: key })));
+}
+
+/**
+ * Save one connection of mcp.json (server administrators): `entry` as it will
+ * stand in `mcpServers`, `baseHash` the version the edit started from. 409:
+ * the file changed since — refetch and redo; 422: the entry does not load.
+ */
+export function useSaveMcpServer() {
+  const qc = useQueryClient();
+  return async (id: string, entry: McpEntry, baseHash?: string) => {
+    const out = await request<SaveResult>("PUT", `/api/mcp-admin/servers/${encodeURIComponent(id)}`, { entry, baseHash });
+    await refetchMcp(qc);
+    return out;
+  };
+}
+
+/** Remove a connection from mcp.json (server administrators); roles keep their grants until edited. */
+export function useDeleteMcpServer() {
+  const qc = useQueryClient();
+  return async (id: string, baseHash?: string) => {
+    const q = baseHash ? `?baseHash=${encodeURIComponent(baseHash)}` : "";
+    const out = await request<SaveResult>("DELETE", `/api/mcp-admin/servers/${encodeURIComponent(id)}${q}`);
+    await refetchMcp(qc);
+    return out;
+  };
+}
+
+/** Set the value of an environment variable MCP entries refer to; a blank value removes it. */
+export function setMcpSecret(name: string, value: string) {
+  return request<{ ok: boolean }>("PUT", `/api/mcp-admin/secrets/${encodeURIComponent(name)}`, { value });
+}
+
+export function deleteMcpSecret(name: string) {
+  return request<{ ok: boolean }>("DELETE", `/api/mcp-admin/secrets/${encodeURIComponent(name)}`);
 }
 
 /** Changes made through the server (administrators only). */

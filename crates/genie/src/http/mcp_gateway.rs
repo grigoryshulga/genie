@@ -25,6 +25,7 @@ use super::ctx::{Ctx, Who};
 use super::{ApiError, ApiResult};
 use crate::mcp_gateway::{self, Reply, Upstream, rpc_error};
 use crate::state::App;
+use genie_core::server_db::McpUse;
 
 /// How long a check of a connection may take (a first `npx` download included).
 const CHECK_TIMEOUT: Duration = Duration::from_secs(90);
@@ -59,6 +60,8 @@ struct Grant {
     server: String,
     /// Tool patterns (`None`: the whole connection).
     tools: Option<Vec<String>>,
+    /// Tools the administrator closed for everyone (`hiddenTools`), grants notwithstanding.
+    hidden: Vec<String>,
     /// The resolved entry, run in the agent's working directory.
     config: Value,
     /// The agent's connection (`<agent>/<server>`).
@@ -87,7 +90,9 @@ async fn serve(app: &Arc<App>, ctx: &Ctx, server: &str, body: &[u8]) -> ApiResul
         ApiError::new(StatusCode::FORBIDDEN, format!("role {} has no access to the MCP connection {server} in project {project}", def.id))
     })?;
     let agent = mcp_gateway::agent_key(project, team.as_deref(), name);
-    let mut config = srv.resolved();
+    // The values an administrator keeps in the server's database come before its environment.
+    let env = app.blocking(|app| app.with_server(|db| db.mcp_env())).await.unwrap_or_default();
+    let mut config = srv.resolved_with(&env);
     if config.get("command").is_some()
         && config.get("cwd").is_none()
         && let Some(o) = config.as_object_mut()
@@ -95,7 +100,7 @@ async fn serve(app: &Arc<App>, ctx: &Ctx, server: &str, body: &[u8]) -> ApiResul
         let cwd = app.mcp.place_of(&agent).unwrap_or_else(|| crate::runtime::project_workspace_dir(app, project, name));
         o.insert("cwd".into(), json!(cwd));
     }
-    let grant = Grant { server: server.to_string(), tools, config, key: format!("{agent}/{server}") };
+    let grant = Grant { server: server.to_string(), tools, hidden: srv.hidden.clone(), config, key: format!("{agent}/{server}") };
     let caller = Caller { project: project.clone(), name: name.clone(), class: *role, role: def.id.clone(), team: team.clone(), job: *job };
 
     let Ok(msg) = serde_json::from_slice::<Value>(body) else {
@@ -135,7 +140,13 @@ async fn handle(app: &Arc<App>, who: &Caller, g: &Grant, method: &str, params: V
         "tools/list" => {
             let mut r = connection(app, g).await?.request(method, params).await?;
             if let Some(list) = r.get_mut("tools").and_then(Value::as_array_mut) {
-                list.retain(|t| t["name"].as_str().is_some_and(|n| mcp_gateway::allowed(g.tools.as_deref(), n)));
+                // The whole listing refreshes the server's cache for the web's tool
+                // pickers; what the agent sees also leaves out the closed tools.
+                let full: Vec<Value> = list.iter().filter(|t| t["name"].is_string()).cloned().collect();
+                cache_tools(app, &g.server, full);
+                list.retain(|t| {
+                    t["name"].as_str().is_some_and(|n| !mcp_gateway::hidden(&g.hidden, n) && mcp_gateway::allowed(g.tools.as_deref(), n))
+                });
             }
             Ok(r)
         }
@@ -182,8 +193,10 @@ fn introduce(init: &Value, whole: bool) -> Value {
 async fn call_tool(app: &Arc<App>, who: &Caller, g: &Grant, params: Value) -> Reply {
     let tool = params["name"].as_str().unwrap_or_default().to_string();
     let started = Instant::now();
-    let granted = mcp_gateway::allowed(g.tools.as_deref(), &tool);
-    let reply = if granted {
+    let (granted, closed) = (mcp_gateway::allowed(g.tools.as_deref(), &tool), mcp_gateway::hidden(&g.hidden, &tool));
+    let reply = if closed {
+        Err(rpc_error(-32602, format!("the administrator closed the tool {tool} of {}", g.server)))
+    } else if granted {
         match connection(app, g).await {
             Ok(up) => up.request("tools/call", params.clone()).await,
             Err(e) => Err(e),
@@ -196,35 +209,89 @@ async fn call_tool(app: &Arc<App>, who: &Caller, g: &Grant, params: Value) -> Re
         Ok(_) => (true, None),
         Err(e) => (false, Some(e["message"].as_str().unwrap_or("error").to_string())),
     };
+    // What the call moved both ways, for the journal and the usage statistics.
+    let (bytes_in, bytes_out) = (
+        params.get("arguments").map(Value::to_string).unwrap_or_default().len() as u64,
+        match &reply {
+            Ok(r) => r.to_string().len(),
+            Err(e) => e.to_string().len(),
+        } as u64,
+    );
     let mut payload = json!({
         "server": g.server,
         "tool": tool,
         "ok": ok,
         "ms": started.elapsed().as_millis() as u64,
         "role": who.role,
+        "bytesIn": bytes_in,
+        "bytesOut": bytes_out,
         "args": clip(&params.get("arguments").map(Value::to_string).unwrap_or_default(), 500),
     });
     if let Some(e) = error {
         payload["error"] = json!(clip(&e, 500));
     }
-    if !granted {
+    if closed {
+        payload["closed"] = json!(true);
+    } else if !granted {
         payload["refused"] = json!(true);
     }
     if let Some(j) = who.job {
         payload["job"] = json!(j);
     }
     let (project, subject, actor, class) = (who.project.clone(), who.team.clone(), who.name.clone(), who.class);
+    let (server, tool_for_log) = (g.server.clone(), tool.clone());
+    let ms = started.elapsed().as_millis() as u64;
+    let reached_server = granted && !closed;
     let written = app
         .blocking(move |app| {
             app.with_tracker(&project, |t| {
                 t.append_event(events::MCP_CALLED, subject.as_deref(), &actor, class.as_str(), payload).map(|_| ())
-            })
+            })?;
+            // A refused or closed call reached no server: the journal has it, the statistics do not.
+            if reached_server {
+                let counted = McpUse { project: &project, server: &server, tool: &tool, ok, ms, bytes_in, bytes_out };
+                if let Err(e) = app.with_server(|db| db.record_mcp_usage(&counted)) {
+                    eprintln!("genie mcp: cannot count a call of {server}/{tool}: {e}");
+                }
+            }
+            Ok(())
         })
         .await;
     if let Err(e) = written {
-        eprintln!("genie mcp: {}: cannot record a call of {tool}: {e}", g.key);
+        eprintln!("genie mcp: {}: cannot record a call of {tool_for_log}: {e}", g.key);
     }
     reply
+}
+
+/// How long a cached tool listing is left alone between an agent's listings.
+const CACHE_TTL: Duration = Duration::from_secs(3600);
+
+/// Refresh the server's cached listing of `server` from a full `tools/list` answer,
+/// at most once an hour: the web's tool pickers show the cache, so an administrator
+/// need not check every connection by hand. Never blocks the agent's reply.
+fn cache_tools(app: &Arc<App>, server: &str, tools: Vec<Value>) {
+    let (app, server) = (app.clone(), server.to_string());
+    let tools = serde_json::to_string(&tools).unwrap_or_default();
+    tokio::spawn(async move {
+        let name = server.clone();
+        let written = app
+            .blocking(move |app| {
+                app.with_server(|db| {
+                    let stale =
+                        db.mcp_tools_checked(&server)?.and_then(|at| chrono::DateTime::parse_from_rfc3339(&at).ok()).is_none_or(|at| {
+                            chrono::Utc::now().signed_duration_since(at) > chrono::Duration::seconds(CACHE_TTL.as_secs() as i64)
+                        });
+                    if stale {
+                        db.set_mcp_tools(&server, &tools, &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true))?;
+                    }
+                    Ok(())
+                })
+            })
+            .await;
+        if let Err(e) = written {
+            eprintln!("genie mcp: cannot cache the tools of {name}: {e}");
+        }
+    });
 }
 
 /// The first text of a tool result (what an error says).
@@ -241,7 +308,9 @@ async fn check(State(app): State<Arc<App>>, ctx: Ctx, Path(server): Path<String>
     ctx.server_admin()?;
     let agents = app.agents();
     let srv = agents.mcp.get(&server).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, format!("MCP connection {server} not found")))?;
-    let mut config = srv.resolved();
+    // The values an administrator keeps in the server's database come before its environment.
+    let env = app.blocking(|app| app.with_server(|db| db.mcp_env())).await.unwrap_or_default();
+    let mut config = srv.resolved_with(&env);
     if config.get("command").is_some()
         && config.get("cwd").is_none()
         && let Some(o) = config.as_object_mut()
@@ -273,14 +342,26 @@ async fn check(State(app): State<Arc<App>>, ctx: Ctx, Path(server): Path<String>
     };
     let ms = || started.elapsed().as_millis() as u64;
     Ok(Json(match tokio::time::timeout(CHECK_TIMEOUT, run).await {
-        Ok(Ok((init, tools))) => json!({
-            "ok": true,
-            "ms": ms(),
-            "serverInfo": init["serverInfo"],
-            "protocolVersion": init["protocolVersion"],
-            "instructions": init["instructions"],
-            "tools": tools,
-        }),
+        Ok(Ok((init, tools))) => {
+            // The listing becomes the server's cache: the web's tool pickers and the
+            // role editors choose from it.
+            let cache = serde_json::to_string(&tools).unwrap_or_default();
+            let checked = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let (for_db, id, when) = (server.clone(), srv.id.clone(), checked.clone());
+            let stored = app.blocking(move |app| app.with_server(|db| db.set_mcp_tools(&for_db, &cache, &when))).await;
+            if let Err(e) = stored {
+                eprintln!("genie mcp: cannot cache the tools of {id}: {e}");
+            }
+            json!({
+                "ok": true,
+                "ms": ms(),
+                "serverInfo": init["serverInfo"],
+                "protocolVersion": init["protocolVersion"],
+                "instructions": init["instructions"],
+                "tools": tools,
+                "checkedAt": checked,
+            })
+        }
         Ok(Err(e)) => json!({ "ok": false, "ms": ms(), "error": e }),
         Err(_) => json!({ "ok": false, "ms": ms(), "error": format!("no answer in {} s", CHECK_TIMEOUT.as_secs()) }),
     }))

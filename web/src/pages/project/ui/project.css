@@ -296,3 +296,25 @@ details.st-card > .sv-two { padding: 0 22px 16px; }
   .st-roles.sv-two { grid-template-columns: minmax(0, 1fr); }
 }
 .sv-list .pj-role { width: 170px; }
+
+/* MCP: the admin tab of /server (see McpAdmin.tsx) */
+.mc-actions { justify-content: flex-end; }
+.mc-admin-tools li { grid-template-columns: minmax(120px, max-content) minmax(0, 1fr) auto auto auto; align-items: center; }
+.mc-admin-tools .btn { min-height: 26px; padding: 0 10px; }
+.mc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
+.mc-kv { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 30px; gap: 8px; align-items: center; }
+.mc-kv input { height: 32px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-panel); color: var(--text); padding: 0 10px; font-size: 12.5px; outline: 0; min-width: 0; }
+.mc-kv input:focus { border-color: var(--accent); }
+.mc-json { font-family: var(--mono); font-size: 12px; line-height: 1.5; }
+.mc-tool-list { max-height: 260px; overflow-y: auto; }
+.mc-server-chip { height: 22px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 11px; background: none; color: var(--text-2); font-size: 11px; }
+.mc-server-chip:hover { border-color: var(--accent); color: var(--accent-text); }
+.mc-unset td { color: var(--muted); }
+.mc-error { margin: 0; color: var(--red); font-size: 12.5px; line-height: 1.5; }
+.mc-expand { display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 0; color: var(--text); font-size: 12.5px; }
+.mc-expand .muted { font-size: 11.5px; }
+.mc-expand svg { transition: transform 0.15s; color: var(--muted); }
+.mc-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+.mc-tool-row td { background: var(--bg-sunken); color: var(--text-2); font-size: 12px; }
+.mc-errors { color: var(--red); }
+

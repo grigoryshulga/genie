@@ -1,6 +1,7 @@
-//! Secrets the server keeps for others (`user_secrets`, `repo_secrets` of the server
-//! database): a person's LiteLLM key, which agents started on their behalf use, and the
-//! access token of a project's repository on its git host.
+//! Secrets the server keeps for others (`user_secrets`, `repo_secrets`, `mcp_secrets`
+//! of the server database): a person's LiteLLM key, which agents started on their
+//! behalf use, the access token of a project's repository on its git host, and the
+//! values of the environment variables MCP connections refer to as `${env:NAME}`.
 //!
 //! Unlike sessions and tokens these must be read back, so they are sealed with
 //! ChaCha20-Poly1305 under a key kept next to the database (`secrets.key`, 0600)
@@ -38,6 +39,14 @@ CREATE TABLE IF NOT EXISTS repo_secrets (
   hint TEXT NOT NULL DEFAULT '',
   updated TEXT NOT NULL,
   PRIMARY KEY (project, repo)
+);
+-- The value of an environment variable an MCP connection refers to as `${env:NAME}`:
+-- set by a server administrator, read by the gateway and checks, never given to agents.
+CREATE TABLE IF NOT EXISTS mcp_secrets (
+  name TEXT PRIMARY KEY,
+  sealed TEXT NOT NULL,
+  hint TEXT NOT NULL DEFAULT '',
+  updated TEXT NOT NULL
 );
 "#;
 
@@ -249,6 +258,99 @@ impl ServerDb {
     }
 }
 
+impl ServerDb {
+    /// Set the value of an environment variable MCP connections refer to (a blank
+    /// value removes it). The name is what `${env:…}` writes, so it is checked the
+    /// way a shell would accept it.
+    pub fn set_mcp_secret(&self, name: &str, value: &str) -> Result<()> {
+        let value = value.trim();
+        if value.is_empty() {
+            return self.delete_mcp_secret(name);
+        }
+        check_env_name(name)?;
+        check_value(value)?;
+        let key = load_key(&self.secrets_key, true)?.expect("created");
+        self.conn().execute(
+            "INSERT INTO mcp_secrets(name, sealed, hint, updated) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(name) DO UPDATE SET sealed = excluded.sealed, hint = excluded.hint, updated = excluded.updated",
+            params![name, seal(&key, &mcp_aad(name), value)?, hint(value), now()],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_mcp_secret(&self, name: &str) -> Result<()> {
+        self.conn().execute("DELETE FROM mcp_secrets WHERE name = ?1", params![name])?;
+        Ok(())
+    }
+
+    /// The value of an MCP environment variable in the clear, for the gateway and
+    /// checks; `None` when it is unset or cannot be read back.
+    pub fn mcp_secret(&self, name: &str) -> Result<Option<String>> {
+        let sealed: Option<String> =
+            self.conn().query_row("SELECT sealed FROM mcp_secrets WHERE name = ?1", params![name], |r| r.get(0)).optional()?;
+        let Some(sealed) = sealed else { return Ok(None) };
+        let Some(key) = load_key(&self.secrets_key, false)? else { return Ok(None) };
+        Ok(unseal(&key, &mcp_aad(name), &sealed))
+    }
+
+    /// All MCP environment variables in the clear, for resolving `${env:…}`.
+    pub fn mcp_env(&self) -> Result<std::collections::BTreeMap<String, String>> {
+        let mut out = std::collections::BTreeMap::new();
+        let rows: Vec<(String, String)> = self
+            .conn()
+            .prepare("SELECT name, sealed FROM mcp_secrets")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        if rows.is_empty() {
+            return Ok(out);
+        }
+        let Some(key) = load_key(&self.secrets_key, false)? else { return Ok(out) };
+        for (name, sealed) in rows {
+            if let Some(v) = unseal(&key, &mcp_aad(&name), &sealed) {
+                out.insert(name, v);
+            }
+        }
+        Ok(out)
+    }
+
+    /// All MCP environment variables as the administration shows them: never the values.
+    pub fn mcp_secret_infos(&self) -> Result<Vec<SecretInfo>> {
+        let rows: Vec<(String, String, String, String)> = self
+            .conn()
+            .prepare("SELECT name, sealed, hint, updated FROM mcp_secrets ORDER BY name")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        let key = load_key(&self.secrets_key, false)?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, sealed, hint, updated)| SecretInfo {
+                unreadable: key.as_ref().is_none_or(|k| unseal(k, &mcp_aad(&name), &sealed).is_none()),
+                name,
+                hint,
+                updated,
+            })
+            .collect())
+    }
+}
+
+/// What a sealed MCP environment value is bound to: it cannot be moved to another name.
+fn mcp_aad(name: &str) -> String {
+    format!("mcp-env:{name}")
+}
+
+/// An environment variable name a shell accepts: letters, digits and `_`, not a digit first.
+fn check_env_name(name: &str) -> Result<()> {
+    let ok = !name.is_empty()
+        && name.len() <= 64
+        && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if ok {
+        Ok(())
+    } else {
+        Err(GenieError::invalid(format!("{name}: an environment variable name is letters, digits and `_}}`, not a digit first")))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +434,33 @@ mod tests {
         let left: i64 = db.conn().query_row("SELECT COUNT(*) FROM repo_secrets", [], |r| r.get(0)).unwrap();
         assert_eq!(left, 0);
         assert!(db.set_repo_token("shop", "api", "x").is_err(), "no token for a repository that is not there");
+    }
+
+    #[test]
+    fn mcp_env_values_are_sealed_bound_to_their_name_and_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = ServerDb::open(&dir.path().join("server.db")).unwrap();
+        assert!(db.mcp_env().unwrap().is_empty());
+        db.set_mcp_secret("GITHUB_MCP_TOKEN", "  ghp_0123456789abcdef  ").unwrap();
+        db.set_mcp_secret("SAP_USER", "a1b2c3d4e5f6g7h8").unwrap();
+        assert_eq!(db.mcp_secret("GITHUB_MCP_TOKEN").unwrap().as_deref(), Some("ghp_0123456789abcdef"));
+        let env = db.mcp_env().unwrap();
+        assert_eq!(env.get("SAP_USER").map(String::as_str), Some("a1b2c3d4e5f6g7h8"));
+        let infos = db.mcp_secret_infos().unwrap();
+        assert_eq!(infos.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(), ["GITHUB_MCP_TOKEN", "SAP_USER"]);
+        assert_eq!(infos[0].hint, "…cdef");
+        assert!(infos.iter().all(|i| !i.unreadable));
+        let sealed: String = db.conn().query_row("SELECT sealed FROM mcp_secrets WHERE name = 'SAP_USER'", [], |r| r.get(0)).unwrap();
+        assert!(!sealed.contains("a1b2c3"), "stored sealed, never in the clear");
+        // A name a shell would not accept is refused before anything is stored.
+        assert!(db.set_mcp_secret("1BAD", "x").is_err());
+        assert!(db.set_mcp_secret("has space", "x").is_err());
+        // Moved to another name, the sealed value does not open.
+        db.conn().execute("UPDATE mcp_secrets SET name = 'OTHER' WHERE name = 'SAP_USER'", []).unwrap();
+        assert_eq!(db.mcp_secret("OTHER").unwrap(), None);
+        assert!(db.mcp_secret_infos().unwrap().iter().find(|i| i.name == "OTHER").unwrap().unreadable);
+        // A blank value removes it.
+        db.set_mcp_secret("OTHER", " ").unwrap();
+        assert_eq!(db.mcp_secret("OTHER").unwrap(), None);
     }
 }

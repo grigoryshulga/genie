@@ -322,6 +322,25 @@ CREATE TABLE IF NOT EXISTS model_prices (
   cache_read REAL,
   cache_write REAL
 );
+-- A tool call through the MCP gateway, counted per day, project, server and tool.
+CREATE TABLE IF NOT EXISTS mcp_usage (
+  day TEXT NOT NULL,
+  project TEXT NOT NULL,
+  server TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  calls INTEGER NOT NULL DEFAULT 0,
+  errors INTEGER NOT NULL DEFAULT 0,
+  ms INTEGER NOT NULL DEFAULT 0,
+  bytes_in INTEGER NOT NULL DEFAULT 0,
+  bytes_out INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, project, server, tool)
+);
+-- The tools a connection offered at its last check or listing: the web's tool pickers.
+CREATE TABLE IF NOT EXISTS mcp_tools (
+  server TEXT PRIMARY KEY,
+  tools TEXT NOT NULL,
+  checked TEXT NOT NULL
+);
 "#;
 
 /// Columns added after the first server release; applied to existing databases on open.
@@ -352,7 +371,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 3;
+pub const SERVER_SCHEMA_VERSION: i64 = 4;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -404,6 +423,36 @@ pub struct User {
     /// Where the person's photo is served, versioned by when it changed; none without a photo.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+}
+
+/// One row of MCP usage: how often a project called a tool of a server on a day,
+/// how long that took and how much went both ways. The administration adds these up.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpUsage {
+    /// `YYYY-MM-DD` (UTC).
+    pub day: String,
+    pub project: String,
+    pub server: String,
+    pub tool: String,
+    pub calls: i64,
+    pub errors: i64,
+    /// Milliseconds of every call together.
+    pub ms: i64,
+    pub bytes_in: i64,
+    pub bytes_out: i64,
+}
+
+/// One tool call through the gateway, as the usage counter takes it.
+#[derive(Debug, Clone)]
+pub struct McpUse<'a> {
+    pub project: &'a str,
+    pub server: &'a str,
+    pub tool: &'a str,
+    pub ok: bool,
+    pub ms: u64,
+    pub bytes_in: u64,
+    pub bytes_out: u64,
 }
 
 impl User {
@@ -659,6 +708,91 @@ impl ServerDb {
             self.conn().execute("DELETE FROM meta WHERE key = 'pricesFetchError'", [])?;
             Ok(())
         })
+    }
+
+    // --- mcp -----------------------------------------------------------------
+
+    /// Count one tool call through the MCP gateway: per today, project, server and tool.
+    pub fn record_mcp_usage(&self, call: &McpUse) -> Result<()> {
+        let day = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)[..10].to_string();
+        self.conn().execute(
+            "INSERT INTO mcp_usage(day, project, server, tool, calls, errors, ms, bytes_in, bytes_out)
+             VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8)
+             ON CONFLICT(day, project, server, tool) DO UPDATE SET
+               calls = calls + 1,
+               errors = errors + ?5,
+               ms = ms + ?6,
+               bytes_in = bytes_in + ?7,
+               bytes_out = bytes_out + ?8",
+            params![
+                day,
+                call.project,
+                call.server,
+                call.tool,
+                !call.ok as i64,
+                call.ms as i64,
+                call.bytes_in as i64,
+                call.bytes_out as i64
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The MCP usage of the last `days` days, today included (at least one).
+    /// Records older than the window stay in the table.
+    pub fn mcp_usage(&self, days: u64) -> Result<Vec<McpUsage>> {
+        let back = days.max(1) as i64 - 1;
+        let since = (Utc::now() - ChronoDuration::days(back)).to_rfc3339_opts(SecondsFormat::Secs, true)[..10].to_string();
+        let mut stmt = self.conn().prepare(
+            "SELECT day, project, server, tool, calls, errors, ms, bytes_in, bytes_out
+             FROM mcp_usage WHERE day >= ?1 ORDER BY server, tool, day, project",
+        )?;
+        let rows = stmt
+            .query_map(params![since], |r| {
+                Ok(McpUsage {
+                    day: r.get(0)?,
+                    project: r.get(1)?,
+                    server: r.get(2)?,
+                    tool: r.get(3)?,
+                    calls: r.get(4)?,
+                    errors: r.get(5)?,
+                    ms: r.get(6)?,
+                    bytes_in: r.get(7)?,
+                    bytes_out: r.get(8)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    /// What a connection's listing last offered (`tools` is JSON: `[{name, description}]`).
+    pub fn set_mcp_tools(&self, server: &str, tools: &str, checked: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO mcp_tools(server, tools, checked) VALUES (?1, ?2, ?3)
+             ON CONFLICT(server) DO UPDATE SET tools = excluded.tools, checked = excluded.checked",
+            params![server, tools, checked],
+        )?;
+        Ok(())
+    }
+
+    /// When a connection's listing was last cached (`None`: never).
+    pub fn mcp_tools_checked(&self, server: &str) -> Result<Option<String>> {
+        let checked: Option<String> =
+            self.conn().query_row("SELECT checked FROM mcp_tools WHERE server = ?1", params![server], |r| r.get(0)).optional()?;
+        Ok(checked)
+    }
+
+    /// The cached listings of all connections: `(server, tools JSON, when checked)`.
+    pub fn mcp_tools(&self) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn().prepare("SELECT server, tools, checked FROM mcp_tools ORDER BY server")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    /// Forget a connection's cached listing (it was removed or renamed).
+    pub fn forget_mcp_tools(&self, server: &str) -> Result<()> {
+        self.conn().execute("DELETE FROM mcp_tools WHERE server = ?1", params![server])?;
+        Ok(())
     }
 
     /// Why the last fetch failed, for doctor and the costs page. It never
@@ -1508,5 +1642,56 @@ mod tests {
         const QUEUED_JOBS: &str = "SELECT * FROM agent_jobs WHERE status = 'queued' ORDER BY id";
         let plan = plan_of(server.conn(), QUEUED_JOBS, ());
         assert!(plan.iter().any(|d| d.contains("agent_jobs_queued")), "queued_jobs scans: {plan:?}");
+    }
+
+    #[test]
+    fn mcp_usage_counts_up_and_the_tool_cache_is_replaced() {
+        let (_d, db) = db();
+        db.record_mcp_usage(&McpUse {
+            project: "shop",
+            server: "github",
+            tool: "get_issue",
+            ok: true,
+            ms: 120,
+            bytes_in: 300,
+            bytes_out: 5000,
+        })
+        .unwrap();
+        db.record_mcp_usage(&McpUse {
+            project: "shop",
+            server: "github",
+            tool: "get_issue",
+            ok: false,
+            ms: 30,
+            bytes_in: 100,
+            bytes_out: 200,
+        })
+        .unwrap();
+        db.record_mcp_usage(&McpUse {
+            project: "erp",
+            server: "sap",
+            tool: "read_table",
+            ok: true,
+            ms: 900,
+            bytes_in: 50,
+            bytes_out: 80_000,
+        })
+        .unwrap();
+        let github = db.mcp_usage(30).unwrap().into_iter().find(|u| u.server == "github").unwrap();
+        assert_eq!((github.calls, github.errors, github.ms, github.bytes_in, github.bytes_out), (2, 1, 150, 400, 5200));
+        // An old record stays but is outside a one-day window.
+        db.conn().execute("UPDATE mcp_usage SET day = '2000-01-01' WHERE server = 'sap'", []).unwrap();
+        assert_eq!(db.mcp_usage(1).unwrap().len(), 1);
+        assert_eq!(db.mcp_usage(11_000).unwrap().len(), 2, "a window from 2000 covers the old record");
+
+        db.set_mcp_tools("github", r#"[{"name":"get_issue"}]"#, "2026-10-14T10:00:00Z").unwrap();
+        db.set_mcp_tools("sap", r#"[{"name":"read_table"}]"#, "2026-10-14T11:00:00Z").unwrap();
+        db.set_mcp_tools("github", r#"[{"name":"get_issue"},{"name":"list_commits"}]"#, "2026-10-14T12:00:00Z").unwrap();
+        let cached = db.mcp_tools().unwrap();
+        assert_eq!(cached.len(), 2, "a second listing replaces the first");
+        let github = cached.iter().find(|(s, _, _)| s == "github").unwrap();
+        assert!(github.1.contains("list_commits"));
+        db.forget_mcp_tools("sap").unwrap();
+        assert_eq!(db.mcp_tools().unwrap().len(), 1);
     }
 }

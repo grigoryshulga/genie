@@ -47,7 +47,7 @@ fn content_hash(text: &str) -> String {
 }
 
 /// A file's content and hash (`""` when it does not exist).
-fn file_state(path: &FsPath) -> (Option<String>, String) {
+pub(crate) fn file_state(path: &FsPath) -> (Option<String>, String) {
     let content = std::fs::read_to_string(path).ok();
     let hash = content.as_deref().map(content_hash).unwrap_or_default();
     (content, hash)
@@ -73,7 +73,7 @@ fn valid_id(id: &str) -> bool {
 }
 
 /// What an edit changes: the file, the item it defines and how problems name it.
-struct Target {
+pub(crate) struct Target {
     path: PathBuf,
     /// Relative to the data directory, for people and the history.
     rel: String,
@@ -120,7 +120,7 @@ impl Target {
             problem_prefix: "skill".into(),
         })
     }
-    fn mcp(app: &App) -> Target {
+    pub(crate) fn mcp(app: &App) -> Target {
         Target { path: app.data.join("mcp.json"), rel: "mcp.json".into(), item: "mcp".into(), problem_prefix: "mcp".into() }
     }
 }
@@ -128,7 +128,7 @@ impl Target {
 /// Check `content` (`None`: remove the file) as the loader will see it, then
 /// write it, record the change and reload. Refuses a stale base, an invalid
 /// item and a change that breaks something that loads fine now.
-fn save(app: &App, user: &str, t: &Target, content: Option<String>, base_hash: Option<&str>) -> Result<Value, ApiError> {
+pub(crate) fn save(app: &App, user: &str, t: &Target, content: Option<String>, base_hash: Option<&str>) -> Result<Value, ApiError> {
     let (current, hash) = file_state(&t.path);
     if let Some(base) = base_hash
         && base != hash
@@ -237,8 +237,17 @@ struct DeleteQuery {
 
 async fn catalogue(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
-    let mut v = agent_config::catalogue(&app.agents(), Some(&access.project));
-    v["automations"] = app.blocking(|app| Ok(automation_usage(app))).await?;
+    let project = access.project.clone();
+    let mut v = app
+        .blocking(move |app| {
+            let agents = app.agents();
+            let mut v = agent_config::catalogue(&agents, Some(&project));
+            // The connections with their cached tool listings, for the role editors.
+            v["mcp"] = json!(super::mcp_admin::servers_with_tools(app, &agents, Some(&project)));
+            v["automations"] = automation_usage(app);
+            Ok(v)
+        })
+        .await?;
     v["project"] = json!(access.project);
     v["admin"] = json!(ctx.server_admin().is_ok());
     v["mcpGateway"] = json!(app.cfg.runtime.mcp_gateway);
@@ -707,16 +716,20 @@ async fn delete_skill_file(State(app): State<Arc<App>>, ctx: Ctx, Path((name, re
 async fn mcp(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let admin = viewer(&app, &ctx).await?;
     let project = if admin { None } else { Some(ctx.access(&app, None).await?.project) };
-    let agents = app.agents();
-    let servers: Vec<&agent_config::McpServer> =
-        agents.mcp.values().filter(|s| project.as_deref().is_none_or(|p| s.available_in(p))).collect();
-    let mut out = json!({ "servers": servers, "admin": admin });
-    if admin {
-        // The file holds commands and `${env:…}` references, never secret values.
-        let (content, hash) = file_state(&app.data.join("mcp.json"));
-        out["file"] = json!({ "path": "mcp.json", "content": content, "hash": hash });
-        out["problems"] = json!(agents.problems.iter().filter(|p| p.item.starts_with("mcp")).collect::<Vec<_>>());
-    }
+    let out = app
+        .blocking(move |app| {
+            let agents = app.agents();
+            // The servers with the tools their last listing gave, closed ones left out.
+            let mut out = json!({ "servers": super::mcp_admin::servers_with_tools(app, &agents, project.as_deref()), "admin": admin });
+            if admin {
+                // The file holds commands and `${env:…}` references, never secret values.
+                let (content, hash) = file_state(&app.data.join("mcp.json"));
+                out["file"] = json!({ "path": "mcp.json", "content": content, "hash": hash });
+                out["problems"] = json!(agents.problems.iter().filter(|p| p.item.starts_with("mcp")).collect::<Vec<_>>());
+            }
+            Ok(out)
+        })
+        .await?;
     Ok(Json(out))
 }
 

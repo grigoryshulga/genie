@@ -408,6 +408,11 @@ pub fn allowed(patterns: Option<&[String]>, tool: &str) -> bool {
     patterns.is_none_or(|ps| ps.iter().any(|p| glob(p, tool)))
 }
 
+/// Whether the administrator's `hiddenTools` patterns close a tool for everyone.
+pub fn hidden(patterns: &[String], tool: &str) -> bool {
+    patterns.iter().any(|p| glob(p, tool))
+}
+
 /// `*` matches any text, `?` one character.
 fn glob(pattern: &str, text: &str) -> bool {
     let (p, t): (Vec<char>, Vec<char>) = (pattern.chars().collect(), text.chars().collect());
@@ -446,5 +451,17 @@ mod tests {
         assert!(!allowed(Some(&ps), "list_commits_all"));
         assert!(allowed(None, "anything"));
         assert!(glob("*", "") && glob("a*b*c", "aXbYYc") && !glob("a*b", "aXc"));
+    }
+
+    #[test]
+    fn hidden_tools_close_whatever_a_role_grants() {
+        let closed = vec!["dangerous_*".to_string(), "drop_table".to_string()];
+        assert!(hidden(&closed, "dangerous_drop"));
+        assert!(hidden(&closed, "drop_table"));
+        assert!(!hidden(&closed, "drop_table_all"));
+        assert!(!hidden(&closed, "get_issue"));
+        assert!(!hidden(&[], "anything"));
+        // The whole connection granted, one tool still closed.
+        assert!(allowed(None, "dangerous_drop") && hidden(&closed, "dangerous_drop"));
     }
 }

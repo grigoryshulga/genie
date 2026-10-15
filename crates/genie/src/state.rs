@@ -200,6 +200,15 @@ impl App {
         Ok(f(&db)?)
     }
 
+    /// The MCP environment a server administrator keeps in the server's database:
+    /// what `${env:NAME}` of `mcp.json` resolves first (empty when unreadable).
+    pub fn mcp_env(&self) -> std::collections::BTreeMap<String, String> {
+        self.with_server(|db| db.mcp_env()).unwrap_or_else(|e| {
+            eprintln!("genie: cannot read the MCP environment: {e}");
+            Default::default()
+        })
+    }
+
     /// A project's tracker, opened on first use.
     fn project_tracker(&self, slug: &str) -> AppResult<Arc<Mutex<Tracker>>> {
         if let Some(p) = self.projects.read().map_err(|_| AppError::Internal("registry poisoned".into()))?.get(slug) {

@@ -40,6 +40,8 @@ export interface Policy {
   denyCommands: string[];
   /** Granted MCP connections: all their tools (`null`) or tool name patterns. */
   mcp: Record<string, string[] | null>;
+  /** Tools the administrator closed for everyone, whatever a role grants; a policy without them is an older genie's. */
+  mcpHidden?: Record<string, string[]>;
 }
 
 const POLICY = process.env.GENIE_POLICY ?? "";
@@ -123,6 +125,10 @@ export function mcpDenial(p: Policy, server: string, tool: string): string | und
   const servers = Object.keys(p.mcp);
   if (!Object.hasOwn(p.mcp, server)) {
     return `genie: MCP connection ${server} is not granted. The role ${p.role} may use MCP connections: ${servers.join(", ") || "none"}`;
+  }
+  const closed = p.mcpHidden?.[server] ?? [];
+  if (closed.some((pt) => glob(pt).test(tool))) {
+    return `genie: the administrator closed the tool ${tool} of ${server}`;
   }
   const patterns = p.mcp[server];
   if (!patterns || patterns.some((pt) => glob(pt).test(tool))) return undefined;
