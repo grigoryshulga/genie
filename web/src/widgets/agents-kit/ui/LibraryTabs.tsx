@@ -268,7 +268,7 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
               : "Шлюз genie выключен (runtime.mcpGateway): харнесс получает подключения вместе с секретами, вызовы genie не видит."}
           </p>
         </div>
-        {/* Управление подключениями — в «Настройки» → «Сервер» → «MCP»; каталог не редактирует. */}
+        {/* Управление подключениями — в «Настройки» → «Управление» → «MCP»; каталог не редактирует. */}
       </div>
       {d?.problems && <Problems items={d.problems} />}
       <div className="ag-table-wrap">

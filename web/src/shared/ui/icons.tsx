@@ -91,6 +91,12 @@ export const Icon = {
       <path d="M5 4.75h.01M5 11.25h.01" />
     </svg>
   ),
+  chart: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.5}>
+      <path d="M2.5 13.5h11" />
+      <path d="M4 11V7.5M8 11V3.5M12 11V5.5" />
+    </svg>
+  ),
   user: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)} strokeWidth={1.5}>
       <circle cx="8" cy="5.5" r="2.5" />

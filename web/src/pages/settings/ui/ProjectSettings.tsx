@@ -49,7 +49,7 @@ export function ProjectSettingsPage() {
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Проект</h1>
+        <h1>Настройки проекта</h1>
         {project && (
           <span className="sub">
             {project.name} · {PROJECT_ROLE_NAME[project.role]}
