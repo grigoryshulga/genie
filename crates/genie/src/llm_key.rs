@@ -22,6 +22,10 @@
 //! of pi's own providers are voluntary: a person's key, when set, overrides what
 //! the server's environment would have given the agent; without one the agent
 //! runs as before.
+//!
+//! A provider's key the administration shares with everyone (`global_secrets`)
+//! stands in where the person keeps none: a person's own key of the same
+//! provider comes first, and a shared LiteLLM key satisfies the owed one.
 
 use genie_core::automation::Run;
 use genie_core::secrets::LITELLM;
@@ -162,17 +166,20 @@ pub fn resolve(app: &App, project: &str, who: &str, initiator: Option<&str>, mod
         let id = user.as_ref().map(|u| u.id);
         id.and_then(|id| app.with_server(|db| db.user_secret(id, name)).ok().flatten())
     };
+    let global = |name: &str| app.with_server(|db| db.global_secret(name)).ok().flatten();
     let mut set: Vec<(&'static str, String)> = Vec::new();
     let mut clear: Vec<&'static str> = Vec::new();
-    // The LiteLLM key is set or cleared: the server's own never reaches a person's agent.
-    let litellm = secret(LITELLM);
+    // The LiteLLM key is the person's own, else the shared one; set or cleared:
+    // the server's own never reaches a person's agent.
+    let litellm = secret(LITELLM).or_else(|| global(LITELLM));
     match &litellm {
         Some(k) => set.push((KEY_VAR, k.clone())),
         None => clear.push(KEY_VAR),
     }
-    // The model's own provider: a person's key overrides the server's environment.
+    // The model's own provider: the person's key, else the shared one, overrides
+    // the server's environment.
     if let Some(p) = native(model)
-        && let Some(k) = secret(p.id)
+        && let Some(k) = secret(p.id).or_else(|| global(p.id))
     {
         set.push((p.key_var, k));
     }

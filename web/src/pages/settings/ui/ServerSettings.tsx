@@ -1,8 +1,10 @@
 // «Сервер» — server administration, a section each: health (the doctor check, the week
-// in numbers), statistics and costs, projects, accounts, MCP connections and the
-// knowledge vault sync. Server administrators only.
-
+// in numbers), statistics and costs, projects, accounts, the provider keys shared
+// with everyone, MCP connections and the knowledge vault sync. Server
+// administrators only.
+import { ProvidersAdminSection } from "./ProvidersAdmin.tsx";
 import { useQueryClient } from "@tanstack/react-query";
+
 import { useState } from "react";
 import { Link, NavLink, useParams } from "react-router";
 import {
@@ -46,6 +48,7 @@ export function ServerSettingsPage() {
     { id: "stats", title: "Статистика" },
     { id: "projects", title: "Проекты", n: projects },
     ...(local ? [] : [{ id: "accounts", title: "Учётные записи", n: accounts }]),
+    { id: "providers", title: "Провайдеры" },
     { id: "mcp", title: "MCP" },
     { id: "vault", title: "База знаний" },
   ];
@@ -70,6 +73,8 @@ export function ServerSettingsPage() {
           <Projects current={session?.project} />
         ) : section === "accounts" && !local ? (
           <Accounts me={session?.user.login} />
+        ) : section === "providers" ? (
+          <ProvidersAdminSection />
         ) : section === "mcp" ? (
           <McpAdminSection />
         ) : section === "vault" ? (

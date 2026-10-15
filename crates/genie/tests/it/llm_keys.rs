@@ -1,6 +1,8 @@
 //! A person's model keys: kept in their profile, never shown back, and given to
 //! the agents started on their behalf — the LiteLLM key an agent owes, and the
 //! keys of the providers pi supports, which override the server's environment.
+//! A provider key the administration shares with everyone stands in where a
+//! person keeps none of their own.
 
 use crate::common;
 
@@ -18,6 +20,15 @@ use serde_json::json;
 
 async fn login(h: &Harness, login: &str) -> String {
     h.app.with_server(|db| db.create_user(login, login, None, Some("password123"), false)).unwrap();
+    let (st, _, cookies) =
+        call(&h.remote, "POST", "/api/auth/login").json(json!({ "login": login, "password": "password123" })).send().await;
+    assert_eq!(st, StatusCode::OK);
+    cookies.iter().find(|c| c.starts_with("genie_session=")).unwrap().split(';').next().unwrap().to_string()
+}
+
+/// A server administrator's session.
+async fn admin_login(h: &Harness, login: &str) -> String {
+    h.app.with_server(|db| db.create_user(login, login, None, Some("password123"), true)).unwrap();
     let (st, _, cookies) =
         call(&h.remote, "POST", "/api/auth/login").json(json!({ "login": login, "password": "password123" })).send().await;
     assert_eq!(st, StatusCode::OK);
@@ -63,6 +74,51 @@ async fn keys_are_set_in_the_profile_and_never_shown_back() {
     // Somebody else's keys are nobody's business: there is no way to name another user.
     let (st, _, _) = call(&h.remote, "GET", "/api/me/llm-keys").send().await;
     assert_eq!(st, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn shared_provider_keys_are_set_by_an_admin_and_offered_to_everyone() {
+    let h = Harness::new();
+    let anna = login(&h, "anna").await;
+    let root = admin_login(&h, "root").await;
+
+    // Only the server's administrators share a key; anonymous reads are nobody's.
+    let (st, _, _) = call(&h.remote, "PUT", "/api/llm-keys/anthropic").cookie(&anna).json(json!({ "key": "sk-no" })).send().await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, _, _) = call(&h.remote, "GET", "/api/llm-keys").send().await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+
+    let (st, v, _) =
+        call(&h.remote, "PUT", "/api/llm-keys/anthropic").cookie(&root).json(json!({ "key": "sk-shared-ant-0123456789" })).send().await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["key"]["hint"], "…6789");
+    let (st, _, _) =
+        call(&h.remote, "PUT", "/api/llm-keys/litellm").cookie(&root).json(json!({ "key": "sk-shared-proxy-0123456789" })).send().await;
+    assert_eq!(st, StatusCode::OK);
+    // Only providers of the registry; an empty key is a mistake.
+    let (st, _, _) = call(&h.remote, "PUT", "/api/llm-keys/openai-codex").cookie(&root).json(json!({ "key": "x" })).send().await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    let (st, _, _) = call(&h.remote, "PUT", "/api/llm-keys/litellm").cookie(&root).json(json!({ "key": "  " })).send().await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+
+    // The administration sees what is set, never the keys themselves.
+    let (_, v, _) = call(&h.remote, "GET", "/api/llm-keys").cookie(&root).send().await;
+    assert_eq!(v["keys"]["anthropic"]["hint"], "…6789");
+    assert!(!v.to_string().contains("sk-shared"), "the keys themselves never leave the server: {v}");
+
+    // A person sees the shared keys next to their own, without the values.
+    let (_, v, _) = call(&h.remote, "GET", "/api/me/llm-keys").cookie(&anna).send().await;
+    assert_eq!(v["global"]["anthropic"]["hint"], "…6789");
+    assert_eq!(v["global"]["litellm"]["hint"], "…6789");
+    assert!(v["keys"].as_object().unwrap().is_empty(), "anna keeps no key of her own");
+    assert!(!v.to_string().contains("sk-shared"), "the keys themselves never leave the server: {v}");
+
+    let (st, _, _) = call(&h.remote, "DELETE", "/api/llm-keys/anthropic").cookie(&root).send().await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, v, _) = call(&h.remote, "GET", "/api/llm-keys").cookie(&root).send().await;
+    assert!(v["keys"].as_object().unwrap().get("anthropic").is_none());
+    let (_, v, _) = call(&h.remote, "GET", "/api/me/llm-keys").cookie(&anna).send().await;
+    assert!(v["global"].as_object().unwrap().get("anthropic").is_none());
 }
 
 struct Live {
@@ -206,6 +262,68 @@ async fn a_persons_key_of_a_pi_provider_overrides_the_servers() {
     let name = format!("job-{}", bob.id);
     wait_for("bob's turn", Duration::from_secs(20), || key_file(l.dir.path(), &name).is_some()).await;
     assert_eq!(key_file(l.dir.path(), &name).as_deref(), Some("litellm=unset anthropic=server-ant"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn agents_of_people_without_their_own_key_run_on_the_shared_one() {
+    let l = live_on("anthropic/claude-opus-5-5").await;
+    l.app
+        .with_server(|db| {
+            db.set_global_secret("anthropic", "sk-shared-ant-0123")?;
+            db.set_global_secret(genie_core::secrets::LITELLM, "sk-shared-proxy-0123")
+        })
+        .unwrap();
+    let job = |initiator: &str| {
+        let l = l.app.clone();
+        let initiator = initiator.to_string();
+        l.with_server(move |db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                role: "analyst".into(),
+                goal: "look around".into(),
+                workspace: "none".into(),
+                initiator: Some(initiator),
+                ..Default::default()
+            })
+        })
+        .unwrap()
+    };
+    // Bob keeps no keys at all: the shared ones stand in, the server's own do not reach him.
+    let bob = job("bob");
+    l.app.wake_runtime.notify_one();
+    let name = format!("job-{}", bob.id);
+    wait_for("bob's turn", Duration::from_secs(20), || key_file(l.dir.path(), &name).is_some()).await;
+    assert_eq!(key_file(l.dir.path(), &name).as_deref(), Some("litellm=sk-shared-proxy-0123 anthropic=sk-shared-ant-0123"));
+    // Anna keeps the LiteLLM key of her own: it comes first, the shared anthropic key stands in.
+    let anna = job("anna");
+    l.app.wake_runtime.notify_one();
+    let name = format!("job-{}", anna.id);
+    wait_for("anna's turn", Duration::from_secs(20), || key_file(l.dir.path(), &name).is_some()).await;
+    assert_eq!(key_file(l.dir.path(), &name).as_deref(), Some("litellm=sk-anna-0123456789 anthropic=sk-shared-ant-0123"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_shared_litellm_key_satisfies_the_owed_one() {
+    let l = live().await;
+    l.app.with_server(|db| db.set_global_secret(genie_core::secrets::LITELLM, "sk-shared-proxy-0123")).unwrap();
+    let job = l
+        .app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                role: "analyst".into(),
+                goal: "look around".into(),
+                workspace: "none".into(),
+                initiator: Some("bob".into()),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    l.app.wake_runtime.notify_one();
+    let name = format!("job-{}", job.id);
+    wait_for("the job's turn", Duration::from_secs(20), || key_file(l.dir.path(), &name).is_some()).await;
+    // Bob owes no key of his own: the shared one starts the agent, the server's own stays out.
+    assert_eq!(key_file(l.dir.path(), &name).as_deref(), Some("litellm=sk-shared-proxy-0123 anthropic=server-ant"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
