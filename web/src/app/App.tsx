@@ -8,7 +8,7 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
-import { isTyping, rememberWorkRoute } from "@/shared/lib";
+import { isTyping, readPref, rememberWorkRoute, writePref } from "@/shared/lib";
 import { Sidebar } from "@/widgets/sidebar";
 import { lazyPage } from "./lazyPage.ts";
 
@@ -49,11 +49,17 @@ function Shell() {
   const location = useLocation();
   const [sp, setSp] = useSearchParams();
   const [dialog, setDialog] = useState<"new" | "palette" | undefined>();
+  const [sidebarCompact, setSidebarCompact] = useState(() => readPref("sidebar-compact", "false") === "true");
   const [preset, setPreset] = useState<NewTaskPreset | undefined>();
   const newTask = useCallback((p?: NewTaskPreset) => {
     setPreset(p);
     setDialog("new");
   }, []);
+  const toggleSidebar = useCallback(() => {
+    const next = !sidebarCompact;
+    setSidebarCompact(next);
+    writePref("sidebar-compact", String(next));
+  }, [sidebarCompact]);
   const searchRef = useRef<HTMLInputElement>(null);
   const teams = useTeamMap();
   const tasks = useTasks().data;
@@ -142,10 +148,10 @@ function Shell() {
   }, [dialog, openTaskId, closeTask, actions, navigate, newTask]);
 
   const agentRoute = /^\/team\/[^/]+\/[^/]+/.test(location.pathname);
-  const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app";
+  const cls = `${agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app"}${sidebarCompact ? " sidebar-compact" : ""}`;
   return (
     <div className={cls}>
-      <Sidebar onNew={() => newTask()} online={online} />
+      <Sidebar onNew={() => newTask()} online={online} compact={sidebarCompact} onToggleCompact={toggleSidebar} />
       <Suspense fallback={<PageFallback />}>
         <Outlet context={{ onNew: newTask, searchRef }} />
       </Suspense>
