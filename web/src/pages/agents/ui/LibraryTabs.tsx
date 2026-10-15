@@ -16,8 +16,8 @@ import {
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
 import { bytes, timeAgo } from "@/shared/lib";
-import { ConfirmDialog, Icon, Markdown, Modal } from "@/shared/ui";
-import { Badge, FileEditor, History, Problems, Section, useAction } from "./common.tsx";
+import { Badge, ConfirmDialog, Icon, Markdown, Modal, Section, useAct } from "@/shared/ui";
+import { FileEditor, History, Problems } from "@/widgets/settings-kit";
 
 export function SkillsTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected?: string; onSelect: (name: string) => void }) {
   const current = selected ?? cfg.skills[0]?.name;
@@ -52,7 +52,7 @@ function SkillPane({ name, cfg }: { name: string; cfg: Catalogue }) {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const remove = useDeleteConfig();
-  const act = useAction();
+  const act = useAct();
   const d = skill.data;
   if (!d) return <div className="pane-empty">{skill.error ? skill.error.message : "Загрузка…"}</div>;
   const body = d.content ? (splitFrontmatter(d.content)?.body ?? d.content) : "";
@@ -136,7 +136,7 @@ function SkillFiles({ name, files, canEdit }: { name: string; files: string[]; c
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
   const { upload, remove } = useSkillFiles();
-  const act = useAction();
+  const act = useAct();
   if (!others.length && !canEdit) return null;
   const put = async (list: File[]) => {
     if (!list.length) return;

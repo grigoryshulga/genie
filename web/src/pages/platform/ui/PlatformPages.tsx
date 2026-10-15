@@ -20,22 +20,8 @@ import {
 } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
-import { Icon, Markdown, Modal, useToast } from "@/shared/ui";
+import { Icon, Markdown, Modal, useRefreshingAct, useToast } from "@/shared/ui";
 import { describeStep, describeTrigger } from "../model/describe.ts";
-
-function useAction() {
-  const qc = useQueryClient();
-  const toast = useToast();
-  return async (fn: () => Promise<unknown>, ok?: string) => {
-    try {
-      await fn();
-      if (ok) toast(ok);
-      await qc.invalidateQueries();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error");
-    }
-  };
-}
 
 // ------------------------------------------------------------------ answer page (public)
 
@@ -142,7 +128,7 @@ export function AnswerPage() {
 export function NotificationsPage() {
   useTick();
   const q = useNotifications();
-  const act = useAction();
+  const act = useRefreshingAct();
   const navigate = useNavigate();
   const items = q.data?.items ?? [];
   const days: { day: string; items: Notification[] }[] = [];
@@ -217,7 +203,7 @@ export function AutomationsPage() {
   const [sp, setSp] = useSearchParams();
   const [editing, setEditing] = useState<{ id?: number; text: string }>();
   const [showPlaybooks, setShowPlaybooks] = useState(false);
-  const act = useAction();
+  const act = useRefreshingAct();
   const installed = new Set((rules.data ?? []).map((r) => r.name));
   const selected = Number(sp.get("rule") ?? "") || rules.data?.[0]?.id;
   const current = rules.data?.find((r) => r.id === selected);
@@ -310,7 +296,7 @@ const EMPTY_RULE = {
 type Spec = { on?: Record<string, unknown>; steps?: Record<string, unknown>[] };
 
 function RuleView({ rule, onEdit }: { rule: Automation; onEdit: () => void }) {
-  const act = useAction();
+  const act = useRefreshingAct();
   const cfg = useAgentConfig().data;
   const steps = ((rule.spec as Spec).steps ?? []).map((st) =>
     describeStep(st, {
@@ -431,7 +417,7 @@ function Runs({ automation }: { automation: number }) {
   const runs = useRuns(automation);
   const [open, setOpen] = useState<number>();
   const run = useRun(open);
-  const act = useAction();
+  const act = useRefreshingAct();
   return (
     <section>
       <h3>Последние запуски</h3>
@@ -511,7 +497,7 @@ export function ProposalsPage() {
   const list = useProposals();
   const selected = Number(sp.get("proposal") ?? "") || list.data?.[0]?.id;
   const one = useProposal(selected);
-  const act = useAction();
+  const act = useRefreshingAct();
   const decide = (verb: "approve" | "reject", force = false) =>
     act(async () => {
       await request("POST", `/api/docs/proposals/${selected}/${verb}`, { force });

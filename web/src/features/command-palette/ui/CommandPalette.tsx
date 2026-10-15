@@ -9,7 +9,7 @@ export interface PaletteActions {
   newTask: () => void;
   /** «Новая задача» in the «Обсудить с агентом» mode. */
   newIdea: () => void;
-  go: (where: "board" | "tasks" | "epics") => void;
+  go: (where: "board" | "tasks" | "epics" | "settings") => void;
   /** The task list with a preset's statuses; `mine` keeps the viewer's tasks. */
   preset: (id: PresetId, mine?: boolean) => void;
   openTask: (id: string) => void;
@@ -54,6 +54,7 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
       { key: "go-board", icon: <Icon.board />, label: "Доска", hint: "G B", group: "ПЕРЕЙТИ", run: () => actions.go("board") },
       { key: "go-tasks", icon: <Icon.list />, label: "Задачи", hint: "G T", group: "ПЕРЕЙТИ", run: () => actions.go("tasks") },
       { key: "go-epics", icon: <EpicIcon />, label: "Эпики", hint: "G E", group: "ПЕРЕЙТИ", run: () => actions.go("epics") },
+      { key: "go-settings", icon: <Icon.gear />, label: "Настройки", hint: "G S", group: "ПЕРЕЙТИ", run: () => actions.go("settings") },
       ...(mine ? [{ key: "p-mine", icon: <Icon.user />, label: "Задачи: мои", group: "ПЕРЕЙТИ" as const, run: () => actions.preset("open", true) }] : []),
       ...PRESETS.filter((p) => p.id !== "open").map((p) => ({ key: `p-${p.id}`, icon: <StatusIcon status={p.statuses[0]} />, label: `Задачи: ${p.name.toLowerCase()}`, group: "ПЕРЕЙТИ" as const, run: () => actions.preset(p.id) })),
       { key: "docs", icon: <DocFileIcon />, label: "Документация", hint: "docs/", group: "ПЕРЕЙТИ", run: actions.openDocs },

@@ -24,27 +24,14 @@ import {
 import { useRepos } from "@/entities/repo";
 import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
-import { ConfirmDialog, Icon, useToast } from "@/shared/ui";
+import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
 import "@/shared/ui/settings.css";
 import "./project.css";
 
 export const ROLES: ProjectRole[] = ["viewer", "member", "admin", "owner"];
 
-/** Run an action; a failure becomes an error toast, success an optional one. */
-export function useAct() {
-  const toast = useToast();
-  return async (fn: () => Promise<unknown>, ok?: string): Promise<boolean> => {
-    try {
-      await fn();
-      if (ok) toast(ok);
-      return true;
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error");
-      return false;
-    }
-  };
-}
+// `useAct` now lives in `@/shared/ui` (S2): the shared toolkit of the settings pages.
 
 export function ProjectPage() {
   const session = useSession().data;

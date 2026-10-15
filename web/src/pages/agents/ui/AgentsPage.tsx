@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { type Catalogue, CLASS_TITLE, newRoleFile, newTemplate, setFrontmatterKey, useAgentConfig, useSaveConfig } from "@/entities/agent-config";
 import { Icon, Modal } from "@/shared/ui";
-import { History, Problems } from "./common.tsx";
+import { History, Problems } from "@/widgets/settings-kit";
 import { McpTab, SkillsTab } from "./LibraryTabs.tsx";
 import { RolesTab } from "./RolesTab.tsx";
 import { TemplatesTab } from "./TemplatesTab.tsx";

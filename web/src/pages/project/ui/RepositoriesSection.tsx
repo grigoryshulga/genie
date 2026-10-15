@@ -22,9 +22,7 @@ import {
   useRepos,
   useSyncRepo,
 } from "@/entities/repo";
-import { ConfirmDialog, Icon } from "@/shared/ui";
-import { Menu } from "./Menu.tsx";
-import { useAct } from "./ProjectPage.tsx";
+import { ConfirmDialog, Icon, Menu, useAct } from "@/shared/ui";
 
 type Access = "read" | "write";
 

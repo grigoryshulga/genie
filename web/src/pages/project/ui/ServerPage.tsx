@@ -28,12 +28,9 @@ import {
 } from "@/entities/project";
 import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
-import { Icon } from "@/shared/ui";
-import { BarChart } from "./BarChart.tsx";
+import { BarChart, Icon, Menu, useAct } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
-import { Menu } from "./Menu.tsx";
 import { Costs } from "./ServerCosts.tsx";
-import { useAct } from "./ProjectPage.tsx";
 import "@/shared/ui/settings.css";
 import "./project.css";
 

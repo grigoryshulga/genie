@@ -1,8 +1,8 @@
-// The person's own settings, one tab each: the account (photo, name, login, mail),
-// signing in (password), Telegram, the model keys agents use on one's behalf
-// (the LiteLLM proxy and the providers pi supports), and personal tokens.
+// «Личное» — the person's own settings, one section each: the account (photo,
+// name, login, mail), signing in (password), Telegram, the model keys agents
+// use on one's behalf (the LiteLLM proxy and the providers pi supports), and
+// personal tokens.
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { NavLink, useParams } from "react-router";
 import { PersonAvatar, PROJECT_ROLE_NAME, usePatchUser, useSetAvatar } from "@/entities/project";
@@ -10,47 +10,30 @@ import { useChannels, useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { Icon, useToast } from "@/shared/ui";
+import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
 import { TokensTab } from "./TokensTab.tsx";
 import "@/shared/ui/settings.css";
 
-const TABS = [
-  { id: "", title: "Аккаунт" },
+const SECTIONS = [
+  { id: "account", title: "Аккаунт" },
   { id: "security", title: "Вход и пароль" },
   { id: "telegram", title: "Telegram" },
   { id: "keys", title: "Провайдеры и ключи" },
   { id: "tokens", title: "Токены CLI и MCP" },
 ] as const;
 
-/** Run an action; a failure becomes an error toast, success an optional one. */
-export function useAct() {
-  const toast = useToast();
-  const qc = useQueryClient();
-  return async (fn: () => Promise<unknown>, ok?: string): Promise<boolean> => {
-    try {
-      await fn();
-      if (ok) toast(ok);
-      await qc.invalidateQueries();
-      return true;
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error");
-      return false;
-    }
-  };
-}
-
-export function ProfilePage() {
+export function MeSettingsPage() {
   const session = useSession().data;
-  const { tab = "" } = useParams();
+  const { section = "account" } = useParams();
   const local = session?.mode === "local";
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Профиль</h1>
-        <nav className="st-tabs" aria-label="Разделы профиля">
-          {TABS.map((t) => (
-            <NavLink key={t.id} to={t.id ? `/profile/${t.id}` : "/profile"} end className={({ isActive }) => (isActive ? "on" : undefined)}>
-              {t.title}
+        <h1>Личное</h1>
+        <nav className="st-tabs" aria-label="Разделы личных настроек">
+          {SECTIONS.map((s) => (
+            <NavLink key={s.id} to={`/settings/me/${s.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
+              {s.title}
             </NavLink>
           ))}
         </nav>
@@ -66,13 +49,13 @@ export function ProfilePage() {
               </p>
             </div>
           </div>
-        ) : tab === "security" ? (
+        ) : section === "security" ? (
           <SecurityTab />
-        ) : tab === "telegram" ? (
+        ) : section === "telegram" ? (
           <TelegramTab />
-        ) : tab === "keys" ? (
+        ) : section === "keys" ? (
           <KeysTab />
-        ) : tab === "tokens" ? (
+        ) : section === "tokens" ? (
           <TokensTab />
         ) : (
           <AccountTab key={`${session.user.login}:${session.user.name}:${session.user.email ?? ""}`} user={session.user} />

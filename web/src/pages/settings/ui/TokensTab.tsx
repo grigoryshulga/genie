@@ -4,8 +4,7 @@
 import { useState } from "react";
 import { type UserToken, useIssueToken, useRevokeToken, useTokens } from "@/entities/project";
 import { timeAgo, useTick } from "@/shared/lib";
-import { ConfirmDialog, Icon, useToast } from "@/shared/ui";
-import { useAct } from "./ProfilePage.tsx";
+import { ConfirmDialog, Icon, useRefreshingAct as useAct, useToast } from "@/shared/ui";
 
 type Client = "claude" | "codex" | "cli";
 

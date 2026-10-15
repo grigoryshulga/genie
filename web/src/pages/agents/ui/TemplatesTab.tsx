@@ -26,8 +26,8 @@ import {
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
 import { plural } from "@/shared/lib";
-import { ConfirmDialog, Icon, Modal, useToast } from "@/shared/ui";
-import { Badge, FileEditor, History, Problems, Section, useAction } from "./common.tsx";
+import { Badge, ConfirmDialog, Icon, Modal, Section, useAct, useToast } from "@/shared/ui";
+import { FileEditor, History, Problems } from "@/widgets/settings-kit";
 
 export function TemplatesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected?: string; onSelect: (id: string) => void }) {
   const current = selected ?? cfg.teams[0]?.id;
@@ -70,7 +70,7 @@ function TemplatePane({ id, cfg }: { id: string; cfg: Catalogue }) {
   const [mode, setMode] = useState<"form" | "file">();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const remove = useDeleteConfig();
-  const act = useAction();
+  const act = useAct();
   const d = detail.data;
   if (!d) return <div className="pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
   const t = d.template;

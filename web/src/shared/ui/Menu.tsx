@@ -1,7 +1,7 @@
 // A "⋯" button with a small menu, for the rare actions on a row of a settings list.
 
 import { useEffect, useRef, useState } from "react";
-import { Icon } from "@/shared/ui";
+import { Icon } from "./icons.tsx";
 
 /** A "⋯" button with a small menu under it; closes on a click outside or Escape. */
 export function Menu({ label, children }: { label: string; children: (close: () => void) => React.ReactNode }) {

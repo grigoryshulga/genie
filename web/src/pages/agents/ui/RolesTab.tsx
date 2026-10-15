@@ -26,8 +26,8 @@ import {
 } from "@/entities/agent-config";
 import { useMeta, useProjects } from "@/entities/project";
 import { ModelPicker } from "@/features/agent-model";
-import { ChipInput, ConfirmDialog, Icon, Markdown, Modal, useToast } from "@/shared/ui";
-import { Badge, FileEditor, History, Problems, Section, useAction } from "./common.tsx";
+import { Badge, ChipInput, ConfirmDialog, Icon, Markdown, Modal, Section, useAct, useToast } from "@/shared/ui";
+import { FileEditor, History, Problems } from "@/widgets/settings-kit";
 
 export function RolesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected?: string; onSelect: (id: string) => void }) {
   const team = cfg.roles.filter((r) => r.class !== "orchestrator");
@@ -69,7 +69,7 @@ function RolePane({ id, cfg }: { id: string; cfg: Catalogue }) {
   const detail = useRole(id);
   const [dialog, setDialog] = useState<Dialog>();
   const remove = useDeleteConfig();
-  const act = useAction();
+  const act = useAct();
   const d = detail.data;
   if (!d) return <div className="pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
   const r = d.role;
@@ -333,7 +333,7 @@ function Permissions({ detail, cfg }: { detail: RoleDetail; cfg: Catalogue }) {
   const base = basePermissions(r, cfg.roles, cfg.classes);
   const [wanted, setWanted] = useState<string[]>(r.capabilities);
   const edit = useRoleEdit(detail);
-  const act = useAction();
+  const act = useAct();
   const changed = wanted.length !== r.capabilities.length || wanted.some((c) => !r.capabilities.includes(c));
   const toggle = (c: string, on: boolean) => setWanted((w) => (on ? [...w, c] : w.filter((x) => x !== c)));
   const baseName = r.extends ? `роли «${cfg.roles.find((x) => x.id === r.extends)?.title ?? r.extends}»` : `класса «${CLASS_TITLE[r.class]}»`;
@@ -562,7 +562,7 @@ function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClose: () =
   const [f, setF] = useState(initial);
   const [busy, setBusy] = useState(false);
   const edit = useRoleEdit(detail);
-  const act = useAction();
+  const act = useAct();
   const meta = useMeta().data;
   const projects = useProjects().data;
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -682,7 +682,7 @@ function SkillsDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catal
   const [chosen, setChosen] = useState<string[]>(r.skills ?? []);
   const [busy, setBusy] = useState(false);
   const edit = useRoleEdit(detail);
-  const act = useAction();
+  const act = useAct();
   const save = async () => {
     setBusy(true);
     if (await act(() => edit([["skills", only ? chosen : undefined]]), "Навыки роли сохранены")) onClose();
@@ -732,7 +732,7 @@ function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogu
   );
   const [busy, setBusy] = useState(false);
   const edit = useRoleEdit(detail);
-  const act = useAction();
+  const act = useAct();
   const unknown = r.mcp.filter((g) => g !== "*" && !cfg.mcp.some((s) => s.id === g.split(":")[0]));
   const save = async () => {
     const out: string[] = [...unknown];

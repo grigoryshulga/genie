@@ -17,8 +17,7 @@ import {
   tokensTotal,
   topItems,
 } from "@/entities/usage";
-import { BarChart } from "./BarChart.tsx";
-import { useAct } from "./ProjectPage.tsx";
+import { BarChart, useAct } from "@/shared/ui";
 
 const COLORS = ["#7c84f0", "#3aa58a", "#d9a441", "#5ba7e0"];
 const OTHER = "#6b6f78";

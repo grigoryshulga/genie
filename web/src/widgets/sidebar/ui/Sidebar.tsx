@@ -170,7 +170,7 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
             {online ? "онлайн" : "нет связи"}
           </span>
         </span>
-        <NavLink to="/profile" className="icon-btn" aria-label="Профиль и каналы" title="Профиль и каналы">
+        <NavLink to="/settings" className="icon-btn" aria-label="Настройки" title="Настройки (G S)">
           <Icon.gear size={14} />
         </NavLink>
         {session?.mode === "users" && (
