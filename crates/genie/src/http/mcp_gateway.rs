@@ -275,10 +275,10 @@ fn cache_tools(app: &Arc<App>, server: &str, tools: Vec<Value>) {
         let written = app
             .blocking(move |app| {
                 app.with_server(|db| {
-                    let stale = db
-                        .mcp_tools_checked(&server)?
-                        .and_then(|at| chrono::DateTime::parse_from_rfc3339(&at).ok())
-                        .is_none_or(|at| chrono::Utc::now().signed_duration_since(at) > chrono::Duration::seconds(CACHE_TTL.as_secs() as i64));
+                    let stale =
+                        db.mcp_tools_checked(&server)?.and_then(|at| chrono::DateTime::parse_from_rfc3339(&at).ok()).is_none_or(|at| {
+                            chrono::Utc::now().signed_duration_since(at) > chrono::Duration::seconds(CACHE_TTL.as_secs() as i64)
+                        });
                     if stale {
                         db.set_mcp_tools(&server, &tools, &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true))?;
                     }

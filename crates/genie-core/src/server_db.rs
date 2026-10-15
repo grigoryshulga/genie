@@ -701,7 +701,16 @@ impl ServerDb {
     // --- mcp -----------------------------------------------------------------
 
     /// Count one tool call through the MCP gateway: per today, project, server and tool.
-    pub fn record_mcp_usage(&self, project: &str, server: &str, tool: &str, ok: bool, ms: u64, bytes_in: u64, bytes_out: u64) -> Result<()> {
+    pub fn record_mcp_usage(
+        &self,
+        project: &str,
+        server: &str,
+        tool: &str,
+        ok: bool,
+        ms: u64,
+        bytes_in: u64,
+        bytes_out: u64,
+    ) -> Result<()> {
         let day = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)[..10].to_string();
         self.conn().execute(
             "INSERT INTO mcp_usage(day, project, server, tool, calls, errors, ms, bytes_in, bytes_out)
@@ -756,7 +765,8 @@ impl ServerDb {
 
     /// When a connection's listing was last cached (`None`: never).
     pub fn mcp_tools_checked(&self, server: &str) -> Result<Option<String>> {
-        let checked: Option<String> = self.conn().query_row("SELECT checked FROM mcp_tools WHERE server = ?1", params![server], |r| r.get(0)).optional()?;
+        let checked: Option<String> =
+            self.conn().query_row("SELECT checked FROM mcp_tools WHERE server = ?1", params![server], |r| r.get(0)).optional()?;
         Ok(checked)
     }
 
