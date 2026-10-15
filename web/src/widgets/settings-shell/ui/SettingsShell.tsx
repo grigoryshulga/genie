@@ -15,6 +15,8 @@ export function SettingsShell() {
   const { pathname } = useLocation();
   const project = session?.projects.find((p) => p.slug === session.project);
   const many = (session?.projects.length ?? 0) > 1;
+  // The agents editor lives under /settings/server too — the menu keeps the two apart.
+  const agentsRoute = /^\/settings\/server\/(roles|templates|skills|history)/.test(pathname);
   return (
     <div className="app settings-mode">
       <nav className="sidebar" aria-label="Настройки">
@@ -67,13 +69,13 @@ export function SettingsShell() {
             </NavLink>
           )}
           {session?.user.isAdmin && (
-            <NavLink to="/settings/server/roles" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+            <NavLink to="/settings/server/roles" className={({ isActive }) => `nav-item${isActive || agentsRoute ? " on" : ""}`}>
               <Icon.userPlus size={15} />
               <span className="grow">Агенты</span>
             </NavLink>
           )}
           {session?.user.isAdmin && (
-            <NavLink to="/settings/server/health" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/settings/server") ? " on" : ""}`}>
+            <NavLink to="/settings/server/health" className={({ isActive }) => (isActive || (pathname.startsWith("/settings/server") && !agentsRoute) ? "on" : "")}>
               <Icon.server size={15} />
               <span className="grow">Сервер</span>
             </NavLink>
@@ -82,11 +84,9 @@ export function SettingsShell() {
 
         <span className="grow" />
       </nav>
-      <main className="main">
-        <Suspense fallback={<div className="empty">Загрузка…</div>}>
-          <Outlet />
-        </Suspense>
-      </main>
+      <Suspense fallback={<div className="empty">Загрузка…</div>}>
+        <Outlet />
+      </Suspense>
     </div>
   );
 }
