@@ -13,13 +13,6 @@ use serde_json::Value;
 
 const DEFAULT_JSON: &str = include_str!("../../../config/default.json");
 
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default)]
-pub struct RoleModel {
-    pub model: Option<String>,
-    pub thinking: Option<String>,
-}
-
 /// `modelPrices`: what a model costs, in dollars per million tokens. A missing
 /// cache price leaves that cache's tokens unpriced (never billed as input).
 pub use genie_core::usage::ModelPrice;
@@ -359,7 +352,6 @@ pub struct Config {
     /// Base URL used in links sent by mail and Telegram.
     pub public_url: Option<String>,
     pub allow_hosts: Vec<String>,
-    pub role_models: BTreeMap<String, RoleModel>,
     /// Prices of models (`provider/model` or the model alone), for what agents' work cost.
     pub model_prices: BTreeMap<String, ModelPrice>,
     pub litellm: Litellm,
@@ -381,7 +373,6 @@ impl Default for Config {
             bind: "127.0.0.1".into(),
             public_url: None,
             allow_hosts: Vec::new(),
-            role_models: BTreeMap::new(),
             model_prices: BTreeMap::new(),
             litellm: Litellm::default(),
             budgets: Budgets::default(),
@@ -439,7 +430,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = Config::load(dir.path()).unwrap();
         assert_eq!(cfg.limits.max_active_teams, 4);
-        assert!(cfg.role_models.contains_key("executor"));
+        // No default role models (PD24): every role carries its own model, and the
+        // configuration's problems name the roles that still lack one.
     }
 
     #[test]

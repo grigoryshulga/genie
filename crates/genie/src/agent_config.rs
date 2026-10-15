@@ -527,6 +527,10 @@ pub struct Problem {
     pub message: String,
 }
 
+/// PD24: a role without a model. A setup gap of the configuration, not a defect of one
+/// file — saving the file must not be blocked by it (the role simply cannot run).
+pub const NO_MODEL: &str = "the role has no model";
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct AgentConfig {
     pub roles: BTreeMap<String, RoleDef>,
@@ -1729,6 +1733,18 @@ fn resolve_roles(
             }
         }
     }
+    // PD24: a role without a model cannot run — the administrator must assign one.
+    for (id, def) in &roles {
+        if def.model.is_none() {
+            push_problem(
+                problems,
+                Level::Error,
+                format!("role:{id}"),
+                sources.get(id).and_then(|s| s.path.clone()),
+                format!("{NO_MODEL}: assign one (the `model` field of the role file) — there are no class defaults any more"),
+            );
+        }
+    }
     roles
 }
 
@@ -2130,9 +2146,14 @@ mod tests {
     }
 
     #[test]
-    fn built_in_roles_and_presets_load_without_problems() {
+    fn built_in_roles_load_with_a_no_model_error_per_role() {
         let (_d, a) = load(&[]);
-        assert!(a.problems.is_empty(), "{:#?}", a.problems);
+        // PD24: built-ins ship without models — assigning them is the administrator's
+        // first setup step, and every role without one is a named error.
+        for id in ["analyst", "documenter", "executor", "orchestrator", "planner", "researcher", "reviewer", "tester"] {
+            assert!(a.problems.iter().any(|p| p.item == format!("role:{id}")), "role {id} without a model is a problem: {:#?}", a.problems);
+        }
+        assert!(a.problems.iter().all(|p| p.message.contains("no model")), "nothing else: {:#?}", a.problems);
         assert_eq!(a.roles["reviewer"].files, FileAccess::Read);
         assert_eq!(a.roles["executor"].files, FileAccess::Write);
         assert_eq!(a.roles["orchestrator"].class, Role::Orchestrator);

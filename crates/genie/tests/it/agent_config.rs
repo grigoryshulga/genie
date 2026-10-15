@@ -502,11 +502,11 @@ async fn a_person_gives_one_agent_its_own_model_and_takes_it_back() {
     assert_eq!(s, StatusCode::CREATED, "{team}");
     let (exec, reviewer) = (member_named(&team, "executor"), member_named(&team, "reviewer"));
 
-    // The menu lists the models the configuration names, and the thinking levels.
+    // The menu lists the models the configuration names (every role carries its own, PD24) and the thinking levels.
     let (s, models, _) = call(r, "GET", "/api/models").send().await;
     assert_eq!(s, StatusCode::OK, "{models}");
     let ids: Vec<&str> = models["models"].as_array().unwrap().iter().filter_map(|m| m["id"].as_str()).collect();
-    assert!(ids.contains(&"openai-codex/gpt-6-luna"), "the roleModels of the configuration: {models}");
+    assert!(ids.contains(&"fake/executor"), "the models the roles name: {models}");
     assert!(models["thinking"].as_array().unwrap().contains(&json!("xhigh")));
 
     // One member switches; the rest of the team keeps its role's model.

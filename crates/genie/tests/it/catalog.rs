@@ -84,20 +84,21 @@ async fn admins_change_the_agent_configuration_and_everyone_reads_it() {
 
     // A person of the project reads the configuration; only server admins change it.
     let (_, vic) = person(&h, "vic", ProjectRole::Admin);
-    let reviewer = cli(&vic, &["agents", "show", "role:reviewer"]).await.unwrap();
-    assert!(reviewer.text.contains("built in, no file yet"), "{}", reviewer.text);
+    let researcher = cli(&vic, &["agents", "show", "role:researcher"]).await.unwrap();
+    assert!(researcher.text.contains("built in, no file yet"), "{}", researcher.text);
     let refused = cli(&vic, &["agents", "save", "role:reviewer", "--text", "---\n---\nmine"]).await;
     assert!(refused.unwrap_err().contains("server admin rights required"));
     assert!(cli(&vic, &["agents", "check"]).await.is_err(), "the check shows the whole server");
 
-    // The check reads the files as they are now and fails on errors.
+    // The check reads the files as they are now; roles without a model are named (PD24).
     let check = cli(&admin, &["agents", "check"]).await.unwrap();
-    assert!(check.failed.is_none() && check.text.contains("no problems"), "{}", check.text);
+    assert!(check.failed.is_some() && check.text.contains("no model"), "{}", check.text);
     std::fs::write(h.app.data.join("agents/broken.md"), "---\nextends: nobody\n---\nReview.\n").unwrap();
     // Not yet seen by the server (its watcher reloads within seconds), already by the check.
     let check = cli(&admin, &["agents", "check"]).await.unwrap();
     assert!(check.text.contains("role:broken"), "{}", check.text);
-    assert!(check.failed.as_deref().unwrap_or_default().starts_with("1 error(s) in the agent configuration"), "{:?}", check.failed);
+    // PD24: broken plus the two file-less built-ins (planner, researcher) without models.
+    assert!(check.failed.as_deref().unwrap_or_default().starts_with("3 error(s) in the agent configuration"), "{:?}", check.failed);
     let list = cli(&admin, &["agents", "ls"]).await.unwrap();
     assert!(list.text.contains("security-reviewer") && list.text.contains("Team templates:\n  abap"), "{}", list.text);
     assert!(list.text.contains("Skills: deploy") && list.text.ends_with("problem(s): genie agents check"), "{}", list.text);

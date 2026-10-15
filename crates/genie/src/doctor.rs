@@ -464,16 +464,11 @@ fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentCon
             "remove `--mcp-config {mcpConfig}` from runtime.command and runtime.sessionCommand",
         );
     }
-    // The models agents will ask pi for: roles (with roleModels) and team members.
+    // The models agents will ask pi for: every role needs one (PD24) — no class defaults.
     let mut wanted: BTreeSet<(String, String)> = BTreeSet::new();
     for r in agents.roles.values() {
-        let model = r
-            .model
-            .clone()
-            .or_else(|| cfg.role_models.get(&r.id).and_then(|m| m.model.clone()))
-            .or_else(|| cfg.role_models.get(r.class.as_str()).and_then(|m| m.model.clone()));
-        match model {
-            Some(m) => wanted.insert((m, format!("role {}", r.id))),
+        match &r.model {
+            Some(m) => wanted.insert((m.clone(), format!("role {}", r.id))),
             None => wanted.insert((String::new(), format!("role {}", r.id))),
         };
     }
@@ -486,10 +481,10 @@ fn agents_and_models(out: &mut Out, data: &Path, cfg: &Config, agents: &AgentCon
     }
     let unset: Vec<&str> = wanted.iter().filter(|(m, _)| m.is_empty()).map(|(_, who)| who.as_str()).collect();
     if !unset.is_empty() {
-        out.warn(
+        out.fail(
             "models",
-            format!("no model for {}: pi uses its default model", unset.join(", ")),
-            "set roleModels in config.json (see config/default.json)",
+            format!("no model for {}: a role without a model cannot run", unset.join(", ")),
+            "assign a model to every role: «Настройки» → «Сервер» → «Агенты» in the web, or the `model` field of the role file",
         );
     }
     let b = cfg.budgets;
@@ -816,14 +811,15 @@ mod tests {
     fn budgets_warn_about_models_whose_cache_price_is_missing() {
         let data = tempfile::tempdir().unwrap();
         // A program nobody has keeps pi out of the check; the budgets area is what matters.
-        // Every role models "manual/only": the only model budgets have to price.
+        // Every role carries "manual/only" (PD24): the only model budgets have to price.
         let roles = ["analyst", "documenter", "executor", "orchestrator", "planner", "researcher", "reviewer", "tester"];
-        let role_models: serde_json::Value =
-            roles.iter().map(|r| (r.to_string(), serde_json::json!({ "model": "manual/only" }))).collect::<serde_json::Map<_, _>>().into();
+        std::fs::create_dir_all(data.path().join("agents")).unwrap();
+        for r in roles {
+            std::fs::write(data.path().join(format!("agents/{r}.md")), "---\nmodel: manual/only\n---\n").unwrap();
+        }
         let json = |prices: serde_json::Value| {
             serde_json::json!({
                 "budgets": { "perTask": 5.0 },
-                "roleModels": role_models,
                 "modelPrices": { "manual/only": prices },
                 "runtime": { "command": [["definitely-not-an-agent"], ["{message}"]] }
             })

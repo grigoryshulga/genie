@@ -34,6 +34,11 @@ impl Harness {
     pub fn with_config(f: impl FnOnce(&mut Config)) -> Harness {
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = Config::load(dir.path()).unwrap();
+        // PD24: no default models anywhere — every role carries its own, like a real installation.
+        std::fs::create_dir_all(dir.path().join("agents")).unwrap();
+        for id in ["analyst", "executor", "reviewer", "tester", "documenter", "orchestrator"] {
+            std::fs::write(dir.path().join(format!("agents/{id}.md")), format!("---\nmodel: fake/{id}\n---\n")).unwrap();
+        }
         // Test files live in the data directory, which a sandboxed agent does not see.
         cfg.runtime.sandbox.mode = "off".into();
         cfg.runtime.enabled = false;
@@ -47,6 +52,16 @@ impl Harness {
 
     pub fn project(&self, slug: &str) {
         self.app.create_project(slug, "", None, None, None).unwrap();
+    }
+}
+
+/// PD24: no default models — role files per id, so spawned agents always have one.
+/// (The Harness itself writes only the six team roles: its tests rely on planner
+/// and researcher staying file-less built-ins.)
+pub fn give_roles_models(data: &std::path::Path) {
+    std::fs::create_dir_all(data.join("agents")).unwrap();
+    for id in ["analyst", "executor", "reviewer", "tester", "documenter", "orchestrator", "planner", "researcher"] {
+        std::fs::write(data.join(format!("agents/{id}.md")), format!("---\nmodel: fake/{id}\n---\n")).unwrap();
     }
 }
 
