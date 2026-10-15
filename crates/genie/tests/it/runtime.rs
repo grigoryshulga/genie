@@ -39,6 +39,7 @@ async fn live_cfg(env: &[(&str, &str)], f: impl FnOnce(&mut Config)) -> Live {
         cfg.runtime.env.insert(k.to_string(), v.to_string());
     }
     f(&mut cfg);
+    crate::common::give_roles_models(dir.path());
     let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
@@ -391,6 +392,7 @@ fn app_with_team(mode: &str, dir: &std::path::Path) -> Arc<App> {
     cfg.runtime.sandbox.mode = "off".into();
     cfg.runtime.mode = mode.into();
     cfg.runtime.enabled = false;
+    crate::common::give_roles_models(dir);
     let app = App::open(dir, cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();
     app.with_tracker("shop", |t| {
@@ -419,6 +421,7 @@ fn recovery_stops_only_verified_stray_agent_processes() {
     // Test files live in the data directory, which a sandboxed agent does not see.
     cfg.runtime.sandbox.mode = "off".into();
     cfg.runtime.enabled = false;
+    crate::common::give_roles_models(dir.path());
     let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "", None, None, None).unwrap();
     let spawn = |env: &[(&str, &str)]| std::process::Command::new("sleep").arg("30").envs(env.iter().copied()).spawn().unwrap();

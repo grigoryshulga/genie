@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
 use common::{Harness, call};
-use genie::config::{Config, RoleModel};
+use genie::config::Config;
 use genie::state::App;
 use genie_core::work::NewJob;
 use genie_core::{Actor, CreateInput, Role, Status};
@@ -80,8 +80,11 @@ async fn live() -> Live {
 async fn live_on(model: &str) -> Live {
     let dir = tempfile::tempdir().unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    crate::common::give_roles_models(dir.path());
     let mut cfg = Config::load(dir.path()).unwrap();
-    cfg.role_models.insert("analyst".into(), RoleModel { model: Some(model.into()), thinking: Some("high".into()) });
+    // PD24: the model lives on the role; there are no class defaults.
+    std::fs::create_dir_all(dir.path().join("agents")).unwrap();
+    std::fs::write(dir.path().join("agents/analyst.md"), format!("---\nmodel: {model}\nthinking: high\n---\n")).unwrap();
     cfg.runtime.sandbox.mode = "off".into();
     cfg.port = listener.local_addr().unwrap().port();
     let out = dir.path().join("keys");
@@ -239,6 +242,7 @@ async fn an_agent_whose_person_has_no_litellm_key_does_not_start_and_they_are_to
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_orchestrator_does_not_work_for_git_host_but_for_the_person_of_the_task() {
     let dir = tempfile::tempdir().unwrap();
+    crate::common::give_roles_models(dir.path());
     let cfg = Config::load(dir.path()).unwrap();
     let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();

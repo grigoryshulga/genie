@@ -426,8 +426,7 @@ async fn models(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<ModelsQue
         }
     };
     let agents = app.agents();
-    let mut named: BTreeSet<String> = app.cfg.role_models.values().filter_map(|m| m.model.clone()).collect();
-    named.extend(agents.roles.values().filter_map(|r| r.model.clone()));
+    let mut named: BTreeSet<String> = agents.roles.values().filter_map(|r| r.model.clone()).collect();
     named.extend(agents.teams.values().flat_map(|t| t.members.iter().filter_map(|m| m.model.clone())));
     let listed = catalogue.clone().unwrap_or_default();
     let all: BTreeSet<String> = listed.iter().cloned().chain(named.into_iter().map(|m| without_thinking(&m).to_string())).collect();

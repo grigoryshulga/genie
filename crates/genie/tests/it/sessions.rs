@@ -16,7 +16,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::post;
-use genie::config::{Config, RoleModel};
+use genie::config::Config;
 use genie::runtime::AgentKey;
 use genie::state::App;
 use genie_core::team::{NewMember, NewTeam, SendMail};
@@ -194,8 +194,10 @@ async fn live(pi: PathBuf, tweak: impl FnOnce(&mut Config)) -> Live {
     ] {
         cfg.runtime.env.insert(k.into(), v);
     }
+    std::fs::create_dir_all(dir.path().join("agents")).unwrap();
     for role in ["executor", "reviewer", "orchestrator"] {
-        cfg.role_models.insert(role.into(), RoleModel { model: Some(format!("fake/{role}")), thinking: None });
+        // PD24: the model lives on the role; there are no class defaults.
+        std::fs::write(dir.path().join(format!("agents/{role}.md")), format!("---\nmodel: fake/{role}\n---\n")).unwrap();
     }
     tweak(&mut cfg);
     let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
@@ -541,9 +543,9 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     // codemode.
     write(
         &data.join("agents/executor.md"),
-        "---\nskills: [owasp]\ndenyCommands: [\"git push*\"]\nmcp: [\"tracker:get_*\", \"tracker:list_issues\", wide]\n---\n",
+        "---\nmodel: fake/executor\nskills: [owasp]\ndenyCommands: [\"git push*\"]\nmcp: [\"tracker:get_*\", \"tracker:list_issues\", wide]\n---\n",
     );
-    write(&data.join("agents/reviewer.md"), "---\ndenyCommands: [\"git push*\"]\nmcp: [cm]\n---\n");
+    write(&data.join("agents/reviewer.md"), "---\nmodel: fake/reviewer\ndenyCommands: [\"git push*\"]\nmcp: [cm]\n---\n");
     write(&data.join("skills/owasp/SKILL.md"), "---\nname: owasp\ndescription: OWASP checks.\n---\nx\n");
     write(
         &data.join("pi-agent/skills/user-wide/SKILL.md"),
@@ -626,7 +628,7 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     let pid = session_state(app, "bender").unwrap().2;
     write(
         &data.join("agents/executor.md"),
-        "---\nskills: [owasp]\ndenyCommands: [\"git push*\", \"curl *\"]\nmcp: [\"tracker:get_*\"]\n---\n",
+        "---\nmodel: fake/executor\nskills: [owasp]\ndenyCommands: [\"git push*\", \"curl *\"]\nmcp: [\"tracker:get_*\"]\n---\n",
     );
     app.reload_agents();
     mail(app, "anna", "human", "bender", "RUN: curl https://example.com", None);

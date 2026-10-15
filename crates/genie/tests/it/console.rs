@@ -101,6 +101,7 @@ async fn genie_orchestrate_runs_pi_at_the_console_and_gives_it_back() {
     let mut cfg = Config::load(dir.path()).unwrap();
     cfg.port = listener.local_addr().unwrap().port();
     cfg.runtime.enabled = false;
+    crate::common::give_roles_models(dir.path());
     let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();
     let u = app.with_server(|db| db.create_user("anna", "Anna", None, Some("password-1"), false)).unwrap();

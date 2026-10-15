@@ -59,7 +59,7 @@ export function ModelPicker({ id, value, onChange, fallback }: { id?: string; va
     <>
       <button ref={btn} id={id} type="button" className={`mp-trigger${open ? " open" : ""}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className={`mono${value ? "" : " def"}`}>{value ? short(value) : "по умолчанию"}</span>
-        <span className="sub">{value ? provider(value) : fallback ? `${short(fallback)} из roleModels сервера` : "модель pi по умолчанию"}</span>
+        <span className="sub">{value ? provider(value) : fallback ? `${short(fallback)} — модель роли` : "у роли нет модели — назначьте её"}</span>
         <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M4 6l4 4 4-4" />
         </svg>
@@ -79,7 +79,7 @@ export function ModelPicker({ id, value, onChange, fallback }: { id?: string; va
                   <span className="mm-radio" />
                   <span className="mm-role">
                     <span>По умолчанию</span>
-                    <span className="mono muted">{fallback ? `${short(fallback)} из roleModels сервера` : "модель pi по умолчанию"}</span>
+                    <span className="mono muted">{fallback ? `${short(fallback)} — модель роли` : "у роли нет модели — назначьте её"}</span>
                   </span>
                 </button>
               }

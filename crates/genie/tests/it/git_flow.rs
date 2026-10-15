@@ -64,6 +64,7 @@ async fn agents_deliver_through_the_proxy_and_a_person_merges() {
     } } });
     std::fs::write(dir.path().join("git.json"), git_json.to_string()).unwrap();
 
+    crate::common::give_roles_models(dir.path());
     let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();
     let (_stop, rx) = tokio::sync::oneshot::channel::<()>();

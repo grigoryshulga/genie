@@ -106,6 +106,9 @@ async fn a_sandboxed_agent_sees_only_its_own_work() {
     ] {
         cfg.runtime.env.insert(k.into(), v);
     }
+    // PD24: no default models — the executor carries its own before the job starts.
+    std::fs::create_dir_all(data.join("agents")).unwrap();
+    std::fs::write(data.join("agents/executor.md"), "---\nmodel: fake/executor\n---\n").unwrap();
     let app = App::open(&data, cfg, PathBuf::from("/nonexistent")).unwrap();
     for (slug, repo, prefix) in [("shop", &shop, "SHOP"), ("other", &other, "OTH")] {
         app.create_project(slug, slug, Some(&repo.to_string_lossy()), None, Some(prefix)).unwrap();

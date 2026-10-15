@@ -63,6 +63,7 @@ async fn live(telegram: Option<String>) -> Live {
     cfg.runtime.turn_timeout_secs = 60;
     cfg.runtime.env.insert("GENIE_BIN".into(), env!("CARGO_BIN_EXE_genie").into());
     cfg.telegram = telegram.map(|api| TelegramConfig { token: "TEST".into(), api_base: Some(api) });
+    crate::common::give_roles_models(dir.path());
     let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Магазин", None, None, Some("SHOP")).unwrap();
     // Owner's answer: no automatic orchestrator in these tests, the scenario is the automation.

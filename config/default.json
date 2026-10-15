@@ -10,27 +10,5 @@
   "worktrees": {
     "dir": "{mainRoot}/../{repo}.worktrees/{team}",
     "branch": "genie/{team}"
-  },
-  "roleModels": {
-    "analyst": {
-      "model": "litellm/gpt-6-sol",
-      "thinking": "high"
-    },
-    "executor": {
-      "model": "openai-codex/gpt-6-luna",
-      "thinking": "high"
-    },
-    "reviewer": {
-      "model": "litellm/claude-opus-5-5",
-      "thinking": "high"
-    },
-    "tester": {
-      "model": "openai-codex/gpt-6-luna",
-      "thinking": "medium"
-    },
-    "documenter": {
-      "model": "openai-codex/gpt-6-luna",
-      "thinking": "low"
-    }
   }
 }
