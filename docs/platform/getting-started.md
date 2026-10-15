@@ -14,9 +14,9 @@ Genie runs a web UI, API, agent runtime, and knowledge vault on one server. Star
 From a checkout of the repository:
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
-printf '%s\n' 'replace-with-a-strong-password' | docker compose exec -T genie genie user add admin --admin --password-stdin
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml up -d --build
+printf '%s\n' 'replace-with-a-strong-password' | docker compose -f docker/docker-compose.yml exec -T genie genie user add admin --admin --password-stdin
 ```
 
 Open [localhost:7420](http://127.0.0.1:7420) and sign in as `admin`. The port is published on loopback by default. See [Docker deployment](docker.md) for volumes, model credentials, network access, and backups.

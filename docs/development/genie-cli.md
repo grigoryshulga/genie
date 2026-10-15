@@ -34,11 +34,11 @@ Create a personal token through the server's account settings, or during initial
 Docker is needed for server lifecycle and initial bootstrap only. From a checkout of this repository:
 
 ```bash
-docker compose -f docker-compose.tracker.yml up -d
+docker compose -f docker/docker-compose.tracker.yml up -d
 curl --fail http://127.0.0.1:7422/api/health
 ```
 
-The compose file uses the locally installed `genie-local:latest` image. On a fresh machine, build it with `docker build -t genie-local:latest .`, or set `GENIE_TRACKER_IMAGE` to an available compatible image. Data is kept in the named Docker volume `genie-tracker_data`; retain this volume when stopping or recreating the container. `manual` is persisted in the project database, not a global container setting.
+The compose file uses the locally installed `genie-local:latest` image. On a fresh machine, build it with `docker build -t genie-local:latest -f docker/Dockerfile .`, or set `GENIE_TRACKER_IMAGE` to an available compatible image. Data is kept in the named Docker volume `genie-tracker_data`; retain this volume when stopping or recreating the container. `manual` is persisted in the project database, not a global container setting.
 
 On a fresh volume only, create the project, then set its mode:
 

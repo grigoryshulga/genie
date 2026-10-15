@@ -1,4 +1,4 @@
-# Build context for `docker build .`: only what the image needs.
+# Build context for `docker build -f docker/Dockerfile .`: only what the image needs.
 # The Rust stage needs Cargo.*, crates/, config/ and agents/ (embedded into the binary);
 # the web stage needs package*.json, tsconfig.json and web/.
 
@@ -15,7 +15,6 @@ web/dist
 # never bake local state or secrets into an image
 .env
 .env.*
-!.env.example
 *.db
 *.db-wal
 *.db-shm
@@ -25,5 +24,7 @@ test
 crates/*/tests
 README.md
 CHANGELOG.md
-docker-compose*.yml
-Dockerfile*
+docker/.env*
+docker/secrets/
+docker/docker-compose*.yml
+docker/Dockerfile*

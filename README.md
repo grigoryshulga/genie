@@ -18,9 +18,9 @@
 ## Run with Docker
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
-printf '%s\n' 'replace-with-a-strong-password' | docker compose exec -T genie genie user add admin --admin --password-stdin
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml up -d --build
+printf '%s\n' 'replace-with-a-strong-password' | docker compose -f docker/docker-compose.yml exec -T genie genie user add admin --admin --password-stdin
 ```
 
 Open [localhost:7420](http://127.0.0.1:7420). Configure role models and provider keys in Settings before starting agents. See [Docker deployment](docs/platform/docker.md) for storage, network access, sandboxing, and updates.
