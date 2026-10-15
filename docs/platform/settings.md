@@ -93,7 +93,33 @@ Team limits bound concurrency independently of monetary budgets.
 
 ## Notifications
 
-People receive web notifications and can link Telegram or email in personal settings. Task assignments, mentions, owner questions, and knowledge proposals route to the relevant people. Automations can add project-specific notifications.
+People receive web notifications and can link Telegram or email in personal settings.
+
+Project administrators manage a dedicated bot in **Project settings → Telegram**. Create
+it with `/newbot` in [BotFather](https://t.me/BotFather), then paste its token into Genie.
+Genie validates the bot through `getMe`, rejects bots with webhooks and bots already
+assigned to another project, seals the token with `secrets.key`, and starts long polling
+without a restart. Use a bot dedicated to this Genie instance. Tokens never appear in
+API responses or delivery errors. Re-enter the token if the encryption key is lost.
+
+Members, including viewers, connect in the project's Telegram settings or choose a
+project under **Personal → Telegram**. Open the private link or scan its locally
+rendered QR code, then press **Start** in Telegram. The one-time link expires after
+30 minutes; generating another replaces it. Connections are scoped to the project bot.
+Only private chats can connect. Disconnecting revokes outstanding codes and queued
+messages. Changing the bot identity or deleting it resets connections; rotating the
+token of the same bot keeps them. A project with a configured bot never falls back to
+the server bot for a disconnected user.
+
+Task authors receive comment and status notifications automatically. Other people can
+press **Follow** on any accessible task; following is independent of assignment.
+Own actions are silent, and users who lose project access receive no further messages.
+Subscriptions survive disconnecting Telegram. Notifications remain available in the
+web; Telegram is used when connected, otherwise configured email is used. Project bot
+questionnaires contain a link to answer on the web; the legacy server bot retains
+its existing reply and `/new` commands.
+
+The optional server-wide bot below remains available for projects without their own bot. Task assignments, mentions, owner questions, and knowledge proposals route to the relevant people. Automations can add project-specific notifications.
 
 Configure channel credentials in `config.json` and restart the server:
 

@@ -6,11 +6,12 @@
 import { useRef, useState } from "react";
 import { NavLink, useParams } from "react-router";
 import { PersonAvatar, PROJECT_ROLE_NAME, usePatchUser, useSetAvatar } from "@/entities/project";
-import { useChannels, useLlmKeys, type LlmProvider } from "@/entities/platform";
+import { useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
 import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
+import { PersonalTelegram } from "./TelegramSettings.tsx";
 import { TokensTab } from "./TokensTab.tsx";
 import "@/shared/ui/settings.css";
 
@@ -51,7 +52,7 @@ export function MeSettingsPage() {
         ) : section === "security" ? (
           <SecurityTab />
         ) : section === "telegram" ? (
-          <TelegramTab />
+          <PersonalTelegram />
         ) : section === "keys" ? (
           <KeysTab />
         ) : section === "tokens" ? (
@@ -284,57 +285,6 @@ function SecurityTab() {
           </button>
         </div>
       </form>
-    </div>
-  );
-}
-
-function TelegramTab() {
-  const channels = useChannels().data;
-  const act = useAct();
-  const [code, setCode] = useState<string>();
-  const linked = channels?.links.find((l) => l.channel === "telegram");
-  return (
-    <div className="st-body">
-      <div className="st-head">
-        <h2>Telegram</h2>
-        <p>Уведомления и вопросы от агентов приходят в Telegram, отвечать можно прямо там.</p>
-      </div>
-      <section className="st-card">
-        <div className="st-card-body">
-          {!channels ? (
-            <p className="muted">Загрузка…</p>
-          ) : !channels.telegram ? (
-            <p className="muted">
-              Telegram не настроен на сервере: администратору нужно задать <code>telegram.token</code> в config.json.
-            </p>
-          ) : linked ? (
-            <div className="pj-row">
-              <span className="grow">Чат привязан.</span>
-              <button type="button" className="btn" onClick={() => void act(() => request("DELETE", "/api/me/channels/telegram"), "Telegram отвязан")}>
-                Отвязать
-              </button>
-            </div>
-          ) : (
-            <>
-              <div>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={() =>
-                    void act(async () => {
-                      const r = await request<{ code: string; instructions: string }>("POST", "/api/me/channels/telegram/code");
-                      setCode(r.instructions);
-                    })
-                  }
-                >
-                  Привязать Telegram
-                </button>
-              </div>
-              {code && <p className="secret">{code}</p>}
-            </>
-          )}
-        </div>
-      </section>
     </div>
   );
 }

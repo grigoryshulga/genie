@@ -30,6 +30,7 @@ mod runtime;
 mod scenarios;
 mod sessions;
 mod tasks;
+mod telegram;
 mod vault_sync;
 mod watchdog;
 mod worktrees;

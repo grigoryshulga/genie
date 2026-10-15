@@ -820,6 +820,73 @@ fn notify_intake(app: &App, project: &str) -> AppResult<()> {
         let task_id = e.subject.clone();
         let title_of = |id: &str| app.with_tracker(project, |t| Ok(t.get(id)?.title)).unwrap_or_default();
         let ctx = json!({ "event": { "actor": e.actor, "task": { "id": task_id } } });
+        let mut watched_recipients = Vec::new();
+        if matches!(e.kind.as_str(), "task.status_changed" | "task.commented")
+            && let Some(id) = &task_id
+            && let Ok(task) = app.with_tracker(project, |tr| tr.get(id))
+        {
+            let mut users = app.with_server(|db| db.task_watchers_at(project, id, &e.at))?;
+            if let Some(author) = task.history.iter().find(|h| h.event == "created" && h.role == genie_core::Role::Human)
+                && let Some(user) = app.with_server(|db| db.user_by_login(&author.actor))?
+            {
+                users.push(user.id);
+            }
+            users.sort_unstable();
+            users.dedup();
+            // Keep the existing decision/delivery notification for its intended recipients;
+            // followers outside that audience still receive the ordinary status update.
+            let special_specs = match (e.kind.as_str(), to, e.actor_role.as_str()) {
+                ("task.status_changed", "needs_owner", role) if role != "human" => {
+                    if task.assignee.is_some() {
+                        vec!["task.assignee", "task.author"]
+                    } else {
+                        vec!["task.author", "project.admins"]
+                    }
+                }
+                ("task.status_changed", "done", role) if role != "human" => vec!["task.author"],
+                _ => Vec::new(),
+            };
+            let special = notify::resolve(app, project, &special_specs.iter().map(|s| s.to_string()).collect::<Vec<_>>(), &ctx)?;
+            users.retain(|u| !special.contains(u));
+            let users = app.with_server(|db| {
+                users
+                    .into_iter()
+                    .filter_map(|id| {
+                        match db
+                            .user(id)
+                            .and_then(|u| Ok((db.project_role(project, &u)?.is_some() && !u.disabled && u.login != e.actor).then_some(id)))
+                        {
+                            Ok(Some(id)) => Some(Ok(id)),
+                            Ok(None) => None,
+                            Err(e) => Some(Err(e)),
+                        }
+                    })
+                    .collect::<genie_core::Result<Vec<_>>>()
+            })?;
+            let body = if e.kind == "task.commented" {
+                let comment = e.payload["comment"].as_i64();
+                task.comments.iter().find(|c| Some(c.id) == comment).map(|c| format!("{}: {}", c.author, c.text)).unwrap_or_default()
+            } else {
+                format!("{} → {}", e.payload["from"].as_str().unwrap_or_default(), to)
+            };
+            let msg = Message {
+                kind: "task_watch".into(),
+                title: format!("{id} · {}", task.title),
+                body,
+                project: Some(project.into()),
+                task: Some(id.clone()),
+                link: Some(format!("/task/{id}")),
+                ..Default::default()
+            };
+            let dedupe = if let Some(comment) = e.payload["comment"].as_i64().filter(|_| e.kind == "task.commented") {
+                format!("comment:{project}:{id}:{comment}")
+            } else {
+                format!("watch:{project}:{}", e.id)
+            };
+            notify::send(app, &users, &msg, Some(&dedupe))?;
+            watched_recipients = users;
+        }
+
         let (specs, msg): (Vec<&str>, Option<Message>) = match (e.kind.as_str(), to) {
             ("task.status_changed", "needs_owner") if e.actor_role != "human" => {
                 let id = task_id.clone().unwrap_or_default();
@@ -880,6 +947,7 @@ fn notify_intake(app: &App, project: &str) -> AppResult<()> {
             m.project = Some(project.into());
             m.task = task_id.clone();
             let users = notify::resolve(app, project, &specs.iter().map(|s| s.to_string()).collect::<Vec<_>>(), &ctx)?;
+            let users = users.into_iter().filter(|u| !watched_recipients.contains(u)).collect::<Vec<_>>();
             notify::send(app, &users, &m, Some(&format!("ev:{project}:{}", e.id)))?;
         }
     }

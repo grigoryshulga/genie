@@ -21,6 +21,7 @@ pub mod mcp_server;
 pub mod repos;
 pub mod tasks;
 pub mod teams;
+pub mod telegram;
 pub mod web;
 
 use std::net::SocketAddr;
@@ -135,6 +136,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(docs::routes())
         .merge(images::routes())
         .merge(automations::routes())
+        .merge(telegram::routes())
         .merge(console::routes())
         .merge(agent_config::routes())
         .merge(mcp_admin::routes())
