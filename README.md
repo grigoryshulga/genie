@@ -40,7 +40,7 @@ npm install -g @earendil-works/pi-coding-agent && pi                 # install p
 ./target/release/genie serve                                         # http://127.0.0.1:7420
 ```
 
-On first launch the server offers to create a project, and the "Project & people" page sets up the admin account and invite links. Run `./target/release/genie doctor` to see what is still missing: role models, sandbox, channels, network.
+On first launch the server offers to create a project, and the settings mode (`/settings`) sets up the admin account and invite links. Run `./target/release/genie doctor` to see what is still missing: role models, sandbox, channels, network.
 
 ## Documentation
 
@@ -64,7 +64,7 @@ The docs are in Russian.
 ```bash
 cargo test                                                   # core, API, agent runtime, sandbox, owner scenarios
 cargo clippy --all-targets -- -D warnings && cargo fmt --all --check
-npm test && npm run typecheck && npm run build:web
+npm test && npm run typecheck && npm run lint:web && npm run build:web
 npm run dev:web                                              # Vite dev server, proxies /api to port 7420
 GENIE_WEB_SOURCEMAP=1 npm run build:web                      # build with source maps for debugging in the browser
 ```
