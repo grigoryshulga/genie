@@ -1,7 +1,9 @@
-//! Secrets the server keeps for others (`user_secrets`, `repo_secrets`, `mcp_secrets`
-//! of the server database): a person's LiteLLM key, which agents started on their
-//! behalf use, the access token of a project's repository on its git host, and the
-//! values of the environment variables MCP connections refer to as `${env:NAME}`.
+//! Secrets the server keeps for others (`user_secrets`, `repo_secrets`, `mcp_secrets`,
+//! `global_secrets` of the server database): a person's LiteLLM key, which agents
+//! started on their behalf use, the access token of a project's repository on its
+//! git host, the values of the environment variables MCP connections refer to as
+//! `${env:NAME}`, and the provider keys the server's administrator shares with
+//! everyone.
 //!
 //! Unlike sessions and tokens these must be read back, so they are sealed with
 //! ChaCha20-Poly1305 under a key kept next to the database (`secrets.key`, 0600)
@@ -43,6 +45,15 @@ CREATE TABLE IF NOT EXISTS repo_secrets (
 -- The value of an environment variable an MCP connection refers to as `${env:NAME}`:
 -- set by a server administrator, read by the gateway and checks, never given to agents.
 CREATE TABLE IF NOT EXISTS mcp_secrets (
+  name TEXT PRIMARY KEY,
+  sealed TEXT NOT NULL,
+  hint TEXT NOT NULL DEFAULT '',
+  updated TEXT NOT NULL
+);
+-- A provider's key the server's administrator shares with everyone: a person's
+-- own key of the same provider comes first, and without either an agent on the
+-- provider runs as before.
+CREATE TABLE IF NOT EXISTS global_secrets (
   name TEXT PRIMARY KEY,
   sealed TEXT NOT NULL,
   hint TEXT NOT NULL DEFAULT '',
@@ -154,10 +165,14 @@ fn repo_aad(project: &str, repo: &str) -> String {
 }
 
 impl ServerDb {
-    /// Whether any token is stored sealed (people's keys, repositories' tokens).
+    /// Whether any token is stored sealed (people's keys, repositories' tokens,
+    /// the provider keys shared with everyone).
     pub fn has_sealed_secrets(&self) -> Result<bool> {
-        let n: i64 =
-            self.conn().query_row("SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets)", [], |r| r.get(0))?;
+        let n: i64 = self.conn().query_row(
+            "SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets) + (SELECT COUNT(*) FROM global_secrets)",
+            [],
+            |r| r.get(0),
+        )?;
         Ok(n > 0)
     }
 
@@ -351,6 +366,64 @@ fn check_env_name(name: &str) -> Result<()> {
     }
 }
 
+impl ServerDb {
+    /// Set the provider key the server shares with everyone (a blank value
+    /// removes it). The name is a provider of the registry, checked by the caller.
+    pub fn set_global_secret(&self, name: &str, value: &str) -> Result<()> {
+        let value = value.trim();
+        if value.is_empty() {
+            return self.delete_global_secret(name);
+        }
+        check_value(value)?;
+        let key = load_key(&self.secrets_key, true)?.expect("created");
+        self.conn().execute(
+            "INSERT INTO global_secrets(name, sealed, hint, updated) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(name) DO UPDATE SET sealed = excluded.sealed, hint = excluded.hint, updated = excluded.updated",
+            params![name, seal(&key, &global_aad(name), value)?, hint(value), now()],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_global_secret(&self, name: &str) -> Result<()> {
+        self.conn().execute("DELETE FROM global_secrets WHERE name = ?1", params![name])?;
+        Ok(())
+    }
+
+    /// A shared provider key in the clear, for the agents of people who keep no
+    /// key of their own; `None` when it is unset or cannot be read back.
+    pub fn global_secret(&self, name: &str) -> Result<Option<String>> {
+        let sealed: Option<String> =
+            self.conn().query_row("SELECT sealed FROM global_secrets WHERE name = ?1", params![name], |r| r.get(0)).optional()?;
+        let Some(sealed) = sealed else { return Ok(None) };
+        let Some(key) = load_key(&self.secrets_key, false)? else { return Ok(None) };
+        Ok(unseal(&key, &global_aad(name), &sealed))
+    }
+
+    /// All shared provider keys as the administration shows them: never the values.
+    pub fn global_secret_infos(&self) -> Result<Vec<SecretInfo>> {
+        let rows: Vec<(String, String, String, String)> = self
+            .conn()
+            .prepare("SELECT name, sealed, hint, updated FROM global_secrets ORDER BY name")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        let key = load_key(&self.secrets_key, false)?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, sealed, hint, updated)| SecretInfo {
+                unreadable: key.as_ref().is_none_or(|k| unseal(k, &global_aad(&name), &sealed).is_none()),
+                name,
+                hint,
+                updated,
+            })
+            .collect())
+    }
+}
+
+/// What a sealed shared provider key is bound to: it cannot be moved to another table.
+fn global_aad(name: &str) -> String {
+    format!("global-key:{name}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,5 +535,40 @@ mod tests {
         // A blank value removes it.
         db.set_mcp_secret("OTHER", " ").unwrap();
         assert_eq!(db.mcp_secret("OTHER").unwrap(), None);
+    }
+
+    #[test]
+    fn shared_provider_keys_are_sealed_bound_to_their_table_and_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = ServerDb::open(&dir.path().join("server.db")).unwrap();
+        let u = db.create_user("ann", "Ann", None, None, false).unwrap();
+        assert_eq!(db.global_secret(LITELLM).unwrap(), None);
+        assert!(db.global_secret_infos().unwrap().is_empty());
+        db.set_global_secret(LITELLM, "  sk-shared-0123456789  ").unwrap();
+        db.set_global_secret("anthropic", "sk-ant-shared-0123456789").unwrap();
+        assert_eq!(db.global_secret(LITELLM).unwrap().as_deref(), Some("sk-shared-0123456789"));
+        // A person's key of the same provider is their own, not the shared one.
+        assert_eq!(db.user_secret(u.id, LITELLM).unwrap(), None);
+        db.set_user_secret(u.id, LITELLM, "sk-ann-0123456789").unwrap();
+        assert_eq!(db.user_secret(u.id, LITELLM).unwrap().as_deref(), Some("sk-ann-0123456789"));
+        let infos = db.global_secret_infos().unwrap();
+        assert_eq!(infos.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(), ["anthropic", LITELLM]);
+        assert_eq!(infos[0].hint, "…6789", "anthropic, the first by name, is sk-ant-shared-0123456789");
+        assert!(infos.iter().all(|i| !i.unreadable));
+        assert!(db.has_sealed_secrets().unwrap());
+        let sealed: String = db.conn().query_row("SELECT sealed FROM global_secrets WHERE name = 'litellm'", [], |r| r.get(0)).unwrap();
+        assert!(!sealed.contains("sk-shared"), "stored sealed, never in the clear");
+        // Overwriting the person's row with the shared sealed value, it does not open.
+        db.conn()
+            .execute(
+                "UPDATE user_secrets SET sealed = (SELECT sealed FROM global_secrets WHERE name = 'litellm') WHERE user = ?1 AND name = 'litellm'",
+                params![u.id],
+            )
+            .unwrap();
+        assert_eq!(db.user_secret(u.id, "litellm").unwrap(), None, "the copied row does not unseal");
+        // A blank value removes it.
+        db.set_global_secret("anthropic", " ").unwrap();
+        assert_eq!(db.global_secret("anthropic").unwrap(), None);
+        assert_eq!(db.global_secret_infos().unwrap().len(), 1);
     }
 }

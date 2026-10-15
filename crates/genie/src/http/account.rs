@@ -30,6 +30,8 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/auth/tokens/{id}", delete(revoke_token))
         .route("/me/llm-keys", get(llm_keys))
         .route("/me/llm-keys/{provider}", put(set_llm_key).delete(delete_llm_key))
+        .route("/llm-keys", get(global_llm_keys))
+        .route("/llm-keys/{provider}", put(set_global_llm_key).delete(delete_global_llm_key))
         .route("/session/project", post(select_project))
         .route("/users", get(list_users).post(create_user))
         .route("/users/{id}", patch(update_user))
@@ -204,10 +206,11 @@ async fn revoke_token(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>
 }
 
 /// The caller's model keys, as far as they may be shown: the providers a key can
-/// be kept for, and which of them are set (never the keys themselves).
+/// be kept for, which of them are set (never the keys themselves), and which
+/// hold the key the server shares with everyone instead.
 async fn llm_keys(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
-    let keys = app
+    let (keys, global) = app
         .blocking(move |app| {
             app.with_server(|db| {
                 let mut keys = serde_json::Map::new();
@@ -216,11 +219,17 @@ async fn llm_keys(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value
                         keys.insert(p.id.into(), serde_json::to_value(info)?);
                     }
                 }
-                Ok::<_, genie_core::GenieError>(keys)
+                let mut global = serde_json::Map::new();
+                for info in db.global_secret_infos()? {
+                    if let Some(p) = crate::llm_key::provider(&info.name) {
+                        global.insert(p.id.into(), serde_json::to_value(info)?);
+                    }
+                }
+                Ok::<_, genie_core::GenieError>((keys, global))
             })
         })
         .await?;
-    Ok(Json(json!({ "providers": crate::llm_key::PROVIDERS, "keys": keys })))
+    Ok(Json(json!({ "providers": crate::llm_key::PROVIDERS, "keys": keys, "global": global })))
 }
 
 /// A provider of the registry a key can be kept for, by its id.
@@ -268,6 +277,62 @@ async fn delete_llm_key(State(app): State<Arc<App>>, ctx: Ctx, Path(provider): P
     let p = keyed_provider(&provider)?;
     let id = p.id;
     app.blocking(move |app| app.with_server(|db| db.delete_user_secret(user.id, id))).await?;
+    Ok(Json(json!({ "key": null })))
+}
+
+/// The provider keys the server shares with everyone, as far as they may be
+/// shown: which of the registry's providers hold one (never the keys themselves).
+async fn global_llm_keys(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
+    ctx.server_admin()?;
+    let keys = app
+        .blocking(move |app| {
+            app.with_server(|db| {
+                let mut keys = serde_json::Map::new();
+                for info in db.global_secret_infos()? {
+                    if let Some(p) = crate::llm_key::provider(&info.name) {
+                        keys.insert(p.id.into(), serde_json::to_value(info)?);
+                    }
+                }
+                Ok::<_, genie_core::GenieError>(keys)
+            })
+        })
+        .await?;
+    Ok(Json(json!({ "providers": crate::llm_key::PROVIDERS, "keys": keys })))
+}
+
+/// Set the key of one provider the server shares with everyone (`litellm`,
+/// `anthropic`, …): where a person keeps no key of their own, their agents use
+/// it; a person's own key of the same provider comes first.
+async fn set_global_llm_key(
+    State(app): State<Arc<App>>,
+    ctx: Ctx,
+    Path(provider): Path<String>,
+    Json(b): Json<LlmKeyBody>,
+) -> ApiResult<Json<Value>> {
+    ctx.server_admin()?;
+    let p = keyed_provider(&provider)?;
+    if b.key.trim().is_empty() {
+        return Err(ApiError::bad("the key is empty"));
+    }
+    let id = p.id;
+    let info = app
+        .blocking(move |app| {
+            app.with_server(|db| {
+                db.set_global_secret(id, &b.key)?;
+                db.global_secret_infos().map(|all| all.into_iter().find(|i| i.name == id))
+            })
+        })
+        .await?;
+    // Agents that waited for a LiteLLM key start now.
+    crate::sessions::retry_now(&app);
+    Ok(Json(json!({ "key": info })))
+}
+
+async fn delete_global_llm_key(State(app): State<Arc<App>>, ctx: Ctx, Path(provider): Path<String>) -> ApiResult<Json<Value>> {
+    ctx.server_admin()?;
+    let p = keyed_provider(&provider)?;
+    let id = p.id;
+    app.blocking(move |app| app.with_server(|db| db.delete_global_secret(id))).await?;
     Ok(Json(json!({ "key": null })))
 }
 

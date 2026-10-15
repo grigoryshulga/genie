@@ -6,6 +6,11 @@
 
 ### Добавлено
 
+**Ключи провайдеров, общие для всех** (`docs/platform/docker.md`, «Личные ключи моделей»)
+- Администратор сервера задаёт ключи провайдеров, которые действуют по умолчанию для всех: «Настройки» → «Сервер» → «Провайдеры» (новая вкладка; API `GET /api/llm-keys`, `PUT|DELETE /api/llm-keys/{provider}` — только администраторам). Общий ключ стоит рядом с личными в «Настройки» → «Личное» → «Провайдеры и ключи» и виден людям без самого значения.
+- Правило простое: личный ключ человека перекрывает общий, общий подставляется там, где личного нет. Общий ключ LiteLLM удовлетворяет обязательный — агенты на `litellm/…` у людей без своего ключа запускаются, а ждущие стартуют сразу после сохранения (`sessions::retry_now`, как и для личного). Серверный `LITELLM_API_KEY` агентам по-прежнему не передаётся; локальный режим (сервер без пользователей) не меняется.
+- Хранение: таблица `global_secrets` в `server.db`, запечатывание ChaCha20-Poly1305 тем же `secrets.key`, AAD привязывает значение к таблице (`global-key:{provider}`); наружу — только подсказка `…cdef` и время. Тесты: `shared_provider_keys_are_set_by_an_admin_and_offered_to_everyone`, `agents_of_people_without_their_own_key_run_on_the_shared_one`, `a_shared_litellm_key_satisfies_the_owed_one` (`crates/genie/tests/it/llm_keys.rs`), `shared_provider_keys_are_sealed_bound_to_their_table_and_listed` (`crates/genie-core/src/secrets.rs`).
+
 
 
 

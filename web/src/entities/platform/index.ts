@@ -120,8 +120,19 @@ export interface LlmKeyInfo {
   unreadable?: boolean;
 }
 
+/** The keys a person's agents use: their own, and the shared ones that stand in where they keep none. */
 export const useLlmKeys = () =>
-  useQuery({ queryKey: ["llm-keys"], queryFn: () => request<{ providers: LlmProvider[]; keys: Record<string, LlmKeyInfo> }>("GET", "/api/me/llm-keys") });
+  useQuery({
+    queryKey: ["llm-keys"],
+    queryFn: () => request<{ providers: LlmProvider[]; keys: Record<string, LlmKeyInfo>; global: Record<string, LlmKeyInfo> }>("GET", "/api/me/llm-keys"),
+  });
+
+/** The provider keys the server shares with everyone, for its administrators. */
+export const useSharedLlmKeys = () =>
+  useQuery({
+    queryKey: ["llm-keys", "shared"],
+    queryFn: () => request<{ providers: LlmProvider[]; keys: Record<string, LlmKeyInfo> }>("GET", "/api/llm-keys"),
+  });
 
 export const RUN_STATUS: Record<string, string> = {
   queued: "в очереди",

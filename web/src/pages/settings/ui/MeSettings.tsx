@@ -347,10 +347,11 @@ function KeysTab() {
   const [adding, setAdding] = useState("");
   const providers = data?.providers ?? [];
   const keys = data?.keys ?? {};
+  const shared = data?.global ?? {};
   const strict = providers.find((p) => p.strict);
   const rest = providers.filter((p) => !p.strict);
-  const shown = rest.filter((p) => keys[p.id] || p.id === adding);
-  const unset = rest.filter((p) => !keys[p.id]);
+  const shown = rest.filter((p) => keys[p.id] || shared[p.id] || p.id === adding);
+  const unset = rest.filter((p) => !keys[p.id] && !shared[p.id]);
 
   const save = (p: LlmProvider, key: string) =>
     act(async () => {
@@ -361,6 +362,7 @@ function KeysTab() {
 
   const card = (p: LlmProvider) => {
     const key = keys[p.id];
+    const server = shared[p.id];
     const value = values[p.id] ?? "";
     return (
       <form
@@ -377,11 +379,13 @@ function KeysTab() {
             <span>
               {p.strict
                 ? "Прокси этого сервера. Агенты на моделях litellm/… без него не запускаются; ждущие агенты стартуют сразу после сохранения."
-                : `Провайдер pi: агент на модели этого провайдера (${p.id}/…) получает ключ в переменной ${p.keyVar} — поверх серверного. Без вашего ключа он работает на серверном.`}
+                : `Провайдер pi: агент на модели этого провайдера (${p.id}/…) получает ключ в переменной ${p.keyVar} — поверх серверного.${
+                    server ? " Без вашего ключа он работает на ключе сервера." : " Без вашего ключа он работает на серверном."
+                  }`}
             </span>
           </div>
         </div>
-        {key && (
+        {key ? (
           <div className="st-row">
             <div className="lbl">
               <b>Сейчас</b>
@@ -392,7 +396,7 @@ function KeysTab() {
                 <span className="pj-bad">Ключ сохранён, но сервер не может его прочитать (сменился ключ шифрования). Укажите его заново.</span>
               ) : (
                 <span>
-                  Ключ задан{key.hint ? ` (${key.hint})` : ""}, обновлён {timeAgo(key.updated)}.
+                  Ваш ключ задан{key.hint ? ` (${key.hint})` : ""}, обновлён {timeAgo(key.updated)}.
                 </span>
               )}
               <button
@@ -404,10 +408,29 @@ function KeysTab() {
               </button>
             </div>
           </div>
-        )}
+        ) : server ? (
+          <div className="st-row">
+            <div className="lbl">
+              <b>Сейчас</b>
+              <span>
+                Администратор поделился ключом со всеми: агенты на моделях {p.id}/… работают на нём
+                {p.strict ? "" : ", если у вас нет своего"}. Ваш ключ, если появится, перекроет его.
+              </span>
+            </div>
+            <div className="ctl" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
+              {server.unreadable ? (
+                <span className="pj-bad">Ключ сервера сохранён, но сервер не может его прочитать (сменился ключ шифрования).</span>
+              ) : (
+                <span>
+                  Ключ сервера задан{server.hint ? ` (${server.hint})` : ""}, обновлён {timeAgo(server.updated)}.
+                </span>
+              )}
+            </div>
+          </div>
+        ) : null}
         <div className="st-row">
           <label className="lbl" htmlFor={`pf-key-${p.id}`}>
-            <b>{key ? "Новый ключ" : "Ключ"}</b>
+            <b>{key ? "Новый ключ" : server ? "Свой ключ (необязательный)" : "Ключ"}</b>
             <span>Агенты на моделях {p.id}/…, которые работают от вашего имени, ходят к провайдеру с ним.</span>
           </label>
           <div className="ctl">
@@ -431,7 +454,7 @@ function KeysTab() {
           )}
           <span className="grow" />
           <button className="btn primary" disabled={!value.trim()}>
-            {key ? `Заменить ключ ${p.title}` : `Сохранить ключ ${p.title}`}
+            {key ? `Заменить ключ ${p.title}` : server ? `Свой ключ вместо ключа сервера` : `Сохранить ключ ${p.title}`}
           </button>
         </div>
       </form>
@@ -445,7 +468,8 @@ function KeysTab() {
         <p>
           Агенты, которые работают от вашего имени (команды и задачи, запущенные вами или по вашим задачам, и оркестратор, когда отвечает вам), ходят к моделям с этими
           ключами. Ключ LiteLLM обязателен для моделей <code>litellm/…</code>. Ключи остальных провайдеров, которых поддерживает pi, необязательны: они действуют для
-          моделей своего провайдера (<code>anthropic/…</code> — ключ Anthropic) и перекрывают серверный.
+          моделей своего провайдера (<code>anthropic/…</code> — ключ Anthropic) и перекрывают серверный. Ключи, которыми администратор поделился со всеми, стоят рядом и
+          действуют без ваших собственных; ваш ключ того же провайдера перекрывает серверный.
         </p>
       </div>
       {strict && card(strict)}
