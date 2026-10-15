@@ -1,4 +1,5 @@
 // Platform features of the Rust server: notifications, automations, proposals, profile.
+export * from "./model.ts";
 import { useQuery } from "@tanstack/react-query";
 import { request } from "@/shared/api";
 

@@ -1,7 +1,8 @@
 // Automation rules as people read them: the trigger and each step in words, not
 // in the rule's JSON. Pure: the node tests load this file directly.
 
-import { type Status, STATUS_NAME } from "../../../entities/task/model.ts";
+// A deep import on purpose: this file stays pure, and the node tests load it directly.
+import { type Status, STATUS_NAME } from "../task/model.ts";
 
 type Spec = { on?: Record<string, unknown>; steps?: Record<string, unknown>[] };
 

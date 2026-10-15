@@ -24,39 +24,24 @@ import {
 import { useRepos } from "@/entities/repo";
 import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
-import { ConfirmDialog, Icon, useToast } from "@/shared/ui";
+import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
 import "@/shared/ui/settings.css";
-import "./project.css";
+import "@/shared/ui/project.css";
 
 export const ROLES: ProjectRole[] = ["viewer", "member", "admin", "owner"];
 
-/** Run an action; a failure becomes an error toast, success an optional one. */
-export function useAct() {
-  const toast = useToast();
-  return async (fn: () => Promise<unknown>, ok?: string): Promise<boolean> => {
-    try {
-      await fn();
-      if (ok) toast(ok);
-      return true;
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error");
-      return false;
-    }
-  };
-}
-
-export function ProjectPage() {
+export function ProjectSettingsPage() {
   const session = useSession().data;
   const projects = useProjects();
-  const { tab = "" } = useParams();
+  const { section = "general" } = useParams();
   const project = projects.data?.find((p) => p.slug === session?.project);
   const local = session?.mode === "local";
   const admin = !!project && (project.role === "admin" || project.role === "owner");
   const repos = useRepos().data?.length ?? 0;
   const members = useMembers(project && !local ? project.slug : "").data?.length ?? 0;
   const tabs = [
-    { id: "", title: "Общие" },
+    { id: "general", title: "Общие" },
     { id: "agents", title: "Работа агентов" },
     { id: "repos", title: "Репозитории", n: repos },
     { id: "people", title: "Люди", n: members },
@@ -72,7 +57,7 @@ export function ProjectPage() {
         )}
         <nav className="st-tabs" aria-label="Разделы настроек проекта">
           {tabs.map((t) => (
-            <NavLink key={t.id} to={t.id ? `/project/${t.id}` : "/project"} end className={({ isActive }) => (isActive ? "on" : undefined)}>
+            <NavLink key={t.id} to={`/settings/project/${t.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
               {t.title}
               {!!t.n && <span className="n">{t.n}</span>}
             </NavLink>
@@ -82,13 +67,13 @@ export function ProjectPage() {
       <div className="scroll">
         {!project ? (
           <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>
-        ) : tab === "agents" ? (
+        ) : section === "agents" ? (
           <AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} />
-        ) : tab === "repos" ? (
+        ) : section === "repos" ? (
           <div className="st-body">
             <RepositoriesSection admin={admin} />
           </div>
-        ) : tab === "people" ? (
+        ) : section === "people" ? (
           local ? (
             <div className="st-body">
               <FirstAdmin />
@@ -224,7 +209,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
             ) : (
               <span className="muted">{project.repo ? <span className="mono">{project.repo}</span> : "без кода: результат — артефакты задач и страницы документации"}</span>
             )}
-            <Link to="/project/repos" style={{ fontSize: 12 }}>
+            <Link to="/settings/project/repos" style={{ fontSize: 12 }}>
               {admin ? "Настроить во вкладке «Репозитории»" : "Подробнее во вкладке «Репозитории»"}
             </Link>
           </div>
@@ -547,7 +532,7 @@ function FirstAdmin() {
           void act(async () => {
             await request("POST", "/api/users", { login: form.login.trim(), name: form.name.trim(), password: form.password, isAdmin: true });
             await request("POST", "/api/auth/login", { login: form.login.trim(), password: form.password });
-            window.location.assign("/project");
+            window.location.assign("/settings/project/people");
           });
         }}
       >

@@ -26,10 +26,9 @@ import {
 import { useProjects } from "@/entities/project";
 import { bytes, plural, timeAgo } from "@/shared/lib";
 import { ApiError } from "@/shared/api";
-import { Badge, Problems, Section } from "@/pages/agents/ui/common.tsx";
-import { ChipInput, ConfirmDialog, Icon, Modal } from "@/shared/ui";
-import { useAct } from "./ProjectPage.tsx";
-import "@/pages/agents/ui/agents.css";
+import { Badge, ChipInput, ConfirmDialog, Icon, Modal, Section, useAct } from "@/shared/ui";
+import { Problems } from "@/widgets/agents-kit";
+import "@/shared/ui/agents.css";
 
 /** A role as the MCP tab reads it: who holds a grant of a connection. */
 interface GrantHolder {

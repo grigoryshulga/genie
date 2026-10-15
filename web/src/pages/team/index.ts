@@ -1,1 +1,1 @@
-export { TeamView } from "./ui/TeamView.tsx";
+export { TeamView } from "@/widgets/team-view";

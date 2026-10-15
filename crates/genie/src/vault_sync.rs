@@ -293,7 +293,7 @@ fn tell(app: &App, st: &SyncState) {
         kind: "vault".into(),
         title,
         body,
-        link: Some("/server".into()),
+        link: Some("/settings/server/health".into()),
         ..Default::default()
     };
     if let Some(e) = &st.error

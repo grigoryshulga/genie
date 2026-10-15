@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { queryClient } from "./client.ts";
 import { type JournalEvent, keysForAll, matchesAny } from "./invalidation.ts";
 
@@ -69,4 +69,14 @@ export function useLiveUpdates(): boolean {
     };
   }, []);
   return online;
+}
+
+/** The one live-updates stream belongs to the gate; the layouts read the flag from this context. */
+const OnlineContext = createContext(true);
+
+export const OnlineProvider = OnlineContext.Provider;
+
+/** Whether the live stream is connected — for the sidebar and the settings menu. */
+export function useOnline(): boolean {
+  return useContext(OnlineContext);
 }

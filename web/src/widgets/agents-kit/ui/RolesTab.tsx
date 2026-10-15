@@ -20,15 +20,31 @@ import {
   useDeleteConfig,
   useRole,
 } from "@/entities/agent-config";
-import { ConfirmDialog, Icon } from "@/shared/ui";
-import { Badge, FileEditor, History, Problems, Section, useAction } from "./common.tsx";
+import { Badge, ConfirmDialog, Icon, Section, useAct } from "@/shared/ui";
+import { FileEditor } from "./FileEditor.tsx";
+import { History } from "./History.tsx";
+import { Problems } from "./Problems.tsx";
 import { useRoleEdit } from "./EditDialog.tsx";
 import { McpDialog } from "./McpDialog.tsx";
 import { PromptEditor, PromptView } from "./PromptDialog.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
 import { SkillsDialog } from "./SkillsDialog.tsx";
 
-export function RolesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected?: string; onSelect: (id: string) => void }) {
+export function RolesTab({
+  cfg,
+  selected,
+  onSelect,
+  readOnly = false,
+  base = "/agents",
+}: {
+  cfg: Catalogue;
+  selected?: string;
+  onSelect: (id: string) => void;
+  /** The catalogue (/agents) forces read-only even for a server administrator. */
+  readOnly?: boolean;
+  /** Where this tab lives: cross-links to the other tabs stay inside the same mode. */
+  base?: string;
+}) {
   const team = cfg.roles.filter((r) => r.class !== "orchestrator");
   const orch = cfg.roles.filter((r) => r.class === "orchestrator");
   const current = selected ?? team[0]?.id;
@@ -56,7 +72,7 @@ export function RolesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected
         {orch.map(pick)}
       </section>
       <section className="split-main" aria-label="Роль">
-        {current ? <RolePane key={current} id={current} cfg={cfg} /> : <div className="pane-empty">Ролей нет</div>}
+        {current ? <RolePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Ролей нет</div>}
       </section>
     </div>
   );
@@ -64,26 +80,26 @@ export function RolesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected
 
 type Dialog = "file" | "prompt" | "settings" | "skills" | "mcp" | "delete";
 
-function RolePane({ id, cfg }: { id: string; cfg: Catalogue }) {
+function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string; cfg: Catalogue; readOnly?: boolean; base?: string }) {
   const detail = useRole(id);
   const [dialog, setDialog] = useState<Dialog>();
   const remove = useDeleteConfig();
-  const act = useAction();
+  const act = useAct();
   const d = detail.data;
   if (!d) return <div className="pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
   const r = d.role;
-  const admin = d.admin;
+  const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null;
   const close = () => setDialog(undefined);
   const parent = r.extends ? (cfg.roles.find((x) => x.id === r.extends)?.title ?? r.extends) : undefined;
   const used = [
     ...d.usedBy.templates.map((t) => (
-      <Link key={`t-${t}`} to={`/agents?tab=templates&id=${t}`}>
+      <Link key={`t-${t}`} to={`${base}?tab=templates&id=${t}`}>
         шаблон «{cfg.teams.find((x) => x.id === t)?.title ?? t}»
       </Link>
     )),
     ...d.usedBy.automations.map((a) => (
-      <Link key={`a-${a.id}`} to={`/automations?rule=${a.id}`}>
+      <Link key={`a-${a.id}`} to={`/settings/project/automations?rule=${a.id}`}>
         автоматизация «{a.name}»{a.project ? ` (${a.project})` : ""}
       </Link>
     )),
@@ -199,7 +215,7 @@ function Permissions({ detail, cfg }: { detail: RoleDetail; cfg: Catalogue }) {
   const base = basePermissions(r, cfg.roles, cfg.classes);
   const [wanted, setWanted] = useState<string[]>(r.capabilities);
   const edit = useRoleEdit(detail);
-  const act = useAction();
+  const act = useAct();
   const changed = wanted.length !== r.capabilities.length || wanted.some((c) => !r.capabilities.includes(c));
   const toggle = (c: string, on: boolean) => setWanted((w) => (on ? [...w, c] : w.filter((x) => x !== c)));
   const baseName = r.extends ? `роли «${cfg.roles.find((x) => x.id === r.extends)?.title ?? r.extends}»` : `класса «${CLASS_TITLE[r.class]}»`;
@@ -373,3 +389,4 @@ function McpCard({ role: r, cfg, onEdit }: { role: RoleDef; cfg: Catalogue; onEd
     </Card>
   );
 }
+

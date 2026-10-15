@@ -26,10 +26,26 @@ import {
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
 import { plural } from "@/shared/lib";
-import { ConfirmDialog, Icon, Modal, useToast } from "@/shared/ui";
-import { Badge, FileEditor, History, Problems, Section, useAction } from "./common.tsx";
+import { Badge, ConfirmDialog, Icon, Modal, Section, useAct, useToast } from "@/shared/ui";
+import { FileEditor } from "./FileEditor.tsx";
+import { History } from "./History.tsx";
+import { Problems } from "./Problems.tsx";
 
-export function TemplatesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected?: string; onSelect: (id: string) => void }) {
+export function TemplatesTab({
+  cfg,
+  selected,
+  onSelect,
+  readOnly = false,
+  base = "/agents",
+}: {
+  cfg: Catalogue;
+  selected?: string;
+  onSelect: (id: string) => void;
+  /** The catalogue (/agents) forces read-only even for a server administrator. */
+  readOnly?: boolean;
+  /** Where this tab lives: cross-links to the other tabs stay inside the same mode. */
+  base?: string;
+}) {
   const current = selected ?? cfg.teams[0]?.id;
   return (
     <div className="split">
@@ -59,21 +75,22 @@ export function TemplatesTab({ cfg, selected, onSelect }: { cfg: Catalogue; sele
         ))}
       </section>
       <section className="split-main" aria-label="Шаблон">
-        {current ? <TemplatePane key={current} id={current} cfg={cfg} /> : <div className="pane-empty">Шаблонов нет</div>}
+        {current ? <TemplatePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Шаблонов нет</div>}
       </section>
     </div>
   );
 }
 
-function TemplatePane({ id, cfg }: { id: string; cfg: Catalogue }) {
+function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string; cfg: Catalogue; readOnly?: boolean; base?: string }) {
   const detail = useTemplate(id);
   const [mode, setMode] = useState<"form" | "file">();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const remove = useDeleteConfig();
-  const act = useAction();
+  const act = useAct();
   const d = detail.data;
   if (!d) return <div className="pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
   const t = d.template;
+  const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null && d.file.path.startsWith("teams/");
   const roleTitle = (id: string) => cfg.roles.find((r) => r.id === id)?.title ?? id;
   const title = (key: string) => {
@@ -82,7 +99,7 @@ function TemplatePane({ id, cfg }: { id: string; cfg: Catalogue }) {
     return m ? (m.name ? `${m.name[0].toUpperCase()}${m.name.slice(1)}` : roleTitle(m.role)) : key;
   };
   const used = d.usedBy.automations.map((a) => (
-    <Link key={a.id} to={`/automations?rule=${a.id}`}>
+    <Link key={a.id} to={`/settings/project/automations?rule=${a.id}`}>
       автоматизация «{a.name}»{a.project ? ` (${a.project})` : ""}
     </Link>
   ));
@@ -97,7 +114,7 @@ function TemplatePane({ id, cfg }: { id: string; cfg: Catalogue }) {
           </span>
           {t.description && <p className="desc">{t.description}</p>}
         </div>
-        {d.admin && (
+        {admin && (
           <>
             <button type="button" className="btn" onClick={() => setMode("form")}>
               Изменить
@@ -137,7 +154,7 @@ function TemplatePane({ id, cfg }: { id: string; cfg: Catalogue }) {
                     <span className={`ag-class c-${role?.class ?? "executor"}`} aria-hidden="true">
                       {(role?.title ?? m.role).slice(0, 1).toUpperCase()}
                     </span>
-                    <Link to={`/agents?tab=roles&id=${m.role}`}>{m.name ? `${title(m.key)} — ${roleTitle(m.role).toLowerCase()}` : roleTitle(m.role)}</Link>
+                    <Link to={`${base}?tab=roles&id=${m.role}`}>{m.name ? `${title(m.key)} — ${roleTitle(m.role).toLowerCase()}` : roleTitle(m.role)}</Link>
                     {m.key !== m.role && <span className="mono muted">{m.key}</span>}
                     {m.instructions && <span className="ag-tag plus">особенности</span>}
                     <span className="grow" />
@@ -189,9 +206,9 @@ function TemplatePane({ id, cfg }: { id: string; cfg: Catalogue }) {
             "Автоматизации его не используют; оркестратор и люди собирают по нему команды."
           )}
         </p>
-        {d.admin && (
+        {admin && (
           <Section title="История изменений">
-            <History item={`team:${t.id}`} admin={d.admin} />
+            <History item={`team:${t.id}`} admin={admin} />
           </Section>
         )}
       </div>

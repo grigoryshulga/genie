@@ -7,8 +7,8 @@ import type { NewTaskPreset } from "@/features/create-task";
 import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
-import { useLiveUpdates } from "@/shared/api";
-import { isTyping } from "@/shared/lib";
+import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
+import { isTyping, rememberWorkRoute } from "@/shared/lib";
 import { Sidebar } from "@/widgets/sidebar";
 import { lazyPage } from "./lazyPage.ts";
 
@@ -23,10 +23,13 @@ const EpicsPage = lazyPage(() => import("@/pages/epics").then((m) => m.EpicsPage
 const EpicPage = lazyPage(() => import("@/pages/epic").then((m) => m.EpicPage));
 const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
 const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
-const ProfilePage = lazyPage(() => import("@/pages/profile").then((m) => m.ProfilePage));
-const ProjectPage = lazyPage(() => import("@/pages/project").then((m) => m.ProjectPage));
-const ServerPage = lazyPage(() => import("@/pages/project").then((m) => m.ServerPage));
-const FirstProjectPage = lazyPage(() => import("@/pages/project").then((m) => m.FirstProjectPage));
+const MeSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.MeSettingsPage));
+const AutomationsSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.AutomationsSettingsPage));
+const AgentsAdminPage = lazyPage(() => import("@/pages/settings").then((m) => m.AgentsAdminPage));
+const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
+const ServerSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerSettingsPage));
+const SettingsShell = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.SettingsShell));
+const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m.FirstProjectPage));
 const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.AnswerPage));
 const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
 const NotificationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.NotificationsPage));
@@ -41,7 +44,7 @@ function PageFallback() {
 }
 
 function Shell() {
-  const online = useLiveUpdates();
+  const online = useOnline();
   const navigate = useNavigate();
   const location = useLocation();
   const [sp, setSp] = useSearchParams();
@@ -57,11 +60,17 @@ function Shell() {
   const teamRoute = location.pathname.startsWith("/team/");
   const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
-  const platformRoute = ["/automations", "/agents", "/notifications", "/profile", "/project", "/server"].some((p) => location.pathname.startsWith(p));
+  const platformRoute = ["/automations", "/agents", "/notifications"].some((p) => location.pathname.startsWith(p));
   // Pages without the task list or board: opening a task from the palette goes to the list.
   const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
   const openTask = tasks?.find((t) => t.id === openTaskId);
+
+  // The settings mode's «← к работе» returns here (PD21).
+  useEffect(() => {
+    if (!location.pathname.startsWith("/settings")) rememberWorkRoute(location.pathname, location.search);
+  }, [location]);
+
 
   const closeTask = useCallback(() => {
     const next = new URLSearchParams(sp);
@@ -73,7 +82,7 @@ function Shell() {
     () => ({
       newTask: () => newTask(),
       newIdea: () => newTask({ idea: true }),
-      go: (where: "board" | "tasks" | "epics") => navigate(`/${where}`),
+      go: (where: "board" | "tasks" | "epics" | "settings") => navigate(`/${where}`),
       preset: (id: PresetId, mine?: boolean) => navigate(presetPath(id, mine)),
       openTask: (id) => {
         const next = new URLSearchParams(ownPage ? undefined : sp);
@@ -105,7 +114,7 @@ function Shell() {
       }
       if (isTyping(e)) return;
       if (Date.now() - gPending.current < 1200) {
-        const sections: Record<string, "board" | "tasks" | "epics"> = { b: "board", t: "tasks", e: "epics" };
+        const sections: Record<string, "board" | "tasks" | "epics" | "settings"> = { b: "board", t: "tasks", e: "epics", s: "settings" };
         const presets: Record<string, PresetId> = { m: "open", i: "inbox", d: "decisions", a: "working", p: "prep", c: "done" };
         gPending.current = 0;
         if (sections[e.key]) {
@@ -215,6 +224,7 @@ function EpicRoute() {
 /** Login when needed; a friendly note when the user has no project yet. */
 function Gate() {
   const session = useSession();
+  const online = useLiveUpdates();
   if (session.isLoading) return <div className="auth-page" />;
   if (session.error) return <LoginPage note={`Сервер недоступен: ${session.error.message}`} />;
   if (!session.data) return <LoginPage />;
@@ -227,7 +237,41 @@ function Gate() {
       );
     return <LoginPage note="У вас пока нет доступа ни к одному проекту — попросите приглашение у администратора." />;
   }
-  return <Shell />;
+  // One live-updates stream for both modes: the work shell and the settings one read the flag.
+  return (
+    <OnlineProvider value={online}>
+      <Outlet />
+    </OnlineProvider>
+  );
+}
+
+/** The server section of the settings: server administrators only. A route-level policy, so it lives with the routes. */
+function RequireServerAdmin({ children }: { children: ReactNode }) {
+  const session = useSession();
+  if (session.isLoading) return <div className="empty">Загрузка…</div>;
+  if (!session.data?.user.isAdmin) return <div className="empty">Раздел «Сервер» — для администраторов сервера.</div>;
+  return children;
+}
+
+/** `/profile/…` — the personal settings before the settings mode (PD21); old notifications still carry these links. */
+function LegacyProfile() {
+  const { tab } = useParams();
+  const section = tab === "security" || tab === "telegram" || tab === "keys" || tab === "tokens" ? tab : "account";
+  return <Navigate to={`/settings/me/${section}`} replace />;
+}
+
+/** `/project/…` — the project settings before the settings mode (PD21); old links keep working. */
+function LegacyProject() {
+  const { tab } = useParams();
+  const section = tab === "agents" || tab === "repos" || tab === "people" ? tab : "general";
+  return <Navigate to={`/settings/project/${section}`} replace />;
+}
+
+/** `/server/…` — the server administration before the settings mode (PD21); old links keep working. */
+function LegacyServer() {
+  const { tab } = useParams();
+  const section = tab === "stats" || tab === "projects" || tab === "accounts" || tab === "mcp" || tab === "vault" ? tab : "health";
+  return <Navigate to={`/settings/server/${section}`} replace />;
 }
 
 export const router = createBrowserRouter([
@@ -246,23 +290,56 @@ export const router = createBrowserRouter([
     element: <Gate />,
     children: [
       { index: true, element: <Navigate to="/board" replace /> },
-      { path: "board", element: <BoardRoute /> },
-      { path: "tasks", element: <TasksRoute /> },
-      { path: "task/:taskId/:tab?", element: <TaskPage /> },
-      { path: "team/:teamId", element: <TeamView /> },
-      { path: "team/:teamId/:member", element: <AgentChat /> },
-      { path: "epics", element: <EpicsRoute /> },
-      { path: "epic/:epicId", element: <EpicRoute /> },
-      { path: "docs", element: <DocsPage /> },
-      { path: "docs/edit", element: <DocsPage /> },
-      { path: "docs/proposals", element: <ProposalsPage /> },
-      { path: "automations", element: <AutomationsPage /> },
-      { path: "agents", element: <AgentsPage /> },
-      { path: "notifications", element: <NotificationsPage /> },
-      { path: "profile/:tab?", element: <ProfilePage /> },
-      { path: "project/:tab?", element: <ProjectPage /> },
-      { path: "server/:tab?", element: <ServerPage /> },
-      { path: ":view", element: <LegacyView /> },
+      // The work mode: the sidebar, the task drawer, the palette. Everything people use daily.
+      {
+        element: <Shell />,
+        children: [
+          { path: "board", element: <BoardRoute /> },
+          { path: "tasks", element: <TasksRoute /> },
+          { path: "task/:taskId/:tab?", element: <TaskPage /> },
+          { path: "team/:teamId", element: <TeamView /> },
+          { path: "team/:teamId/:member", element: <AgentChat /> },
+          { path: "epics", element: <EpicsRoute /> },
+          { path: "epic/:epicId", element: <EpicRoute /> },
+          { path: "docs", element: <DocsPage /> },
+          { path: "docs/edit", element: <DocsPage /> },
+          { path: "docs/proposals", element: <ProposalsPage /> },
+          { path: "automations", element: <AutomationsPage /> },
+          { path: "agents", element: <AgentsPage /> },
+          { path: "notifications", element: <NotificationsPage /> },
+          { path: ":view", element: <LegacyView /> },
+        ],
+      },
+      // The settings mode (PD21): its own layout; «Личное» first, the project and server sections follow.
+      {
+        path: "settings",
+        element: <SettingsShell />,
+        children: [
+          { index: true, element: <Navigate to="/settings/me/account" replace /> },
+          { path: "me/:section?", element: <MeSettingsPage /> },
+          { path: "project/automations", element: <AutomationsSettingsPage /> },
+          { path: "project/:section?", element: <ProjectSettingsPage /> },
+        {
+          path: "server",
+          element: (
+            <RequireServerAdmin>
+              <Outlet />
+            </RequireServerAdmin>
+          ),
+          children: [
+            { index: true, element: <Navigate to="/settings/server/health" replace /> },
+            { path: "roles", element: <AgentsAdminPage /> },
+            { path: "templates", element: <AgentsAdminPage /> },
+            { path: "skills", element: <AgentsAdminPage /> },
+            { path: "history", element: <AgentsAdminPage /> },
+            { path: ":section?", element: <ServerSettingsPage /> },
+          ],
+        },
+        ],
+      },
+      { path: "profile/:tab?", element: <LegacyProfile /> },
+      { path: "project/:tab?", element: <LegacyProject /> },
+      { path: "server/:tab?", element: <LegacyServer /> },
     ],
   },
 ]);

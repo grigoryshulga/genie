@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bodyUnderTitle, firstParagraph } from "../web/src/entities/doc/model.ts";
 import { statusNote } from "../web/src/entities/task/model.ts";
-import { condition, cronText, describeStep, describeTrigger, duration, untemplate } from "../web/src/pages/platform/model/describe.ts";
+import { condition, cronText, describeStep, describeTrigger, duration, untemplate } from "../web/src/entities/platform/model.ts";
 
 test("a rule's trigger reads as words, not as its JSON", () => {
   assert.equal(

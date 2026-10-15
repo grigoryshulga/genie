@@ -3,8 +3,7 @@
 
 import { type ReactNode, useState } from "react";
 import { setFrontmatterKey, type RoleDetail, useSaveConfig } from "@/entities/agent-config";
-import { useAction } from "./common.tsx";
-import { Icon, Modal } from "@/shared/ui";
+import { Icon, Modal, useAct } from "@/shared/ui";
 
 /** Changed frontmatter fields of a role file: a key with its new value (`undefined` removes it). */
 type RoleFields = [string, string | string[] | undefined][];
@@ -22,7 +21,7 @@ export function useRoleEdit(detail: RoleDetail) {
 /** Save changed fields of the role file: `busy` while saving, the dialog closed on success. */
 export function useRoleSave(detail: RoleDetail, onClose: () => void) {
   const edit = useRoleEdit(detail);
-  const act = useAction();
+  const act = useAct();
   const [busy, setBusy] = useState(false);
   const save = async (fields: RoleFields, ok: string) => {
     setBusy(true);

@@ -91,7 +91,7 @@ export function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: C
                 ) : (
                   <div className="mc-role-tools">
                     <ChipInput values={g.tools} onChange={(tools) => set({ tools })} placeholder="шаблоны через запятую, например get_*" mono />
-                    <p className="muted ag-note">Проверьте подключение на странице «Сервер», чтобы выбирать инструменты списком.</p>
+                    <p className="muted ag-note">Проверьте подключение в «Настройки» → «Сервер» → «MCP», чтобы выбирать инструменты списком.</p>
                   </div>
                 ))}
             </div>

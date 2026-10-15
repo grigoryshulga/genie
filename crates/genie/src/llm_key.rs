@@ -201,7 +201,7 @@ fn tell_missing(app: &App, project: &str, user: i64, login: &str, who: &str, mod
             "{who} в проекте {project} работает от вашего имени на модели {model}, но в вашем профиле нет ключа LiteLLM. Укажите его в профиле — агент запустится сам."
         ),
         project: Some(project.to_string()),
-        link: Some("/profile/keys".into()),
+        link: Some("/settings/me/keys".into()),
         ..Default::default()
     };
     let day = chrono::Utc::now().format("%Y-%m-%d");

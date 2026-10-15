@@ -21,6 +21,9 @@ export function MobileNav() {
       <NavLink to="/epics" className={cls(pathname === "/epics")}>
         Эпики
       </NavLink>
+      <NavLink to="/settings" className={cls(pathname.startsWith("/settings"))}>
+        Настройки
+      </NavLink>
       {teams.map((t) => (
         <button key={t.id} type="button" onClick={() => navigate(`/team/${encodeURIComponent(t.id)}`)}>
           Команда {t.id}

@@ -173,7 +173,7 @@ docker compose restart genie
 
 Читать тарифы удобно виртуальным ключом без моделей. Кнопка «Подтянуть тарифы из LiteLLM» — на странице «Расходы»; то же из терминала: `genie server prices --refresh` (без `--refresh` — какие цены в силе и откуда каждая). Если LiteLLM недоступен, сервер работает на том, что получил в прошлый раз, и на `modelPrices`, а страница «Расходы» и `genie doctor` показывают ошибку последней загрузки — дата загрузки остаётся датой последней удачной.
 
-Где смотреть: «Сервер» → «Статистика» → «Расходы» (по дням, моделям, проектам, эпикам, задачам и чатам), строка «Расходы» в задаче и эпике, «Потрачено» в чате агента, `genie stats`. API: `GET /api/stats` (поле `usage` у проекта и `cost` по дням), `GET /api/tasks/{id}/usage`, `GET /api/agents/{team}/{member}/usage`, `GET|POST /api/model-prices`.
+Где смотреть: «Настройки» → «Сервер» → «Статистика» → «Расходы» (по дням, моделям, проектам, эпикам, задачам и чатам), строка «Расходы» в задаче и эпике, «Потрачено» в чате агента, `genie stats`. API: `GET /api/stats` (поле `usage` у проекта и `cost` по дням), `GET /api/tasks/{id}/usage`, `GET /api/agents/{team}/{member}/usage`, `GET|POST /api/model-prices`.
 
 ### Бюджеты
 
@@ -194,7 +194,7 @@ docker compose restart genie
 
 ### Личные ключи моделей
 
-Когда на сервере есть пользователи, каждый указывает свои ключи в профиле (веб: «Профиль» → «Провайдеры и ключи»; API: `GET /api/me/llm-keys`, `PUT|DELETE /api/me/llm-keys/{provider}`). Помимо LiteLLM принимаются ключи провайдеров, которых pi поддерживает сам и которые обходятся одним ключом: Anthropic, OpenAI, Google Gemini, xAI, Groq, Mistral, OpenRouter, DeepSeek, Moonshot, Qwen, ZAI и другие (полный список — в профиле; он же — `PROVIDERS` в `crates/genie/src/llm_key.rs`). Провайдеры, которым нужно больше ключа (Bedrock, Vertex, Azure, Cloudflare), и интерактивный вход (`openai-codex`) настраиваются для pi серверного пользователя, как и кастомные провайдеры из `models.json`.
+Когда на сервере есть пользователи, каждый указывает свои ключи в личных настройках (веб: «Настройки» → «Личное» → «Провайдеры и ключи»; API: `GET /api/me/llm-keys`, `PUT|DELETE /api/me/llm-keys/{provider}`). Помимо LiteLLM принимаются ключи провайдеров, которых pi поддерживает сам и которые обходятся одним ключом: Anthropic, OpenAI, Google Gemini, xAI, Groq, Mistral, OpenRouter, DeepSeek, Moonshot, Qwen, ZAI и другие (полный список — в тех же настройках; он же — `PROVIDERS` в `crates/genie/src/llm_key.rs`). Провайдеры, которым нужно больше ключа (Bedrock, Vertex, Azure, Cloudflare), и интерактивный вход (`openai-codex`) настраиваются для pi серверного пользователя, как и кастомные провайдеры из `models.json`.
 
 Агент, которого запускает сервер, работает от имени *инициатора* и получает его ключи в переменных окружения, которые читает pi (`LITELLM_API_KEY` для LiteLLM, `ANTHROPIC_API_KEY` для Anthropic и т. д.):
 
