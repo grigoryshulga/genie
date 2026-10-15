@@ -1,27 +1,15 @@
 // Pages for the platform features of the server: answering questions (public
-// link), notifications, automations with runs and playbooks, and the review of
-// knowledge proposals.
+// link), notifications, using the automations (the rules themselves are defined
+// in the settings mode), and the review of knowledge proposals.
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { useAgentConfig } from "@/entities/agent-config";
-import {
-  type Automation,
-  type Notification,
-  RUN_STATUS,
-  useAutomations,
-  useNotifications,
-  usePlaybooks,
-  useProposal,
-  useProposals,
-  useRun,
-  useRuns,
-} from "@/entities/platform";
+import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAutomations, useNotifications, useProposal, useProposals } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
 import { Icon, Markdown, Modal, useRefreshingAct, useToast } from "@/shared/ui";
-import { describeStep, describeTrigger } from "../model/describe.ts";
+import { Runs } from "@/widgets/runs";
 
 // ------------------------------------------------------------------ answer page (public)
 
@@ -196,31 +184,27 @@ function dayName(iso: string): string {
 
 // ------------------------------------------------------------------ automations
 
+/** Using the automations: the rules with their last run, a manual run, and the run journal. */
 export function AutomationsPage() {
   useTick();
   const rules = useAutomations();
-  const playbooks = usePlaybooks();
   const [sp, setSp] = useSearchParams();
-  const [editing, setEditing] = useState<{ id?: number; text: string }>();
-  const [showPlaybooks, setShowPlaybooks] = useState(false);
   const act = useRefreshingAct();
-  const installed = new Set((rules.data ?? []).map((r) => r.name));
   const selected = Number(sp.get("rule") ?? "") || rules.data?.[0]?.id;
   const current = rules.data?.find((r) => r.id === selected);
+  const runNow = (rule: Automation) => void act(() => request("POST", `/api/automations/${rule.id}/run`, {}), "Запущено");
   return (
     <main className="main">
       <header className="topbar">
         <h1>Автоматизации</h1>
+        <span className="sub">запуск и наблюдение · правила меняют в настройках проекта</span>
         <span className="grow" />
-        {!!playbooks.data?.length && (
-          <button type="button" className="btn" onClick={() => setShowPlaybooks(true)}>
-            Плейбуки
+        {current?.trigger === "manual" && (
+          <button type="button" className="btn primary" onClick={() => runNow(current)}>
+            <Icon.bolt size={13} />
+            <span className="d-only">Запустить</span>
           </button>
         )}
-        <button type="button" className="btn primary" onClick={() => setEditing({ text: JSON.stringify(EMPTY_RULE, null, 2) })}>
-          <Icon.plus size={13} />
-          <span className="d-only">Новое правило</span>
-        </button>
       </header>
       <div className="split">
         <section className="split-list" aria-label="Правила">
@@ -238,244 +222,29 @@ export function AutomationsPage() {
           ))}
           {rules.isSuccess && !rules.data.length && (
             <p className="muted" style={{ margin: 0, padding: "4px 14px 8px" }}>
-              Правил пока нет — начните с плейбука: готового правила для частого случая.
+              Правил пока нет — их добавляют в настройках проекта, на разделе «Автоматизации».
             </p>
           )}
         </section>
-        <section className="split-main" aria-label="Правило">
-          {current ? (
-            <RuleView key={current.id} rule={current} onEdit={() => setEditing({ id: current.id, text: JSON.stringify(current.spec, null, 2) })} />
-          ) : (
-            <div className="pane-empty">
-              <Icon.bolt size={22} />
-              {rules.isPending ? "Загрузка…" : "Выберите правило или добавьте плейбук"}
+        <section className="split-main" aria-label="Запуски">
+          <div className="pane-head">
+            <div className="ttl">
+              <h2>{current ? current.name : "Все правила"}</h2>
+              <span className="sub">{current ? describeTrigger(current.spec, current.enabled, current.dryRun) : "журнал запусков всех правил"}</span>
             </div>
-          )}
+            {current?.trigger === "manual" && (
+              <button type="button" className="btn" onClick={() => runNow(current)}>
+                Запустить
+              </button>
+            )}
+          </div>
+          <div className="pane-body">
+            <Runs automation={current?.id} />
+          </div>
         </section>
       </div>
-      {editing && <RuleEditor initial={editing} onClose={() => setEditing(undefined)} />}
-      {showPlaybooks && (
-        <Modal label="Плейбуки" onClose={() => setShowPlaybooks(false)}>
-          <div className="mh">
-            Плейбуки — готовые правила для частых случаев
-            <span className="grow" />
-            <button type="button" className="icon-btn" onClick={() => setShowPlaybooks(false)} aria-label="Закрыть">
-              <Icon.close />
-            </button>
-          </div>
-          <ul className="mb playbooks">
-            {playbooks.data?.map((p) => {
-              const added = installed.has(String((p.spec as { name?: string }).name ?? ""));
-              return (
-                <li key={p.id}>
-                  <span className="t">{p.title}</span>
-                  <span className="s">{describeTrigger(p.spec)}</span>
-                  {added ? (
-                    <span className="muted">добавлен</span>
-                  ) : (
-                    <button type="button" className="btn" onClick={() => void act(() => request("POST", `/api/automations/playbooks/${p.id}`), "Правило добавлено")}>
-                      Добавить
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </Modal>
-      )}
     </main>
   );
-}
-
-const EMPTY_RULE = {
-  name: "Новое правило",
-  on: { event: "task.status_changed", where: { to: "done" } },
-  steps: [{ id: "tell", notify: { to: ["task.author"], title: "{{ event.task.id }} готова", text: "{{ event.task.title }}" } }],
-};
-
-type Spec = { on?: Record<string, unknown>; steps?: Record<string, unknown>[] };
-
-function RuleView({ rule, onEdit }: { rule: Automation; onEdit: () => void }) {
-  const act = useRefreshingAct();
-  const cfg = useAgentConfig().data;
-  const steps = ((rule.spec as Spec).steps ?? []).map((st) =>
-    describeStep(st, {
-      role: (id) => cfg?.roles.find((r) => r.id === id)?.title,
-      template: (id) => cfg?.teams.find((t) => t.id === id)?.title,
-    }),
-  );
-  return (
-    <>
-      <div className="pane-head">
-        <div className="ttl">
-          <h2>{rule.name}</h2>
-          <span className="sub">{describeTrigger(rule.spec, rule.enabled, rule.dryRun)}</span>
-        </div>
-        <label className="toggle">
-          <input type="checkbox" checked={rule.enabled} onChange={(e) => void act(() => request("POST", `/api/automations/${rule.id}/enabled`, { enabled: e.target.checked }))} />
-          Включено
-        </label>
-        <button type="button" className="btn" onClick={onEdit}>
-          Изменить
-        </button>
-        {rule.trigger === "manual" && (
-          <button type="button" className="btn" onClick={() => void act(() => request("POST", `/api/automations/${rule.id}/run`, {}), "Запущено")}>
-            Запустить
-          </button>
-        )}
-      </div>
-      <div className="pane-body">
-        {steps.length > 0 && (
-          <ol className="steps" aria-label="Шаги">
-            {steps.map((st, i) => (
-              <li key={i} title={st.hint}>
-                <span className="k">{st.kind}</span>
-                <span className="d">{st.title}</span>
-                {st.note && <span className="n">{st.note}</span>}
-              </li>
-            ))}
-          </ol>
-        )}
-        <Runs automation={rule.id} />
-      </div>
-    </>
-  );
-}
-
-function RuleEditor({ initial, onClose }: { initial: { id?: number; text: string }; onClose: () => void }) {
-  const agents = useAgentConfig().data;
-  const [text, setText] = useState(initial.text);
-  const [error, setError] = useState<string>();
-  const qc = useQueryClient();
-  const save = async () => {
-    try {
-      const spec = JSON.parse(text);
-      if (initial.id) await request("PUT", `/api/automations/${initial.id}`, { spec });
-      else await request("POST", "/api/automations", { spec });
-      await qc.invalidateQueries();
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  const remove = async () => {
-    if (!initial.id) return;
-    await request("DELETE", `/api/automations/${initial.id}`);
-    await qc.invalidateQueries();
-    onClose();
-  };
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <div className="mh">
-          {initial.id ? "Правило (JSON)" : "Новое правило (JSON)"}
-          <span className="grow" />
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-            <Icon.close />
-          </button>
-        </div>
-        <div className="mb">
-          <p className="muted" style={{ margin: 0 }}>
-            Триггер: <code>event</code> (+ <code>where</code>), <code>schedule</code> (cron, <code>tz</code>), <code>manual</code>, <code>webhook</code>. Шаги: task.status, task.comment, task.create,
-            task.update, task.get, task.ready, notify, agent, team, ask, wait, wake_orchestrator, changelog.add, release, http. Подстановки: <code>{"{{ event.task.id }}"}</code>,{" "}
-            <code>{"{{ steps.<id>.output.… }}"}</code>.
-          </p>
-          {agents && (
-            <p className="muted" style={{ margin: 0 }}>
-              Шаблоны для <code>team.template</code>: {agents.teams.map((t) => t.id).join(", ")}. Роли для <code>agent.role</code>:{" "}
-              {agents.roles
-                .filter((r) => r.class !== "orchestrator")
-                .map((r) => r.id)
-                .join(", ")}
-              .
-            </p>
-          )}
-          <textarea className="mono code-edit" rows={22} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
-          {error && <div className="auth-error">{error}</div>}
-        </div>
-        <div className="mf">
-          {initial.id && (
-            <button type="button" className="btn danger" onClick={() => void remove()}>
-              Удалить
-            </button>
-          )}
-          <span className="grow" />
-          <button type="button" className="btn" onClick={onClose}>
-            Отмена
-          </button>
-          <button type="button" className="btn primary" onClick={() => void save()}>
-            Сохранить
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Runs({ automation }: { automation: number }) {
-  useTick();
-  const runs = useRuns(automation);
-  const [open, setOpen] = useState<number>();
-  const run = useRun(open);
-  const act = useRefreshingAct();
-  return (
-    <section>
-      <h3>Последние запуски</h3>
-      {!runs.data?.length ? (
-        <p className="muted" style={{ margin: 0 }}>
-          {runs.isPending ? "Загрузка…" : "Запусков пока не было."}
-        </p>
-      ) : (
-        <div className="runs">
-          {runs.data.map((r) => (
-            <div key={r.id} className="run">
-              <button type="button" className="run-row" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? undefined : r.id)}>
-                <span className={`st ${r.status}`}>
-                  {r.status === "running" ? <span className="spin" /> : <span className={`state-dot ${r.status}`} />}
-                  {RUN_STATUS[r.status] ?? r.status}
-                </span>
-                <span className="id">#{r.id}</span>
-                <span className="nt">{r.error ?? triggerNote(r.triggerKey)}</span>
-                <span className="when">{timeAgo(r.started)}</span>
-              </button>
-              {open === r.id && run.data && (
-                <ol className="run-steps">
-                  {run.data.steps.map((s) => (
-                    <li key={s.id}>
-                      <details>
-                        <summary>
-                          <span className="sid">{s.stepId}</span>
-                          <span>
-                            {s.kind} · {RUN_STATUS[s.status] ?? s.status}
-                            {s.attempt > 1 ? ` · попытка ${s.attempt}` : ""}
-                            {s.error && <span className="err"> · {s.error}</span>}
-                          </span>
-                        </summary>
-                        <pre className="view">{JSON.stringify({ input: s.input, output: s.output, wait: s.wait }, null, 2)}</pre>
-                      </details>
-                    </li>
-                  ))}
-                  {["queued", "running", "waiting"].includes(run.data.status) && (
-                    <li>
-                      <button type="button" className="btn" onClick={() => void act(() => request("POST", `/api/runs/${r.id}/cancel`), "Отменено")}>
-                        Отменить запуск
-                      </button>
-                    </li>
-                  )}
-                </ol>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function triggerNote(key: string): string {
-  const kind = key.split(":")[0];
-  if (kind === "event") return `по событию #${key.split(":").at(-1)}`;
-  return ({ schedule: "по расписанию", manual: "запущено вручную", webhook: "по webhook" } as Record<string, string>)[kind] ?? key;
 }
 
 // ------------------------------------------------------------------ knowledge proposals

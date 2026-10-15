@@ -25,6 +25,7 @@ const EpicPage = lazyPage(() => import("@/pages/epic").then((m) => m.EpicPage));
 const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
 const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
 const MeSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.MeSettingsPage));
+const AutomationsSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.AutomationsSettingsPage));
 const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
 const ServerSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerSettingsPage));
 const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m.FirstProjectPage));
@@ -307,6 +308,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/settings/me/account" replace /> },
           { path: "me/:section?", element: <MeSettingsPage /> },
+          { path: "project/automations", element: <AutomationsSettingsPage /> },
           { path: "project/:section?", element: <ProjectSettingsPage /> },
           { path: "server/:section?", element: <RequireServerAdmin><ServerSettingsPage /></RequireServerAdmin> },
         ],

@@ -60,6 +60,12 @@ export function SettingsShell() {
               <span className="grow">Проект</span>
             </NavLink>
           )}
+          {project && (
+            <NavLink to="/settings/project/automations" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+              <Icon.bolt size={15} />
+              <span className="grow">Автоматизации</span>
+            </NavLink>
+          )}
           {session?.user.isAdmin && (
             <NavLink to="/settings/server/health" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/settings/server") ? " on" : ""}`}>
               <Icon.server size={15} />
