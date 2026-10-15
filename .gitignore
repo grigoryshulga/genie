@@ -10,3 +10,7 @@ secrets/
 .pi/
 .claude/worktrees/
 docker-compose.local.yml
+
+# Documentation build output
+docs/.vitepress/cache/
+docs/.vitepress/dist/

@@ -1,132 +1,64 @@
 ---
-title: Хранилище знаний genie (vault)
-summary: Проект хранилища знаний — отдельный git-репозиторий в формате Obsidian с пространствами проектов, политиками публикации по разделам, ревью изменений агентов в genie, связью с задачами и кодом, чейнджлогом и поддержкой проектов без кода.
-type: note
-status: draft
-tags: [платформа, знания, vault, obsidian, документация, чейнджлог]
-aliases: [vault, knowledge base, obsidian, confluence, база знаний]
+title: Knowledge vault
+summary: Store, search, review, and sync project knowledge as Markdown in Git.
+type: guide
+status: current
 ---
 
-# Хранилище знаний genie (vault)
+# Knowledge vault
 
-Контекст — [[platform/vision]], решения PD3, PD4, PD6, PP7, PP8 — [[platform/decisions]].
+Genie stores knowledge in a separate Git repository at `<data>/vault`, or the configured `vault.path`. Each project has a space; shared spaces can hold team-wide material. Files are the source of truth. `vault-index.db` is a rebuildable search cache.
 
-## Принципы
+This project website is built from the repository's `docs/` directory. A running Genie server indexes its **vault**, not this website directory, unless you import those pages.
 
-- Знания живут **отдельно от кода**: в отдельном git-репозитории (vault), а не в `docs/` репозитория проекта.
-- Формат — **Obsidian-совместимый** Markdown: vault открывается в Obsidian как есть, с ним можно работать параллельно с вебом genie.
-- Источник правды — файлы; индекс genie (FTS5, ссылки, бэклинки) — перестраиваемый кэш, как в нынешней docs-системе ([[reference/genie-docs-system]]).
-- Веб и агенты пишут в vault **только через сервер**: он упорядочивает записи, коммитит от имени автора и применяет политику раздела.
+## Read and write
 
-## Структура
+Use the Docs screen, Obsidian, or the CLI:
 
-Рекомендация — **один vault на команду** (инсталляцию), внутри — пространства:
-
-```
-vault/
-  .genie/vault.json        пространства, политики публикации, владельцы, привязка к проектам
-  _attachments/            картинки и вложения
-  processes/               общие процессы команды
-  glossary/                общий глоссарий
-  inbox/                   быстрые заметки людей и агентов (как docs_note сегодня)
-  genie/                   пространство проекта genie
-    product/
-    architecture/
-    decisions/
-    runbooks/
-    changelog.md
-  payments/                пространство другого проекта, в том числе без кода
+```bash
+genie docs search "authentication"
+genie docs read <path>
+genie vault import ./docs --space shop
+genie vault reindex
 ```
 
-Один vault лучше подходит для Obsidian: общий граф, ссылки между проектами, общий глоссарий. Права и политики задаются по пространствам и разделам. Каталоги с точкой Obsidian не показывает, поэтому настройки genie лежат в `.genie/`.
+Pages support Markdown, frontmatter, wiki-links, heading reads, and backlinks. Search indexes titles, summaries, headings, body text, tags, and aliases. See the [documentation contract](../reference/genie-docs-system.md) for exact field and search behavior.
 
-## Совместимость с Obsidian
+## Publication policies
 
-| Возможность | Сейчас в genie | В vault |
-|---|---|---|
-| Wiki-ссылки: на страницу, на заголовок, с текстом ссылки | есть | без изменений |
-| Встраивание картинок и вложений (`!` перед wiki-ссылкой на файл) | нет (в чате — `!image[…]`) | добавить в рендер и индекс вложений |
-| Свойства (YAML frontmatter) | узкий контракт полей | тот же контракт; неизвестные свойства сохраняются и игнорируются, а не считаются ошибкой |
-| Теги `#тег` в тексте | нет | индексировать вместе с `tags` |
-| Ссылка по имени файла | уникальное имя разрешается, неоднозначное даёт диагностику | так же; в Obsidian рекомендуем формат новых ссылок «путь от корня vault» |
-| Каталог `.obsidian/` | — | genie его игнорирует; коммитить ли его — решает команда |
+`vault.json` assigns owners and separate publication policies for people and agents at space or section level:
 
-До начала работ совместимость проверяется спайком на реальном vault.
+| Policy | Result |
+| --- | --- |
+| `direct` | Commit the change to the vault's main branch. |
+| `review` | Create a proposal for a section owner to review in Genie. |
+| `locked` | Agents cannot change the section. They can report findings elsewhere. |
 
-## Синхронизация
+Proposals include a diff, preview, and discussion. Review works without a GitHub or GitLab remote. A section's policy still applies when a role has `docs.write`.
 
-- Сервер держит рабочую копию vault. Удалённый репозиторий (корпоративный git) не обязателен: на время локального тестирования vault может быть просто локальным репозиторием.
-- Правки из веба и от агентов — коммиты от имени автора (человек или `agent:<команда>/<имя>`), затем push, если есть ремоут.
-- Правки из Obsidian приходят через git (плагин Obsidian Git или вручную). Сервер каждые `vault.syncSecs` делает fetch, merge и push (позже — по webhook), переиндексирует изменённые файлы и пишет события `doc.changed`.
-- Непересекающиеся правки сливаются автоматически. Пересекающиеся никогда не перезаписываются: на странице остаётся версия сервера, версия из репозитория сохраняется рядом (`<страница>.conflict-<время>.md`), страница, удалённая в одном месте и изменённая в другом, остаётся изменённой; владельцы раздела и администраторы получают уведомление.
-- Личные файлы Obsidian (`workspace.json`, кэш, корзина) исключены `.gitignore`, который ведёт сервер.
-- Настройка и эксплуатация — [[platform/getting-started#Obsidian у каждого: синхронизация с git]].
+## Git and Obsidian
 
-## Разделы и политики публикации
+The vault opens directly in Obsidian. Add a remote to sync between the server and people's local clones. Configure `vault.remote` and `vault.syncSecs` in `config.json`; the default sync interval is two minutes. See the current state in **Settings → Management → Knowledge vault**.
 
-Политика задаётся для пространства или раздела, отдельно для людей и для агентов:
+The server fetches, merges, pushes, and reindexes changes. Non-overlapping edits merge automatically. For overlapping edits, the server keeps its page and saves the incoming version alongside it as `<page>.conflict-<timestamp>.md`. Owners and administrators are notified. Conflicting deletion does not discard an edited page.
 
-```json
-{
-  "spaces": {
-    "genie": {
-      "project": "genie",
-      "owners": ["lead"],
-      "policy": { "humans": "direct", "agents": "review" },
-      "sections": {
-        "decisions": { "policy": { "humans": "review", "agents": "review" } },
-        "runbooks": { "policy": { "humans": "direct", "agents": "direct" } }
-      }
-    },
-    "processes": {
-      "owners": ["lead", "pm"],
-      "policy": { "humans": "review", "agents": "locked" }
-    }
-  }
-}
-```
+Keep Obsidian's personal workspace and cache files out of Git. The server ignores `.obsidian/` for indexing; the team decides whether to share its other settings.
 
-- `direct` — изменение сразу коммитится в основную ветку vault.
-- `review` — изменение уходит в ветку-предложение. В genie есть экран ревью (дифф, предпросмотр, комментарии), где владелец раздела принимает или отклоняет предложение. Ревью не зависит от GitHub или GitLab и поэтому работает на локальной машине.
-- `locked` — агенты раздел не меняют: могут только оставить заметку в `inbox/` или комментарий к задаче.
+## Task and code relationships
 
-## Связи с задачами и кодом
+A page's `related` field names tasks or epics. Its `paths` globs describe code relative to the repository of the space's project. Changes after `verified` produce a possible-stale warning, not a failed page or a hidden result. Projects without code still have knowledge spaces; code-based staleness does not apply.
 
-- **Страница ↔ задача**: `related: [G-42]`, как сейчас. В карточке задачи — блок «Документы» с бэклинками. ID задач уникальны в инсталляции благодаря префиксам проектов.
-- **Страница ↔ код**: пространство привязано к проекту (`project` в `vault.json`), поэтому `paths` страницы относятся к репозиторию этого проекта, и метка «возможно устарела» считается по его git-истории, как сейчас. Для страницы вне пространства проекта — поле `project:` во frontmatter.
-- **Проекты без кода**: всё то же самое, кроме `paths` и устаревания по коду.
+## Agent context
 
-## Что агенты знают без запроса
+Agents with `docs.read` receive two context layers:
 
-- **L0 — перечень страниц** пространства проекта в системном промпте оркестратора и ролей с разрешением `docs.read`: путь, название, тип, статус, дата и краткое описание (`summary`, иначе первый абзац), пометки `[stale]`, `[draft]`, `[unverified]`, `[deprecated]`, `[check frontmatter]`. Только метаданные, в пределах ~600 единиц (потолок 1000; единица — около четырёх латинских или двух кириллических символов). Не помещается — показывается начало перечня и строка, сколько страниц не показано; молча ничего не обрезается.
-- **L1 — страницы задачи** в kickoff её команды (при сборке и при добавлении участника, в предпросмотре шаблона тоже): до трёх страниц, в пределах 4000 единиц, до 1500 на страницу. Сначала страницы, у которых в `related` задача или её эпик, затем те, чьи `paths` покрывают пути, упомянутые в задаче, затем совпадения слов задачи с названием, описанием, заголовками, тегами и алиасами страницы (тело не участвует). Слова названия проекта, служебные слова и слова, которые есть больше чем на половине страниц, ничего не выбирают; устаревшие (`deprecated`) страницы — только если связаны с задачей. Длинная страница режется по границам разделов с пометкой, сколько разделов показано.
-- Остальное агент читает сам: `genie docs search`, `genie docs read <путь>`. Устройство — `crates/genie/src/context.rs`, перенесено из TS-версии вместе с её тестами.
+- **L0:** a compact index of the project's pages in the system prompt, with title, summary, and editorial warnings. The usual budget is about 600 units, capped at 1000. Omitted pages are counted explicitly.
+- **L1:** up to three pages at task kickoff, within 4000 units total and 1500 per page. Explicit task/epic relationships rank first, then path matches, then matches in titles, summaries, headings, tags, and aliases. Common words do not drive selection.
 
-## Поток «задача → знание»
+Deprecated pages enter L1 only through an explicit task relationship. Long content is cut at section boundaries and marked as truncated. Agents fetch further content with `genie docs search` and `genie docs read`.
 
-При закрытии задачи агентное задание документатора ([[platform/automations]], пример 1):
+## Keep knowledge useful
 
-1. читает артефакты и решения задачи и ищет затронутые страницы в пространстве проекта;
-2. правит устойчивые страницы (продукт, архитектура, процессы), а не заводит страницу на каждую задачу; решения уходят в `decisions/`;
-3. отправляет изменения по политике раздела — прямым коммитом или предложением на ревью;
-4. добавляет запись в чейнджлог.
+Update durable pages about the product, architecture, decisions, and procedures. Avoid creating a new page for every completed task. The task-completion playbook can run a documenter, add a changelog entry, and notify the author.
 
-Так документация остаётся картой продукта, а не архивом задач.
-
-## Чейнджлог
-
-- У каждого проекта — `changelog.md` в его пространстве, формат Keep a Changelog, раздел `Unreleased` сверху.
-- Для агентов сервер — единственный писатель: запись о закрытой задаче попадает в нужную группу («Добавлено», «Изменено», «Исправлено») со ссылкой на задачу. Люди могут править формулировки в Obsidian или в вебе.
-- Действие «Релиз» переносит `Unreleased` в версию с датой и рассылает заметки о выпуске в каналы. Для проектов с кодом, если включено, та же секция дописывается в `CHANGELOG.md` репозитория кода.
-
-## Перенос текущей docs-системы
-
-- Ядро переносится на Rust без изменения контракта: парсер, индекс FTS5, ссылки и бэклинки, чтение по заголовкам, L0/L1-подбор для агентов, impact. Затем корень индекса переезжает из `docs/` репозитория в vault.
-- `genie vault import <repo>/docs --space <проект>` переносит страницы вместе с frontmatter и ссылками. `docs/` в репозитории кода может остаться для README разработчиков, но в индекс знаний больше не входит.
-- Инструменты агентов сохраняют имена (`docs_search`, `docs_read`, `docs_note`), но ищут по vault — в пространстве проекта задачи и в общих пространствах.
-
-## Открытые вопросы
-
-1. Один vault на команду (рекомендация) или отдельный vault на проект?
-2. Ревью изменений внутри genie (рекомендация) или через merge request в git-хостинге компании?
-3. Коммитить ли `.obsidian/` (общие настройки и плагины) или держать его локальным у каждого?
+Each project can keep a `changelog.md` in its space. A release moves `Unreleased` entries to a dated version and emits `release.published`; optional code-repository publication copies the notes to its `CHANGELOG.md`.

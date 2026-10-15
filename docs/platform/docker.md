@@ -1,399 +1,127 @@
 ---
-title: Genie server в Docker
-summary: Как запустить genie server в контейнере на сервере — образ, compose, тома, пользователи и права, модели и ключи, git-доступ, обратный прокси, остановка, бэкапы, обновление и разбор типичных сбоев.
+title: Docker deployment
+summary: Configure persistent storage, credentials, networking, sandboxing, and backups in Docker.
 type: runbook
 status: current
-tags: [платформа, docker, запуск, эксплуатация, runbook]
-aliases: [docker, контейнер, compose, образ]
-paths: [Dockerfile, docker-compose.yml, docker/**, .env.example, .dockerignore]
-verified: 2026-09-29
 ---
 
-# Genie server в Docker
+# Docker deployment
 
-Обычный запуск без контейнера — [[platform/getting-started]]. Здесь то же самое для сервера: один образ, один `docker compose up`.
+The image contains Genie, its web UI, Git, and Pi-Bolt, available as `pi`. Docker Compose publishes port 7420 on loopback and persists server data and workspaces in named volumes.
 
-## Что внутри образа
-
-| Слой | Зачем |
-|---|---|
-| `genie` (Rust, release) | сервер, CLI, веб-интерфейс, встроенные роли, шаблоны и расширения pi |
-| Node 24 + **pi** (версия и все зависимости зафиксированы `package-lock.json`: `npm ci`, а не `npm install -g`) | харнесс агентов: по процессу `pi --mode rpc` на агента; подключения MCP ролей даёт встроенная поддержка MCP pi |
-| git, ssh, ripgrep, jq, curl, procps | всё, чем пользуются агенты и сам сервер (`kill`, worktree, vault) |
-| tini | PID 1: подбирает завершённые процессы агентов, пересылает сигналы |
-
-Тома:
-
-- `/data` — данные сервера (`GENIE_DATA`) и **`HOME` пользователя**: `server.db`, трекеры проектов, vault, сессии агентов, `config.json`, а также `~/.pi/agent` (ключи и провайдеры pi), `~/.ssh`, `~/.gitconfig`. Один том — одна резервная копия.
-- `/workspace` — git-репозитории проектов и рядом их worktree команд (`<repo>.worktrees/<команда>`).
-
-Сервер и агенты работают от пользователя `genie` (uid/gid 1000 по умолчанию), не от root.
-
-## Быстрый старт
+## Start
 
 ```bash
-git clone https://github.com/grigoryshulga/genie.git && cd genie
-cp .env.example .env            # ключи моделей, публичный адрес — см. ниже
-docker compose up -d --build    # первая сборка — несколько минут (Rust)
-
-# ВАЖНО: до того как открывать порт наружу
-echo 'пароль-не-короче-8' | docker compose exec -T genie genie user add admin --admin --password-stdin
+cp .env.example .env
+docker compose up -d --build
+printf '%s\n' 'replace-with-a-strong-password' | docker compose exec -T genie genie user add admin --admin --password-stdin
+docker compose exec -u genie genie genie doctor
 ```
 
-Откройте http://127.0.0.1:7420 и войдите. Пока в системе нет ни одного пользователя, сервер пускает без входа только запросы с loopback внутри контейнера; из-за проброса порта запросы с хоста приходят с адреса моста Docker и получают «нужен вход». Но лучше не полагаться на это и создавать администратора сразу.
+Open [localhost:7420](http://127.0.0.1:7420). Configure role models and provider keys as described in the [quick start](getting-started.md#configure-agents).
 
-`docker compose exec genie genie …` запускает CLI от пользователя сервера (обёртка `/usr/local/bin/genie`): файлы в `/data` не станут принадлежать root. Любая другая команда через `docker exec` стартует от root — добавляйте `-u genie`.
-
-## Готовый образ из GitHub Container Registry
-
-Workflow `.github/workflows/docker.yml` собирает образ, прогоняет `docker/smoke-test.sh` (старт, здоровье, веб, пользователь, права, остановка по SIGINT) и публикует его как `ghcr.io/<владелец>/<репозиторий>`: при пуше в `main` — теги `latest`, `main`, `sha-…`, при теге `vX.Y.Z` — `X.Y.Z` и `X.Y`. Pull request-ы идут в ветку `rc` и образ не собирают: там только быстрые проверки `ci.yml`. Образ собирается, когда `rc` вливают в `main`. Собирается `linux/amd64`.
-
-Пакет, опубликованный из приватного репозитория, приватный: скачать его без токена нельзя. На сервере:
-
-1. Создайте personal access token (classic) со скоупом `read:packages` (у GHCR нет fine-grained токенов для пакетов). Лучше отдельным служебным аккаунтом или токеном с коротким сроком.
-2. Войдите и запускайте готовый образ:
+To use the published image, set `GENIE_IMAGE=ghcr.io/grigoryshulga/genie:latest` in `.env`, then run:
 
 ```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-логин> --password-stdin
-echo 'GENIE_IMAGE=ghcr.io/<владелец>/<репозиторий>:latest' >> .env
-docker compose pull && docker compose up -d
+docker compose pull
+docker compose up -d --no-build
 ```
 
-Для воспроизводимости на сервере фиксируйте тег (`:1.2.3` или `:sha-abc1234`), а не `latest`. Обновление — `docker compose pull && docker compose up -d`. Права пакета (кто может его читать, доступ других репозиториев) настраиваются на странице пакета: Settings → Package settings. Хранение и трафик приватных пакетов учитываются по тарифу аккаунта; Actions-минуты на сборку тоже.
+Authenticate to GHCR first if the package requires it. Pin a release tag or digest for repeatable deployments.
 
-## Настройка
+## Storage and ownership
 
-Все переменные — в `.env.example`. Главное:
+| Volume | Container path | Contents |
+| --- | --- | --- |
+| `genie-data` | `/data` | Databases, vault, configuration, sessions, credentials, and caches |
+| `genie-workspace` | `/workspace` | Local code repositories and their worktrees |
 
-| Переменная | Назначение |
-|---|---|
-| `GENIE_PORT` | порт веба, **одинаковый** снаружи и внутри: сервер сверяет заголовок `Host` со своим портом |
-| `GENIE_PUBLIC_URL` | адрес для ссылок в письмах и Telegram; его хост автоматически попадает в `allowHosts` |
-| `GENIE_ALLOW_HOSTS` | другие имена и адреса, по которым открывают UI (`192.168.1.20,genie.lan`) |
-| `GENIE_UID`, `GENIE_GID` | uid/gid сервера; ставьте владельца смонтированных репозиториев (`id -u`) |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, … | ключи провайдеров для pi |
-| `GENIE_SANDBOX` | `off` (по умолчанию в compose), `auto` или `bwrap`: песочница агентов, см. ниже |
-| `GITHUB_TOKEN` | HTTPS-доступ агентов к github.com |
-| `EXTRA_APT_PACKAGES` | пакеты, добавляемые в образ при сборке (компиляторы, python…) |
-| `RUST_TOOLCHAIN` | Rust для агентов (`stable`, `1.94`) при сборке образа, с общим кэшем сборки, см. «Инструменты для проектов» |
-| `GENIE_AGENT_BUILD_JOBS` | сколько задач сборки cargo у агента (по умолчанию 8), когда в образе есть Rust |
+`GENIE_UID` and `GENIE_GID` default to 1000. Match them to the owner of bind-mounted code. Mount a repository's **parent directory** so Genie can create sibling worktrees:
 
-Переменные `GENIE_BIND`, `GENIE_PUBLIC_URL`, `GENIE_ALLOW_HOSTS` и `GENIE_SANDBOX` (пишется в `runtime.sandbox.mode`) при каждом старте записываются в `/data/config.json` (только эти ключи; `allowHosts` дополняется, ничего не удаляется). Остальное содержимое `config.json` — ваше: модели ролей, лимиты, Telegram, SMTP — см. [[platform/getting-started]]. Сервер читает настройки только из этого файла, поэтому править его удобно так:
+```yaml
+volumes:
+  - genie-data:/data
+  - genie-workspace:/workspace
+  - /srv/code:/workspace/code
+```
+
+Then register the repository:
 
 ```bash
-docker compose exec genie sh -c 'cat /data/config.json'
-docker compose cp config.json genie:/data/config.json && docker compose restart genie
+docker compose exec -u genie genie genie project add shop --repo /workspace/code/shop
 ```
 
-Модель — обязательное поле каждой роли (PD24): классовых дефолтов и `roleModels` больше нет, роль без модели не запускается — `genie doctor` и страница «Агенты» называют такие роли ошибкой. Модель задаётся в файле роли (`model:` во frontmatter, «Настройки» → «Агенты» в вебе); например, `/data/agents/executor.md`:
+Hosted repository connections use the server's [Git proxy and policies](git-repositories.md). Legacy local repositories use their local Git setup.
 
-```markdown
----
-model: anthropic/claude-sonnet-5-5
-thinking: high
----
+## Network access
+
+Set these in `.env` for access through a reverse proxy:
+
+```dotenv
+GENIE_PUBLIC_URL=https://genie.example.com
+GENIE_ALLOW_HOSTS=genie.example.com
 ```
 
-Файл из трёх строк переопределяет встроенную роль, остальное наследуется.
+The public URL supplies notification links and adds its host to the allowlist. Keep the loopback binding for a proxy on the same host. Set `GENIE_HOST_BIND=0.0.0.0` only when the proxy or clients need another interface. Terminate TLS at the proxy and create the admin account before exposing the service.
 
-Встроенные роли поставляются без моделей (PD24): назначьте модель каждой (`agents/*.md` в `/data`) до первого запуска команды — `genie doctor` подскажет, кого не хватает. Провайдерам нужны настройки pi: `models.json`/`auth.json` в `/data/home/.pi/agent` или вход `pi` от пользователя сервера.
+The host and container port must match because Genie validates the `Host` header against its own port. Inside the container, `localhost` refers to the container; services on the Docker host are reachable through `host.docker.internal`.
 
-### Память и число сессий
+## Models and credentials
 
-Каждая живая сессия агента — отдельный процесс Node (pi). Замер на pi 0.87.1: свежая сессия с расширениями genie занимает около 170 МБ RSS, с длинным разговором, MCP и чтением больших файлов — до нескольких сотен мегабайт; считайте 0,5 ГБ на сессию. Сверху на это ложатся сервер (около 100 МБ) и то, что агенты запускают сами: сборки, тесты, `cargo`, `tsc`, браузеры.
+Set personal provider keys in **Settings → Personal → Providers and keys**. Administrators can set shared defaults in **Settings → Management → Providers**. Personal keys override shared keys. Stored keys are encrypted with `/data/secrets.key`.
 
-| Что | Значение по умолчанию | Смысл |
-|---|---|---|
-| `runtime.maxSessions` | 12 | живых сессий одновременно; сверх лимита самая давняя из простаивающих уступает место |
-| `runtime.idleStopSecs` | 300 | простаивающая сессия останавливается и освобождает память; на следующее письмо поднимается с тем же разговором (старт pi занимает доли секунды, письма не теряются) |
-| `runtime.nodeHeapMb` | 2048 | потолок кучи V8 процесса pi (`NODE_OPTIONS=--max-old-space-size`); 0 — без потолка. Дописывается к вашему `NODE_OPTIONS` из `runtime.env` или окружения; если там уже есть `--max-old-space-size`, остаётся ваш. Команды, которые запускает pi, потолка не наследуют |
+Environment keys such as `OPENAI_API_KEY` and `LITELLM_API_KEY` support local mode before accounts exist. On an authenticated server, agents use the keys resolved for their user; the server environment key is not their fallback.
 
-### Место на диске
-
-Диск сервера заполняют данные (`/data`: базы, журналы, сессии) и worktree команд рядом с репозиториями проекта (сборки `target/`, `node_modules` — гигабайты на задачу). Закрытая задача освобождает свой worktree, если её ветка уже в основной ([[platform/agent-roles-and-teams]], «Работающие команды»); ту же зачистку сервер делает при старте. В Docker сборки агентов идут в общий кэш `/data/cache` («Rust» выше).
-
-| Что | Значение по умолчанию | Смысл |
-|---|---|---|
-| `runtime.lowDiskGb` | 5 | меньше этого свободного на диске данных или репозитория — предупреждение при старте сервера (в журнале) и в `genie doctor`; меньше 1 ГБ — ошибка |
-
-Оценка (консервативная, верна для npm-pi — при откате на него): `GENIE_MEM_LIMIT` ≈ `maxSessions` × 0,5 ГБ + 2 ГБ на сервер и сборки агентов, то есть **8g** для 12 сессий и 5g для `maxSessions: 6`. На Pi-Bolt живая сессия держит кратно меньше памяти (в замере Pi-Bolt — ~134 МБ на длинной сессии против ~536 МБ у npm-pi на Node), так что лимит с запасом; потолок кучи `nodeHeapMb` на Pi-Bolt не действует — это настройка V8, актуальная только для npm-pi. `mem_limit` по умолчанию не задан (0), чтобы не убивать по OOM существующие установки; задайте его в `.env`. Если агент на npm-pi падает с `JavaScript heap out of memory` (смотрите `stderr.log`), поднимите `nodeHeapMb` (4096) или перезапускайте длинные разговоры.
-
-## Модели и pi
-
-Харнесс агентов в образе — [Pi-Bolt](https://github.com/opensec-git/Pi-Bolt): тот же Pi, скомпилированный в один нативный бинарник (те же команды, сессии, настройки, провайдеры и расширения). Версия и SHA-256 его npm-пакета закреплены в `Dockerfile` (`PI_BOLT_VERSION`/`PI_BOLT_SHA256`); сборка стейджа ходит только на registry.npmjs.org. В контейнере он доступен как `pi` (шаблоны команд genie и `genie doctor` знают его под этим именем) и как `pi-bolt`. Плюс для genie: старт процесса ~13× быстрее (ходы в режиме turns спавнят процесс на каждый ход), долгая сессия держит кратно меньше памяти, запись больших файлов инструментами — на порядок быстрее; сборка без JIT грузит расширения genie-bus/guard через интерпретатор, что живым тестам не заметно. Замена на npm-pi — поставьте `@earendil-works/pi-coding-agent` и уберите симлинк `/usr/local/bin/pi`.
-
-pi берёт ключи из переменных окружения (список — в документации pi, `providers.md`) или из `auth.json` профиля. Свои провайдеры (например, LiteLLM) описываются в `models.json`:
+For a custom provider, copy its pi configuration before starting agents:
 
 ```bash
 docker compose cp models.json genie:/data/home/.pi/agent/models.json
 docker compose exec -u genie genie chmod 600 /data/home/.pi/agent/models.json
 ```
 
-Вход по OAuth (`/login`) в контейнере неудобен: используйте API-ключи или скопируйте `auth.json`, полученный на другой машине.
+Examples for LiteLLM are in `docker/examples/litellm/`. Replace their endpoint and model IDs. Role models belong in `/data/agents/<role>.md`, not in a `roleModels` configuration block.
 
-Образ выключает проверку версий pi и его телеметрию (`PI_SKIP_VERSION_CHECK=1`, `PI_TELEMETRY=0`); переопределяется в `.env`.
+Genie gives agents a dedicated profile at `/data/pi-agent`. It seeds `models.json` and `auth.json` once from `/data/home/.pi/agent`, then removes package and extension auto-loading from the agent profile. Repository pi resources are not trusted automatically; Genie passes role and repository skills explicitly.
 
-**Профиль pi агентов — свой у genie** (`<data>/pi-agent`, в контейнере `/data/pi-agent`): агенты не наследуют настройки пользователя сервера. При старте агента genie создаёт профиль и держит его чистым — из `settings.json` профиля вырезаются списки `packages` и `extensions` (остальное, например блок `litellm`, остаётся), так что pi не подхватывает ни одного стороннего расширения; `models.json` и `auth.json` копируются туда один раз из `/data/home/.pi/agent`, если они там есть — приведённые выше команды менять не нужно. Хотите другой каталог — задайте `runtime.env.PI_CODING_AGENT_DIR`; интерактивный pi пульта (`genie orchestrate`) по-прежнему использует профиль пользователя.
+## Secrets from files
 
-Агентам genie передаёт `--no-approve`: проектные ресурсы pi (`.pi/extensions`, `.pi/settings.json`, `.pi/mcp.json`, `.pi/SYSTEM.md`…) не загружаются, что бы ни говорили `defaultProjectTrust` и сохранённое `/trust` (`trust.json`). Навыки роли и репозитория genie передаёт агенту явно (`--skill`). Настройка `runtime.mcpAdapter` и поддержка `pi-mcp-adapter` удалены: встроенный MCP pi (которым управляет genie-guard) — единственный путь подключений.
+The secrets Compose overlay accepts supported `*_FILE` variables. See `docker-compose.secrets.yml` for the mounts and variable names. For example, supply `LITELLM_API_KEY_FILE` rather than putting a key in `.env`.
 
-## LiteLLM и секреты
+The LiteLLM tariff reader uses a separate server-only `LITELLM_INFO_TOKEN` or `LITELLM_INFO_TOKEN_FILE` with access to `/model/info`. Configure `litellm.baseUrl` in `/data/config.json`, then run `genie server prices --refresh`. See [usage and budgets](settings.md#usage-and-budgets).
 
-Готовая конфигурация под LiteLLM — в `docker/examples/litellm/`:
+## Sandboxing
 
-- `models.json` — провайдер `litellm` для pi; ключ берётся из переменной окружения (`"apiKey": "$LITELLM_API_KEY"`), в файле его нет. Адрес `baseUrl` замените на свой: LiteLLM на самом хосте доступен из контейнера как `host.docker.internal` (в `docker-compose.yml` он уже прописан), `localhost` внутри контейнера — это сам контейнер.
-- `config.json` — остальная конфигурация (лимиты, runtime). Модели ролей в конфиге больше не задаются: каждая роль носит свою в `agents/*.md` (пример разложен по ролям).
+The default Compose setup uses `GENIE_SANDBOX=off`: the container is the isolation boundary, and its agents share the service user's access inside it.
 
-```bash
-docker compose cp docker/examples/litellm/models.json genie:/data/home/.pi/agent/models.json
-docker compose exec -u genie genie sh -c 'chmod 600 ~/.pi/agent/models.json'
-# модели ролей: скопируйте agents/*.md (model: litellm/…) и config.json в /data, затем перезапустите
-docker compose restart genie
-```
-
-### Цены моделей и расходы
-
-Агенты сообщают серверу токены каждого ответа модели (это делает расширение `genie-guard`, которое сервер подключает каждому агенту). Токены копятся по дням, чатам агентов, задачам и моделям в трекере проекта. Цены берутся из LiteLLM — а если он не настроен, из `/data/config.json`, в долларах за миллион токенов:
-
-```json
-"modelPrices": {
-  "litellm/claude-opus-5-5": { "input": 5, "output": 25, "cacheRead": 0.5, "cacheWrite": 6.25 },
-  "gpt-6-sol": { "input": 2, "output": 12 }
-}
-```
-
-Ключ — модель вместе с провайдером или без него: имя без провайдера находит модель LiteLLM с тем же именем (`deepseek-chat` правит цену `litellm/deepseek-chat`). `modelPrices` перекрывает тарифы LiteLLM по полям: свои `input`/`output` побеждают, а цены кэша — если указаны; чего не хватает, берётся из LiteLLM (в `genie server prices` видно, откуда каждая). Модель без цены и кэш без цены кэша показывают только токены: кэш никогда не считается по цене входа (провайдеры ценят его в разы ниже, и подстановка завышала бы расходы в разы). Стоимость считается при показе, поэтому новая цена сразу применяется и к прошлым расходам; после правки config.json сервер нужно перезапустить.
-
-**Тарифы из LiteLLM** загружаются один раз при старте и по действию администратора «Подтянуть тарифы» — без фонового опроса. Что нужно серверу:
-
-- `litellm.baseUrl` в `/data/config.json` — адрес прокси, тот же, что у провайдера `litellm` в pi: `"litellm": { "baseUrl": "https://litellm.example/v1" }`;
-- `litellm.infoToken` в `/data/config.json` или переменная `LITELLM_INFO_TOKEN` — сервисный ключ, который может читать `/model/info` и не может вызывать модели (в Docker — секрет `LITELLM_INFO_TOKEN_FILE`, как у остальных ключей). Это не `LITELLM_API_KEY`: тот раздаётся агентам, а сервисный ключ остаётся у сервера — агентам он не достаётся ни при каком запуске.
-
-Читать тарифы удобно виртуальным ключом без моделей. Кнопка «Подтянуть тарифы из LiteLLM» — на странице «Расходы»; то же из терминала: `genie server prices --refresh` (без `--refresh` — какие цены в силе и откуда каждая). Если LiteLLM недоступен, сервер работает на том, что получил в прошлый раз, и на `modelPrices`, а страница «Расходы» и `genie doctor` показывают ошибку последней загрузки — дата загрузки остаётся датой последней удачной.
-
-Где смотреть: «Настройки» → «Статистика» → «Расходы» (по дням, моделям, проектам, эпикам, задачам и чатам), строка «Расходы» в задаче и эпике, «Потрачено» в чате агента, `genie stats`. API: `GET /api/stats` (поле `usage` у проекта и `cost` по дням), `GET /api/tasks/{id}/usage`, `GET /api/agents/{team}/{member}/usage`, `GET|POST /api/model-prices`.
-
-### Бюджеты
-
-Расходы можно ограничить в долларах (`config.json`, считаются модели с ценой в `modelPrices`; 0 или отсутствие — без лимита):
-
-```json
-"budgets": { "perTask": 5, "perEpic": 20, "perDay": 50 }
-```
-
-`perTask` — задача вместе с подзадачами, `perEpic` — эпик со всеми задачами, `perDay` — всё, что агенты проекта потратили за сутки (UTC). Сервер проверяет бюджет при каждом отчёте агента о токенах. Когда бюджет исчерпан:
-
-- команды, на которые он распространяется, останавливаются с причиной `budget` (для суток — все активные команды проекта), задачи освобождаются;
-- автору задачи и владельцам проекта приходит одно уведомление (раз в сутки на бюджет);
-- оркестратору приходит письмо не запускать команды заново;
-- новая команда на такую задачу не создаётся: `team spawn` отвечает «budget: … the limit is …», поэтому плейбуки `ready-start` и `ready-next` не зацикливаются.
-
-Чтобы продолжить, поднимите лимит в `config.json` и перезапустите сервер (настройки читаются при старте). Модель без цены не считается, и модель без цены кэша считает кэш за ноль — `genie doctor` предупреждает о том и другом, когда бюджеты заданы. Расходы оркестратора идут в суточный бюджет, но сам оркестратор не останавливается.
-
-### Личные ключи моделей
-
-Когда на сервере есть пользователи, каждый указывает свои ключи в личных настройках (веб: «Настройки» → «Личное» → «Провайдеры и ключи»; API: `GET /api/me/llm-keys`, `PUT|DELETE /api/me/llm-keys/{provider}`). Помимо LiteLLM принимаются ключи провайдеров, которых pi поддерживает сам и которые обходятся одним ключом: Anthropic, OpenAI, Google Gemini, xAI, Groq, Mistral, OpenRouter, DeepSeek, Moonshot, Qwen, ZAI и другие (полный список — в тех же настройках; он же — `PROVIDERS` в `crates/genie/src/llm_key.rs`). Провайдеры, которым нужно больше ключа (Bedrock, Vertex, Azure, Cloudflare), и интерактивный вход (`openai-codex`) настраиваются для pi серверного пользователя, как и кастомные провайдеры из `models.json`.
-
-Агент, которого запускает сервер, работает от имени *инициатора* и получает его ключи в переменных окружения, которые читает pi (`LITELLM_API_KEY` для LiteLLM, `ANTHROPIC_API_KEY` для Anthropic и т. д.):
-
-- участник команды — тот, кто собрал команду; если команду собрал оркестратор или автоматизация — человек, для которого задача (исполнитель задачи, иначе её автор);
-- разовое задание (job) — тот, кто его запустил; для задания автоматизации — человек, чьё действие запустило автоматизацию, иначе человек задачи, иначе автор автоматизации;
-- оркестратор — человек, чьё письмо он разбирает (отправитель, иначе инициатор команды или задачи, о которой письмо). Живая сессия оркестратора перезапускается (с тем же разговором), когда приходит почта от другого человека.
-
-Ключ LiteLLM обязателен: агент на модели `litellm/…`, у инициатора которого ключа нет, **не запускается** — попытка завершается ошибкой «… has no LiteLLM key», а человеку приходит уведомление (раз в день по проекту) со ссылкой на профиль. Как только ключ сохранён, ждущие агенты пробуют снова сразу. Серверный `LITELLM_API_KEY` агентам в этом режиме не передаётся. Нужен ли ключ, решает настроенная модель роли (модель участника или задания): роль без модели наследует модель pi по умолчанию, и тогда ключ передаётся, только если он есть у инициатора.
-
-Ключи остальных провайдеров необязательны: личный ключ перекрывает то, что агент унаследовал бы от сервера (переменные окружения и вход pi серверового пользователя), а без него агент работает как раньше — на серверном. Ключ подставляется по провайдеру модели агента (`anthropic/claude-…` → `ANTHROPIC_API_KEY`).
-
-Помимо личных, администратор сервера задаёт **ключи, общие для всех** (веб: «Настройки» → «Управление» → «Провайдеры»; API: `GET /api/llm-keys`, `PUT|DELETE /api/llm-keys/{provider}` — только администраторам). Общий ключ провайдера действует по умолчанию для агентов любого человека без его личного ключа того же провайдера: общий ключ LiteLLM удовлетворяет обязательный (агенты на `litellm/…` у людей без своего ключа запускаются, ждущие стартуют сразу после сохранения), общий ключ остальных провайдеров подставляется так же, как личный. Личный ключ человека перекрывает общий. Люди видят общие ключи рядом со своими («Настройки» → «Личное» → «Провайдеры и ключи») — без самих значений, как и свои. Хранятся общие ключи там же, зашифрованными: таблица `global_secrets` в `server.db`.
-
-Ключи хранятся в `server.db` зашифрованными (ChaCha20-Poly1305) ключом `<data>/secrets.key` (0600, создаётся при первом сохранении). `genie backup` этот файл не копирует: утёкшая база или резервная копия ключей не раскрывает. Если `secrets.key` потерян, сохранённые ключи становятся нечитаемыми — профиль покажет это, и людям нужно ввести ключи заново.
-
-На сервере без пользователей (локальный режим) профилей нет, и агенты, как раньше, получают серверные ключи:
-
-### Серверный ключ
-
-Ключ передаётся серверу, агенты pi наследуют его (только на сервере без пользователей, см. выше):
+To enable bubblewrap inside Docker, use the supplied overlay:
 
 ```bash
-# вариант 1: переменная окружения (.env)
-LITELLM_API_KEY=sk-…
-
-# вариант 2: Docker secret (файл), ключ не попадает в .env и в `docker inspect`
-mkdir -p secrets && chmod 700 secrets && printf '%s' 'sk-…' > secrets/litellm_api_key && chmod 600 secrets/litellm_api_key
-docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.sandbox.yml up -d --build
 ```
 
-Для любой переменной вида `*_API_KEY`, `*_TOKEN`, `*_PASSWORD`, `*_SECRET` работает суффикс `_FILE`: `GITHUB_TOKEN_FILE=/run/secrets/github` превращается в `GITHUB_TOKEN`, прочитанный из файла (пробельный хвост отбрасывается). Явно заданная переменная приоритетнее файла. Файл читается на старте от root, поэтому права `0400` не мешают. Так же передаются секреты MCP-серверов из `mcp.json` (`${env:JIRA_API_TOKEN}` → `JIRA_API_TOKEN_FILE`): сервер держит их у себя, а агентам не отдаёт, если подключение идёт через шлюз (см. [[platform/getting-started]]).
+The overlay supplies the settings needed for user namespaces and sandbox mounts. Read it before deploying on a host with stricter container policies. Run `genie doctor` in the resulting container to verify support.
 
-После настройки запустите `docker compose exec genie genie doctor`: он сверяет модели ролей с тем, что доступно pi (`litellm/gpt-6-sol: available`), и сразу покажет недоступные модели и роли, у которых модели нет (PD24).
+## Project tools and resource limits
 
-Проверено сквозным тестом с поддельным LiteLLM на хосте: оркестратор стартует на `litellm/gpt-6-sol`, запрос уходит на `host.docker.internal` с `Authorization: Bearer <ключ из файла>`, ответ доходит до сессии.
+The server image does not provide every project's toolchain. Add Debian packages at build time with `EXTRA_APT_PACKAGES`. Set `RUST_TOOLCHAIN=stable` to include Rust, clippy, rustfmt, and shared build caches; `GENIE_AGENT_BUILD_JOBS` bounds Cargo jobs per agent.
 
-Локальную обёртку с Bitwarden Secrets Manager в образ переносить не нужно: `secret-tool` и keyring в контейнере нет. Секрет достаёт инфраструктура (Docker secret, оркестратор, `bws run -- docker compose up`), а контейнер получает готовое значение.
+```dotenv
+EXTRA_APT_PACKAGES=python3 python3-venv build-essential
+GENIE_MEM_LIMIT=8g
+GENIE_PIDS_LIMIT=4096
+```
 
-## Песочница агентов (bubblewrap)
+Memory is unlimited by default. Size a limit for your models, concurrent sessions, and project builds. Pi-Bolt uses less memory than npm pi; `runtime.nodeHeapMb` only caps Node's V8 heap when using npm pi. `runtime.maxSessions` and `idleStopSecs` control how many idle processes remain alive.
 
-Сервер запускает каждого агента в песочнице [bubblewrap](https://github.com/containers/bubblewrap): система для него только для чтения, писать можно в свой рабочий каталог, а каталога данных сервера (`/data`), других проектов и их worktree агент не видит (см. [[platform/getting-started]], «Песочница агентов»). Образ содержит `bubblewrap`, но внутри контейнера песочнице нужны пространства имён пользователя и свой `/proc`, а стандартный профиль Docker их запрещает. Проверено: работает только при `seccomp=unconfined` и `systempaths=unconfined` (плюс `apparmor=unconfined` на хостах с AppArmor); `cap_drop: ALL` и `no-new-privileges` ей не мешают.
+See [project environments](environment.md) for current setup limits.
+
+## Backups and updates
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.sandbox.yml up -d
-docker compose exec -u genie genie genie agents check     # sandbox: agents run in a bubblewrap sandbox
-```
-
-Это компромисс, и решать его вам. В compose по умолчанию `GENIE_SANDBOX=off`: отсутствие песочницы выбрано осознанно, `genie doctor` показывает предупреждение, а не ошибку. Оверлей ставит `GENIE_SANDBOX=bwrap`: если песочницу не удалось создать, агенты не запускаются, тихого отката нет (`GENIE_SANDBOX=auto` разрешает откат).
-
-| | Без оверлея (по умолчанию) | С `docker-compose.sandbox.yml` |
-|---|---|---|
-| Данные сервера для агентов | читаются (`/data`, токены каналов, другие проекты) | скрыты |
-| Защита хоста от кода в контейнере | стандартный seccomp и замаскированный `/proc` | seccomp выключен, `/proc` не замаскирован |
-| `genie doctor` | предупреждение «sandbox off» | «agents run in a bubblewrap sandbox» |
-
-Выбирайте оверлей, когда на сервере несколько проектов и людей и данные сервера ценнее, чем запас прочности контейнера (агенты выполняют команды, которые придумала модель). Если ядро хоста запрещает пространства имён пользователя, песочница не заработает и с оверлеем: агенты не запустятся, `genie doctor` объяснит причину (на Ubuntu 24.04 и новее см. `kernel.apparmor_restrict_unprivileged_userns`). Проверка готовности сервера в целом: `docker compose exec genie genie doctor` (без `-u`: обёртка сама понижает права и подставляет ключи из `*_FILE`).
-
-## Репозитории проектов
-
-Два способа.
-
-**1. Клонировать внутрь тома** (проще всего для сервера):
-
-```bash
-docker compose exec -u genie genie git clone git@github.com:acme/shop.git /workspace/shop
-docker compose exec genie genie project add shop --name "Магазин" --repo /workspace/shop
-```
-
-**2. Смонтировать существующий каталог.** Монтируйте **родительский** каталог и делайте владельцем `GENIE_UID`: worktree команды создаётся рядом с репозиторием (`{mainRoot}/../{repo}.worktrees/…`), а не внутри него.
-
-```yaml
-    volumes:
-      - ${HOME}/code:/workspace/code      # проект: --repo /workspace/code/shop
-```
-
-Пути внутри `worktree` git хранит абсолютными: если тот же репозиторий открыт и на хосте, его worktree'ы, созданные контейнером, на хосте выглядят сломанными. Для серверного сценария держите репозиторий в томе контейнера и работайте с ним через git remote.
-
-### Доступ к git-серверу
-
-- **GitHub по HTTPS.** Задайте `GITHUB_TOKEN` (или `GH_TOKEN`; fine-grained токен на нужные репозитории, права Contents: read/write). Системный credential helper (`/etc/gitconfig`) подставляет его только для `https://github.com` и читает из окружения контейнера в момент использования: на диск токен не пишется, работает и у агентов, и в оболочке `docker exec`. Агенты проекта со старым локальным репозиторием (`--repo`) видят этот токен в своём окружении и пушат сами. Для репозиториев, подключённых как репозитории проекта ([[platform/git-repositories]]), токен задаётся у самого репозитория (в вебе или `--token-stdin`), хранится на сервере зашифрованным и остаётся у него: из окружения агентов таких проектов `GITHUB_TOKEN` и другие привычные токены вырезаются, а push идёт через прокси сервера по политике.
-- **SSH.** Положите ключ в `/data/home/.ssh` (`id_ed25519`, права 600; каталог получит 700 при старте). Неизвестные хосты принимаются при первом подключении (`StrictHostKeyChecking accept-new`), запросов пароля нет.
-- **Автор коммитов.** По умолчанию `genie <genie@genie.local>`; меняется `GIT_AUTHOR_NAME/EMAIL` и `GIT_COMMITTER_NAME/EMAIL` в `.env`.
-
-## Инструменты для проектов
-
-Агенты запускают сборку и тесты вашего кода внутри контейнера, поэтому нужные компиляторы должны быть в образе. Два способа:
-
-```bash
-# в .env; пакеты Debian
-EXTRA_APT_PACKAGES="python3 python3-venv build-essential"
-```
-
-или свой образ поверх:
-
-```dockerfile
-FROM genie:latest
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends golang && rm -rf /var/lib/apt/lists/*
-```
-
-(Точка входа сама переключается на пользователя `genie`, `USER` менять не нужно.)
-
-### Rust
-
-Для проектов на Rust образ собирается с тулчейном: в compose — аргумент сборки `RUST_TOOLCHAIN: stable` (в `.env` — `RUST_TOOLCHAIN=stable`). В образ попадают тулчейн rustup с clippy и rustfmt (`/opt/rust`, только чтение), gcc и линковщик mold. Без него агент ставит себе тулчейн сам — по гигабайту с лишним на каждого.
-
-При старте контейнер выдаёт агентам общий кэш сборки `/data/cache` (в песочнице он виден и доступен на запись, остальной `/data` скрыт) и пишет в `runtime.env` значения по умолчанию:
-
-| Переменная | Значение | Зачем |
-|---|---|---|
-| `CARGO_HOME` | `/data/cache/cargo` | скачанные крейты — один раз на всех |
-| `CARGO_TARGET_DIR` | `/data/cache/cargo-target` | один каталог сборки: зависимости собираются один раз, а сборки разных агентов идут по очереди (блокировка cargo), а не линкуют все разом |
-| `CARGO_BUILD_JOBS` | `GENIE_AGENT_BUILD_JOBS`, по умолчанию 8 | не занимать все ядра |
-| `CARGO_TARGET_<архитектура>_UNKNOWN_LINUX_GNU_RUSTFLAGS` | `-C link-arg=-fuse-ld=mold` | быстрая линковка |
-
-Любое из них можно задать в `runtime.env` по-своему — значение по умолчанию его не перезапишет; `GENIE_AGENT_CACHE=0` оставляет настройки сборки агентов как есть. Кэш можно удалить целиком (`rm -rf /data/cache/cargo-target`) — он соберётся заново.
-
-## Обратный прокси и TLS
-
-Порт публикуется на `127.0.0.1`. Для доступа по сети поставьте перед ним Caddy, Traefik или nginx с TLS и задайте `GENIE_PUBLIC_URL=https://genie.example.com`. Прокси должен пробрасывать заголовок `Host` без изменений и не буферизовать поток событий (`/api/…` использует долгоживущие ответы).
-
-```caddyfile
-genie.example.com {
-  reverse_proxy 127.0.0.1:7420
-}
-```
-
-Если открыть UI по адресу, которого нет в `allowHosts`, сервер отвечает `421 unexpected Host header`. Так же бывает, если порт снаружи отличается от `GENIE_PORT`.
-
-## Остановка, перезапуск, здоровье
-
-- Контейнер останавливается сигналом `SIGINT` (`STOPSIGNAL` в образе, `stop_signal` в compose); `SIGTERM` сервер тоже обрабатывает. Открытые запросы получают 5 секунд, после чего сервер выходит, даже если браузер держит поток событий: проверено с открытой вкладкой — остановка занимает около 5 секунд и завершается кодом 0. `stop_grace_period` — 20 секунд с запасом.
-- PID 1 — tini от имени пользователя `genie`: он подбирает завершённые процессы агентов и пересылает сигналы. Начальный этап (владелец томов, uid) выполняется от root и заканчивается до запуска tini, поэтому после старта в контейнере нет процессов root.
-- Перезапуск безопасен: прерванные ходы агентов повторяются, письма возвращаются (см. [[platform/getting-started]], «Надёжность»).
-- `HEALTHCHECK` опрашивает `/api/health`; `docker compose ps` показывает `healthy`.
-- Логи: `docker compose logs -f genie` (ротация 10 МБ × 5). Журналы ходов агентов — в `/data/runtime/<проект>/<агент>/`.
-
-## Резервные копии и обновление
-
-```bash
-# копия баз (VACUUM INTO) и vault на хосте
-docker compose exec -u genie genie genie backup /data/backups
+docker compose exec -u genie genie genie backup /data/backups --keep 14
 docker compose cp genie:/data/backups ./backups
 ```
 
-Восстановление (сервис остановлен, том `/data` пуст или копия заменяет его через `--force`):
+Back up project source and worktrees separately. Preserve `secrets.key` separately or use `--with-secrets` for trusted backups. See [operations](operations.md#back-up-and-restore) for coverage and restore rules.
 
-```bash
-docker compose stop genie
-docker compose cp ./backups/genie-20261003-152743 genie:/data/backups/   # если копии ещё нет в томе
-docker compose run --rm --no-deps genie restore /data/backups/genie-20261003-152743
-docker compose up -d && docker compose exec -u genie genie genie doctor
-```
-
-Первую копию с `secrets.key` делайте с `--with-secrets` (`genie backup /data/backups --with-secrets`). Восстановление проверено на хосте (CLI, пустой каталог данных); внутри контейнера эта последовательность по документации не прогонялась.
-
-Копия не содержит `~/.pi/agent`, `~/.ssh` и репозитории в `/workspace`: их сохраняйте отдельно (снимок тома или `docker run --rm -v genie_genie-data:/d -v "$PWD":/b alpine tar czf /b/genie-data.tgz -C /d .`).
-
-Обновление (данные на томах сохраняются; схему баз сервер мигрирует при старте, но сначала проверяет её на копии):
-
-```bash
-# 1. копия до обновления — откат делается только из неё
-docker compose exec -u genie genie genie backup /data/backups --keep 7
-
-# 2. новый образ, но старый сервер ещё работает: проверка миграций на копии данных
-git pull
-docker compose build          # или: docker compose pull (готовый образ)
-docker compose run --rm --no-deps genie migrate --check
-
-# 3. применение и запуск новой версии
-docker compose stop genie
-docker compose up -d
-docker compose exec -u genie genie genie doctor
-
-# 4. откат: прежний образ плюс данные из копии
-docker compose stop genie
-docker compose run --rm --no-deps genie restore /data/backups/genie-<время> --force
-GENIE_IMAGE=<прежний тег> docker compose up -d
-docker compose exec -u genie genie genie doctor
-```
-
-`migrate --check` читает версии схем и прогоняет будущие миграции на копии каждой базы (`VACUUM INTO`) — каталог данных не меняется, сервер может работать. Без `--check` команда применяет миграции (сервис должен быть остановлен); сервер делает то же самое при старте и пишет по строке на базу в `docker compose logs genie`. Миграции назад не откатываются: откат — это шаг 4. Порядок и оговорки — [[platform/getting-started#Обновление и откат]].
-
-## Что нужно знать о безопасности
-
-- Агенты выполняют произвольные shell-команды. **Без песочницы** (по умолчанию в контейнере) они работают под тем же пользователем, что и сервер, и могут прочитать `/data`: `server.db`, `config.json` (токен Telegram, пароль SMTP), vault и чужие проекты. Контейнер отделяет их от хоста, но не от сервера. Включите песочницу (следующий раздел) или не храните в `/data` ничего, что нельзя доверить агентам; для GitHub используйте токен с минимальными правами.
-- Ключи провайдеров в `.env` попадают в окружение агентов. Используйте ключи с лимитом расходов.
-- Контейнер запущен с `no-new-privileges`, `cap_drop: ALL` и пятью capabilities только для стартового этапа от root (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID`): сервер и агенты работают без capabilities (`CapEff` = 0), плюс лимит процессов. Ограничьте память (`GENIE_MEM_LIMIT`): каждая живая сессия агента — процесс pi (`runtime.maxSessions`, по умолчанию 12; на Pi-Bolt сессия весит кратно меньше, чем Node-сборка npm-pi; расчёт — «Память и число сессий»).
-- Не публикуйте порт на `0.0.0.0` без TLS-прокси и без созданного администратора.
-- Файловые системы: SQLite в режиме WAL требует локального диска или именованного тома; NFS и SMB для `/data` не подходят.
-
-## Типичные проблемы
-
-| Симптом | Причина и решение |
-|---|---|
-| `/data is not writable by uid …` | том принадлежит другому uid: запускайте контейнер от root (по умолчанию) и задайте `GENIE_UID`/`GENIE_GID`, либо `chown` тома |
-| Страница не открывается, `421 unexpected Host header` | адрес не в `allowHosts` или порт снаружи не равен `GENIE_PORT` |
-| Порт отвечает «connection reset» | в `config.json` явно задан `bind: 127.0.0.1` (предупреждение в логе при старте) |
-| `fatal: detected dubious ownership` | не должно возникать (`safe.directory = *`); проверьте, что репозиторий смонтирован, а не скопирован с чужим `.git` |
-| `Permission denied (publickey)` при `git clone` | нет ключа в `/data/home/.ssh` или права не 600 |
-| Агент не стартует, в `stderr.log` ошибка модели | нет ключа провайдера, у роли указана недоступная модель или модели нет вовсе (PD24: назначьте `model:` в файле роли) |
-| `docker compose exec genie …` создал файлы root | добавляйте `-u genie`; `genie …` сам понижает права |
-| Сборка падает на `apt-get update` или `npm ci` / `cargo build` с ошибкой сертификата | сборщику закрыт доступ к зеркалам Debian, npm и crates.io либо трафик перехватывает корпоративный прокси: настройте прокси Docker и добавьте корневой сертификат в образ |
-| `docker compose stop` занимает 20 секунд | контейнер собран из старой версии образа без обработки SIGTERM/долгих соединений: пересоберите (`up -d --build`) |
+Before updating, create and copy out a backup. Pull or rebuild the image, recreate the service, then run `genie doctor`. Rollback requires the old image **and** the pre-update data backup; replacing the image alone does not reverse database migrations.

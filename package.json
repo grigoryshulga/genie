@@ -10,7 +10,11 @@
     "build:web": "vite build --config web/vite.config.ts",
     "dev:web": "vite --config web/vite.config.ts",
     "typecheck": "tsc -p . && tsc -p web",
-    "lint:web": "steiger web/src"
+    "lint:web": "steiger web/src",
+    "docs:dev": "npm --prefix docs run dev --",
+    "docs:check": "npm --prefix docs run check",
+    "docs:build": "npm --prefix docs run build",
+    "docs:preview": "npm --prefix docs run preview --"
   },
   "engines": {
     "node": ">=22.19.0"

@@ -1,97 +1,99 @@
 ---
-title: Автоматизации genie — правила, запуски и агентные задания
-summary: Модель автоматизаций genie server в том виде, как она реализована — JSON-правила с триггерами (событие, расписание, ручной запуск, webhook), шаги (задачи, уведомления, агентные задания, команды, вопросы людям, ожидание, чейнджлог, релиз, http), долговечные запуски, лимиты и защита от каскадов; плейбуки обоих сценариев владельца.
+title: Automations
+summary: Trigger durable workflows from events, schedules, webhooks, or manual runs.
 type: reference
 status: current
-tags: [платформа, автоматизации, триггеры, агенты, каналы]
-aliases: [automations, triggers, rules, playbooks, workflows]
-paths: [crates/genie-core/src/automation.rs, crates/genie/src/engine.rs, crates/genie/src/http/automations.rs]
-verified: 2026-10-01
 ---
 
-# Автоматизации genie
+# Automations
 
-Контекст — [[platform/vision]]; запуск и настройка — [[platform/getting-started]]. Движок читает журнал событий каждого проекта ([[platform/backend]]), расходы на модели ограничивает корпоративный провайдер (PD7 в [[platform/decisions]]).
+An automation is a JSON rule with a trigger, limits, and ordered steps. Edit rules and install playbooks in **Settings → Automations**; inspect runs in the working area's Automations screen.
 
-## Правило
+```bash
+genie automation create --file rule.json
+genie automation install auto-ready
+genie automation runs
+genie automation run-show <run>
+```
 
-Правило — JSON (в вебе: «Автоматизации» → «Новое правило» или плейбук; в командной строке — `genie automation create --file rule.json`, плейбук — `genie automation install <id>`):
+## Example
+
+Notify the author when a task closes:
 
 ```json
 {
-  "name": "Задача закрыта — знания и чейнджлог",
-  "on": { "event": "task.status_changed", "where": { "to": "done", "task.type": ["task", "bug"] } },
+  "name": "Task completed",
+  "on": { "event": "task.status_changed", "where": { "to": "done" } },
   "limits": { "concurrency": 2, "maxRunsPerHour": 20 },
-  "dryRun": false,
   "steps": [
-    { "id": "docs", "timeout": "45m", "agent": { "role": "documenter", "goal": "…", "output": { "summary": "…" } } },
-    { "id": "tell", "notify": { "to": ["task.author"], "title": "{{ event.task.id }} готова", "text": "{{ steps.docs.output.summary }}" } }
+    {
+      "id": "tell",
+      "notify": {
+        "to": ["task.author"],
+        "title": "{{ event.task.id }} completed",
+        "text": "Review the result in Genie."
+      }
+    }
   ]
 }
 ```
 
-## Триггеры
+## Triggers
 
-| `on` | Когда | Контекст шаблонов |
-|---|---|---|
-| `{"event": "task.status_changed", "where": {…}}` | событие журнала проекта; `task.*` — префиксом | поля события на верхнем уровне (`to`, `from`, `note`…), `task` (задача целиком), `actor.name/role/project_role`, `event` |
-| `{"schedule": "0 9 * * 1-5", "tz": "Europe/Moscow"}` | cron: 5 полей (или 6 с секундами) | `schedule.at` |
-| `{"manual": true}` | кнопка «Запустить», `genie automation run <id> --task G-7 [--input ключ=значение]` или `POST /api/automations/<id>/run {"task": "G-7"}` | `inputs`, `task` |
-| `{"webhook": {"secret": "не короче 16 символов"}, "where": {…}}` | `POST /api/hooks/<id>?token=<secret>` | `payload` |
+| Trigger | Example | Template context |
+| --- | --- | --- |
+| Event | `{"event":"task.status_changed","where":{"to":"done"}}` | Event fields, `task`, `actor`, `event` |
+| Schedule | `{"schedule":"0 9 * * 1-5","tz":"Europe/London"}` | `schedule.at` |
+| Manual | `{"manual":true}` | `inputs`, `task` |
+| Webhook | `{"webhook":{"secret":"at-least-16-characters"}}` | `payload` |
 
-События журнала: `task.created`, `task.updated`, `task.status_changed`, `task.commented`, `task.criterion_checked`, `task.artifact_added`, `task.blocked`, `task.unblocked`, `task.team_assigned`, `team.spawned`, `team.stopped`, `mail.sent`, `doc.changed`, `doc.proposal`, `doc.proposal_decided`, `release.published`.
+Events cover task changes, teams, mail, documents, proposals, releases, and repository/CI activity. `where` supports dotted paths, equality, a list of alternatives, and operators `not`, `exists`, `contains`, `not_contains`, `gt`, `lt`, and `prefix`.
 
-Фильтр `where` — пути через точку и значения: равенство, список (любое из), объект операций `not`, `exists`, `contains`, `not_contains`, `gt`, `lt`, `prefix`.
+Cron accepts five fields, or six with seconds. Run a manual rule with `genie automation run <id> --task G-7 --input key=value`. Webhooks use `POST /api/hooks/<id>?token=<secret>`.
 
-## Шаги
+## Steps
 
-Шаблоны `{{ путь | фильтр }}` подставляются в любые строки шага; строка, целиком состоящая из одной подстановки, сохраняет тип (массив остаётся массивом). Фильтры: `length`, `json`, `lines`, `upper`. Общие поля шага: `id`, `if` (шаблон: пустое, `0`, `false`, `[]` — ложь), `retry`, `timeout` (`30s`, `15m`, `24h`, `2d`), `onError` (`fail` | `continue`). Выход шага доступен как `steps.<id>.output`.
+Common step fields are `id`, `if`, `retry`, `timeout` (such as `30s` or `45m`), and `onError` (`fail` or `continue`). Templates use `{{ path | filter }}`; filters include `length`, `json`, `lines`, and `upper`. A string consisting only of a substitution retains the substituted value's type. Step results are available as `steps.<id>.output`.
 
-| Шаг | Что делает | Выход |
-|---|---|---|
-| `task.status` | `{to, note, force, task}` — от имени `automation:<правило>:<запуск>` по правилам оркестратора: DoR/DoD, в проекте `assisted` не закрывает, `review`/`done` — только при порядке в доставке (запрос открыт, проверки не упали) | `{task, status}` |
-| `task.comment` | `{text, kind, task}`; `@login` уведомляет человека проекта | `{task}` |
-| `task.create` | `{title, description, acceptance, type, parent, labels, priority, deps, plan, inbox}` | `{id}` |
-| `task.update` | поля `PATCH /api/tasks/<id>` (`description`, `plan`, `appendNotes`, `addAcceptance`, `labels`, `priority`…) и `task`; неизвестное поле — ошибка шага | `{task}` |
-| `task.get` | текущее состояние задачи | задача |
-| `task.ready` | `{task}` — задачу и те, что от неё зависят, из `draft`/`refining` в `ready`, если их ничего не держит: нет блока, зависимости закрыты, нет `needs_owner`, открытых вопросов, идущих заданий и работающей команды, выполнен DoR | `{moved: [id], held: [{task, holds}]}` |
-| `notify` | `{to, title, text, link, channels}` — веб-центр + Telegram или почта | `{recipients, queued}` |
-| `agent` | разовое агентное задание `{role, goal, inputs, output, workspace, model}`; ждёт результата `genie job output` | результат агента |
-| `team` | собрать команду `{template, note, members, waitFor: ["review", "done"]}` | `{team, status}` |
-| `ask` | вопросы человеку `{to, from, questions, remindAfter, timeout, onTimeout: needs_owner / continue / fail}`; ждёт ответов | `{answers: [{n, question, answer}]}` |
-| `wait` | `{for: "24h"}` | `{}` |
-| `wake_orchestrator` | письмо оркестратору `{text, task}` | `{}` |
-| `changelog.add` | `{group: added / changed / fixed…, text, task}` → `Unreleased` чейнджлога проекта | `{added, path}` |
-| `release` | `{version}` → версия чейнджлога и событие `release.published` | `{version, notes}` |
-| `http` | `{url, method, headers, body}` | `{status, body}` |
+| Step | Purpose |
+| --- | --- |
+| `task.get`, `task.create`, `task.update` | Read or change a task. Unknown update fields fail. |
+| `task.status`, `task.comment` | Change status or add a comment, respecting workflow rules. |
+| `task.ready` | Move eligible tasks and newly unblocked dependents to ready. |
+| `notify` | Deliver web, Telegram, or email notifications. |
+| `agent` | Run a one-shot role with a goal, inputs, output contract, workspace, and optional model. |
+| `team` | Spawn a team and optionally wait for task status. |
+| `ask` | Ask people questions, with reminders, deadline, and timeout behavior. |
+| `wait` | Persist a timed delay. |
+| `wake_orchestrator` | Send the orchestrator a message. |
+| `changelog.add`, `release` | Update project release notes and publish a version. |
+| `http` | Make an HTTP request and return its status and body. |
 
-Получатели `to`: `event.actor`, `task.author`, `task.assignees`, `project.owners`, `project.admins`, `project.members`, `@login`.
+Notification recipients include `event.actor`, `task.author`, `task.assignees`, `project.owners`, `project.admins`, `project.members`, and `@login`.
 
-Агентные задания запускаются тем же механизмом, что участники команд (ход харнесса с промптом, навыками, MCP и правилами роли и командной строкой `genie`). `workspace`: `read-only` — репозиторий проекта без инструментов записи; `worktree` — свой git-worktree `job-<id>` на ветке `genie/job-<id>` (повторные попытки работают в нём же, после задания он остаётся с веткой-результатом); `scratch` и `none` — пустой каталог задания. Задание без `genie job output` считается неуспешным и повторяется до `runtime.maxAttempts`; задание, которое не удалось запустить (роль удалена, worktree не создался), — тоже.
+An `agent` job must submit `genie job output`; missing output fails the attempt. `workspace: worktree` creates a result branch reused by retries. `read-only` disables file-writing tools in the project repository; `scratch` and `none` use an empty job directory. Harness file restrictions have the limits described in [roles and teams](agent-roles-and-teams.md#permissions).
 
-## Надёжность
+## Durability and limits
 
-- **Ровно один запуск на событие**: запуск уникален по `(правило, ключ триггера)`; курсор журнала сдвигается после создания запусков, так что повторное чтение не запускает правило дважды.
-- **Долговечность**: состояние каждого шага хранится; ждущие шаги (задания, вопросы, команды, паузы) опрашиваются и переживают рестарт; спецификация фиксируется в запуске — правка правила не меняет уже идущие запуски.
-- **Каскады**: действия правила не запускают его же; цепочка правил останавливается на глубине 3; события агентных заданий наследуют глубину своего запуска.
-- **Лимиты**: `concurrency` (одновременных запусков правила), `maxRunsPerHour`, `dryRun` (запуск только фиксируется), отмена запуска в вебе или `genie automation cancel <запуск>` (отменяет и его задания).
-- **Наблюдаемость**: «Автоматизации» → запуск → шаги с входом, выходом, ожиданием и ошибкой; в командной строке — `genie automation runs` и `genie automation run-show <запуск>`, задания — `genie job list` и `genie job show <id>`.
+Runs are unique per rule and trigger key. Each run stores its rule snapshot and step state, so editing a rule does not rewrite an active run. Jobs, questions, team waits, and delays survive restarts.
 
-## Встроенные уведомления
+A rule does not retrigger itself. Rule cascades stop at depth three. `concurrency`, `maxRunsPerHour`, and `dryRun` bound rule activity. `dryRun` records a run without executing its actions. Cancellation also cancels its jobs:
 
-Без правил: задача ждёт решения (`needs_owner` от агента) — автору и админам; задачу закрыл агент — автору; предложение в базу знаний — владельцам раздела (иначе админам проекта).
+```bash
+genie automation cancel <run>
+```
 
-## Плейбуки
+Task status steps use orchestrator permissions, including assisted-mode restrictions and repository delivery gates. External HTTP effects should be idempotent when retries are enabled.
 
-| Плейбук | Триггер | Шаги |
-|---|---|---|
-| Задача закрыта → знания, чейнджлог и уведомление | `task.status_changed` → `done` (без метки `no-docs`) | документатор (`read-only`) → `changelog.add` → `notify` автору и админам |
-| Новая задача от человека → аналитик → вопросы автору | `task.created` во входящих от человека | `task.status` → refining, аналитик, черновик критериев комментарием, `ask` автору (напоминание 24 ч, срок 72 ч → needs_owner), `wake_orchestrator` |
-| Решение не принято за сутки → напоминание | `task.status_changed` → `needs_owner` | `wait 24h`, `task.get`, `notify`, если решение всё ещё нужно |
-| Задачу ничего не держит → «Готово к работе» (`auto-ready`) | `task.*`, задача в `draft`, `refining` или `done` | `task.ready`: сама задача или, когда закрылась зависимость, задачи, которые её ждали |
-| «Готово к работе» → оркестратор запускает работу (`ready-start`) | `task.status_changed` → `ready`, кроме эпиков | `wake_orchestrator`: собрать команду и запустить работу; если работа уже идёт — ничего, если не хватает решения владельца (интеграция, репозитории) — спросить его |
-| Команда остановилась → оркестратор берёт следующую готовую задачу (`ready-next`) | `team.stopped` | `wake_orchestrator`: взять из `ready` задачи без команды по приоритету и запустить, сколько позволяют лимиты; при отказе по лимиту остальные остаются в `ready` |
+## Playbooks
 
-Лимиты работы (`limits` в `config.json`): `maxActiveTeams` — активных команд на проект (4 по умолчанию), `maxActiveTeamsPerEpic` — активных команд на задачи одного эпика (0 — без лимита). Сервер отказывает в команде сверх лимита, задача остаётся в `ready`. Плейбук `ready-next` будит оркестратора, когда команда остановилась: он берёт следующую задачу из очереди, поэтому поток задач идёт не быстрее лимитов, но и не застревает.
+| Playbook | Behavior |
+| --- | --- |
+| Task completion | Documenter → changelog entry → author/admin notification. |
+| Human intake | Analyst → questions to the author → orchestrator wake-up. |
+| Owner reminder | Remind after 24 hours if the task still needs a decision. |
+| `auto-ready` | Recheck readiness after task changes and dependency completion. |
+| `ready-start` | Wake the orchestrator for a newly ready task. |
+| `ready-next` | Wake the orchestrator when a team stops, within project/epic limits. |
 
-Оба сценария владельца проверяются сквозными тестами (`crates/genie/tests/scenarios.rs`): реальный HTTP, процессы агентов, движок и поддельный Telegram Bot API.
+Built-in assignment, mention, owner-question, and proposal notifications work without custom rules.
