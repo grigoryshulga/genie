@@ -25,7 +25,7 @@ The profile authenticates as the local project owner `gshulga`. Keep credentials
 
 ### Installing a native CLI on another machine
 
-Install a compatible native `genie` binary into a directory on `PATH`. For a source build, follow [README.md](../../README.md#from-source). A binary can also be extracted once from this Linux container with `docker cp genie-tracker:/opt/genie/bin/genie <host-destination>`; Docker is not involved when that binary subsequently runs.
+Install a compatible native `genie` binary into a directory on `PATH`. For a source build, follow [the source build guide](../platform/getting-started.md#from-source). A binary can also be extracted once from this Linux container with `docker cp genie-tracker:/opt/genie/bin/genie <host-destination>`; Docker is not involved when that binary subsequently runs.
 
 Create a personal token through the server's account settings, or during initial setup with `docker exec genie-tracker genie user token <login> --label host-cli`. Save it privately and configure `GENIE_URL=http://127.0.0.1:7422`, `GENIE_TOKEN`, and `GENIE_PROJECT=genie` for the native CLI. On this machine the launcher already loads those values from the private profile above. A compatible Linux host is required for a binary extracted from the image.
 
@@ -95,4 +95,4 @@ genie --project genie task status review --task <task-id> \
 
 After CI succeeds, add a comment with the PR URL, current head SHA, and passing checks, then check the remaining acceptance criteria. Follow the server's review and approval flow before `task status done`. `task accept` is owner acceptance, not an agent workaround. A permission or workflow rejection is a reason to request the authorized actor's action; retain the current credentials and gates.
 
-The completion gate and CI waiting rules are defined in [AGENTS.md](../../AGENTS.md).
+The completion gate and CI waiting rules are defined in [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md).

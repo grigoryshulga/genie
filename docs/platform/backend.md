@@ -1,192 +1,56 @@
 ---
-title: Бэкенд genie на Rust — стек, границы и перенос
-summary: Бэкенд genie на Rust (решение владельца 2026-09-28, TS-ядро удалено 2026-09-29) — стек и результаты спайка, устройство Cargo-workspace, контракты для веба и агентов, данные, перенос по шагам с тестами как спецификацией, каталог операций, MCP-сервер и пульт оркестратора.
-type: note
-status: draft
-tags: [платформа, бэкенд, rust, миграция, mcp]
-aliases: [backend, rust server, migration, перенос на rust, cargo]
-paths: [Cargo.toml, crates/**]
+title: Architecture
+summary: Rust crates, operation catalog, persistence, runtime, and the web client.
+type: reference
+status: current
 ---
 
-# Бэкенд genie на Rust — стек, границы и перенос
+# Architecture
 
-Контекст — [[platform/vision]], решения — [[platform/decisions]] (PD8, PD10, PD11).
+`genie serve` is one Rust service for a team. It owns authorization, task transitions, event processing, agent supervision, and knowledge writes. Clients are the React web UI, CLI, MCP consumers, Telegram, and email delivery.
 
-## Зачем переносить сейчас
+## Code map
 
-- **Сервер становится единственным владельцем данных.** Сегодня каждый процесс (pi-участник, CLI, веб) пишет в SQLite сам, и права ролей проверяются в каждом клиенте. Когда пишет только сервер, журнал событий, авторизация, аудит и жёсткие права агентов появляются в одном месте.
-- **Один статический бинарь** — самое простое развёртывание на локальной машине сейчас и самый простой контейнер потом.
-- **Сейчас это дешевле всего.** Доменная логика — около 6,3 тыс. строк TypeScript: трекер ≈1,4 тыс., команды и почта ≈1,4 тыс., docs ≈2 тыс., веб-сервер ≈0,9 тыс., CLI ≈0,6 тыс. Поведение закреплено 118 тестами (≈3,3 тыс. строк). Всё, что до переноса было бы написано на TS, пришлось бы переносить второй раз.
+| Area | Location | Responsibility |
+| --- | --- | --- |
+| Domain core | `crates/genie-core/src/` | Task state machine, tracker, teams/mail, vault index, automations, server data. |
+| Server and CLI | `crates/genie/src/` | API, authentication, runtime, channels, operator commands. |
+| Operation catalog | `crates/genie/src/ops/` | Typed operation arguments, permissions, handlers, CLI and MCP exposure. |
+| HTTP | `crates/genie/src/http/` | REST, SSE, MCP server, and web asset serving. |
+| Live sessions | `crates/genie/src/sessions.rs` | pi subprocess lifecycle, RPC, supervision, and recovery. |
+| Harness extensions | `crates/genie/pi/` | Mail delivery, role guard, and interactive console. |
+| Web | `web/src/` | React/TypeScript UI using Feature-Sliced Design. |
+| Agent defaults | `agents/`, `config/teams/` | Built-in role prompts and team templates. |
+| Deployment | `deploy/`, `docker/` | Service installation, drills, and container setup. |
 
-## Почему Rust и чем за это платим
+## Operation catalog
 
-Rust выбран владельцем (Go рассматривался как альтернатива). Что он даёт genie:
+An operation defines its arguments, schema, required permissions, and handler once. The catalog exposes it as both `genie <object> <action>` and an MCP action such as `genie_task` with `action: show`.
 
-- **Модель домена проверяет компилятор.** Статусы, роли, виды артефактов — enum с исчерпывающим `match`: новый статус не забыть обработать в стейт-машине, правилах и API.
-- **Нет null и гонок данных.** Для сервера, который надзирает за десятками агентских процессов и держит общие ресурсы, это меньше ночных сюрпризов.
-- **Маленький и быстрый бинарь**: релизная сборка `genie` с сервером и встроенным SQLite — около 6 МБ.
+The caller's token determines identity, role, project access, and available operations. Clients do not grant themselves permissions. Agents receive a command table filtered by their role. Tests check catalog parity across CLI and MCP.
 
-Цена — медленнее компиляция и выше порог изменений. Как её снижаем:
+A CLI invocation with `GENIE_TOKEN` calls the server. Without it, the CLI acts as a local operator against the data directory, which supports initial setup and maintenance.
 
-- **Синхронное ядро, асинхронная оболочка.** `genie-core` — обычный синхронный код поверх `rusqlite`, без async и без lifetimes в публичном API: его просто читать, тестировать и менять агентам. Async (tokio/axum) живёт только в сервере, вызовы ядра идут через `spawn_blocking`.
-- **Тонкие крейты с ясными границами**, чтобы пересборка и тесты затрагивали только изменённое.
-- **Тесты TS-версии — спецификация**: сценарии и тексты ошибок переносятся раньше кода.
+## Persistence and events
 
-**Спайк, 2026-09-28.** `rusqlite` 0.40 со встроенным SQLite 3.53: WAL, `busy_timeout`, FTS5 с токенайзером `unicode61 remove_diacritics 2`, `bm25()` и `snippet()` — всё, на чём держится нынешний поиск docs. Доступны официальный MCP SDK `rmcp` (3.5) и `axum` (0.8).
+SQLite stores server-wide data in `server.db` and a tracker per project. Task mutations and their event entries share a transaction. Automation cursors, run/step state, mail leases, and notification delivery state persist across restarts.
 
-## Стек
+The knowledge vault is a separate Git repository; its SQLite search index is disposable. See [operations](operations.md#data-directory) for the directory layout.
 
-| Задача | Выбор |
-|---|---|
-| HTTP, SSE | `axum` + `tokio`, `tower-http` для раздачи SPA |
-| SQLite | `rusqlite` с `bundled` (без системной libsqlite), FTS5 |
-| JSON | `serde`, `serde_json` |
-| CLI | `clap` |
-| MCP для агентов | `rmcp` (Streamable HTTP) |
-| Почта | `lettre` (SMTP), IMAP-клиент — выбрать в Ф5 |
-| Telegram | Bot API прямыми HTTP-вызовами (`reqwest`) или `teloxide` — выбрать в Ф5 |
-| Расписания | cron-выражения (`cron` / `tokio-cron-scheduler`) — в Ф4 |
-| Git | CLI `git`, как сейчас (нужен `git worktree`) |
+Agents receive session or turn tokens. Durable mail lives in the core; the harness is a delivery client. Most teams use [live pi sessions](agent-bus.md), while one-shot jobs use turn execution.
 
-## Что на чём
+## Isolation
 
-| Часть | Технология | Судьба |
-|---|---|---|
-| Ядро: задачи, события, команды, почта, автоматизации, знания | Rust, крейт `genie-core` | Логика переносится из `src/tracker`, `src/team`, `src/docs`, `src/notify.ts` |
-| Сервер, MCP-сервер и CLI `genie` | Rust, крейт `genie` (один бинарь) | Перенесено из `src/web/server.ts`; MCP и CLI — два входа в один каталог операций ([[#Уход от TS-ядра]]) |
-| Веб-интерфейс | React + TypeScript (Vite) | Остаётся; позже сборка встраивается в бинарь |
-| Расширение pi | TypeScript | Только сторона харнесса, без ядра: доставка почты в сессию (`genie-bus`), мягкие ограничения роли (`genie-guard`), карточка команды и `/genie` в терминале; инструменты — через MCP-сервер genie |
-| Промпты ролей, шаблоны команд | Markdown, JSON | Без изменений: `agents/*.md`, формат `config/default.json` |
-| Харнесс агентов | pi (Node) | Внешняя зависимость рядом с сервером; на этапе контейнеров — в одном образе |
+Bubblewrap hides server databases, credentials, and unrelated projects while allowing an agent's workspace and selected tool caches. It shares the host network. Docker deployment is a separate layer; the default Compose configuration does not enable nested bubblewrap.
 
-## Устройство workspace
+Server permissions and the MCP gateway enforce access by token. Harness rules for file tools and shell patterns are weaker than filesystem isolation. Hosted repository writes pass through the [Git proxy](git-repositories.md).
 
-```
-Cargo.toml                  workspace
-crates/genie-core/          ядро (синхронное, без async)
-  src/model.rs              статусы, роли, стейт-машина, DoR/DoD
-  src/db.rs                 соединение, схема, миграции, транзакции BEGIN IMMEDIATE
-  src/events.rs             журнал событий и курсоры подписчиков
-  src/tracker.rs            задачи, эпики, критерии, комментарии, артефакты, история
-  tests/                    перенесённые сценарии из test/tracker.test.ts, журнал, совместимость с TS
-crates/genie/               бинарь: `genie serve`, `genie init`, дальше — команды CLI
-  src/server.rs             axum: REST + SSE, проверка Host, раздача SPA
-```
+## Web contract
 
-Дальше в `genie-core` появятся модули `team` (команды, почта, дайджест), `knowledge` (vault), `automations`, `auth`; в бинаре — `mcp`, `runtime` (запуск агентов), `channels`. Если модуль разрастётся, он выносится в свой крейт.
+The web UI consumes REST and SSE. Rust structs generate TypeScript API types through `ts-rs` during `cargo test`; generated files are committed in `web/src/shared/api/generated/`.
 
-## Контракты
+Build `web/dist` before the Rust binary to embed it. `GENIE_WEB_DIST=web/dist` makes that build input mandatory. `genie serve --web <directory>` serves an external web build during development.
 
-1. **Веб: REST + SSE.** Типы ответов веб получает из Rust-структур сервера (`ts-rs`, [[#Уход от TS-ядра]]). На время переноса сервер повторял маршруты `src/web/server.ts` и их JSON (camelCase, отсутствующие поля опускаются, ошибки домена — 422 с `{ "error": … }`), поэтому SPA работает без переделки. Поток `/api/events` отдаёт `event: change` (его слушает текущая SPA) и `event: journal` с `id:` = id события, чтобы клиент продолжал поток с `Last-Event-ID`.
-2. **Агенты: MCP + HTTP.** Все действия агента — инструменты MCP с прежними именами: `genie_task`, `team_send`, `team_status`, `team_spawn` и другие, `docs_search`, `docs_read`, `docs_note`. Каждый агент получает токен, привязанный к проекту, команде, имени и роли; права проверяет сервер. Это закрывает ограничение из [[architecture]]: сейчас роль задаётся переменной окружения, и агент с bash теоретически может её подменить.
-3. **Почта агентам.** Сервер хранит письма и отдаёт их длинным опросом или SSE. Семантика сохраняется: письмо забирается в момент доставки, уровни и дайджест работают как сейчас. Как письмо попадает в сессию, решает адаптер харнесса; для pi — так же, как сейчас (`sendUserMessage`, steer для `high`).
-4. **События.** Таблица `events` пишется в той же транзакции, что и изменение; подписчики читают «после курсора» и подтверждают (`ack`), курсор не двигается назад. Доставка — не реже одного раза, обработчики идемпотентны по id события; подписчик, пишущий в ту же БД, подтверждает в своей транзакции и получает ровно один раз.
+## Legacy version
 
-## Данные
-
-- Схема ядра — схема TS-трекера v3 без изменений плюс журнал (`events`, `event_cursors`) — это v4. Поэтому Rust открывает существующий `.genie/genie.db` на месте, а TS-инструменты продолжают работать с тем же файлом: новые таблицы им не мешают. Импорт в Ф0 сводится к «открыть и мигрировать».
-- Пока TS-процессы пишут в ту же базу, их изменения не попадают в журнал; веб всё равно узнаёт о них — поток `/api/events` следит и за `PRAGMA data_version`.
-- В Ф2 появляется одна БД сервера на инсталляцию (проекты, пользователи; колонка проекта у задач и событий) и импорт трекеров репозиториев в проекты.
-- Индекс знаний — отдельный файл-кэш, который можно удалить и перестроить. Содержимое артефактов пока в БД.
-
-## Перенос по шагам
-
-Принцип был — постепенная замена: TS-версия оставалась рабочей, пока Rust-сервер не догнал её по возможностям; новые возможности на TS не писались. TS-ядро удалено 2026-09-29 ([[#Уход от TS-ядра]]).
-
-1. ✅ Каркас: Cargo-workspace, `genie serve`, `genie init`.
-2. ✅ Трекер: модель, стейт-машина, права, DoR/DoD, эпики, артефакты, история — сразу с журналом событий; перенесены сценарии `test/tracker.test.ts`, относящиеся к трекеру.
-3. ✅ API для SPA: чтение и запись задач, команды, документация, живой поток; аутентификация и проекты.
-4. ✅ CLI: каталог операций ([[#Каталог операций: MCP и CLI из одного описания]]) — трекер (`show`, `list`, `board`, `create`, `status`, `comment`, `check`, `artifact*`, `split`, `block`…) с выводом как в `src/tracker/render.ts`, команды, почта, знания, задания, автоматизации, настройка агентов, проекты и люди; прежние `genie agent …` — псевдонимы.
-5. ✅ Команды и почта (в модели ходов, а не долгоживущих процессов): запуск pi-участников, пульс, восстановление, почта с уровнями и дайджестом, ручное управление командами; спецификация — `test/mail-delivery.test.ts` и командные сценарии `test/tracker.test.ts`.
-6. ◐ Агентский контракт: HTTP + командная строка `genie`, токен на сессию или ход, серверный оркестратор, живые сессии pi с доставкой почты между шагами ([[platform/agent-bus]]) — готовы; MCP — дальше.
-7. ✅ Знания — сразу в vault ([[platform/knowledge-vault]]); L0/L1-контекст и impact — дальше. Исходный план: docs-ядро: парсер, индекс, ссылки, L0/L1-контекст, impact (спецификация — `test/docs*.test.ts`, `test/web-*.test.ts`, `test/cli-docs.test.ts`); сначала над `docs/` репозитория, затем корень переезжает в vault ([[platform/knowledge-vault]]).
-8. Уход от TS-ядра — отдельный план ниже ([[#Уход от TS-ядра]]).
-
-Кроме переноса, поверх ядра построены автоматизации, каналы, опросники и уведомления ([[platform/automations]]). Запуск и эксплуатация — [[platform/getting-started]].
-
-Запуск во время разработки:
-
-```bash
-cargo test                                          # ядро и сервер
-npm run build:web
-cargo run -p genie -- serve --dir <repo>/.genie     # веб на http://127.0.0.1:7420
-```
-
-## Уход от TS-ядра
-
-План от 2026-09-29; решения владельца — PD17–PD19 в [[platform/decisions]]. Пилот работает только на Rust-сервере, так что перенос идёт параллельно с ним.
-
-### Что оставалось на TypeScript (удалено 2026-09-29)
-
-| Часть | Объём | Кто пользуется | Чем заменяется |
-|---|---|---|---|
-| `src/tracker`, `src/team`, `src/docs`, `src/web`, `src/cli` | ≈5,7 тыс. строк | локальный режим без сервера: `bin/genie` (`new`, `board`, `web`…) пишет прямо в `.genie/genie.db` | Rust-сервер и CLI из каталога операций |
-| `src/extension` | ≈2 тыс. строк | «оркестратор — ваша сессия pi»: инструменты `genie_task`, `team_*`, `docs_*`, карточки в терминале | MCP-сервер genie и пульт оркестратора |
-| Типы и две утилиты для веба | — | веб берёт `Task`, `Member`, `DocPage`… из `src/*.ts`, а также `src/team/names.ts` и `src/web/images.ts` | типы генерируются из Rust (`ts-rs`), утилиты переезжают в `web/` |
-| Тесты старого ядра и e2e | 9 из 13 файлов `test/`, `scripts/e2e*.ts`, Rust-тест `ts_compat` (запускает TS-CLI) | проверяют старое ядро | Rust-тесты; прогон на Rust-сервере с настоящей моделью; сохранённая база вместо запуска TS-CLI |
-
-Остаются на TypeScript по замыслу: веб (React) и расширения pi на стороне харнесса (`crates/genie/pi/genie-bus.ts`, `genie-guard.ts`, будущее TUI-расширение) — они работают внутри pi и ядра не содержат.
-
-Веб проверялся компилятором против старой TS-модели, а отвечал ему Rust-сервер: новые поля приходилось добавлять в обе модели руками. Генерация типов из Rust (шаг 1) вернула настоящую проверку контракта.
-
-### Каталог операций: MCP и CLI из одного описания
-
-Каждая операция genie описывается один раз: имя, описание, аргументы (структура Rust — из неё выводятся и схема JSON, и разбор аргументов командной строки), нужное разрешение, обработчик поверх API сервера. Из каталога получаются:
-
-- **инструменты MCP-сервера** `/mcp` (Streamable HTTP; разбор протокола — тот же, что у шлюза MCP): инструмент на группу (`genie_task` с `action`), человек видит то, что делают люди, агент — команды своей таблицы;
-- **команды CLI** `genie <объект> <действие>` (`genie task show G-7`, `genie team spawn`, `genie docs search`, `genie project add`) с текстовым выводом как в `src/tracker/render.ts`; `genie agent …` остаётся псевдонимом, чтобы не ломать промпты;
-- **таблица команд в промпте роли** — как сейчас, с учётом разрешений.
-
-Паритет MCP и CLI — свойство устройства, а не дисциплины: тест проверяет, что каждая операция каталога есть в обоих входах. Кто вызывает, определяет токен (агент с ролью или человек с личным токеном); права проверяет сервер, клиенты ничего не решают сами.
-
-Место каждого входа:
-
-- **MCP** — основной вход для агентов-клиентов: ваша сессия pi, Claude Code, Codex и другие харнессы с MCP; типизированные инструменты, человек управляет сервисом через своего агента.
-- **CLI** — тот же набор для shell:
-  - агенты, которых запускает сам genie: в песочнице у них bash, `genie` и токен — работает в любом харнессе без адаптеров и дешевле по контексту (таблица команд в промпте короче JSON-схем десятков инструментов); MCP для них — опция роли;
-  - скрипты и автоматизация (cron, git-хуки, CI);
-  - эксплуатация без запущенного сервера: `serve`, `doctor`, `backup`, первый администратор и проект;
-  - человек в терминале.
-
-### Оркестратор — ваша сессия pi
-
-Режим сохраняется как клиент сервера: `genie orchestrate --project shop` запускает ваш интерактивный pi оркестратором проекта.
-
-- Сессия «берёт пульт»: серверный оркестратор проекта приостанавливается, его почта (доклады команд, ответы людей) приходит в вашу сессию через `genie-bus` — так же, как в серверные сессии. Пульт — аренда роли оркестратора проекта с продлением; отпустили (вышли, простой) — серверный оркестратор продолжает с того же места. Переключать автономность проекта не нужно.
-- Инструменты — через MCP-сервер genie (или CLI), промпт оркестратора — тот же, что у серверного.
-- Карточку команды и `/genie` (доска) в терминале рисует небольшое расширение pi по данным сервера (живой поток `/api/events`).
-
-### Контекст знаний для агентов (L0/L1)
-
-Переносится из `src/docs/context.ts`, его тесты — спецификация: L0 — перечень страниц проекта (название и краткое описание) в системном промпте агента в пределах бюджета (~600 единиц, потолок 1000); L1 — до трёх страниц к старту задачи (по `paths` изменённого кода, `related` задачи и эпика, поиску по тексту задачи) в пределах 4000 единиц.
-
-### Шаги
-
-1. ✅ **Веб без TS-ядра**: типы API генерируются из Rust-структур (`ts-rs`, при `cargo test`, в `web/src/shared/api/generated`; CI проверяет, что они закоммичены), утилиты имён и картинок — в `web/`. Веб больше ничего не берёт из `src/`.
-2. ✅ **Каталог операций и CLI с полным паритетом** старого CLI и `genie agent` (`crates/genie/src/ops`): операция — структура аргументов с разбором командной строки, JSON и JSON-схемой, нужным классом агента и разрешениями роли, обработчиком поверх API; `genie <объект> <действие>` для людей, скриптов и агентов, с токеном — на сервер, без — в каталог данных как оператор; таблица команд в промпте агента строится из каталога по его классу и разрешениям роли; `tests/catalog.rs` проходит оба входа от имени оператора, человека с токеном и агента.
-3. ✅ **MCP-сервер genie** из того же каталога; личные и агентские токены (`crates/genie/src/http/mcp_server.rs`, `ops/tools.rs`): инструменты собираются из описаний операций, вызов идёт через API с токеном вызывающего; `tests/mcp_server.rs` проверяет человека, агента, разовое задание и что каждая операция есть и командой, и действием инструмента; совместимость — официальным клиентом MCP (SDK 1.31) против живого сервера.
-4. ✅ **Пульт оркестратора**: `genie orchestrate`, аренда роли, TUI-расширение pi — аренда в `server.db` (`consoles`) вместе с токеном оркестратора, который продлевается и отзывается с ней; пока пульт занят, почту оркестратора берёт только его токен, серверный оркестратор не планируется, его живая сессия останавливается; genie-bus в режиме пульта сам берёт почту простаивающей сессии, `crates/genie/pi/genie-console.ts` рисует карточку команд по `/api/events` и доски `/genie`; инструменты — командная строка `genie` с токеном пульта. Проверено настоящим pi с поддельной моделью (`tests/sessions.rs`), подставным pi (`tests/console.rs`) и рантаймом (`tests/runtime.rs`).
-5. ✅ **Контекст знаний L0/L1** (`crates/genie/src/context.rs`, [[platform/knowledge-vault#Что агенты знают без запроса]]): перечень страниц пространства проекта в промпте агентов с `docs.read`, страницы задачи в kickoff её команды; оценщик, бюджеты, ранги, отсев слов и обрезка по разделам — по тестам `src/docs/context.ts`, перенесённым в Rust; на документации самого genie (16 страниц) L0 занимает 561 единицу из 600 и честно помечает 9 непоказанных страниц.
-6. ✅ **Мелочи**: картинки из файлов проекта в чате команды — `GET /api/images?path=…&team=…` (`crates/genie/src/http/images.rs`: рабочая копия команды или репозиторий проекта, тип по содержимому, без выхода за корень и символических ссылок; спецификация — `test/web-images.test.ts`, перенесена в `tests/api.rs`); сохранённая база для `ts_compat` (`crates/genie-core/tests/fixtures/ts-tracker.db`, записана TS-CLI); веб внутри бинаря (`crates/genie/build.rs` встраивает `web/dist` без source map, `GENIE_WEB_DIST` требует его в сборке Docker и `deploy/install.sh`, `--web <каталог>` — для свежей сборки веба).
-7. ✅ **Удаление**: `src/` (трекер, команды, docs, веб-сервер, CLI, расширение pi), `bin/genie`, 9 тестов старого ядра, `scripts/e2e*.ts`, skill `genie-workflow`, TS-ключи `config/default.json` (`spawn`, `orchestrator`, `notify`, `gates`, `docs`, `web`, `teams`), манифест pi в `package.json`. Тексты ролей называют инструменты именами каталога (`genie_mail` action `send` — это и имя действия MCP-сервера), таблица соответствий старым именам расширения убрана. Инструкция перехода — [[platform/getting-started#Переход с расширения pi]]; то, что `genie project add --repo` подхватывает `.genie/` репозитория с задачами и номерами, проверяет `tests/api.rs` на базе, записанной TS-CLI. На TypeScript остались веб, расширения pi на стороне харнесса (`crates/genie/pi/*.ts`, теперь под `tsc`) и тесты веба.
-
-## Подключение агентов — отдельная тема
-
-Владелец решил проработать это отдельно. Два направления стоит развести:
-
-- **Агент как клиент.** Человек работает в своём агенте (pi, Claude Code, Codex, opencode…) и через MCP с личным токеном заводит задачи, смотрит статус, отвечает на вопросы команд, берёт «пульт» оркестратора.
-- **Агент как исполнитель.** genie запускает участника команды не только в pi, но и в другом харнессе — через адаптер `AgentRuntime`.
-
-Что фиксируем уже сейчас, чтобы не закрыть дорогу:
-
-- все операции агента существуют как инструменты MCP;
-- личность агента — токен, а не переменные окружения;
-- доставка почты отделена от харнесса.
-
-Вопросы к отдельному обсуждению:
-
-1. Какие харнессы в приоритете?
-2. Могут ли «чужие» агенты быть полноправными участниками команды (принимать письма посреди работы) или только выполнять разовые задания?
-3. Как передавать промпт роли, модель и уровень thinking в харнессы со своей конфигурацией?
-4. Изоляция и доступ к файлам.
-5. Авторизация личных агентов: токены или OAuth для MCP.
+The original TypeScript tracker, web server, CLI, and pi extension were removed on September 29, 2026. TypeScript remains for the web client, harness extensions, and their tests. Existing `.genie/` trackers are imported in place; see [migration](getting-started.md#migrate-from-the-pi-extension).

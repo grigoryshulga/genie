@@ -1,132 +1,92 @@
 ---
-title: Шина агентов — живые сессии и доставка почты
-summary: Как агенты genie общаются между собой — участники команд и оркестратор работают долгоживущими сессиями pi в режиме RPC, почта доходит до занятого агента между его шагами, прерывание останавливает текущий шаг; надёжная доставка с подтверждением, приоритеты, бюджет и сжатие, вопросы с ожиданием ответа, подглядывание в работу соседа, надзор и замеры задержки.
+title: Agent runtime
+summary: Mail delivery, live pi sessions, interruption, supervision, and runtime settings.
 type: reference
 status: current
-tags: [платформа, агенты, шина, pi, runtime]
-aliases: [agent bus, live sessions, живые сессии, шина почты, доставка почты]
-paths: [crates/genie/src/sessions.rs, crates/genie/pi/genie-bus.ts, crates/genie-core/src/team.rs, crates/genie/src/http/agents.rs]
-verified: 2026-09-30
 ---
 
-# Шина агентов — живые сессии и доставка почты
+# Agent runtime
 
-Контекст — [[platform/backend]] (рантайм агентов) и [[platform/getting-started]] (настройка). Решения владельца: процесс pi на агента; прерывают только оркестратор и люди; простаивающая сессия останавливается через 15 минут; вопрос тиммейту ждёт ответа до 3 минут.
+Team members and project orchestrators run as long-lived `pi --mode rpc` processes. The Rust supervisor controls them; the `genie-bus` pi extension delivers mail between model steps. One-shot automation jobs and non-RPC harnesses run as individual turns.
 
-## Зачем
+## Mail delivery
 
-Раньше каждый ход агента был отдельным запуском `pi --print`. Письмо занятому агенту ждало конца всего хода (десятки шагов, до 30 минут); ответ на вопрос приходил только следующим ходом; каждый ход стартовал с холодного процесса. Команда получалась медленной, а оркестратор не мог вмешаться в идущую работу.
+A step consists of a model response and its tool calls. The extension fetches mail after a step and before the agent settles. Busy agents receive mail at the next boundary; idle agents wake immediately.
 
-## Как устроено
+| Level | Delivery |
+| --- | --- |
+| `interrupt` | Abort the current step and deliver first. Only people and the orchestrator can interrupt. |
+| `high` | Next step boundary, ahead of normal mail. |
+| `normal` | Next step boundary. |
+| `low` | Same boundary, at the end of the batch. |
 
+A long-running tool delays ordinary mail until it finishes. Use interruption when waiting is unacceptable.
+
+Mail is leased until the model is about to see it. A crashed process returns unacknowledged mail to the queue; a stuck lease expires after two minutes. The conversation records delivered IDs so recovery does not insert the same message again.
+
+## Batches and questions
+
+A delivery is limited to `runtime.deliveryBudget` characters, default 8000. Messages longer than 2000 characters are shortened with a command to read the rest. Kickoff, interrupts, human messages, blockers, and questions take priority. The orchestrator receives a digest of routine team correspondence.
+
+```bash
+genie mail send <recipient> "Build is passing" --topic build
+genie mail ask <recipient> "Which endpoint should I use?" --timeout 180
+genie mail reply <id> "Use /api/orders"
+genie mail read <id>
+genie team peek <member> --deep
 ```
-genie serve (Rust)
-  ├─ шина (genie-core, team.rs): почта, доставки, приоритеты, вопросы — единственное хранилище
-  ├─ супервизор (sessions.rs): по процессу `pi --mode rpc` на агента, JSONL по stdin/stdout
-  │    ├─ prompt "/genie-mail" — разбудить свободную сессию
-  │    ├─ abort — прервать текущий шаг
-  │    └─ поток событий → живое состояние агента
-  └─ расширение genie-bus для pi (crates/genie/pi/genie-bus.ts)
-       ├─ на границе шага забирает почту и вставляет её в разговор
-       └─ подтверждает доставку, когда модель её увидела
+
+A topic replaces an undelivered message from the same sender to the same recipient on that topic. A timed-out question can still receive a later reply through mail.
+
+## Control
+
+The team screen shows current tools, status, pending mail, and conversation history. People can pause, resume, restart, interrupt, and change a member's model.
+
+```bash
+genie team board
+genie team interrupt <team> <member> "Stop the build and inspect the failing test"
+genie team pause <team> <member>
+genie team resume <team> <member>
+genie team turns
 ```
 
-Живыми сессиями работают участники команд и оркестратор проекта (в режиме `manual` оркестратор не запускается). Разовые задания автоматизаций и любые харнессы, кроме pi, работают по-прежнему ходами — см. «Настройка».
+`GET /api/agents` exposes the board and delivery latency. Deep conversation reads use `GET /api/agents/<team>/<member>/peek?deep=1&limit=12` with a maximum of 60 messages.
 
-## Доставка
+## Supervision
 
-- **Граница шага.** Шаг агента — ответ модели и вызванные в нём инструменты. После шага и до следующего запроса к модели (событие `turn_end`), а также перед тем, как агент остановится (`agent_before_settle`), расширение арендует у сервера почту агента и вставляет её в разговор. Письмо доходит до занятого агента в пределах его текущего шага, а не после всего хода.
-- **Пробуждение.** Свободной сессии сервер отправляет команду `/genie-mail`; расширение забирает почту и запускает работу. Если агент занят, команда ничего не делает — почту возьмёт ближайшая граница шага. Новую сессию расширение будит обычным промптом, а почту кладёт рядом: работа, запущенная сообщением расширения, обходит подготовку промпта pi, и первый запрос ушёл бы к модели без системного промпта, то есть без роли.
-- **Подтверждение.** Доставка подтверждается, когда модель вот-вот увидит письмо (событие `context`). Неподтверждённая доставка возвращается в очередь: сразу, если процесс упал, и через 2 минуты, если сессия зависла.
-- **Без дублей.** Сессия помнит номера писем, которые уже в разговоре (восстанавливает их из самой сессии после перезапуска), и называет их серверу при аренде. Такие письма закрываются как доставленные и повторно не вставляются.
+- Failed turns and crashed processes retry with backoff. After `maxAttempts` consecutive failures, the member stays in `error`, keeps its mail, and notifies the orchestrator.
+- A step with no activity beyond `turnTimeoutSecs` is interrupted. Five repeated identical tool calls trigger a possible-loop report.
+- An active team that is idle with no pending mail or human/CI wait triggers a stall report after `stallSecs`. The report is deduplicated across server restarts.
+- Idle sessions stop after `idleStopSecs` and restart on mail. At the session limit, the longest-idle session yields capacity.
+- On server restart, orphan processes stop, outstanding leases recover, and interrupted agents receive a continuation message.
 
-| Уровень | Что происходит | Когда дойдёт |
-|---|---|---|
-| `interrupt` | текущий шаг прерывается (RPC `abort`, останавливается и запущенная команда), письмо приходит первым | сразу; только оркестратор и люди |
-| `high` | ближайшая граница шага, первым в пачке | после текущего шага |
-| `normal` | ближайшая граница шага | после текущего шага |
-| `low`, FYI | та же граница, в конце пачки | после текущего шага |
+Logs are under `<data>/runtime/<project>/<agent>/`. See [operations](operations.md#health-and-logs).
 
-Долгая команда задерживает обычные письма до своего конца: если ждать нельзя — `interrupt`.
+## Runtime settings
 
-## Очередь, пачка и сжатие
+Configure `runtime` in `<data>/config.json`:
 
-- **Порядок в пачке:** kickoff → прерывания → срочные и письма людей → блокеры и вопросы → вердикты и «готово» → обычные → `low` и FYI; при равенстве — по времени отправки.
-- **Бюджет:** одна доставка — до `deliveryBudget` символов (по умолчанию 8000); остальное — на следующей границе шага («ещё N на следующем шаге»).
-- **Обрезка:** письмо длиннее 2000 символов обрезается с подсказкой `genie mail read <id>`.
-- **Темы:** `genie mail send … --topic build` заменяет недоставленное письмо того же отправителя тому же получателю на эту тему (прогресс 30% → 60%: дойдёт только 60%).
-- **Оркестратор** получает специальные письма (система, люди, прерывания, вопросы, ответы) дословно, а переписку команд — дайджестом: по командам, по строке на отправителя, сначала то, что требует решения.
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `mode` | `auto` | `sessions`, `turns`, or sessions with the standard command in `auto`. |
+| `maxSessions` | 12 | Concurrent live sessions. |
+| `idleStopSecs` | 300 | Idle time before a session stops. |
+| `maxConcurrent` | 4 | Concurrent turns; capacity is reserved for the orchestrator. |
+| `maxAttempts` | 3 | Consecutive failed attempts before error. |
+| `turnTimeoutSecs` | 1800 | Step/turn watchdog timeout. |
+| `askTimeoutSecs` | 180 | Default wait for an agent reply. |
+| `deliveryBudget` | 8000 | Characters per mail delivery. |
+| `nodeHeapMb` | 2048 | V8 heap cap for npm pi; does not apply to Pi-Bolt. |
 
-## Общение агентов
+Custom `command` and `sessionCommand` argument groups support role prompts, model, skills, and guard placeholders. Preserve the guard and `--no-approve` when replacing a pi command, so repository resources cannot bypass Genie configuration. Use `mode: turns` for a harness without the live-session protocol.
 
-| Нужно | Команда |
-|---|---|
-| спросить и дождаться ответа (до 3 минут; поздний ответ придёт письмом) | `genie mail ask <кому> "вопрос" [--timeout S]` |
-| ответить на письмо (спрашивающий получит ответ сразу, если ещё ждёт) | `genie mail reply <id> "текст"` |
-| полный текст обрезанного письма | `genie mail read <id>` |
-| что сейчас делает сосед (`--deep` — последние сообщения его разговора) | `genie team peek <имя> [--deep]` |
-| заменить своё прежнее сообщение на ту же тему | `genie mail send … --topic <тема>` |
+## Interactive orchestrator
 
-Вопрос приходит получателю с пометкой «ждёт ответа» и готовой командой `genie mail reply`. Эти команды — часть таблицы, которую агент видит в промпте ([[platform/agent-roles-and-teams]]); прежние `genie agent ask`, `reply`, `mail`… работают как псевдонимы.
+```bash
+genie orchestrate --project shop
+genie orchestrate --project shop -- --continue
+```
 
-## Управление командой
+This launches your terminal pi with the project's orchestrator prompt and a leased orchestrator token. The server orchestrator waits while you hold the console. Mail arrives between steps and wakes idle sessions. `/genie` toggles the task board; `/genie agents` shows agents.
 
-- **Оркестратор:** `genie team board` (все агенты, текущий шаг, очередь), `genie team interrupt <команда> <участник> "что делать"`, `genie team pause|resume <команда> <участник>` (на паузе сессия остановлена, почта ждёт), обычное письмо `--level high` — поправить на следующем шаге.
-- **Люди в вебе:** в карточке участника — его состояние («свободен», «ждёт Chaos», «работает · bash 2 мин»), текущая команда или последние слова агента; в почте команды важность «прервать шаг» для конкретного участника.
-- **Чат с агентом** (`/team/<команда>/<участник>`, имя в карточке участника): разговор агента — доставленная почта, размышления, вызовы инструментов с результатами, его ответы; поправка «прервать шаг» или «на следующем шаге», можно привязать к шагу («Поправить отсюда»); пауза, продолжение и перезапуск. На паузе видна почта, которая придёт при продолжении. Меню «Модель» в карточке агента выбирает ему свою модель и уровень размышления (или возвращает модель роли): список — каталог `pi --list-models` плюс модели из настроек агентов (`GET /api/models`), смена — `PATCH /api/teams/<команда>/members/<участник>` с `model` и `thinking` (`genie team set-model`). Роль и остальная команда не меняются; агент переходит на новую модель после текущего шага, разговор сохраняется. Разговор берётся из `peek?deep=1`: у остановленной сессии его нет, страница показывает последний увиденный.
-- **API:** `GET /api/agents` (доска и задержки доставки за сутки по уровням), `GET /api/agents/<команда>/<участник>/peek?deep=1[&limit=N]` (последние N сообщений разговора, по умолчанию 12, не больше 60; у каждого краткий `text`, `parts` — текст, размышления, вызовы инструментов, у результата инструмента `tool`, у доставленной почты `mailIds`), `POST …/pause`, `POST …/resume`; письмо с `"level": "interrupt"` — `POST /api/teams/<команда>/mail`.
-
-## Пульт оркестратора
-
-`genie orchestrate` запускает оркестратором проекта pi человека в его терминале ([[platform/getting-started#Оркестратор — ваша сессия pi]]). Там genie-bus работает в режиме пульта (`GENIE_CONSOLE=1`): сервер не может послать такой сессии `/genie-mail`, поэтому расширение само заглядывает в почту каждые несколько секунд, пока сессия простаивает, и будит её письмом; между шагами почта приходит как обычно. Пока пульт занят, почту оркестратора берёт только его токен: серверный оркестратор ждёт и продолжает, когда пульт вернули или он истёк.
-
-## Надзор
-
-- **Сбой хода** (ошибка модели после её собственных повторов): агент получает «продолжи» с нарастающей паузой; после `maxAttempts` подряд — статус «ошибка», почта сохраняется, оркестратору письмо.
-- **Падение процесса:** неподтверждённая почта возвращается в очередь, сессия перезапускается с тем же разговором (первый раз — через секунду, дальше по нарастающей). Если агент упал посреди работы, он получает записку «продолжи с места остановки».
-- **Сторожа:** шаг без признаков жизни дольше `turnTimeoutSecs` прерывается, агенту объясняют почему, оркестратору пишут; один и тот же вызов 5 раз подряд — оркестратору пишут о возможном цикле.
-- **Тихая команда:** активная команда на задаче «в работе», где все участники `idle`, почта не ждёт доставки и нет ожидания человека или CI дольше `stallSecs`, — оркестратору письмо. Одно на каждую полосу тишины: отметка `team_silent` в журнале команды переживает рестарт сервера. Ожидание человека (задача заблокирована, `needs_owner`, открытый опрос) и CI/доставка (проверки идут или зависли — `pending`/`stalled`, запрос ждёт ревью или мержа) тишиной не считается; участник в `working`, `paused`, `stopped` или `error` — тоже (последнее уже новость сторожа шага).
-- **Простой:** сессия без дела дольше `idleStopSecs` останавливается и поднимается на следующее письмо; при `maxSessions` живых сессий дольше всех простаивающая уступает место.
-- **Рестарт сервера:** открытые доставки возвращаются в очередь, осиротевшие процессы сессий (по pid-файлам) останавливаются. Почта, подтверждённая в потерянном шаге, не возвращается (она уже в разговоре и дублем не станет), поэтому каждый агент прерванного хода получает записку «сервер перезапустился после падения, продолжай»; участник возвращается в `idle` — доска не показывает работающего агента без процесса. В режиме ходов записка не нужна: ход вернул письмо в очередь, и оно уходит заново.
-- **История:** каждый прогон сессии (от старта работы до остановки) записывается как ход — с журналом действий; stderr сессии — `<data>/runtime/<проект>/<агент>/stderr.log`.
-
-## Настройка
-
-`runtime` в `config.json`:
-
-| Ключ | По умолчанию | Смысл |
-|---|---|---|
-| `mode` | `auto` | `sessions` — живые сессии; `turns` — запуск на каждый ход; `auto` — сессии, пока `command` стандартный |
-| `maxConcurrent` | 4 | ходов одновременно (в режиме ходов): участники и задания не занимают последний слот — он всегда свободен для оркестратора, чтобы тот не голодал за занятыми командами; очередь перед слотами видна в `genie server runtime` и `GET /api/runtime` |
-| `sessionCommand` | `pi --mode rpc` + сессия, модель, промпт, навыки роли, `-e {extension}`, `-e {guard}`, `--no-approve` | как запускается сессия; `{extension}` — путь к genie-bus, `{guard}` — к защитному расширению ([[platform/agent-roles-and-teams]]) |
-| `maxSessions` | 12 | живых сессий одновременно |
-| `idleStopSecs` | 300 | остановить сессию после простоя: разговор сохраняется, на следующее письмо она поднимается заново (память — [[platform/docker#Память и число сессий]]) |
-| `nodeHeapMb` | 2048 | потолок кучи V8 процесса pi, МБ (0 — без потолка); команды, которые запускает pi, его не наследуют |
-| `turnTimeoutSecs` | 1800 | шаг без признаков жизни прерывается (в режиме ходов — таймаут хода) |
-| `stallSecs` | 900 | команда молчит и ничего не ждёт дольше этого — письмо оркестратору (0 — выключить) |
-| `ciPendingSecs` | 1800 | проверки наблюдаемого коммита идут дольше этого — событие `ci.stalled` и одно письмо (0 — выключить; [[platform/git-repositories]], «Наблюдатель») |
-| `maxAttempts` | 3 | неудачных прогонов или падений подряд до статуса «ошибка» |
-| `askTimeoutSecs` | 180 | сколько `genie mail ask` ждёт ответа |
-| `deliveryBudget` | 8000 | символов почты за одну доставку |
-
-`GENIE_BUS_DEBUG=1` в `runtime.env` — расширение пишет решения на границах шага в stderr сессии.
-
-## Замеры
-
-Сквозной тест `crates/genie/tests/sessions.rs` гоняет настоящий pi против поддельной модели (OpenAI-совместимый сервер в тесте):
-
-| Случай | Задержка |
-|---|---|
-| письмо свободному агенту | ~20 мс |
-| письмо занятому агенту | в момент окончания текущей команды |
-| прерывание 60-секундной команды | ~25–30 мс |
-| вопрос тиммейту с ответом (с холодным стартом его сессии) | ~0,9 с |
-| письмо после падения процесса | ~1,5 с |
-| после падения сервера посреди шага агент получает записку и продолжает сам | ~1,5 с (тест `a_server_crash_mid_turn_does_not_leave_the_agent_stuck`) |
-
-В реальной работе к этим цифрам добавляется время ответа модели.
-
-## Проверки
-
-- `crates/genie-core/src/team.rs` — порядок и бюджет, подтверждение и возврат, отсутствие дублей, темы, вопросы и ответы.
-- `crates/genie/tests/sessions.rs` — доставка посреди работы, пробуждение, прерывание, падение и перезапуск без дублей, вопрос с ответом, доска и подглядывание, запрет прерывания для участников, пауза; сторожа тишины и цикла. На CI pi ставится `npm ci`; локально без него тесты пропускаются.
+The lease renews while pi runs, releases on exit, and expires after a lost connection. There is no need to change project autonomy. The server then resumes handling the mailbox.
