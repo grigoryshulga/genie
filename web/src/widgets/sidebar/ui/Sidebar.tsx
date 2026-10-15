@@ -122,10 +122,6 @@ export function Sidebar({ onNew, online }: { onNew: () => void; online: boolean 
           <span className="grow">Уведомления</span>
           {unread > 0 && <span className="unread-dot" role="img" aria-label={`непрочитанных: ${unread}`} />}
         </NavLink>
-        <NavLink to="/project" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/project/") ? " on" : ""}`}>
-          <Icon.folder size={15} />
-          <span className="grow">Проект и люди</span>
-        </NavLink>
         {session?.user.isAdmin && (
           <NavLink to="/server" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
             <Icon.server size={15} />

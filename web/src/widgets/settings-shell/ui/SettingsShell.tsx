@@ -54,7 +54,13 @@ export function SettingsShell() {
             <Icon.user size={15} />
             <span className="grow">Личное</span>
           </NavLink>
-          {/* «Проект» и «Сервер» появляются, когда их разделы переезжают (S4, S5). */}
+          {project && (
+            <NavLink to="/settings/project/general" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/settings/project") ? " on" : ""}`}>
+              <Icon.folder size={15} />
+              <span className="grow">Проект</span>
+            </NavLink>
+          )}
+          {/* «Сервер» появляется, когда его раздел переезжает (S5). */}
         </div>
 
         <span className="grow" />

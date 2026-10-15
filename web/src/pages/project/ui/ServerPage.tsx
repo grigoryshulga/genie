@@ -32,7 +32,7 @@ import { BarChart, Icon, Menu, useAct } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
 import { Costs } from "./ServerCosts.tsx";
 import "@/shared/ui/settings.css";
-import "./project.css";
+import "@/shared/ui/project.css";
 
 export function ServerPage() {
   const session = useSession().data;
