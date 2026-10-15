@@ -49,7 +49,7 @@ function Shell() {
   const location = useLocation();
   const [sp, setSp] = useSearchParams();
   const [dialog, setDialog] = useState<"new" | "palette" | undefined>();
-  const [sidebarCompact, setSidebarCompact] = useState(() => readPref("sidebar-compact", "false") === "true");
+  const [sidebarCompact, setSidebarCompact] = useState(() => readPref<string>("sidebar-compact", "false") === "true");
   const [preset, setPreset] = useState<NewTaskPreset | undefined>();
   const newTask = useCallback((p?: NewTaskPreset) => {
     setPreset(p);
