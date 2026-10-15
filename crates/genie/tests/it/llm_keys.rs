@@ -145,9 +145,10 @@ async fn live_on(model: &str) -> Live {
     cfg.port = listener.local_addr().unwrap().port();
     let out = dir.path().join("keys");
     std::fs::create_dir_all(&out).unwrap();
+    // Publish only the complete result: shell redirection creates an empty file before printf runs.
     let script = format!(
-        "printf 'litellm=%s anthropic=%s' \"${{LITELLM_API_KEY-unset}}\" \"${{ANTHROPIC_API_KEY-unset}}\" > '{}'/\"$GENIE_AGENT_NAME\"",
-        out.display()
+        "printf 'litellm=%s anthropic=%s' \"${{LITELLM_API_KEY-unset}}\" \"${{ANTHROPIC_API_KEY-unset}}\" > '{out}'/\"$GENIE_AGENT_NAME.tmp\" && mv '{out}'/\"$GENIE_AGENT_NAME.tmp\" '{out}'/\"$GENIE_AGENT_NAME\"",
+        out = out.display()
     );
     cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), script]];
     cfg.runtime.turn_timeout_secs = 30;

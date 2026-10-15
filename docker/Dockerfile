@@ -21,8 +21,9 @@ ARG DEBIAN_RELEASE=bookworm
 FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim AS web
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.json ./
+COPY web/package.json ./web/package.json
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --no-audit --no-fund
+    npm ci --workspace genie-web --include-workspace-root=false --ignore-scripts --no-audit --no-fund
 COPY web ./web
 RUN npm run build:web \
  && node web/compress-assets.mjs web/dist
@@ -52,20 +53,49 @@ RUN apt-get update \
 # matches the runtime image.
 FROM rust:${RUST_VERSION}-${DEBIAN_RELEASE} AS server
 WORKDIR /src
+# Only the manifests and the build script are inputs here: `Cargo.toml`, `Cargo.lock`, the workspace
+# members and the genie build script, whose `brotli`/`flate2` build-dependencies are compiled too.
+# Adding a workspace member to the root Cargo.toml without its manifest here fails loudly below.
 COPY Cargo.toml Cargo.lock ./
-# config/, agents/ and crates/genie/pi/ are embedded into the binary (include_str!, build.rs).
-# The web UI remains in the separate web/runtime layer so UI-only edits reuse this Rust build.
+COPY crates/genie-core/Cargo.toml ./crates/genie-core/Cargo.toml
+COPY crates/genie/Cargo.toml ./crates/genie/Cargo.toml
+COPY crates/genie/build.rs ./crates/genie/build.rs
+# Compiled dependencies (around 180 crates: aws-lc, bundled SQLite, axum) go into an ordinary layer,
+# not a BuildKit cache mount: `cache-to: type=gha` exports layers and preserves this one between CI
+# runs, while Docker does not preserve cache mounts in GitHub Actions. The workspace members are
+# stubbed so this layer holds third-party artifacts only, and their artifacts are then cleaned, so the
+# real sources can never be mistaken for the stubs. Without that clean, a source copied with an older
+# mtime than the stub artifact in this layer is considered up to date and a stub binary is linked.
+# `cargo clean -p` is deliberate: matching artifact paths by hand would miss fingerprints.
+RUN set -eux; \
+    mkdir -p crates/genie-core/src crates/genie/src; \
+    : > crates/genie-core/src/lib.rs; \
+    : > crates/genie/src/lib.rs; \
+    printf 'fn main() {}\n' > crates/genie/src/main.rs; \
+    cargo build --release --locked -p genie; \
+    cargo clean --release -p genie -p genie-core; \
+    test ! -e target/release/genie
+# config/, agents/ and crates/genie/pi/ are embedded into the binary.
+# Keep web assets in the runtime layer so UI-only edits reuse the entire Rust build.
 COPY config ./config
 COPY agents ./agents
 COPY crates ./crates
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/src/target \
-    cargo build --release --locked -p genie \
- && install -D -m 0755 target/release/genie /out/genie
+RUN cargo build --release --locked -p genie \
+ && install -D -m 0755 target/release/genie /out/genie \
+ && test -n "$(/out/genie --version)" \
+ && test -n "$(/out/genie --help)"
+
+# Strip Node before copying it into the runtime: stripping in a later runtime layer
+# would retain the original binary underneath and increase the image size.
+FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim AS node-runtime
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends binutils \
+ && strip --strip-unneeded /usr/local/bin/node
 
 # ---- runtime ------------------------------------------------------------------------------------
-FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim AS runtime
+FROM debian:${DEBIAN_RELEASE}-slim AS runtime
+COPY --from=node-runtime /usr/local/ /usr/local/
+COPY --from=node-runtime /opt/ /opt/
 
 ARG EXTRA_APT_PACKAGES=""
 ARG RUST_TOOLCHAIN=""
@@ -80,7 +110,7 @@ ARG RUST_TOOLCHAIN=""
 #   ca-certificates TLS to model providers, Telegram, SMTP, MCP servers
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      bash bubblewrap ca-certificates curl git jq less openssh-client procps ripgrep tini tzdata ${EXTRA_APT_PACKAGES} \
+      bash bubblewrap ca-certificates curl git jq less libstdc++6 openssh-client procps ripgrep tini tzdata ${EXTRA_APT_PACKAGES} \
  && rm -rf /var/lib/apt/lists/*
 
 # A Rust toolchain for agents (RUST_TOOLCHAIN): read-only under /opt/rust, its binaries on PATH without
@@ -98,9 +128,8 @@ RUN if [ -n "$RUST_TOOLCHAIN" ]; then \
     fi
 
 # The service user. Its ids are remapped at start (GENIE_UID / GENIE_GID) to match mounted repositories.
-# The base image's `node` user owns uid 1000; replace it.
-RUN userdel -r node \
- && groupadd --gid 1000 genie \
+# The Debian base has no application user.
+RUN groupadd --gid 1000 genie \
  && useradd --uid 1000 --gid genie --home-dir /data/home --no-create-home --shell /bin/bash genie
 
 # Pi-Bolt, from the stage above: one native executable with its WASM helper, pinned by the
