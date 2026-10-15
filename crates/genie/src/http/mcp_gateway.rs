@@ -25,6 +25,7 @@ use super::ctx::{Ctx, Who};
 use super::{ApiError, ApiResult};
 use crate::mcp_gateway::{self, Reply, Upstream, rpc_error};
 use crate::state::App;
+use genie_core::server_db::McpUse;
 
 /// How long a check of a connection may take (a first `npx` download included).
 const CHECK_TIMEOUT: Duration = Duration::from_secs(90);
@@ -247,10 +248,11 @@ async fn call_tool(app: &Arc<App>, who: &Caller, g: &Grant, params: Value) -> Re
                 t.append_event(events::MCP_CALLED, subject.as_deref(), &actor, class.as_str(), payload).map(|_| ())
             })?;
             // A refused or closed call reached no server: the journal has it, the statistics do not.
-            if reached_server
-                && let Err(e) = app.with_server(|db| db.record_mcp_usage(&project, &server, &tool, ok, ms, bytes_in, bytes_out))
-            {
-                eprintln!("genie mcp: cannot count a call of {server}/{tool}: {e}");
+            if reached_server {
+                let counted = McpUse { project: &project, server: &server, tool: &tool, ok, ms, bytes_in, bytes_out };
+                if let Err(e) = app.with_server(|db| db.record_mcp_usage(&counted)) {
+                    eprintln!("genie mcp: cannot count a call of {server}/{tool}: {e}");
+                }
             }
             Ok(())
         })

@@ -443,6 +443,18 @@ pub struct McpUsage {
     pub bytes_out: i64,
 }
 
+/// One tool call through the gateway, as the usage counter takes it.
+#[derive(Debug, Clone)]
+pub struct McpUse<'a> {
+    pub project: &'a str,
+    pub server: &'a str,
+    pub tool: &'a str,
+    pub ok: bool,
+    pub ms: u64,
+    pub bytes_in: u64,
+    pub bytes_out: u64,
+}
+
 impl User {
     fn from_row(r: &Row<'_>) -> rusqlite::Result<User> {
         let id: i64 = r.get("id")?;
@@ -701,16 +713,7 @@ impl ServerDb {
     // --- mcp -----------------------------------------------------------------
 
     /// Count one tool call through the MCP gateway: per today, project, server and tool.
-    pub fn record_mcp_usage(
-        &self,
-        project: &str,
-        server: &str,
-        tool: &str,
-        ok: bool,
-        ms: u64,
-        bytes_in: u64,
-        bytes_out: u64,
-    ) -> Result<()> {
+    pub fn record_mcp_usage(&self, call: &McpUse) -> Result<()> {
         let day = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)[..10].to_string();
         self.conn().execute(
             "INSERT INTO mcp_usage(day, project, server, tool, calls, errors, ms, bytes_in, bytes_out)
@@ -721,7 +724,16 @@ impl ServerDb {
                ms = ms + ?6,
                bytes_in = bytes_in + ?7,
                bytes_out = bytes_out + ?8",
-            params![day, project, server, tool, !ok as i64, ms as i64, bytes_in as i64, bytes_out as i64],
+            params![
+                day,
+                call.project,
+                call.server,
+                call.tool,
+                !call.ok as i64,
+                call.ms as i64,
+                call.bytes_in as i64,
+                call.bytes_out as i64
+            ],
         )?;
         Ok(())
     }
@@ -1635,9 +1647,36 @@ mod tests {
     #[test]
     fn mcp_usage_counts_up_and_the_tool_cache_is_replaced() {
         let (_d, db) = db();
-        db.record_mcp_usage("shop", "github", "get_issue", true, 120, 300, 5000).unwrap();
-        db.record_mcp_usage("shop", "github", "get_issue", false, 30, 100, 200).unwrap();
-        db.record_mcp_usage("erp", "sap", "read_table", true, 900, 50, 80_000).unwrap();
+        db.record_mcp_usage(&McpUse {
+            project: "shop",
+            server: "github",
+            tool: "get_issue",
+            ok: true,
+            ms: 120,
+            bytes_in: 300,
+            bytes_out: 5000,
+        })
+        .unwrap();
+        db.record_mcp_usage(&McpUse {
+            project: "shop",
+            server: "github",
+            tool: "get_issue",
+            ok: false,
+            ms: 30,
+            bytes_in: 100,
+            bytes_out: 200,
+        })
+        .unwrap();
+        db.record_mcp_usage(&McpUse {
+            project: "erp",
+            server: "sap",
+            tool: "read_table",
+            ok: true,
+            ms: 900,
+            bytes_in: 50,
+            bytes_out: 80_000,
+        })
+        .unwrap();
         let github = db.mcp_usage(30).unwrap().into_iter().find(|u| u.server == "github").unwrap();
         assert_eq!((github.calls, github.errors, github.ms, github.bytes_in, github.bytes_out), (2, 1, 150, 400, 5200));
         // An old record stays but is outside a one-day window.
