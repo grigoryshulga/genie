@@ -9,7 +9,7 @@ import { History, Problems } from "@/widgets/settings-kit";
 import { McpTab, SkillsTab } from "./LibraryTabs.tsx";
 import { RolesTab } from "./RolesTab.tsx";
 import { TemplatesTab } from "./TemplatesTab.tsx";
-import "./agents.css";
+import "@/shared/ui/agents.css";
 
 type Tab = "roles" | "templates" | "skills" | "mcp" | "history";
 const TABS: { id: Tab; title: string; admin?: boolean }[] = [

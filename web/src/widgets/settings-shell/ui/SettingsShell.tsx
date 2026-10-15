@@ -2,7 +2,7 @@
 // rights, the same project switcher as the work sidebar, and a way back to the
 // last work route.
 
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { useSession, useSwitchProject } from "@/entities/session";
 import { lastWorkRoute } from "@/shared/lib";
@@ -60,7 +60,12 @@ export function SettingsShell() {
               <span className="grow">Проект</span>
             </NavLink>
           )}
-          {/* «Сервер» появляется, когда его раздел переезжает (S5). */}
+          {session?.user.isAdmin && (
+            <NavLink to="/settings/server/health" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/settings/server") ? " on" : ""}`}>
+              <Icon.server size={15} />
+              <span className="grow">Сервер</span>
+            </NavLink>
+          )}
         </div>
 
         <span className="grow" />
@@ -75,9 +80,9 @@ export function SettingsShell() {
 }
 
 /** The server section of the settings: server administrators only. */
-export function RequireServerAdmin() {
-  const session = useSession().data;
-  if (!session) return <div className="empty">Загрузка…</div>;
-  if (!session.user.isAdmin) return <div className="empty">Раздел «Сервер» — для администраторов сервера.</div>;
-  return <Outlet />;
+export function RequireServerAdmin({ children }: { children: ReactNode }) {
+  const session = useSession();
+  if (session.isLoading) return <div className="empty">Загрузка…</div>;
+  if (!session.data?.user.isAdmin) return <div className="empty">Раздел «Сервер» — для администраторов сервера.</div>;
+  return children;
 }

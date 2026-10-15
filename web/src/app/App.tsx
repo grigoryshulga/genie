@@ -8,6 +8,7 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
+import { RequireServerAdmin, SettingsShell } from "@/widgets/settings-shell";
 import { isTyping, rememberWorkRoute } from "@/shared/lib";
 import { Sidebar } from "@/widgets/sidebar";
 import { lazyPage } from "./lazyPage.ts";
@@ -25,9 +26,8 @@ const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
 const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
 const MeSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.MeSettingsPage));
 const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
-const ServerPage = lazyPage(() => import("@/pages/project").then((m) => m.ServerPage));
-const FirstProjectPage = lazyPage(() => import("@/pages/project").then((m) => m.FirstProjectPage));
-const SettingsShell = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.SettingsShell));
+const ServerSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerSettingsPage));
+const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m.FirstProjectPage));
 const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.AnswerPage));
 const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
 const NotificationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.NotificationsPage));
@@ -58,7 +58,7 @@ function Shell() {
   const teamRoute = location.pathname.startsWith("/team/");
   const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
-  const platformRoute = ["/automations", "/agents", "/notifications", "/server"].some((p) => location.pathname.startsWith(p));
+  const platformRoute = ["/automations", "/agents", "/notifications"].some((p) => location.pathname.startsWith(p));
   // Pages without the task list or board: opening a task from the palette goes to the list.
   const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
@@ -257,6 +257,13 @@ function LegacyProject() {
   return <Navigate to={`/settings/project/${section}`} replace />;
 }
 
+/** `/server/…` — the server administration before the settings mode (PD21); old links keep working. */
+function LegacyServer() {
+  const { tab } = useParams();
+  const section = tab === "stats" || tab === "projects" || tab === "accounts" || tab === "mcp" || tab === "vault" ? tab : "health";
+  return <Navigate to={`/settings/server/${section}`} replace />;
+}
+
 export const router = createBrowserRouter([
   { path: "/invite", element: <InvitePage /> },
   // `/answer` is outside the shell, so its page brings its own loading boundary.
@@ -290,7 +297,6 @@ export const router = createBrowserRouter([
           { path: "automations", element: <AutomationsPage /> },
           { path: "agents", element: <AgentsPage /> },
           { path: "notifications", element: <NotificationsPage /> },
-          { path: "server/:tab?", element: <ServerPage /> },
           { path: ":view", element: <LegacyView /> },
         ],
       },
@@ -302,10 +308,12 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/settings/me/account" replace /> },
           { path: "me/:section?", element: <MeSettingsPage /> },
           { path: "project/:section?", element: <ProjectSettingsPage /> },
+          { path: "server/:section?", element: <RequireServerAdmin><ServerSettingsPage /></RequireServerAdmin> },
         ],
       },
       { path: "profile/:tab?", element: <LegacyProfile /> },
       { path: "project/:tab?", element: <LegacyProject /> },
+      { path: "server/:tab?", element: <LegacyServer /> },
     ],
   },
 ]);

@@ -28,7 +28,7 @@ import { bytes, plural, timeAgo } from "@/shared/lib";
 import { ApiError } from "@/shared/api";
 import { Badge, ChipInput, ConfirmDialog, Icon, Modal, Section, useAct } from "@/shared/ui";
 import { Problems } from "@/widgets/settings-kit";
-import "@/pages/agents/ui/agents.css";
+import "@/shared/ui/agents.css";
 
 /** A role as the MCP tab reads it: who holds a grant of a connection. */
 interface GrantHolder {

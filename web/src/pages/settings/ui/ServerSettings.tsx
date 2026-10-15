@@ -1,6 +1,6 @@
-// The server, for its administrators, a tab each: whether it is ready (and the week in
-// numbers), statistics with charts, projects (and a new one), the people with accounts
-// (administrator rights, switching an account off, a new account), the knowledge base's git.
+// «Сервер» — server administration, a section each: health (the doctor check, the week
+// in numbers), statistics and costs, projects, accounts, MCP connections and the
+// knowledge vault sync. Server administrators only.
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -34,15 +34,15 @@ import { Costs } from "./ServerCosts.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
 
-export function ServerPage() {
+export function ServerSettingsPage() {
   const session = useSession().data;
-  const { tab = "" } = useParams();
+  const { section = "health" } = useParams();
   const admin = !!session?.user.isAdmin;
   const local = session?.mode === "local";
   const projects = useProjects().data?.length ?? 0;
   const accounts = useUsers(admin && !local).data?.length ?? 0;
   const tabs = [
-    { id: "", title: "Состояние" },
+    { id: "health", title: "Состояние" },
     { id: "stats", title: "Статистика" },
     { id: "projects", title: "Проекты", n: projects },
     ...(local ? [] : [{ id: "accounts", title: "Учётные записи", n: accounts }]),
@@ -54,29 +54,25 @@ export function ServerPage() {
       <header className="topbar">
         <h1>Сервер</h1>
         <span className="sub">{local ? "локальный режим" : "администрирование"}</span>
-        {admin && (
-          <nav className="st-tabs" aria-label="Разделы сервера">
-            {tabs.map((t) => (
-              <NavLink key={t.id} to={t.id ? `/server/${t.id}` : "/server"} end className={({ isActive }) => (isActive ? "on" : undefined)}>
-                {t.title}
-                {!!t.n && <span className="n">{t.n}</span>}
-              </NavLink>
-            ))}
-          </nav>
-        )}
+        <nav className="st-tabs" aria-label="Разделы сервера">
+          {tabs.map((t) => (
+            <NavLink key={t.id} to={`/settings/server/${t.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
+              {t.title}
+              {!!t.n && <span className="n">{t.n}</span>}
+            </NavLink>
+          ))}
+        </nav>
       </header>
       <div className="scroll">
-        {!admin ? (
-          <div className="empty">Эта страница — для администраторов сервера.</div>
-        ) : tab === "stats" ? (
+        {section === "stats" ? (
           <Statistics />
-        ) : tab === "projects" ? (
+        ) : section === "projects" ? (
           <Projects current={session?.project} />
-        ) : tab === "accounts" && !local ? (
+        ) : section === "accounts" && !local ? (
           <Accounts me={session?.user.login} />
-        ) : tab === "mcp" ? (
+        ) : section === "mcp" ? (
           <McpAdminSection />
-        ) : tab === "vault" ? (
+        ) : section === "vault" ? (
           <Knowledge />
         ) : (
           <Health />
@@ -166,7 +162,7 @@ function Week() {
       <div className="sv-section-head">
         <h3>Последние 7 дней</h3>
         <span className="muted">все проекты</span>
-        <Link to="/server/stats" className="sv-more">
+        <Link to="/settings/server/stats" className="sv-more">
           Вся статистика
           <Icon.chevron size={12} />
         </Link>
