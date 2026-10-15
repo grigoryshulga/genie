@@ -29,7 +29,21 @@ import { ModelPicker } from "@/features/agent-model";
 import { Badge, ChipInput, ConfirmDialog, Icon, Markdown, Modal, Section, useAct, useToast } from "@/shared/ui";
 import { FileEditor, History, Problems } from "@/widgets/settings-kit";
 
-export function RolesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected?: string; onSelect: (id: string) => void }) {
+export function RolesTab({
+  cfg,
+  selected,
+  onSelect,
+  readOnly = false,
+  base = "/agents",
+}: {
+  cfg: Catalogue;
+  selected?: string;
+  onSelect: (id: string) => void;
+  /** The catalogue (/agents) forces read-only even for a server administrator. */
+  readOnly?: boolean;
+  /** Where this tab lives: cross-links to the other tabs stay inside the same mode. */
+  base?: string;
+}) {
   const team = cfg.roles.filter((r) => r.class !== "orchestrator");
   const orch = cfg.roles.filter((r) => r.class === "orchestrator");
   const current = selected ?? team[0]?.id;
@@ -57,7 +71,7 @@ export function RolesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected
         {orch.map(pick)}
       </section>
       <section className="split-main" aria-label="Роль">
-        {current ? <RolePane key={current} id={current} cfg={cfg} /> : <div className="pane-empty">Ролей нет</div>}
+        {current ? <RolePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Ролей нет</div>}
       </section>
     </div>
   );
@@ -65,7 +79,7 @@ export function RolesTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected
 
 type Dialog = "file" | "prompt" | "settings" | "skills" | "mcp" | "delete";
 
-function RolePane({ id, cfg }: { id: string; cfg: Catalogue }) {
+function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string; cfg: Catalogue; readOnly?: boolean; base?: string }) {
   const detail = useRole(id);
   const [dialog, setDialog] = useState<Dialog>();
   const remove = useDeleteConfig();
@@ -73,13 +87,13 @@ function RolePane({ id, cfg }: { id: string; cfg: Catalogue }) {
   const d = detail.data;
   if (!d) return <div className="pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
   const r = d.role;
-  const admin = d.admin;
+  const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null;
   const close = () => setDialog(undefined);
   const parent = r.extends ? (cfg.roles.find((x) => x.id === r.extends)?.title ?? r.extends) : undefined;
   const used = [
     ...d.usedBy.templates.map((t) => (
-      <Link key={`t-${t}`} to={`/agents?tab=templates&id=${t}`}>
+      <Link key={`t-${t}`} to={`${base}?tab=templates&id=${t}`}>
         шаблон «{cfg.teams.find((x) => x.id === t)?.title ?? t}»
       </Link>
     )),

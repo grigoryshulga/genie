@@ -26,6 +26,7 @@ const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
 const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
 const MeSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.MeSettingsPage));
 const AutomationsSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.AutomationsSettingsPage));
+const AgentsAdminPage = lazyPage(() => import("@/pages/settings").then((m) => m.AgentsAdminPage));
 const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
 const ServerSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerSettingsPage));
 const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m.FirstProjectPage));
@@ -310,7 +311,22 @@ export const router = createBrowserRouter([
           { path: "me/:section?", element: <MeSettingsPage /> },
           { path: "project/automations", element: <AutomationsSettingsPage /> },
           { path: "project/:section?", element: <ProjectSettingsPage /> },
-          { path: "server/:section?", element: <RequireServerAdmin><ServerSettingsPage /></RequireServerAdmin> },
+        {
+          path: "server",
+          element: (
+            <RequireServerAdmin>
+              <Outlet />
+            </RequireServerAdmin>
+          ),
+          children: [
+            { index: true, element: <Navigate to="/settings/server/health" replace /> },
+            { path: "roles", element: <AgentsAdminPage /> },
+            { path: "templates", element: <AgentsAdminPage /> },
+            { path: "skills", element: <AgentsAdminPage /> },
+            { path: "history", element: <AgentsAdminPage /> },
+            { path: ":section?", element: <ServerSettingsPage /> },
+          ],
+        },
         ],
       },
       { path: "profile/:tab?", element: <LegacyProfile /> },

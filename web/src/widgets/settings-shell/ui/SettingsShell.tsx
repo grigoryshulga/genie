@@ -67,6 +67,12 @@ export function SettingsShell() {
             </NavLink>
           )}
           {session?.user.isAdmin && (
+            <NavLink to="/settings/server/roles" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
+              <Icon.userPlus size={15} />
+              <span className="grow">Агенты</span>
+            </NavLink>
+          )}
+          {session?.user.isAdmin && (
             <NavLink to="/settings/server/health" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/settings/server") ? " on" : ""}`}>
               <Icon.server size={15} />
               <span className="grow">Сервер</span>

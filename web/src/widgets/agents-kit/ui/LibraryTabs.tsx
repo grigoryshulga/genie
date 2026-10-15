@@ -19,7 +19,21 @@ import { bytes, timeAgo } from "@/shared/lib";
 import { Badge, ConfirmDialog, Icon, Markdown, Modal, Section, useAct } from "@/shared/ui";
 import { FileEditor, History, Problems } from "@/widgets/settings-kit";
 
-export function SkillsTab({ cfg, selected, onSelect }: { cfg: Catalogue; selected?: string; onSelect: (name: string) => void }) {
+export function SkillsTab({
+  cfg,
+  selected,
+  onSelect,
+  readOnly = false,
+  base = "/agents",
+}: {
+  cfg: Catalogue;
+  selected?: string;
+  onSelect: (name: string) => void;
+  /** The catalogue (/agents) forces read-only even for a server administrator. */
+  readOnly?: boolean;
+  /** Where this tab lives: cross-links to the roles tab stay inside the same mode. */
+  base?: string;
+}) {
   const current = selected ?? cfg.skills[0]?.name;
   const users = (name: string) => cfg.roles.filter((r) => r.skills?.includes(name));
   return (
@@ -41,13 +55,13 @@ export function SkillsTab({ cfg, selected, onSelect }: { cfg: Catalogue; selecte
         )}
       </section>
       <section className="split-main" aria-label="Навык">
-        {current ? <SkillPane key={current} name={current} cfg={cfg} /> : <div className="pane-empty">Выберите или добавьте навык</div>}
+        {current ? <SkillPane key={current} name={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Выберите или добавьте навык</div>}
       </section>
     </div>
   );
 }
 
-function SkillPane({ name, cfg }: { name: string; cfg: Catalogue }) {
+function SkillPane({ name, cfg, readOnly = false, base = "/agents" }: { name: string; cfg: Catalogue; readOnly?: boolean; base?: string }) {
   const skill = useSkill(name);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -56,6 +70,7 @@ function SkillPane({ name, cfg }: { name: string; cfg: Catalogue }) {
   const d = skill.data;
   if (!d) return <div className="pane-empty">{skill.error ? skill.error.message : "Загрузка…"}</div>;
   const body = d.content ? (splitFrontmatter(d.content)?.body ?? d.content) : "";
+  const admin = d.admin && !readOnly;
   return (
     <>
       <div className="pane-head">
@@ -64,7 +79,7 @@ function SkillPane({ name, cfg }: { name: string; cfg: Catalogue }) {
           <span className="sub mono">{d.skill.dir}</span>
           {d.skill.description && <p className="desc">{d.skill.description}</p>}
         </div>
-        {d.admin && d.editable && (
+        {admin && d.editable && (
           <>
             <button type="button" className="btn" onClick={() => setEditing(true)}>
               <Icon.file size={13} />
@@ -78,13 +93,13 @@ function SkillPane({ name, cfg }: { name: string; cfg: Catalogue }) {
         )}
       </div>
       <div className="pane-body">
-        {d.admin && !d.editable && <p className="muted ag-note">Навык из каталога skills.paths: его меняют там, где он лежит (например, в клоне репозитория с навыками).</p>}
+        {admin && !d.editable && <p className="muted ag-note">Навык из каталога skills.paths: его меняют там, где он лежит (например, в клоне репозитория с навыками).</p>}
         <Section title="Инструкции">
           <div className="ag-skill-body">
             <Markdown text={body} />
           </div>
         </Section>
-        <SkillFiles name={d.skill.name} files={d.files} canEdit={d.admin && d.editable} />
+        <SkillFiles name={d.skill.name} files={d.files} canEdit={admin && d.editable} />
         <p className="ag-used">
           {d.usedBy.length ? (
             <>
@@ -92,7 +107,7 @@ function SkillPane({ name, cfg }: { name: string; cfg: Catalogue }) {
               {d.usedBy.map((r, i) => (
                 <Fragment key={r}>
                   {i > 0 && ", "}
-                  <Link to={`/agents?tab=roles&id=${r}`}>{cfg.roles.find((x) => x.id === r)?.title ?? r}</Link>
+                  <Link to={`${base}?tab=roles&id=${r}`}>{cfg.roles.find((x) => x.id === r)?.title ?? r}</Link>
                 </Fragment>
               ))}
               .
@@ -101,9 +116,9 @@ function SkillPane({ name, cfg }: { name: string; cfg: Catalogue }) {
             "Роли его не перечисляют: он достаётся ролям без своего списка навыков, если установлен и для pi."
           )}
         </p>
-        {d.admin && (
+        {admin && (
           <Section title="История изменений">
-            <History item={`skill:${d.skill.name}`} admin={d.admin} />
+            <History item={`skill:${d.skill.name}`} admin={admin} />
           </Section>
         )}
       </div>
@@ -236,10 +251,11 @@ function SkillFileView({ name, path, onClose }: { name: string; path: string; on
   );
 }
 
-export function McpTab({ cfg }: { cfg: Catalogue }) {
+export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catalogue; readOnly?: boolean; base?: string }) {
   const mcp = useMcpConfig();
   const d = mcp.data;
   const servers = d?.servers ?? cfg.mcp;
+  const admin = !!d?.admin && !readOnly;
   const users = (id: string) => cfg.roles.filter((r) => r.mcp.some((g) => g === "*" || g === id || g.startsWith(`${id}:`)));
   return (
     <div className="ag-page">
@@ -251,8 +267,8 @@ export function McpTab({ cfg }: { cfg: Catalogue }) {
               : "Шлюз genie выключен (runtime.mcpGateway): харнесс получает подключения вместе с секретами, вызовы genie не видит."}
           </p>
         </div>
-        {d?.admin && (
-          <Link to="/server/mcp" className="btn">
+        {admin && (
+          <Link to="/settings/server/mcp" className="btn">
             <Icon.server size={13} />
             Управление подключениями
           </Link>
@@ -291,7 +307,7 @@ export function McpTab({ cfg }: { cfg: Catalogue }) {
                     {users(s.id).map((r, i) => (
                       <span key={r.id}>
                         {i > 0 && ", "}
-                        <Link to={`/agents?tab=roles&id=${r.id}`}>{r.title}</Link>
+                        <Link to={`${base}?tab=roles&id=${r.id}`}>{r.title}</Link>
                       </span>
                     ))}
                     {!users(s.id).length && <span className="muted">ни одной роли</span>}
@@ -310,7 +326,7 @@ export function McpTab({ cfg }: { cfg: Catalogue }) {
         </table>
       </div>
       {cfg.mcpGateway && <Calls project={cfg.project} roles={cfg.roles} />}
-      {d?.admin && (
+      {admin && (
         <Section title="История изменений">
           <History item="mcp" admin />
         </Section>
