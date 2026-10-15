@@ -113,14 +113,13 @@ impl Registry {
         let directory = app.data.join("runtime").join("llm-oauth").join(&id);
         std::fs::create_dir_all(&directory).map_err(|e| format!("cannot create OAuth work directory: {e}"))?;
         restrict_dir(&directory);
-        for name in ["models.json"] {
-            let source = crate::runtime::pi_dir(app).join(name);
-            if source.is_file() {
-                if let Err(e) = std::fs::copy(source, directory.join(name)) {
-                    let _ = std::fs::remove_dir_all(&directory);
-                    return Err(format!("cannot prepare Pi profile: {e}"));
-                }
-            }
+        let name = "models.json";
+        let source = crate::runtime::pi_dir(app).join(name);
+        if source.is_file()
+            && let Err(e) = std::fs::copy(source, directory.join(name))
+        {
+            let _ = std::fs::remove_dir_all(&directory);
+            return Err(format!("cannot prepare Pi profile: {e}"));
         }
         let extension = directory.join("genie-oauth.ts");
         if let Err(e) = std::fs::write(&extension, include_str!("../pi/genie-oauth.ts")) {

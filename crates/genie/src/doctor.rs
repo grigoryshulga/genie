@@ -380,12 +380,11 @@ fn model_profile(base: &Path, personal: &serde_json::Map<String, serde_json::Val
     let dir = std::env::temp_dir().join(format!("genie-models-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
     std::fs::create_dir(&dir).ok()?;
     restrict_dir(&dir);
-    for name in ["models.json"] {
-        let src = base.join(name);
-        if src.is_file() && std::fs::copy(src, dir.join(name)).is_err() {
-            let _ = std::fs::remove_dir_all(&dir);
-            return None;
-        }
+    let name = "models.json";
+    let src = base.join(name);
+    if src.is_file() && std::fs::copy(src, dir.join(name)).is_err() {
+        let _ = std::fs::remove_dir_all(&dir);
+        return None;
     }
     let mut auth = std::fs::read(base.join("auth.json"))
         .ok()

@@ -399,8 +399,10 @@ fn without_thinking(model: &str) -> &str {
 }
 
 /// pi's catalogue, read at most every few minutes (it starts a process).
-static PI_MODELS: std::sync::LazyLock<std::sync::Mutex<HashMap<Option<i64>, (std::time::Instant, Option<BTreeSet<String>>)>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+type PiModelsCacheEntry = (std::time::Instant, Option<BTreeSet<String>>);
+type PiModelsCache = HashMap<Option<i64>, PiModelsCacheEntry>;
+
+static PI_MODELS: std::sync::LazyLock<std::sync::Mutex<PiModelsCache>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 const PI_MODELS_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Drop the catalogue after a user's or the server's credentials change.
@@ -455,10 +457,9 @@ async fn models(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<ModelsQue
                             if p.oauth
                                 && let Some(user_id) = user_id
                                 && let Some(raw) = db.user_secret(user_id, &crate::llm_key::oauth_secret(p.id))?
+                                && let Ok(value) = serde_json::from_str::<Value>(&raw)
                             {
-                                if let Ok(value) = serde_json::from_str::<Value>(&raw) {
-                                    oauth.insert(p.id.to_string(), value);
-                                }
+                                oauth.insert(p.id.to_string(), value);
                             }
                         }
                         Ok::<_, genie_core::GenieError>(())

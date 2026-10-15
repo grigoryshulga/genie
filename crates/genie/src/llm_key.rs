@@ -292,11 +292,10 @@ pub fn write_user_pi_profile(app: &App, user: i64) -> Result<(), String> {
     let dir = app.data.join("runtime").join("pi-users").join(user.to_string());
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create the user's pi profile: {e}"))?;
     restrict_dir(&dir);
-    for name in ["models.json"] {
-        let src = base.join(name);
-        if src.is_file() {
-            std::fs::copy(src, dir.join(name)).map_err(|e| format!("cannot copy pi {name}: {e}"))?;
-        }
+    let name = "models.json";
+    let src = base.join(name);
+    if src.is_file() {
+        std::fs::copy(src, dir.join(name)).map_err(|e| format!("cannot copy pi {name}: {e}"))?;
     }
     let mut auth = std::fs::read(base.join("auth.json"))
         .ok()
@@ -315,10 +314,10 @@ fn user_oauth(app: &App, user: i64) -> Result<serde_json::Map<String, serde_json
     app.with_server(|db| {
         let mut auth = serde_json::Map::new();
         for provider in PROVIDERS.iter().filter(|provider| provider.oauth) {
-            if let Some(raw) = db.user_secret(user, &oauth_secret(provider.id))? {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
-                    auth.insert(provider.id.into(), value);
-                }
+            if let Some(raw) = db.user_secret(user, &oauth_secret(provider.id))?
+                && let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw)
+            {
+                auth.insert(provider.id.into(), value);
             }
         }
         Ok::<_, genie_core::GenieError>(auth)
@@ -452,7 +451,10 @@ mod tests {
         assert!(provider("litellm").unwrap().strict);
         assert_eq!(provider("anthropic").unwrap().key_var, "ANTHROPIC_API_KEY");
         assert_eq!(provider("zai-coding-cn").unwrap().key_var, "ZAI_CODING_CN_API_KEY");
-        assert!(provider("openai-codex").is_none(), "an OAuth-only provider holds no key");
+        let codex = provider("openai-codex").unwrap();
+        assert!(!codex.api_key, "an OAuth-only provider holds no key");
+        assert!(codex.oauth);
+        assert!(native(Some("openai-codex/gpt-6")).is_none());
         assert_eq!(provider("moonshotai").unwrap().key_var, provider("moonshotai-cn").unwrap().key_var);
     }
 
