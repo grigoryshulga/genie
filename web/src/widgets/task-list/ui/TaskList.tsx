@@ -34,7 +34,9 @@ export function TaskList({
   onFocus: (id: string) => void;
 }) {
   const focusRef = useRef<HTMLDivElement>(null);
-  useEffect(() => focusRef.current?.scrollIntoView({ block: "nearest" }), [focused]);
+  useEffect(() => {
+    void focusRef.current?.scrollIntoView({ block: "nearest" });
+  }, [focused]);
 
   const groups: { status?: Status; items: TaskSummary[] }[] = grouped
     ? STATUS_ORDER.filter((s) => statuses.includes(s))

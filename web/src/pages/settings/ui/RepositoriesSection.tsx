@@ -32,7 +32,7 @@ const READ_POLICY = PRESETS.find((p) => p.id === "read")!.policy;
 const DEFAULT_PRESET = "pr-human";
 
 const HOST_HINT =
-  "Агенты не ходят на хостинг сами: сервер скачивает код и публикует их изменения по правилу репозитория. Адреса хостингов настраивает администратор сервера в git.json; токен доступа можно задать у самого репозитория — сервер хранит его зашифрованным.";
+  "Доступ к хостингу выполняет сервер. Хостинги настраиваются в git.json.";
 
 export function RepositoriesHead({ admin, onAdd }: { admin: boolean; onAdd?: () => void }) {
   return (
@@ -40,7 +40,7 @@ export function RepositoriesHead({ admin, onAdd }: { admin: boolean; onAdd?: () 
       <div className="st-head">
         <h2>Репозитории</h2>
         <p className="rp-lead">
-          Код, с которым работают агенты, и что им в нём можно.
+          Хостинги
           <span className="rp-info" title={HOST_HINT} aria-label={HOST_HINT} role="img">
             <Icon.info size={14} />
           </span>
@@ -211,7 +211,7 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
                   <button
                     type="button"
                     role="menuitem"
-                    title="Сервер отправит на хостинг временную ветку и удалит её: так видно, что токен может писать"
+                    title="Создаст и удалит временную ветку на хостинге"
                     disabled={check.isPending}
                     onClick={() => (close(), runCheck(true))}
                   >
@@ -575,7 +575,7 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
       </fieldset>
 
       <div className="st-foot">
-        <span className="grow">После добавления проверьте доступ кнопкой у репозитория.</span>
+        <span className="grow" />
         <button type="button" className="btn ghost" onClick={onClose}>
           Отменить
         </button>

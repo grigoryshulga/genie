@@ -65,7 +65,7 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
   };
   const hint = (text: string) => <span className="hint">{text}</span>;
   return (
-    <EditDialog title={`Настройки роли ${r.id}`} note="Промпт, модель и навыки дойдут до агентов со следующего старта их сессии" busy={busy} onClose={onClose} onSave={() => void save()} narrow>
+    <EditDialog title={`Настройки роли ${r.id}`} note="Изменения применятся при следующем старте сессии" busy={busy} onClose={onClose} onSave={() => void save()} narrow>
       <div className="ag-settings">
         <section>
           <h4>О роли</h4>
@@ -73,7 +73,6 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
           <input id="rs-title" className="in" value={f.title} onChange={(e) => set("title", e.target.value)} required />
           <label htmlFor="rs-desc">
             Описание
-            {hint("Видят оркестратор и люди при выборе роли")}
           </label>
           <textarea id="rs-desc" className="in" rows={2} value={f.description} onChange={(e) => set("description", e.target.value)} />
         </section>
@@ -81,7 +80,6 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
           <h4>Модель</h4>
           <label htmlFor="rs-model">
             Модель
-            {hint("Агенту её можно сменить в чате")}
           </label>
           <ModelPicker id="rs-model" value={f.model} onChange={(m) => set("model", m)} fallback={meta?.roleModels?.[r.id]?.model} />
           <span className="lbl">Размышление</span>
@@ -93,7 +91,6 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
           <Segments label="Файлы проекта" value={f.files} options={(["write", "read", "none"] as const).map((x) => [x, FILES_TITLE[x]])} onChange={(v) => set("files", v)} />
           <span className="lbl">
             Стадии задачи
-            {hint("Когда роль можно звать в команду")}
           </span>
           <div className="ag-toggles">
             {(["refinement", "delivery"] as const).map((s) => {

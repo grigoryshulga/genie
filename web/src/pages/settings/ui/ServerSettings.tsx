@@ -112,7 +112,6 @@ function Health() {
     <div className="st-body sv-wide">
       <div className="st-head">
         <h2>Состояние</h2>
-        <p>Готов ли сервер к работе и что требует внимания.</p>
       </div>
       <section className="st-card">
         {doctor.isPending ? (
@@ -145,9 +144,6 @@ function Health() {
         )}
       </section>
       <Week />
-      <p className="sv-cli">
-        То же в терминале: <code>genie doctor</code>
-      </p>
     </div>
   );
 }
@@ -220,9 +216,6 @@ function Statistics() {
   return (
     <div className="st-body sv-stats">
       <div className="sv-top">
-        <div className="st-head">
-          <p>{view === "work" ? "Как шла работа: задачи, вопросы агентов людям, запуски агентов." : "Сколько стоила работа агентов: по моделям, проектам, эпикам, задачам и чатам."}</p>
-        </div>
         <div className="seg" role="group" aria-label="Что показать">
           {(["work", "cost"] as const).map((v) => (
             <button key={v} type="button" className={v === view ? "on" : ""} aria-pressed={v === view} onClick={() => setView(v)}>
@@ -283,9 +276,6 @@ function Statistics() {
             />
           </div>
           <ProjectTable list={list} />
-          <p className="sv-cli">
-            То же в терминале: <code>genie stats --days {days}</code>
-          </p>
         </>
       )}
     </div>
@@ -356,7 +346,6 @@ function Knowledge() {
     <div className="st-body">
       <div className="st-head">
         <h2>База знаний</h2>
-        <p>Где ещё лежит база знаний и как прошла последняя синхронизация.</p>
       </div>
       {!s ? (
         <p className="muted">{sync.isPending ? "Загрузка…" : sync.error?.message}</p>
@@ -439,7 +428,6 @@ function Projects({ current }: { current?: string }) {
       <div className="st-col">
         <div className="st-head">
           <h2>Проекты</h2>
-          <p>Все проекты сервера. Открытый — тот, с которым вы сейчас работаете.</p>
         </div>
         <section className="st-card">
           <ul className="sv-list">
@@ -479,7 +467,6 @@ function Projects({ current }: { current?: string }) {
       <aside className="st-card" aria-label="Новый проект">
         <div className="st-card-head">
           <h3>Новый проект</h3>
-          <p>Сервер сразу откроет его.</p>
         </div>
         <div className="st-card-body">
           <NewProjectForm folded />
@@ -499,7 +486,7 @@ export function FirstProjectPage() {
             <Icon.mark size={22} />
           </span>
           <h1>Первый проект</h1>
-          <p className="auth-sub">Проектов на сервере пока нет. Создайте первый — с репозиторием кода на этой машине или без кода.</p>
+          <p className="auth-sub">Создайте первый проект.</p>
         </div>
         <NewProjectForm />
       </div>
@@ -518,7 +505,7 @@ export function NewProjectForm({ onCreated, folded }: { onCreated?: () => void; 
       <label className="field">
         Репозиторий кода на этой машине
         <input className="mono" value={form.repo} placeholder="/home/team/code/shop — пусто, если проект без кода" onChange={(e) => setForm({ ...form, repo: e.target.value })} />
-        <span className="pj-hint">Репозиторий, где уже есть .genie/, подключается со всеми задачами. Без репозитория команды работают в своих каталогах, результат — артефакты и документация.</span>
+        <span className="pj-hint">Задачи из .genie/ будут импортированы.</span>
       </label>
       <label className="field">
         Префикс задач
@@ -590,7 +577,7 @@ function Accounts({ me }: { me?: string }) {
       <div className="st-col">
         <div className="st-head">
           <h2>Учётные записи</h2>
-          <p>Все, кто может войти на сервер. В проекты людей удобнее звать ссылкой-приглашением со страницы проекта.</p>
+          <p>В проект можно пригласить по ссылке со страницы проекта.</p>
         </div>
         <section className="st-card">
           <ul className="sv-list">
@@ -662,7 +649,6 @@ function Accounts({ me }: { me?: string }) {
       <aside className="st-card" aria-label="Новая учётная запись">
         <div className="st-card-head">
           <h3>Новая учётная запись</h3>
-          <p>Когда ссылка-приглашение не подходит.</p>
         </div>
         <form
           className="pj-form st-card-body"

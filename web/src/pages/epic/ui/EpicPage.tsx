@@ -132,7 +132,6 @@ export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void })
                 </button>
               ))}
             </div>
-            <p className="hint">Каждая команда в эпике видит его цель и этот список в своей задаче.</p>
           </section>
           <section className="sec">
             <h3>Активность</h3>
