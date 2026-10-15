@@ -9,6 +9,17 @@ status: current
 
 The image contains Genie, its web UI, Git, and Pi-Bolt, available as `pi`. Docker Compose publishes port 7420 on loopback and persists server data and workspaces in named volumes.
 
+Node, npm/npx and Yarn remain available for project tools and stdio MCP servers.
+Pi-Bolt supplies the Pi SDK import used by Genie's guard extension internally;
+the image does not need a second npm Pi installation. Other extension packages
+must be resolvable beside the extension; a global npm installation alone does
+not make them importable.
+
+The build installs only the `genie-web` npm workspace for the browser bundle.
+Rust dependencies are compiled in a separate Docker layer so exported build
+caches can reuse them after application or web changes. Node's debug symbols
+are removed before it is copied into the final image.
+
 ## Start
 
 ```bash

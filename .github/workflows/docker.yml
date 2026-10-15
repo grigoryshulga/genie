@@ -8,6 +8,16 @@ name: Docker image
 on:
   push:
     branches: [main]
+    paths:
+      - "docker/**"
+      - "crates/**"
+      - "Cargo.*"
+      - "agents/**"
+      - "config/**"
+      - "web/**"
+      - "package*.json"
+      - "tsconfig.json"
+      - ".github/workflows/docker.yml"
     tags: ["v*"]
   workflow_dispatch:
 

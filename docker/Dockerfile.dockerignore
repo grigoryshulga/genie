@@ -7,9 +7,11 @@
 .genie
 .design
 .claude
+.pi
+secrets
 
 target
-node_modules
+**/node_modules
 web/dist
 
 # never bake local state or secrets into an image
