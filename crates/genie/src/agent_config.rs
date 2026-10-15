@@ -1474,6 +1474,439 @@ fn rel_path(data: &Path, p: &Path) -> String {
     p.strip_prefix(data).map(|r| r.to_string_lossy().into_owned()).unwrap_or_else(|_| p.to_string_lossy().into_owned())
 }
 
+/// One problem of the loader; the order of `problems` is what `genie agents check` prints.
+fn push_problem(problems: &mut Vec<Problem>, level: Level, item: String, path: Option<String>, message: String) {
+    problems.push(Problem { level, item, path, message });
+}
+
+/// Skills from `<data>/skills` and the extra paths of `skills.paths` in the config.
+fn load_skills(data: &Path, cfg: &Config, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTreeMap<String, SkillDef> {
+    let mut skills = BTreeMap::new();
+    let mut files = Vec::new();
+    for d in skill_dirs(data, cfg) {
+        files.extend(skill_files_with(&d, overlay));
+    }
+    for f in files {
+        let dir = f.parent().map(Path::to_path_buf).unwrap_or_default();
+        let path = rel_path(data, &f);
+        let parsed = read(&f, overlay).map_err(|e| e.to_string()).and_then(|t| parse_frontmatter(&t));
+        match parsed {
+            Ok((fields, _)) => {
+                let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.text());
+                let name = get("name").unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+                let Some(description) = get("description").filter(|d| !d.trim().is_empty()) else {
+                    push_problem(problems, Level::Error, format!("skill:{name}"), Some(path), "SKILL.md needs a `description`".into());
+                    continue;
+                };
+                if skills.contains_key(&name) {
+                    push_problem(
+                        problems,
+                        Level::Warning,
+                        format!("skill:{name}"),
+                        Some(path),
+                        "another skill with this name was found first; this one is ignored".into(),
+                    );
+                    continue;
+                }
+                skills.insert(name.clone(), SkillDef { name, description, dir });
+            }
+            Err(e) => push_problem(problems, Level::Error, "skill".into(), Some(path), e),
+        }
+    }
+    skills
+}
+
+/// MCP connections from `<data>/mcp.json`, in the `mcpServers` format pi shares with
+/// Claude Desktop. Keys the server itself does not know are kept for the client.
+fn load_mcp(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> BTreeMap<String, McpServer> {
+    let mut mcp: BTreeMap<String, McpServer> = BTreeMap::new();
+    let mcp_file = data.join("mcp.json");
+    if exists(&mcp_file, overlay) {
+        let parsed: Result<Value, String> =
+            read(&mcp_file, overlay).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()));
+        match parsed {
+            Ok(v) => match v.get("mcpServers").and_then(Value::as_object) {
+                Some(servers) => {
+                    for (id, entry) in servers {
+                        let item = format!("mcp:{id}");
+                        let Some(o) = entry.as_object() else {
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), "expected an object".into());
+                            continue;
+                        };
+                        let transport = if o.contains_key("url") {
+                            "http"
+                        } else if o.contains_key("command") {
+                            "stdio"
+                        } else {
+                            push_problem(
+                                problems,
+                                Level::Error,
+                                item,
+                                Some("mcp.json".into()),
+                                "needs `command` (stdio) or `url` (http)".into(),
+                            );
+                            continue;
+                        };
+                        let mut errs = Vec::new();
+                        let projects = string_list(o.get("projects").unwrap_or(&Value::Null), "projects", &mut errs);
+                        if let Some(e) = errs.pop() {
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), e);
+                            continue;
+                        }
+                        let gateway = match o.get("gateway") {
+                            None => true,
+                            Some(Value::Bool(b)) => *b,
+                            Some(_) => {
+                                push_problem(problems, Level::Error, item, Some("mcp.json".into()), "`gateway` is true or false".into());
+                                continue;
+                            }
+                        };
+                        // Tools the administrator closed for everyone (`hiddenTools`, glob patterns).
+                        let mut hidden_errs = Vec::new();
+                        let hidden = string_list(o.get("hiddenTools").unwrap_or(&Value::Null), "hiddenTools", &mut hidden_errs)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|p| !p.is_empty())
+                            .collect::<Vec<_>>();
+                        if let Some(e) = hidden_errs.pop() {
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), e);
+                            continue;
+                        }
+                        // pi's MCP support names a server's tools `mcp__<server>__<tool>`.
+                        if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+                            push_problem(
+                                problems,
+                                Level::Error,
+                                item,
+                                Some("mcp.json".into()),
+                                "pi accepts only letters, digits, `_` and `-` in a connection's name".into(),
+                            );
+                            continue;
+                        }
+                        if let Some(other) = mcp.keys().find(|k| k.replace('-', "_") == id.replace('-', "_")) {
+                            let why = format!("pi takes names that differ only in `-` and `_` for one connection (`{other}`)");
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), why);
+                            continue;
+                        }
+                        const EXPOSURES: [&str; 5] = ["direct", "codemode", "codemode-deferred", "deferred", "hidden"];
+                        let bad_exposure = |v: &Value| !v.as_str().is_some_and(|e| EXPOSURES.contains(&e));
+                        if o.get("exposure").is_some_and(bad_exposure)
+                            || o.get("toolExposure").is_some_and(|t| t.as_object().is_none_or(|t| t.values().any(bad_exposure)))
+                        {
+                            let why = format!("`exposure` and the values of `toolExposure` are one of {}", EXPOSURES.join(", "));
+                            push_problem(problems, Level::Error, item, Some("mcp.json".into()), why);
+                            continue;
+                        }
+                        let mut config = o.clone();
+                        config.remove("description");
+                        config.remove("projects");
+                        config.remove("gateway");
+                        config.remove("hiddenTools");
+                        mcp.insert(
+                            id.clone(),
+                            McpServer {
+                                id: id.clone(),
+                                description: opt_str(o, "description").unwrap_or_default(),
+                                transport: transport.into(),
+                                projects,
+                                hidden,
+                                gateway,
+                                config: Value::Object(config),
+                            },
+                        );
+                    }
+                }
+                None => push_problem(
+                    problems,
+                    Level::Error,
+                    "mcp.json".into(),
+                    Some("mcp.json".into()),
+                    "expected {\"mcpServers\": {…}}".into(),
+                ),
+            },
+            Err(e) => push_problem(problems, Level::Error, "mcp.json".into(), Some("mcp.json".into()), e),
+        }
+    }
+    mcp
+}
+
+/// Roles: the built-ins overlaid with `<data>/agents/*.md`, resolved into `RoleDef`s,
+/// with a broken role's last valid version (or the built-in one) as the fallback.
+fn load_roles(
+    data: &Path,
+    previous: Option<&AgentConfig>,
+    skills: &BTreeMap<String, SkillDef>,
+    mcp: &BTreeMap<String, McpServer>,
+    overlay: &Overlay,
+    problems: &mut Vec<Problem>,
+) -> BTreeMap<String, RoleDef> {
+    let (sources, broken) = collect_role_sources(data, overlay, problems);
+    let roles = resolve_roles(&sources, broken, previous, problems);
+    check_role_references(&roles, skills, mcp, problems);
+    roles
+}
+
+/// The raw role text by id: built-ins first, then the data directory (a file with a
+/// built-in id overlays it field by field). Returns the ids that failed to load.
+fn collect_role_sources(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> (HashMap<String, RoleSource>, HashSet<String>) {
+    let mut sources: HashMap<String, RoleSource> = HashMap::new();
+    for (id, text) in BUILTIN_ROLES {
+        match parse_role(text) {
+            Ok((raw, _)) => {
+                sources.insert(id.to_string(), RoleSource { raw, origin: Origin::Builtin, path: None });
+            }
+            Err(e) => push_problem(problems, Level::Error, format!("role:{id}"), None, format!("built-in role: {e}")),
+        }
+    }
+    let mut broken_roles: HashSet<String> = HashSet::new();
+    for (id, path) in md_files(&data.join("agents"), "md", overlay) {
+        let item = format!("role:{id}");
+        let shown = rel_path(data, &path);
+        if !valid_id(&id) {
+            push_problem(problems, Level::Error, item, Some(shown), "the file name is the role id: [a-z][a-z0-9-]*.md".into());
+            continue;
+        }
+        let parsed = read(&path, overlay).map_err(|e| e.to_string()).and_then(|t| parse_role(&t));
+        match parsed {
+            Ok((raw, warnings)) => {
+                for w in warnings {
+                    push_problem(problems, Level::Warning, item.clone(), Some(shown.clone()), w);
+                }
+                let entry = match sources.remove(&id) {
+                    Some(b) => RoleSource { raw: b.raw.overlay(&raw), origin: Origin::Override, path: Some(shown) },
+                    None => RoleSource { raw, origin: Origin::Custom, path: Some(shown) },
+                };
+                sources.insert(id, entry);
+            }
+            Err(e) => {
+                push_problem(problems, Level::Error, item, Some(shown), e);
+                broken_roles.insert(id);
+            }
+        }
+    }
+    (sources, broken_roles)
+}
+
+/// Resolve `extends` chains in sorted order; a role that fails keeps its last valid
+/// version or, failing that, the built-in one (both marked `stale`).
+fn resolve_roles(
+    sources: &HashMap<String, RoleSource>,
+    mut broken: HashSet<String>,
+    previous: Option<&AgentConfig>,
+    problems: &mut Vec<Problem>,
+) -> BTreeMap<String, RoleDef> {
+    let mut resolver = RoleResolver { sources, done: HashMap::new() };
+    let mut ids: Vec<&String> = sources.keys().collect();
+    ids.sort();
+    let mut roles = BTreeMap::new();
+    for id in ids {
+        match resolver.resolve(id, &mut Vec::new()) {
+            Ok(def) => {
+                roles.insert(id.clone(), def);
+            }
+            Err(errors) => {
+                let src = &sources[id];
+                for e in &errors {
+                    push_problem(problems, Level::Error, format!("role:{id}"), src.path.clone(), e.clone());
+                }
+                broken.insert(id.clone());
+            }
+        }
+    }
+    // A broken file: its last valid version, or the built-in role.
+    for id in broken {
+        if roles.contains_key(&id) {
+            continue;
+        }
+        if let Some(prev) = previous.and_then(|p| p.roles.get(&id)) {
+            roles.insert(id.clone(), RoleDef { stale: true, ..prev.clone() });
+        } else if let Some((_, text)) = BUILTIN_ROLES.iter().find(|(b, _)| *b == id)
+            && let Ok((raw, _)) = parse_role(text)
+        {
+            let only: HashMap<String, RoleSource> = HashMap::from([(id.clone(), RoleSource { raw, origin: Origin::Builtin, path: None })]);
+            if let Ok(def) = (RoleResolver { sources: &only, done: HashMap::new() }).resolve(&id, &mut Vec::new()) {
+                roles.insert(id.clone(), RoleDef { stale: true, ..def });
+            }
+        }
+    }
+    roles
+}
+
+/// A role referencing a missing skill or MCP connection is not an error (the file may
+/// predate the installation), but the role would not work as written — warn.
+fn check_role_references(
+    roles: &BTreeMap<String, RoleDef>,
+    skills: &BTreeMap<String, SkillDef>,
+    mcp: &BTreeMap<String, McpServer>,
+    problems: &mut Vec<Problem>,
+) {
+    for r in roles.values() {
+        for s in r.skills.iter().flatten() {
+            if !skills.contains_key(s) {
+                push_problem(problems, Level::Warning, format!("role:{}", r.id), r.path.clone(), format!("skill `{s}` is not installed"));
+            }
+        }
+        for g in &r.mcp {
+            let server = g.split(':').next().unwrap_or_default();
+            if g != "*" && !mcp.contains_key(server) {
+                push_problem(
+                    problems,
+                    Level::Warning,
+                    format!("role:{}", r.id),
+                    r.path.clone(),
+                    format!("MCP connection `{server}` is not in mcp.json"),
+                );
+            }
+        }
+    }
+}
+
+/// Team templates: the built-in presets, the legacy `teams` key of config.json and
+/// `<data>/teams/*.json`, parsed and checked against the roles.
+fn load_teams(
+    data: &Path,
+    cfg: &Config,
+    previous: Option<&AgentConfig>,
+    roles: &BTreeMap<String, RoleDef>,
+    overlay: &Overlay,
+    problems: &mut Vec<Problem>,
+) -> BTreeMap<String, TeamDef> {
+    let (raw_teams, broken) = collect_team_sources(data, overlay, problems);
+    build_teams(raw_teams, broken, roles, cfg.limits.max_members_per_team, previous, problems)
+}
+
+/// The raw team templates by id: the JSON as read, its origin and the shown path.
+type RawTeams = BTreeMap<String, (Value, Origin, Option<String>)>;
+
+/// The raw team templates by id, with origin and shown path, before parsing. A legacy
+/// `teams` entry (a partial override of a built-in preset, the old deep merge) keeps
+/// the preset's other fields. Returns the ids of files that failed to load.
+fn collect_team_sources(data: &Path, overlay: &Overlay, problems: &mut Vec<Problem>) -> (RawTeams, HashSet<String>) {
+    let mut raw_teams = RawTeams::new();
+    for (id, text) in BUILTIN_TEAMS {
+        match serde_json::from_str::<Value>(text) {
+            Ok(v) => {
+                raw_teams.insert(id.to_string(), (v, Origin::Builtin, None));
+            }
+            Err(e) => push_problem(problems, Level::Error, format!("team:{id}"), None, format!("built-in template: {e}")),
+        }
+    }
+    let legacy: Option<Value> = read(&data.join("config.json"), overlay).ok().and_then(|t| serde_json::from_str(&t).ok());
+    if let Some(Value::Object(teams)) = legacy.as_ref().and_then(|c| c.get("teams")) {
+        for (id, v) in teams {
+            let origin = if raw_teams.contains_key(id) { Origin::Override } else { Origin::Legacy };
+            // A partial override of a built-in preset (the old deep merge) keeps its fields.
+            let merged = match (raw_teams.get(id), v) {
+                (Some((Value::Object(b), ..)), Value::Object(o)) => {
+                    let mut m = b.clone();
+                    for (k, x) in o {
+                        m.insert(k.clone(), x.clone());
+                    }
+                    Value::Object(m)
+                }
+                _ => v.clone(),
+            };
+            raw_teams.insert(id.clone(), (merged, origin, Some("config.json".into())));
+        }
+    }
+    let mut broken_teams = HashSet::new();
+    for (id, path) in md_files(&data.join("teams"), "json", overlay) {
+        let shown = rel_path(data, &path);
+        if !valid_id(&id) {
+            push_problem(
+                problems,
+                Level::Error,
+                format!("team:{id}"),
+                Some(shown),
+                "the file name is the template id: [a-z][a-z0-9-]*.json".into(),
+            );
+            continue;
+        }
+        match read(&path, overlay).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string())) {
+            Ok(v) => {
+                let origin = if BUILTIN_TEAMS.iter().any(|(b, _)| *b == id) { Origin::Override } else { Origin::Custom };
+                raw_teams.insert(id, (v, origin, Some(shown)));
+            }
+            Err(e) => {
+                push_problem(problems, Level::Error, format!("team:{id}"), Some(shown), e);
+                broken_teams.insert(id);
+            }
+        }
+    }
+    (raw_teams, broken_teams)
+}
+
+/// Parse and check each template, then assemble the `TeamDef`s; a broken one keeps its
+/// last valid version (marked `stale`).
+fn build_teams(
+    raw_teams: RawTeams,
+    mut broken_teams: HashSet<String>,
+    roles: &BTreeMap<String, RoleDef>,
+    max_members: usize,
+    previous: Option<&AgentConfig>,
+    problems: &mut Vec<Problem>,
+) -> BTreeMap<String, TeamDef> {
+    let mut teams = BTreeMap::new();
+    for (id, (v, origin, path)) in raw_teams {
+        let item = format!("team:{id}");
+        let parsed = parse_team(&v, origin == Origin::Legacy || path.as_deref() == Some("config.json"));
+        let (raw, mut warnings) = match parsed {
+            Ok(x) => x,
+            Err(errors) => {
+                for e in errors {
+                    push_problem(problems, Level::Error, item.clone(), path.clone(), e);
+                }
+                broken_teams.insert(id);
+                continue;
+            }
+        };
+        let (errors, more, relations) = check_team(&raw, roles, max_members);
+        if !errors.is_empty() {
+            for e in errors {
+                push_problem(problems, Level::Error, item.clone(), path.clone(), e);
+            }
+            broken_teams.insert(id);
+            continue;
+        }
+        warnings.extend(more);
+        // Advice about the shipped presets (the ABAP team works in the main
+        // working copy on purpose) stays on the template, not in the problem list.
+        if origin != Origin::Builtin {
+            for w in &warnings {
+                push_problem(problems, Level::Warning, item.clone(), path.clone(), w.clone());
+            }
+        }
+        teams.insert(
+            id.clone(),
+            TeamDef {
+                title: raw.title.unwrap_or_else(|| id.clone()),
+                id,
+                description: raw.description,
+                stage: raw.stage,
+                workspace: raw.workspace,
+                mail: raw.mail,
+                members: raw.members,
+                relations,
+                relations_derived: raw.relations.is_none(),
+                charter: raw.charter,
+                projects: raw.projects,
+                origin,
+                path,
+                warnings,
+                stale: false,
+            },
+        );
+    }
+    for id in broken_teams {
+        if !teams.contains_key(&id)
+            && let Some(prev) = previous.and_then(|p| p.teams.get(&id))
+        {
+            teams.insert(id.clone(), TeamDef { stale: true, ..prev.clone() });
+        }
+    }
+    teams
+}
+
 impl AgentConfig {
     /// Load the built-in configuration and the data directory's files. `previous`
     /// supplies the last valid version of items whose files are broken now.
@@ -1484,334 +1917,12 @@ impl AgentConfig {
     /// `load` with pending edits applied on top of the files (to check them before saving).
     pub fn load_with(data: &Path, cfg: &Config, previous: Option<&AgentConfig>, overlay: &Overlay) -> AgentConfig {
         let mut problems = Vec::new();
-        let mut problem = |level: Level, item: String, path: Option<String>, message: String| {
-            problems.push(Problem { level, item, path, message });
-        };
-
-        // Skills.
-        let mut skills = BTreeMap::new();
-        let mut files = Vec::new();
-        for d in skill_dirs(data, cfg) {
-            files.extend(skill_files_with(&d, overlay));
-        }
-        for f in files {
-            let dir = f.parent().map(Path::to_path_buf).unwrap_or_default();
-            let path = rel_path(data, &f);
-            let parsed = read(&f, overlay).map_err(|e| e.to_string()).and_then(|t| parse_frontmatter(&t));
-            match parsed {
-                Ok((fields, _)) => {
-                    let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.text());
-                    let name = get("name").unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
-                    let Some(description) = get("description").filter(|d| !d.trim().is_empty()) else {
-                        problem(Level::Error, format!("skill:{name}"), Some(path), "SKILL.md needs a `description`".into());
-                        continue;
-                    };
-                    if skills.contains_key(&name) {
-                        problem(
-                            Level::Warning,
-                            format!("skill:{name}"),
-                            Some(path),
-                            "another skill with this name was found first; this one is ignored".into(),
-                        );
-                        continue;
-                    }
-                    skills.insert(name.clone(), SkillDef { name, description, dir });
-                }
-                Err(e) => problem(Level::Error, "skill".into(), Some(path), e),
-            }
-        }
-
-        // MCP connections.
-        let mut mcp: BTreeMap<String, McpServer> = BTreeMap::new();
-        let mcp_file = data.join("mcp.json");
-        if exists(&mcp_file, overlay) {
-            let parsed: Result<Value, String> =
-                read(&mcp_file, overlay).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()));
-            match parsed {
-                Ok(v) => match v.get("mcpServers").and_then(Value::as_object) {
-                    Some(servers) => {
-                        for (id, entry) in servers {
-                            let item = format!("mcp:{id}");
-                            let Some(o) = entry.as_object() else {
-                                problem(Level::Error, item, Some("mcp.json".into()), "expected an object".into());
-                                continue;
-                            };
-                            let transport = if o.contains_key("url") {
-                                "http"
-                            } else if o.contains_key("command") {
-                                "stdio"
-                            } else {
-                                problem(Level::Error, item, Some("mcp.json".into()), "needs `command` (stdio) or `url` (http)".into());
-                                continue;
-                            };
-                            let mut errs = Vec::new();
-                            let projects = string_list(o.get("projects").unwrap_or(&Value::Null), "projects", &mut errs);
-                            if let Some(e) = errs.pop() {
-                                problem(Level::Error, item, Some("mcp.json".into()), e);
-                                continue;
-                            }
-                            let gateway = match o.get("gateway") {
-                                None => true,
-                                Some(Value::Bool(b)) => *b,
-                                Some(_) => {
-                                    problem(Level::Error, item, Some("mcp.json".into()), "`gateway` is true or false".into());
-                                    continue;
-                                }
-                            };
-                            // pi's MCP support names a server's tools `mcp__<server>__<tool>`.
-                            if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-                                problem(
-                                    Level::Error,
-                                    item,
-                                    Some("mcp.json".into()),
-                                    "pi accepts only letters, digits, `_` and `-` in a connection's name".into(),
-                                );
-                                continue;
-                            }
-                            if let Some(other) = mcp.keys().find(|k| k.replace('-', "_") == id.replace('-', "_")) {
-                                let why = format!("pi takes names that differ only in `-` and `_` for one connection (`{other}`)");
-                                problem(Level::Error, item, Some("mcp.json".into()), why);
-                                continue;
-                            }
-                            const EXPOSURES: [&str; 5] = ["direct", "codemode", "codemode-deferred", "deferred", "hidden"];
-                            let bad_exposure = |v: &Value| !v.as_str().is_some_and(|e| EXPOSURES.contains(&e));
-                            if o.get("exposure").is_some_and(bad_exposure)
-                                || o.get("toolExposure").is_some_and(|t| t.as_object().is_none_or(|t| t.values().any(bad_exposure)))
-                            {
-                                let why = format!("`exposure` and the values of `toolExposure` are one of {}", EXPOSURES.join(", "));
-                                problem(Level::Error, item, Some("mcp.json".into()), why);
-                                continue;
-                            }
-                            let mut hidden_errs = Vec::new();
-                            let hidden = string_list(o.get("hiddenTools").unwrap_or(&Value::Null), "hiddenTools", &mut hidden_errs)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .filter(|p| !p.is_empty())
-                                .collect::<Vec<_>>();
-                            if let Some(e) = hidden_errs.pop() {
-                                problem(Level::Error, item, Some("mcp.json".into()), e);
-                                continue;
-                            }
-                            let mut config = o.clone();
-                            config.remove("description");
-                            config.remove("projects");
-                            config.remove("gateway");
-                            config.remove("hiddenTools");
-                            mcp.insert(
-                                id.clone(),
-                                McpServer {
-                                    id: id.clone(),
-                                    description: opt_str(o, "description").unwrap_or_default(),
-                                    transport: transport.into(),
-                                    projects,
-                                    hidden,
-                                    gateway,
-                                    config: Value::Object(config),
-                                },
-                            );
-                        }
-                    }
-                    None => problem(Level::Error, "mcp.json".into(), Some("mcp.json".into()), "expected {\"mcpServers\": {…}}".into()),
-                },
-                Err(e) => problem(Level::Error, "mcp.json".into(), Some("mcp.json".into()), e),
-            }
-        }
-
-        // Roles: built-in, then the data directory on top.
-        let mut sources: HashMap<String, RoleSource> = HashMap::new();
-        for (id, text) in BUILTIN_ROLES {
-            match parse_role(text) {
-                Ok((raw, _)) => {
-                    sources.insert(id.to_string(), RoleSource { raw, origin: Origin::Builtin, path: None });
-                }
-                Err(e) => problem(Level::Error, format!("role:{id}"), None, format!("built-in role: {e}")),
-            }
-        }
-        let mut broken_roles: HashSet<String> = HashSet::new();
-        for (id, path) in md_files(&data.join("agents"), "md", overlay) {
-            let item = format!("role:{id}");
-            let shown = rel_path(data, &path);
-            if !valid_id(&id) {
-                problem(Level::Error, item, Some(shown), "the file name is the role id: [a-z][a-z0-9-]*.md".into());
-                continue;
-            }
-            let parsed = read(&path, overlay).map_err(|e| e.to_string()).and_then(|t| parse_role(&t));
-            match parsed {
-                Ok((raw, warnings)) => {
-                    for w in warnings {
-                        problem(Level::Warning, item.clone(), Some(shown.clone()), w);
-                    }
-                    let entry = match sources.remove(&id) {
-                        Some(b) => RoleSource { raw: b.raw.overlay(&raw), origin: Origin::Override, path: Some(shown) },
-                        None => RoleSource { raw, origin: Origin::Custom, path: Some(shown) },
-                    };
-                    sources.insert(id, entry);
-                }
-                Err(e) => {
-                    problem(Level::Error, item, Some(shown), e);
-                    broken_roles.insert(id);
-                }
-            }
-        }
-        let mut resolver = RoleResolver { sources: &sources, done: HashMap::new() };
-        let mut ids: Vec<&String> = sources.keys().collect();
-        ids.sort();
-        let mut roles = BTreeMap::new();
-        for id in ids {
-            match resolver.resolve(id, &mut Vec::new()) {
-                Ok(def) => {
-                    roles.insert(id.clone(), def);
-                }
-                Err(errors) => {
-                    let src = &sources[id];
-                    for e in &errors {
-                        problem(Level::Error, format!("role:{id}"), src.path.clone(), e.clone());
-                    }
-                    broken_roles.insert(id.clone());
-                }
-            }
-        }
-        // A broken file: its last valid version, or the built-in role.
-        for id in broken_roles {
-            if roles.contains_key(&id) {
-                continue;
-            }
-            if let Some(prev) = previous.and_then(|p| p.roles.get(&id)) {
-                roles.insert(id.clone(), RoleDef { stale: true, ..prev.clone() });
-            } else if let Some((_, text)) = BUILTIN_ROLES.iter().find(|(b, _)| *b == id)
-                && let Ok((raw, _)) = parse_role(text)
-            {
-                let only: HashMap<String, RoleSource> =
-                    HashMap::from([(id.clone(), RoleSource { raw, origin: Origin::Builtin, path: None })]);
-                if let Ok(def) = (RoleResolver { sources: &only, done: HashMap::new() }).resolve(&id, &mut Vec::new()) {
-                    roles.insert(id.clone(), RoleDef { stale: true, ..def });
-                }
-            }
-        }
-        for r in roles.values() {
-            for s in r.skills.iter().flatten() {
-                if !skills.contains_key(s) {
-                    problem(Level::Warning, format!("role:{}", r.id), r.path.clone(), format!("skill `{s}` is not installed"));
-                }
-            }
-            for g in &r.mcp {
-                let server = g.split(':').next().unwrap_or_default();
-                if g != "*" && !mcp.contains_key(server) {
-                    problem(
-                        Level::Warning,
-                        format!("role:{}", r.id),
-                        r.path.clone(),
-                        format!("MCP connection `{server}` is not in mcp.json"),
-                    );
-                }
-            }
-        }
-
-        // Team templates: built-in, the legacy `teams` key of config.json, then files.
-        let mut raw_teams: BTreeMap<String, (Value, Origin, Option<String>)> = BTreeMap::new();
-        for (id, text) in BUILTIN_TEAMS {
-            match serde_json::from_str::<Value>(text) {
-                Ok(v) => {
-                    raw_teams.insert(id.to_string(), (v, Origin::Builtin, None));
-                }
-                Err(e) => problem(Level::Error, format!("team:{id}"), None, format!("built-in template: {e}")),
-            }
-        }
-        let legacy: Option<Value> = read(&data.join("config.json"), overlay).ok().and_then(|t| serde_json::from_str(&t).ok());
-        if let Some(Value::Object(teams)) = legacy.as_ref().and_then(|c| c.get("teams")) {
-            for (id, v) in teams {
-                let origin = if raw_teams.contains_key(id) { Origin::Override } else { Origin::Legacy };
-                // A partial override of a built-in preset (the old deep merge) keeps its fields.
-                let merged = match (raw_teams.get(id), v) {
-                    (Some((Value::Object(b), ..)), Value::Object(o)) => {
-                        let mut m = b.clone();
-                        for (k, x) in o {
-                            m.insert(k.clone(), x.clone());
-                        }
-                        Value::Object(m)
-                    }
-                    _ => v.clone(),
-                };
-                raw_teams.insert(id.clone(), (merged, origin, Some("config.json".into())));
-            }
-        }
-        let mut broken_teams = HashSet::new();
-        for (id, path) in md_files(&data.join("teams"), "json", overlay) {
-            let shown = rel_path(data, &path);
-            if !valid_id(&id) {
-                problem(Level::Error, format!("team:{id}"), Some(shown), "the file name is the template id: [a-z][a-z0-9-]*.json".into());
-                continue;
-            }
-            match read(&path, overlay).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
-            {
-                Ok(v) => {
-                    let origin = if BUILTIN_TEAMS.iter().any(|(b, _)| *b == id) { Origin::Override } else { Origin::Custom };
-                    raw_teams.insert(id, (v, origin, Some(shown)));
-                }
-                Err(e) => {
-                    problem(Level::Error, format!("team:{id}"), Some(shown), e);
-                    broken_teams.insert(id);
-                }
-            }
-        }
-        let mut teams = BTreeMap::new();
-        for (id, (v, origin, path)) in raw_teams {
-            let item = format!("team:{id}");
-            let parsed = parse_team(&v, origin == Origin::Legacy || path.as_deref() == Some("config.json"));
-            let (raw, mut warnings) = match parsed {
-                Ok(x) => x,
-                Err(errors) => {
-                    for e in errors {
-                        problem(Level::Error, item.clone(), path.clone(), e);
-                    }
-                    broken_teams.insert(id);
-                    continue;
-                }
-            };
-            let (errors, more, relations) = check_team(&raw, &roles, cfg.limits.max_members_per_team);
-            if !errors.is_empty() {
-                for e in errors {
-                    problem(Level::Error, item.clone(), path.clone(), e);
-                }
-                broken_teams.insert(id);
-                continue;
-            }
-            warnings.extend(more);
-            // Advice about the shipped presets (the ABAP team works in the main
-            // working copy on purpose) stays on the template, not in the problem list.
-            if origin != Origin::Builtin {
-                for w in &warnings {
-                    problem(Level::Warning, item.clone(), path.clone(), w.clone());
-                }
-            }
-            teams.insert(
-                id.clone(),
-                TeamDef {
-                    title: raw.title.unwrap_or_else(|| id.clone()),
-                    id,
-                    description: raw.description,
-                    stage: raw.stage,
-                    workspace: raw.workspace,
-                    mail: raw.mail,
-                    members: raw.members,
-                    relations,
-                    relations_derived: raw.relations.is_none(),
-                    charter: raw.charter,
-                    projects: raw.projects,
-                    origin,
-                    path,
-                    warnings,
-                    stale: false,
-                },
-            );
-        }
-        for id in broken_teams {
-            if !teams.contains_key(&id)
-                && let Some(prev) = previous.and_then(|p| p.teams.get(&id))
-            {
-                teams.insert(id.clone(), TeamDef { stale: true, ..prev.clone() });
-            }
-        }
+        // Each catalogue kind loads in turn and appends to `problems`; the phase order
+        // is the order `genie agents check` prints.
+        let skills = load_skills(data, cfg, overlay, &mut problems);
+        let mcp = load_mcp(data, overlay, &mut problems);
+        let roles = load_roles(data, previous, &skills, &mcp, overlay, &mut problems);
+        let teams = load_teams(data, cfg, previous, &roles, overlay, &mut problems);
         AgentConfig { roles, teams, skills, mcp, problems, signature: signature(data, cfg) }
     }
 

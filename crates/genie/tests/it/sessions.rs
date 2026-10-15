@@ -665,7 +665,6 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     assert!(!req.tools.iter().any(|t| t.starts_with("mcp__")), "the connection stays behind codemode: {:?}", req.tools);
 }
 
-
 /// pi runs under a V8 heap cap added to the operator's own `NODE_OPTIONS`; what pi runs does not inherit it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_session_runs_under_a_heap_cap_its_commands_do_not_inherit() {

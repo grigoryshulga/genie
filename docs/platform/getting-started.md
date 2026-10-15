@@ -367,7 +367,7 @@ You are the QA engineer of a focus team…
 ```bash
 npm ci && npm run build:web && GENIE_WEB_DIST=web/dist cargo build --release -p genie
 sudo deploy/install.sh        # /opt/genie/bin/genie (веб внутри), пользователь genie, /var/lib/genie, /var/backups/genie
-sudo -iu genie npm install -g --prefix ~/.local @earendil-works/pi-coding-agent
+sudo -iu genie npm install -g --prefix ~/.local @earendil-works/pi-coding-agent   # или pi-bolt — см. ниже
 sudo -iu genie pi             # /login у провайдеров моделей ролей
 sudo cp deploy/systemd/genie.service deploy/systemd/genie-backup.service deploy/systemd/genie-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now genie genie-backup.timer
@@ -378,6 +378,7 @@ sudo -iu genie env GENIE_DATA=/var/lib/genie /opt/genie/bin/genie doctor
 - Секреты MCP-подключений (`${env:NAME}` в `mcp.json`) — в `/etc/genie/secrets.env`: они остаются у сервера и не попадают агентам.
 - `genie-backup.timer` — копия каждый день в 03:30 в `/var/backups/genie`, 14 последних. Копируйте этот каталог и на другую машину.
 - Журнал сервера — `journalctl -u genie -f`.
+- Харнесс быстрее — [Pi-Bolt](https://github.com/opensec-git/Pi-Bolt) (тот же pi, скомпилированный в один бинарник; в Docker-образе genie он и стоит): `sudo -iu genie npm install -g --prefix ~/.local pi-bolt && sudo -iu genie ln -s ~/.local/bin/pi-bolt ~/.local/bin/pi`. Шаблоны команд genie говорят `pi`, поэтому симлинк; `genie doctor` понимает и имя `pi-bolt`, если пропишете его в `runtime.command`.
 
 ## Переход с расширения pi
 
