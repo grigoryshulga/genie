@@ -101,7 +101,7 @@ async fn an_agent_reaches_only_its_granted_tools_and_every_call_is_recorded() {
     write(&h, "agents/lead.md", "---\nbase: reviewer\nmcp: [tracker]\n---\nx\n");
     write(&h, "agents/plain.md", "---\nbase: reviewer\n---\nx\n");
     let cfg = h.app.reload_agents();
-    assert_eq!(cfg.errors().count(), 0, "{:?}", cfg.problems);
+    assert!(cfg.errors().all(|p| p.message.starts_with(genie::agent_config::NO_MODEL)), "{:?}", cfg.problems);
     let yoda = token(&h, "auditor", "yoda", Some("SHOP-1"));
     let lead = token(&h, "lead", "lead", Some("SHOP-1"));
     let plain = token(&h, "plain", "chaos", Some("SHOP-1"));
@@ -257,7 +257,7 @@ async fn hidden_tools_are_closed_for_every_grant_and_usage_counts_what_reached_t
     );
     write(&h, "agents/lead.md", "---\nbase: reviewer\nmcp: [tracker]\n---\nx\n");
     let cfg = h.app.reload_agents();
-    assert_eq!(cfg.errors().count(), 0, "{:?}", cfg.problems);
+    assert!(cfg.errors().all(|p| p.message.starts_with(genie::agent_config::NO_MODEL)), "{:?}", cfg.problems);
     let lead = token(&h, "lead", "lead", Some("SHOP-1"));
     let place = h.dir.path().join("worktrees/SHOP-1");
     std::fs::create_dir_all(&place).unwrap();

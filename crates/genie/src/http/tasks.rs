@@ -64,20 +64,13 @@ fn to_json<T: serde::Serialize>(v: T) -> Json<Value> {
 async fn meta(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     let (meta, counts) = tracker(&app, &access, |t| Ok((t.meta()?, t.counts()?))).await?;
-    // Team roles of the agent configuration available here, with their default models.
+    // Team roles of the agent configuration available here, with their models.
     let agents = app.agents();
     let team_roles: Vec<&crate::agent_config::RoleDef> =
         agents.roles.values().filter(|r| r.class != Role::Orchestrator && r.available_in(&access.project)).collect();
     let roles: Vec<&str> = team_roles.iter().map(|r| r.id.as_str()).collect();
-    let mut role_models = serde_json::Map::new();
-    for r in agents.roles.values() {
-        let by_id = app.cfg.role_models.get(&r.id);
-        let by_class = app.cfg.role_models.get(r.class.as_str());
-        let model = r.model.clone().or_else(|| by_id.and_then(|d| d.model.clone())).or_else(|| by_class.and_then(|d| d.model.clone()));
-        let thinking =
-            r.thinking.clone().or_else(|| by_id.and_then(|d| d.thinking.clone())).or_else(|| by_class.and_then(|d| d.thinking.clone()));
-        role_models.insert(r.id.clone(), json!({ "model": model, "thinking": thinking }));
-    }
+    let role_models: serde_json::Map<String, Value> =
+        agents.roles.values().map(|r| (r.id.clone(), json!({ "model": r.model, "thinking": r.thinking }))).collect();
     Ok(Json(json!({
         "prefix": meta.prefix,
         "project": meta.project,

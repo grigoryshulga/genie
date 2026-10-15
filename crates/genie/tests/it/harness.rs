@@ -125,11 +125,11 @@ async fn live(max_attempts: u32) -> Live {
     });
     write(
         &data.join("agents/auditor.md"),
-        "---\ntitle: Аудитор\ndescription: Audits changes.\nbase: reviewer\nfiles: write\ndenyCommands: [\"git push*\"]\nskills: [owasp, not-installed]\nmcp: [\"docs:search_*\", wiki]\n---\nYou audit.\n",
+        "---\ntitle: Аудитор\ndescription: Audits changes.\nmodel: fake/auditor\nbase: reviewer\nfiles: write\ndenyCommands: [\"git push*\"]\nskills: [owasp, not-installed]\nmcp: [\"docs:search_*\", wiki]\n---\nYou audit.\n",
     );
     write(
         &data.join("agents/advisor.md"),
-        "---\ntitle: Советник\ndescription: Answers questions.\nbase: analyst\nfiles: none\n---\nYou advise.\n",
+        "---\ntitle: Советник\ndescription: Answers questions.\nmodel: fake/advisor\nbase: analyst\nfiles: none\n---\nYou advise.\n",
     );
     write(&data.join("skills/owasp/SKILL.md"), "---\nname: owasp\ndescription: OWASP checks.\n---\nx\n");
     write(&data.join("skills/other/SKILL.md"), "---\nname: other\ndescription: Not for auditors.\n---\nx\n");
@@ -157,6 +157,7 @@ async fn live(max_attempts: u32) -> Live {
     cfg.runtime.max_attempts = max_attempts;
     cfg.runtime.env.insert("GENIE_BIN".into(), env!("CARGO_BIN_EXE_genie").into());
     cfg.runtime.env.insert("GENIE_REC".into(), data.join("rec").to_string_lossy().into_owned());
+    crate::common::give_roles_models(data);
     let app = App::open(data, cfg, PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", Some(&repo.to_string_lossy()), None, Some("SHOP")).unwrap();
     app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();

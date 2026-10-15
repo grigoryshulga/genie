@@ -424,20 +424,21 @@ pub(crate) fn project_workspace_dir(app: &App, slug: &str, name: &str) -> PathBu
     d
 }
 
-/// Model and thinking: an explicit choice (member, job), then the role, then
-/// `roleModels` by role id and by class.
-fn role_model(app: &App, role: &RoleDef, model: Option<String>, thinking: Option<String>) -> (Option<String>, Option<String>) {
-    let by_id = app.cfg.role_models.get(&role.id);
-    let by_class = app.cfg.role_models.get(role.class.as_str());
-    let model = model
-        .or_else(|| role.model.clone())
-        .or_else(|| by_id.and_then(|d| d.model.clone()))
-        .or_else(|| by_class.and_then(|d| d.model.clone()));
-    let thinking = thinking
-        .or_else(|| role.thinking.clone())
-        .or_else(|| by_id.and_then(|d| d.thinking.clone()))
-        .or_else(|| by_class.and_then(|d| d.thinking.clone()));
-    (model, thinking)
+/// Model and thinking: an explicit choice (member, job) wins, then the role's own
+/// `model`. No model is an error the administrator must fix (PD24) — there are no
+/// class defaults and no silent fallback to pi's default model any more.
+fn role_model(role: &RoleDef, model: Option<String>, thinking: Option<String>) -> AppResult<(String, Option<String>)> {
+    let model = match model.or_else(|| role.model.clone()) {
+        Some(m) => m,
+        None => {
+            return Err(GenieError::invalid(format!(
+                "role {} has no model: assign one in the agent configuration (the `model` field of the role file)",
+                role.id
+            ))
+            .into());
+        }
+    };
+    Ok((model, thinking.or_else(|| role.thinking.clone())))
 }
 
 /// The role a running member or job acts in. A role removed from the configuration
@@ -528,9 +529,9 @@ fn turn_key(
 fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Prepared> {
     let agents = app.agents();
     let def = running_role(&agents, &j.role)?;
-    let (model, thinking) = role_model(app, &def, j.model.clone(), None);
+    let (model, thinking) = role_model(&def, j.model.clone(), None)?;
     let initiator = j.initiator.clone().or_else(|| j.task.as_deref().and_then(|t| crate::llm_key::task_person(app, &project.slug, t)));
-    let llm = crate::llm_key::resolve(app, &project.slug, &format!("job {}", j.id), initiator.as_deref(), model.as_deref())
+    let llm = crate::llm_key::resolve(app, &project.slug, &format!("job {}", j.id), initiator.as_deref(), Some(model.as_str()))
         .map_err(GenieError::invalid)?;
     let place = job_workspace(app, project, j, def.files)?;
     let spec = AgentSpec {
@@ -545,7 +546,7 @@ fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Pr
         cwd: place.cwd,
         // A job starts fresh on each attempt: no hidden state between retries.
         session_id: format!("{}-job-{}-{}", project.slug, j.id, j.attempts + 1),
-        model,
+        model: Some(model),
         thinking,
         prompt: agent_prompt(app, &agents, project, &def, None, false, AgentKind::Job, &who(&def, None, Some(j.id))),
         initiator,
@@ -1189,7 +1190,7 @@ impl AgentSpec {
 fn orchestrator_spec(app: &App, project: &Project, live: bool, initiator: Option<String>) -> AppResult<AgentSpec> {
     let agents = app.agents();
     let def = orchestrator_role(&agents)?;
-    let (model, thinking) = role_model(app, &def, None, None);
+    let (model, thinking) = role_model(&def, None, None)?;
     let cwd = project_workspace(app, project, "orchestrator");
     Ok(AgentSpec {
         role: Role::Orchestrator,
@@ -1202,7 +1203,7 @@ fn orchestrator_spec(app: &App, project: &Project, live: bool, initiator: Option
         kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
         cwd,
         session_id: format!("{}-orchestrator", project.slug),
-        model,
+        model: Some(model),
         thinking,
         prompt: agent_prompt(app, &agents, project, &def, None, live, AgentKind::Orchestrator, &who(&def, None, None)),
         initiator,
@@ -1213,7 +1214,7 @@ fn orchestrator_spec(app: &App, project: &Project, live: bool, initiator: Option
 fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, live: bool) -> AppResult<AgentSpec> {
     let agents = app.agents();
     let def = running_role(&agents, &m.role)?;
-    let (model, thinking) = role_model(app, &def, m.model.clone(), m.thinking.clone());
+    let (model, thinking) = role_model(&def, m.model.clone(), m.thinking.clone())?;
     let cwd = member_workspace(app, project, &def, &t.cwd, &t.id, &m.name);
     Ok(AgentSpec {
         role: def.class,
@@ -1226,7 +1227,7 @@ fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, l
         kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
         cwd,
         session_id: m.session_file.clone().unwrap_or_else(|| format!("{}-{}", t.id, m.name).to_lowercase()),
-        model,
+        model: Some(model),
         thinking,
         prompt: agent_prompt(
             app,
@@ -1267,12 +1268,12 @@ pub(crate) fn console_spec(app: &App, slug: &str, user: &str) -> AppResult<Conso
     let project = project_of(app, slug)?;
     let agents = app.agents();
     let def = orchestrator_role(&agents)?;
-    let (model, thinking) = role_model(app, &def, None, None);
+    let (model, thinking) = role_model(&def, None, None)?;
     let mut prompt = agent_prompt(app, &agents, &project, &def, None, true, AgentKind::Orchestrator, &who(&def, None, None));
     prompt.push_str(&format!(
         "\n## The console\n\nYou run in the pi session of @{user} at the orchestrator console of the project: they talk to you directly and see your work. Team mail arrives in this conversation as `[genie mail]` blocks — between your steps, or on its own when you are idle. The server's orchestrator waits while this session holds the console.\n"
     ));
-    Ok(ConsoleSpec { role_id: def.id.clone(), prompt, model, thinking })
+    Ok(ConsoleSpec { role_id: def.id.clone(), prompt, model: Some(model), thinking })
 }
 
 /// The live session of an agent, or `None` when it should not run now (team

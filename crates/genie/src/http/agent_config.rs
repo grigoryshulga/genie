@@ -151,7 +151,10 @@ pub(crate) fn save(app: &App, user: &str, t: &Target, content: Option<String>, b
     let checked = AgentConfig::load_with(&app.data, &app.cfg, None, &overlay);
     let blocking: Vec<&Problem> = checked
         .errors()
-        .filter(|p| p.item.starts_with(&t.problem_prefix) || !known.contains(&(p.item.clone(), p.message.clone())))
+        .filter(|p| {
+            (p.item.starts_with(&t.problem_prefix) || !known.contains(&(p.item.clone(), p.message.clone())))
+                && !p.message.starts_with(crate::agent_config::NO_MODEL)
+        })
         .collect();
     if !blocking.is_empty() {
         let text = blocking.iter().map(|p| format!("{}: {}", p.item, p.message)).collect::<Vec<_>>().join("; ");
