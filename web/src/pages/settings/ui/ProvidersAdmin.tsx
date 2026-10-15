@@ -114,9 +114,7 @@ export function ProvidersAdminSection() {
       <div className="st-head">
         <h2>Провайдеры и ключи сервера</h2>
         <p>
-          Ключи, которыми сервер делится со всеми: действуют для агентов любого человека без его собственного ключа того же провайдера — агент на моделях{" "}
-          <code>litellm/…</code> запускается на ключе LiteLLM, на моделях <code>anthropic/…</code> — на ключе Anthropic. Личный ключ человека (Настройки → Личное →
-          Провайдеры и ключи) перекрывает серверный. Ключи хранятся в зашифрованном виде и не показываются.
+          Общие ключи для всех пользователей. Личный ключ имеет приоритет. Значения хранятся зашифрованными.
         </p>
       </div>
       {strict && card(strict)}
@@ -126,7 +124,6 @@ export function ProvidersAdminSection() {
           <div className="st-row">
             <label className="lbl" htmlFor="sv-add-provider">
               <b>Другой провайдер</b>
-              <span>Anthropic, OpenAI, Google, xAI и другие провайдеры pi: выберите, чтобы поделиться ключом со всеми.</span>
             </label>
             <div className="ctl">
               <select id="sv-add-provider" className="st-input" value={adding} onChange={(e) => setAdding(e.target.value)}>

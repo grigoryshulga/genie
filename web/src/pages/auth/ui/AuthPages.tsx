@@ -79,7 +79,7 @@ export function InvitePage() {
     window.location.assign("/");
   });
   return (
-    <AuthCard title="Приглашение в genie" sub="Придумайте логин и пароль — после этого вы попадёте в проект.">
+    <AuthCard title="Приглашение в genie">
       <form className="auth-form" onSubmit={onSubmit}>
         <label className="field">
           Логин (латиница)

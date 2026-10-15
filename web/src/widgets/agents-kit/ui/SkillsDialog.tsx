@@ -24,7 +24,7 @@ export function SkillsDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg
         {only && (
           <div className="ag-checks">
             {cfg.skills.map((s) => (
-              <label key={s.name} title={s.description}>
+              <label key={s.name}>
                 <input type="checkbox" checked={chosen.includes(s.name)} onChange={(e) => setChosen((c) => (e.target.checked ? [...c, s.name] : c.filter((x) => x !== s.name)))} />
                 <span className="mono">{s.name}</span>
                 <span className="muted">{s.description}</span>

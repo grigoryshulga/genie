@@ -82,7 +82,7 @@ export function PromptEditor({ detail, onClose }: { detail: RoleDetail; onClose:
       </div>
       <div className="mb">
         <p className="muted ag-hint">
-          Markdown. Промпт идёт в системный промпт агента после общих правил genie; настройки роли (разрешения, навыки, MCP) задаются отдельно.
+          Добавляется после общих правил genie.
           {fallback ? ` Пустой текст — действует ${fallback}.` : ""}
         </p>
         <div className={`ag-prompt-edit show-${view}`}>

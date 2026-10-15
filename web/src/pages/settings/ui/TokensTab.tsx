@@ -66,8 +66,7 @@ export function TokensTab() {
         <div className="st-head">
           <h2>Токены CLI и MCP</h2>
           <p>
-            Токен действует от вашего имени: командная строка <code>genie</code>, скрипты и ваш собственный агент через MCP. Выпускайте отдельный токен на каждое
-            устройство, чтобы отзывать их по одному.
+            Токены дают доступ от вашего имени.
           </p>
         </div>
 
@@ -139,10 +138,8 @@ export function TokensTab() {
               </div>
             ))}
           </div>
-          {!list.length && <div className="st-empty">{tokens.isPending ? "Загрузка…" : "Токенов нет. Выпустите первый, чтобы подключить CLI или своего агента."}</div>}
-          <div className="st-foot">
-            <span className="grow">Отзыв действует сразу: следующий запрос с этим токеном сервер отклонит.</span>
-          </div>
+          {!list.length && <div className="st-empty">{tokens.isPending ? "Загрузка…" : "Токенов нет."}</div>}
+
         </section>
       </div>
 

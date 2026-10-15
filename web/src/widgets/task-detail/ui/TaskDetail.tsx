@@ -169,7 +169,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <span className="k">Ответственный</span>
           <span className="wide" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
             {t.assignee && <PersonAvatar login={t.assignee} name={responsibleName} prefix="" />}
-            <select aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Человек, который отвечает за задачу: ему приходят вопросы агентов">
+            <select aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Получает вопросы агентов">
               <option value="">Не назначен</option>
               {people.map((p) => (
                 <option key={p.login} value={p.login}>
@@ -253,7 +253,6 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             <input
               key={`${t.id}-merge-${t.mergeStrategy}`}
               aria-label="Интеграция"
-              title="Как результат попадёт в систему: договоритесь с оркестратором"
               defaultValue={t.mergeStrategy}
               placeholder="не задана"
               onBlur={(e) => e.target.value !== t.mergeStrategy && patch.mutate({ id: t.id, patch: { mergeStrategy: e.target.value } }, { onError: fail })}
@@ -401,7 +400,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           </button>
           {crumbs}
           <span className="grow" />
-          <Link className="btn" to={pageLink} title="Открыть страницу задачи с командой и активностью">
+          <Link className="btn" to={pageLink}>
             <Icon.external size={12} />
             Открыть страницу
           </Link>
@@ -664,7 +663,6 @@ function DocsImpactBlock({ result }: { result: DocsImpact | undefined }) {
         <Icon.file size={14} />
         Документация, которую могла затронуть задача
         {candidates.length > 0 && <span className="n">{candidates.length}</span>}
-        <span className="hint">подсказка · не блокирует</span>
       </div>
       {candidates.length > 0 ? (
         <div className="rows">

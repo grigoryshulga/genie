@@ -45,7 +45,7 @@ export function McpAdminSection() {
     <div className="st-body sv-wide">
       <div className="st-head">
         <h2>MCP</h2>
-        <p>Подключения из mcp.json: агенты ходят в них через шлюз, секреты остаются на сервере. Что из них достаётся ролям, выбирают на странице «Агенты».</p>
+        <p>Доступ ролей к инструментам настраивается на странице «Агенты».</p>
       </div>
       {!d ? (
         <p className="muted">{admin.error ? admin.error.message : "Загрузка…"}</p>
@@ -508,7 +508,7 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
                     {tools.map((t) => {
                       const hidden = patterns.some((p) => globMatch(p, t.name));
                       return (
-                        <label key={t.name} title={t.description}>
+                        <label key={t.name}>
                           <input type="checkbox" checked={hidden} onChange={() => toggleTool(t.name)} />
                           <span className="mono">{t.name}</span>
                           <span className="muted">{t.description}</span>
@@ -591,7 +591,7 @@ function Secrets({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
   return (
     <Section
       title="Переменные окружения"
-      note="Секреты, на которые подключения ссылаются как ${env:ИМЯ}; значения стоят в базе сервера"
+      note="Ссылка на секрет: ${env:ИМЯ}"
       aside={
         <button type="button" className="btn" onClick={() => setCreating(true)}>
           <Icon.plus size={13} />
@@ -808,7 +808,6 @@ function Usage() {
   return (
     <Section
       title="Статистика"
-      note="Вызовы инструментов через шлюз: сколько, с ошибками ли и какой это двинуло трафик"
       aside={
         <div className="seg" role="group" aria-label="Период">
           {[7, 30, 90].map((v) => (
