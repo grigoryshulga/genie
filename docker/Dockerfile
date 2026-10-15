@@ -3,8 +3,9 @@
 # Genie server: one image with the Rust server (the web UI built in) and the pi harness that runs the agents.
 # Guide: docs/platform/docker.md
 #
-#   docker build -t genie .
-#   docker compose up -d           (see docker-compose.yml and .env.example)
+#   docker build -t genie -f docker/Dockerfile .
+#   docker compose -f docker/docker-compose.yml up -d
+#                                   (see docker/docker-compose.yml and docker/.env.example)
 #
 # Build arguments (all optional):
 #   EXTRA_APT_PACKAGES         toolchains your agents need, e.g. "python3 python3-venv build-essential"
@@ -72,7 +73,7 @@ ARG RUST_TOOLCHAIN=""
 #   tini            PID 1 (after the privilege drop): reaps processes agents leave behind, forwards signals
 #   git, ssh        worktrees, commits, pushes; the vault is a git repository
 #   ripgrep         pi's search tool
-#   bubblewrap      the agent sandbox (needs docker-compose.sandbox.yml, see docs/platform/docker.md)
+#   bubblewrap      the agent sandbox (needs docker/docker-compose.sandbox.yml, see docs/platform/docker.md)
 #   procps          `kill`, used by the server to stop agent processes
 #   curl, jq        health check; everyday shell tooling for agents
 #   ca-certificates TLS to model providers, Telegram, SMTP, MCP servers

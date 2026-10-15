@@ -12,22 +12,24 @@ The image contains Genie, its web UI, Git, and Pi-Bolt, available as `pi`. Docke
 ## Start
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
-printf '%s\n' 'replace-with-a-strong-password' | docker compose exec -T genie genie user add admin --admin --password-stdin
-docker compose exec -u genie genie genie doctor
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml up -d --build
+printf '%s\n' 'replace-with-a-strong-password' | docker compose -f docker/docker-compose.yml exec -T genie genie user add admin --admin --password-stdin
+docker compose -f docker/docker-compose.yml exec -u genie genie genie doctor
 ```
 
 Open [localhost:7420](http://127.0.0.1:7420). Configure role models and provider keys as described in the [quick start](getting-started.md#configure-agents).
 
-To use the published image, set `GENIE_IMAGE=ghcr.io/grigoryshulga/genie:latest` in `.env`, then run:
+To use the published image, set `GENIE_IMAGE=ghcr.io/grigoryshulga/genie:latest` in `docker/.env`, then run:
 
 ```bash
-docker compose pull
-docker compose up -d --no-build
+docker compose -f docker/docker-compose.yml pull
+docker compose -f docker/docker-compose.yml up -d --no-build
 ```
 
 Authenticate to GHCR first if the package requires it. Pin a release tag or digest for repeatable deployments.
+
+For an existing checkout, move `.env` and `secrets/` into `docker/.env` and `docker/secrets/`.
 
 ## Storage and ownership
 
@@ -48,14 +50,14 @@ volumes:
 Then register the repository:
 
 ```bash
-docker compose exec -u genie genie genie project add shop --repo /workspace/code/shop
+docker compose -f docker/docker-compose.yml exec -u genie genie genie project add shop --repo /workspace/code/shop
 ```
 
 Hosted repository connections use the server's [Git proxy and policies](git-repositories.md). Legacy local repositories use their local Git setup.
 
 ## Network access
 
-Set these in `.env` for access through a reverse proxy:
+Set these in `docker/.env` for access through a reverse proxy:
 
 ```dotenv
 GENIE_PUBLIC_URL=https://genie.example.com
@@ -75,8 +77,8 @@ Environment keys such as `OPENAI_API_KEY` and `LITELLM_API_KEY` support local mo
 For a custom provider, copy its pi configuration before starting agents:
 
 ```bash
-docker compose cp models.json genie:/data/home/.pi/agent/models.json
-docker compose exec -u genie genie chmod 600 /data/home/.pi/agent/models.json
+docker compose -f docker/docker-compose.yml cp models.json genie:/data/home/.pi/agent/models.json
+docker compose -f docker/docker-compose.yml exec -u genie genie chmod 600 /data/home/.pi/agent/models.json
 ```
 
 Examples for LiteLLM are in `docker/examples/litellm/`. Replace their endpoint and model IDs. Role models belong in `/data/agents/<role>.md`, not in a `roleModels` configuration block.
@@ -85,7 +87,7 @@ Genie gives agents a dedicated profile at `/data/pi-agent`. It seeds `models.jso
 
 ## Secrets from files
 
-The secrets Compose overlay accepts supported `*_FILE` variables. See `docker-compose.secrets.yml` for the mounts and variable names. For example, supply `LITELLM_API_KEY_FILE` rather than putting a key in `.env`.
+The secrets Compose overlay accepts supported `*_FILE` variables. See `docker/docker-compose.secrets.yml` for the mounts and variable names. For example, supply `LITELLM_API_KEY_FILE` rather than putting a key in `docker/.env`.
 
 The LiteLLM tariff reader uses a separate server-only `LITELLM_INFO_TOKEN` or `LITELLM_INFO_TOKEN_FILE` with access to `/model/info`. Configure `litellm.baseUrl` in `/data/config.json`, then run `genie server prices --refresh`. See [usage and budgets](settings.md#usage-and-budgets).
 
@@ -96,7 +98,7 @@ The default Compose setup uses `GENIE_SANDBOX=off`: the container is the isolati
 To enable bubblewrap inside Docker, use the supplied overlay:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.sandbox.yml up -d --build
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.sandbox.yml up -d --build
 ```
 
 The overlay supplies the settings needed for user namespaces and sandbox mounts. Read it before deploying on a host with stricter container policies. Run `genie doctor` in the resulting container to verify support.
@@ -118,8 +120,8 @@ See [project environments](environment.md) for current setup limits.
 ## Backups and updates
 
 ```bash
-docker compose exec -u genie genie genie backup /data/backups --keep 14
-docker compose cp genie:/data/backups ./backups
+docker compose -f docker/docker-compose.yml exec -u genie genie genie backup /data/backups --keep 14
+docker compose -f docker/docker-compose.yml cp genie:/data/backups ./backups
 ```
 
 Back up project source and worktrees separately. Preserve `secrets.key` separately or use `--with-secrets` for trusted backups. See [operations](operations.md#back-up-and-restore) for coverage and restore rules.
