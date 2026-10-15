@@ -2,6 +2,8 @@
 
 Follow this sequence for every repository task. Read [CODING_STANDARDS.md](CODING_STANDARDS.md) before changing code, and [the genie CLI guide](docs/development/genie-cli.md) before tracking work.
 
+For tasks that need a Compose-managed service started or updated, follow the [Compose service lifecycle](docs/agents/compose-service-lifecycle.md).
+
 ## 1. Isolate the task
 
 - Run `git status --short --branch`, `git worktree list`, and `git fetch origin main`.
