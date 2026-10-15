@@ -7,8 +7,7 @@ import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { Icon } from "@/shared/ui";
-import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
-import { Problems } from "@/widgets/settings-kit";
+import { McpTab, Problems, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
 import "@/shared/ui/agents.css";
 
 type Tab = "roles" | "templates" | "skills" | "mcp";

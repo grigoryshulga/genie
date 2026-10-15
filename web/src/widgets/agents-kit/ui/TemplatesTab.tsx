@@ -27,7 +27,9 @@ import {
 import { displayName } from "@/entities/member";
 import { plural } from "@/shared/lib";
 import { Badge, ConfirmDialog, Icon, Modal, Section, useAct, useToast } from "@/shared/ui";
-import { FileEditor, History, Problems } from "@/widgets/settings-kit";
+import { FileEditor } from "./FileEditor.tsx";
+import { History } from "./History.tsx";
+import { Problems } from "./Problems.tsx";
 
 export function TemplatesTab({
   cfg,

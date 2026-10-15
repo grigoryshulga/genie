@@ -6,9 +6,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { Icon } from "@/shared/ui";
-import { CreateDialog, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
-import { History, Problems } from "@/widgets/settings-kit";
-import "@/shared/ui/agents.css";
+import { CreateDialog, History, Problems, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
 
 const SECTIONS = ["roles", "templates", "skills", "history"] as const;
 type Section = (typeof SECTIONS)[number];

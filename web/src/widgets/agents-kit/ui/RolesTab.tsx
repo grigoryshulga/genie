@@ -27,7 +27,9 @@ import {
 import { useMeta, useProjects } from "@/entities/project";
 import { ModelPicker } from "@/features/agent-model";
 import { Badge, ChipInput, ConfirmDialog, Icon, Markdown, Modal, Section, useAct, useToast } from "@/shared/ui";
-import { FileEditor, History, Problems } from "@/widgets/settings-kit";
+import { FileEditor } from "./FileEditor.tsx";
+import { History } from "./History.tsx";
+import { Problems } from "./Problems.tsx";
 
 export function RolesTab({
   cfg,

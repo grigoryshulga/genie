@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from "react-router";
 import { useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
-import { TeamView } from "@/pages/team";
+import { TeamView } from "@/widgets/team-view";
 import { TaskDetail, type TaskTab } from "@/widgets/task-detail";
 
 /** `/task/:taskId/:tab?`: a task on its own page, with its description and its team as tabs. */

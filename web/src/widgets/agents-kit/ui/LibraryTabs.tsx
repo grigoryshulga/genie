@@ -17,7 +17,9 @@ import {
 import { displayName } from "@/entities/member";
 import { bytes, timeAgo } from "@/shared/lib";
 import { Badge, ConfirmDialog, Icon, Markdown, Modal, Section, useAct } from "@/shared/ui";
-import { FileEditor, History, Problems } from "@/widgets/settings-kit";
+import { FileEditor } from "./FileEditor.tsx";
+import { History } from "./History.tsx";
+import { Problems } from "./Problems.tsx";
 
 export function SkillsTab({
   cfg,
