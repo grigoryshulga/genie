@@ -1,6 +1,6 @@
-// «Сервер» — server administration, a section each: health (the doctor check, the week
-// in numbers), statistics and costs, projects, accounts, the provider keys shared
-// with everyone, MCP connections and the knowledge vault sync. Server
+// «Управление» — global server administration, a section each: health (the doctor
+// check, the week in numbers), projects, accounts, the provider keys shared with
+// everyone, MCP connections and the knowledge vault sync. Server
 // administrators only.
 import { ProvidersAdminSection } from "./ProvidersAdmin.tsx";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,7 +45,6 @@ export function ServerSettingsPage() {
   const accounts = useUsers(admin && !local).data?.length ?? 0;
   const tabs = [
     { id: "health", title: "Состояние" },
-    { id: "stats", title: "Статистика" },
     { id: "projects", title: "Проекты", n: projects },
     ...(local ? [] : [{ id: "accounts", title: "Учётные записи", n: accounts }]),
     { id: "providers", title: "Провайдеры" },
@@ -55,9 +54,9 @@ export function ServerSettingsPage() {
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Сервер</h1>
+        <h1>Управление</h1>
         <span className="sub">{local ? "локальный режим" : "администрирование"}</span>
-        <nav className="st-tabs" aria-label="Разделы сервера">
+        <nav className="st-tabs" aria-label="Глобальные настройки сервера">
           {tabs.map((t) => (
             <NavLink key={t.id} to={`/settings/server/${t.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
               {t.title}
@@ -67,9 +66,7 @@ export function ServerSettingsPage() {
         </nav>
       </header>
       <div className="scroll">
-        {section === "stats" ? (
-          <Statistics />
-        ) : section === "projects" ? (
+        {section === "projects" ? (
           <Projects current={session?.project} />
         ) : section === "accounts" && !local ? (
           <Accounts me={session?.user.login} />
@@ -82,6 +79,20 @@ export function ServerSettingsPage() {
         ) : (
           <Health />
         )}
+      </div>
+    </main>
+  );
+}
+
+/** The server-wide work and cost statistics, available to server administrators. */
+export function ServerStatisticsPage() {
+  return (
+    <main className="main">
+      <header className="topbar">
+        <h1>Статистика</h1>
+      </header>
+      <div className="scroll">
+        <Statistics />
       </div>
     </main>
   );
@@ -158,7 +169,7 @@ function Checks({ list }: { list: DoctorCheck[] }) {
   );
 }
 
-/** The last seven days in four numbers; the details are on the statistics tab. */
+/** The last seven days in four numbers; the details are on the statistics page. */
 function Week() {
   const stats = useStats(7);
   const t = statsTotals(stats.data?.projects ?? []);
@@ -167,7 +178,7 @@ function Week() {
       <div className="sv-section-head">
         <h3>Последние 7 дней</h3>
         <span className="muted">все проекты</span>
-        <Link to="/settings/server/stats" className="sv-more">
+        <Link to="/settings/stats" className="sv-more">
           Вся статистика
           <Icon.chevron size={12} />
         </Link>
@@ -178,7 +189,7 @@ function Week() {
         <div className="sv-tiles">
           <Tile label="Готово задач" value={t.done} sub={`из ${t.created} новых`} />
           <Tile label="Открыто сейчас" value={t.open} sub={t.openProjects ? `в проектах: ${t.openProjects}` : "открытых задач нет"} />
-          <Tile label="Вопросы агентов людям" value={t.decisions} sub={t.decisions ? "время ответа — во вкладке «Статистика»" : "агенты ничего не спрашивали"} />
+          <Tile label="Вопросы агентов людям" value={t.decisions} sub={t.decisions ? "время ответа — на странице «Статистика»" : "агенты ничего не спрашивали"} />
           <Tile label="Сбои агентов" value={t.runsFailed} sub={`из ${t.runs} запусков`} bad={t.runsFailed > 0} />
         </div>
       )}
@@ -210,7 +221,6 @@ function Statistics() {
     <div className="st-body sv-stats">
       <div className="sv-top">
         <div className="st-head">
-          <h2>Статистика</h2>
           <p>{view === "work" ? "Как шла работа: задачи, вопросы агентов людям, запуски агентов." : "Сколько стоила работа агентов: по моделям, проектам, эпикам, задачам и чатам."}</p>
         </div>
         <div className="seg" role="group" aria-label="Что показать">
