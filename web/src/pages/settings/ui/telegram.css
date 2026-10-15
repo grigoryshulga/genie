@@ -1,0 +1,51 @@
+.tg-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+.tg-connect p {
+  margin: 0;
+}
+.tg-connect .st-input {
+  width: 100%;
+}
+.tg-pair {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tg-qr {
+  padding: 8px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 18px #0000000d;
+}
+.tg-qr svg {
+  display: block;
+}
+.tg-steps {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 210px;
+}
+.tg-steps h3 {
+  margin: 0;
+}
+.tg-project {
+  padding-bottom: 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.tg-project .st-input {
+  width: auto;
+}
+
+.tg-connected { width: 100%; flex-wrap: wrap; }
+.tg-connected .grow { flex-basis: 100%; }

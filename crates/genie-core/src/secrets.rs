@@ -90,7 +90,7 @@ pub fn key_path(db_path: &Path) -> PathBuf {
     db_path.with_file_name("secrets.key")
 }
 
-fn load_key(path: &Path, create: bool) -> Result<Option<[u8; 32]>> {
+pub(crate) fn load_key(path: &Path, create: bool) -> Result<Option<[u8; 32]>> {
     match std::fs::read(path) {
         Ok(bytes) => {
             let text = String::from_utf8_lossy(&bytes);
@@ -123,7 +123,7 @@ fn write_private(path: &Path, text: &str) -> Result<()> {
     Ok(())
 }
 
-fn seal(key: &[u8; 32], name: &str, value: &str) -> Result<String> {
+pub(crate) fn seal(key: &[u8; 32], name: &str, value: &str) -> Result<String> {
     let mut nonce = [0u8; 12];
     getrandom::fill(&mut nonce).expect("OS random source");
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
@@ -133,7 +133,7 @@ fn seal(key: &[u8; 32], name: &str, value: &str) -> Result<String> {
     Ok(format!("{}{}", hex::encode(nonce), hex::encode(sealed)))
 }
 
-fn unseal(key: &[u8; 32], name: &str, sealed: &str) -> Option<String> {
+pub(crate) fn unseal(key: &[u8; 32], name: &str, sealed: &str) -> Option<String> {
     let raw = hex::decode(sealed).ok()?;
     if raw.len() < 12 {
         return None;
@@ -169,7 +169,7 @@ impl ServerDb {
     /// the provider keys shared with everyone).
     pub fn has_sealed_secrets(&self) -> Result<bool> {
         let n: i64 = self.conn().query_row(
-            "SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets) + (SELECT COUNT(*) FROM global_secrets)",
+            "SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets) + (SELECT COUNT(*) FROM global_secrets) + (SELECT COUNT(*) FROM project_telegram)",
             [],
             |r| r.get(0),
         )?;

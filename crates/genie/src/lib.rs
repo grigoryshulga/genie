@@ -29,6 +29,7 @@ pub mod spend;
 pub mod state;
 pub mod stats;
 pub mod tasks;
+pub mod telegram;
 pub mod vault_sync;
 
 use std::net::SocketAddr;

@@ -15,7 +15,7 @@ Keep decisions here; keep instructions in their topic pages. Older implementatio
 | PD2 | Start locally; support managed deployment separately. Docker and systemd are now available. | [Deployment](docker.md) |
 | PD3 | Knowledge lives in a separate Obsidian-compatible Git vault. | [Vault](knowledge-vault.md) |
 | PD4 | Publish knowledge through per-section policies for people and agents. | [Publication](knowledge-vault.md#publication-policies) |
-| PD5 | Telegram and email are the initial channels. | [Notifications](settings.md#notifications) |
+| PD5 | Telegram and email are the initial channels; projects may manage dedicated bots with personal, bot-scoped connections. | [Notifications](settings.md#notifications) |
 | PD6 | Support projects without code repositories. | [Quick start](getting-started.md#create-a-project) |
 | PD7 | Track model usage and enforce task, epic, and daily budgets. Revised October 3, 2026. | [Budgets](settings.md#usage-and-budgets) |
 | PD8 | Rust backend and CLI. | [Architecture](backend.md) |

@@ -37,6 +37,7 @@ import { OwnerDecision } from "@/features/owner-decision";
 import { SpawnTeamDialog } from "@/features/spawn-team";
 import { plural, timeAgo, useTick } from "@/shared/lib";
 import { ConfirmDialog, Icon, Markdown, useToast } from "@/shared/ui";
+import { FollowTask } from "@/features/follow-task";
 import { TaskDelivery } from "./TaskDelivery.tsx";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };
@@ -399,6 +400,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             <Icon.back />
           </button>
           {crumbs}
+          <FollowTask task={t.id} />
           <span className="grow" />
           <Link className="btn" to={pageLink}>
             <Icon.external size={12} />
@@ -436,6 +438,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <Icon.back />
         </Link>
         {crumbs}
+        <FollowTask task={t.id} />
         <span className="grow" />
         {team?.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] && (
           // An idea being shaped: back to the conversation with its planner.

@@ -14,6 +14,7 @@ pub mod repos;
 pub mod secrets;
 pub mod server_db;
 pub mod team;
+pub mod telegram;
 pub mod tracker;
 pub mod usage;
 pub mod vault;
