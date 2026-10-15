@@ -700,6 +700,7 @@ impl ServerDb {
 
     // --- mcp -----------------------------------------------------------------
 
+    #[allow(clippy::too_many_arguments)]
     /// Count one tool call through the MCP gateway: per today, project, server and tool.
     pub fn record_mcp_usage(
         &self,
