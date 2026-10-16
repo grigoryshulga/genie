@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Границы менеджеров проекта и задачи</title>
+<title>Project and task manager boundaries</title>
 <style>
 body{margin:0;color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5}
 main{padding:8px 0;max-width:100%}
@@ -22,41 +22,41 @@ main{padding:8px 0;max-width:100%}
 </style>
 </head>
 <body>
-<main id="manager-flow" aria-label="Человек обсуждает работу с менеджером проекта. Каждую задачу ведёт отдельный менеджер. Вопросы и выводы возвращаются менеджеру проекта.">
-  <div class="person">Человек</div>
-  <div class="arrow">↕ цели, требования, решения</div>
-  <section class="project" aria-label="Область проекта">
-    <p class="title">Менеджер проекта <span class="scope">· весь проект</span></p>
-    <p class="detail">Общая память → постановка → очередь → выпуск задачи</p>
-    <p class="detail">Запускает сам в рамках автономности проекта</p>
+<main id="manager-flow" aria-label="A person plans with the project manager. Each task has its own manager. Questions and findings return to the project manager.">
+  <div class="person">Person</div>
+  <div class="arrow">↕ goals, requirements, decisions</div>
+  <section class="project" aria-label="Project scope">
+    <p class="title">Project manager <span class="scope">· whole project</span></p>
+    <p class="detail">Shared memory → brief → queue → dispatch</p>
+    <p class="detail">Dispatches within project autonomy</p>
   </section>
-  <div class="arrow">↓ постановка и источники · ↑ уточнения и результаты</div>
+  <div class="arrow">↓ brief and sources · ↑ clarifications and results</div>
   <div class="branches">
-    <section class="task" aria-label="Первая задача">
-      <p class="title">Менеджер задачи A</p>
-      <div class="scope">От запуска до публикации ретро</div>
-      <div class="arrow">↕ делегирование и проверка</div>
-      <div class="team">Команда A<br><span class="scope">Роли и модели под задачу</span></div>
+    <section class="task" aria-label="First task">
+      <p class="title">Task manager A</p>
+      <div class="scope">From dispatch to retrospective publication</div>
+      <div class="arrow">↕ delegation and verification</div>
+      <div class="team">Team A<br><span class="scope">Roles and models chosen for the task</span></div>
       <div class="arrow">↓</div>
-      <div>Приёмка результата → ретро</div>
+      <div>Result acceptance → retrospective</div>
     </section>
-    <section class="task" aria-label="Вторая задача">
-      <p class="title">Менеджер задачи B</p>
-      <div class="scope">От запуска до публикации ретро</div>
-      <div class="arrow">↕ делегирование и проверка</div>
-      <div class="team">Команда B<br><span class="scope">Роли и модели под задачу</span></div>
+    <section class="task" aria-label="Second task">
+      <p class="title">Task manager B</p>
+      <div class="scope">From dispatch to retrospective publication</div>
+      <div class="arrow">↕ delegation and verification</div>
+      <div class="team">Team B<br><span class="scope">Roles and models chosen for the task</span></div>
       <div class="arrow">↓</div>
-      <div>Приёмка результата → ретро</div>
+      <div>Result acceptance → retrospective</div>
     </section>
   </div>
   <div class="feedback">
-    <div>Уточнение: менеджер задачи → менеджер проекта → человек</div>
-    <div class="note">Есть действующая договорённость — менеджер проекта отвечает со ссылкой.</div>
-    <div class="note">Нет основания для ответа — запрашивает решение человека.</div>
+    <div>Clarification: task manager → project manager → person</div>
+    <div class="note">A confirmed agreement lets the project manager answer with a source.</div>
+    <div class="note">Missing evidence requires a human decision.</div>
   </div>
   <div class="feedback">
-    <div>Ретро → предложения улучшений → общие знания проекта</div>
-    <div class="note">Результат принимается отдельно. Ретро обязательно. Правки предлагаются к применению.</div>
+    <div>Retrospective → improvement proposals → shared project knowledge</div>
+    <div class="note">Result acceptance is separate. Retrospectives are mandatory. Changes remain proposals.</div>
   </div>
 </main>
 </body>

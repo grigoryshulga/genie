@@ -97,7 +97,7 @@ The same operations are available through MCP group `genie_manager` and `/api/ma
 
 ## Upgrading an existing installation
 
-1. Tracker schema 6 adds management tables with the normal migration rehearsal on a copy. Existing tasks and their statuses are preserved.
+1. Tracker schema 6 adds management tables with the normal migration rehearsal on a copy. Existing tasks and their statuses are preserved. Older binaries reject schema 6; a downgrade requires restoring a pre-upgrade backup.
 2. `project-manager` inherits the configured `orchestrator` model until given its own. Existing `orchestrator` settings remain task-manager settings. Review full custom prompt overrides against the changed role responsibilities.
 3. In automatic projects, the scheduler adopts existing active teams, transfers unread unleased project mail for their tasks, and preserves membership/workspaces. Idea discussions remain conversations. No automatic adoption occurs in `manual`.
 4. Result acceptance, reopening, and retrospective states remain separate. Repeated dispatch is idempotent. Closed legacy tasks do not start unsolicited retrospectives.
