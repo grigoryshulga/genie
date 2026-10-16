@@ -26,6 +26,7 @@ use crate::state::App;
 pub fn routes() -> Router<Arc<App>> {
     Router::new()
         .route("/teams", get(list).post(spawn))
+        .route("/teams/recommend", post(recommend))
         .route("/teams/{id}", get(show).delete(remove))
         .route("/teams/{id}/stop", post(stop))
         .route("/teams/{id}/mail", post(send))
@@ -135,6 +136,8 @@ async fn show(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>) -> 
 
 #[derive(Deserialize)]
 struct SpawnBody {
+    #[serde(default, rename = "decisionOverride")]
+    decision_override: Option<String>,
     task: String,
     template: Option<String>,
     #[serde(default)]
@@ -153,6 +156,7 @@ async fn spawn(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<SpawnBody>) 
     }
     let slug = access.project.clone();
     let req = SpawnRequest {
+        decision_override: b.decision_override,
         task: b.task,
         template: b.template,
         members: b.members,
@@ -164,6 +168,26 @@ async fn spawn(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<SpawnBody>) 
     let team = app.blocking(move |app| runtime::spawn_team(app, &slug, req)).await?;
     changed(&app);
     Ok((StatusCode::CREATED, Json(json!(team))))
+}
+
+async fn recommend(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<SpawnBody>) -> ApiResult<Json<Value>> {
+    let access = ctx.access(&app, None).await?;
+    access.write()?;
+    if access.agent && access.actor.role != Role::Orchestrator {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) plans teams"));
+    }
+    let slug = access.project;
+    let req = SpawnRequest {
+        decision_override: None,
+        task: b.task,
+        template: b.template,
+        members: b.members,
+        models: b.models,
+        note: b.note,
+        by: access.actor,
+        initiator: None,
+    };
+    Ok(Json(app.blocking(move |app| runtime::recommend_team(app, &slug, req)).await?))
 }
 
 #[derive(Deserialize, Default)]

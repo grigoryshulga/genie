@@ -116,7 +116,16 @@ async fn caller(app: &Arc<App>, ctx: &Ctx, headers: &HeaderMap) -> ApiResult<Cal
                     let j = *j;
                     app.blocking(move |app| app.with_server(|db| db.job(j))).await?.task
                 }
-                None => team.clone(),
+                None => match team.clone() {
+                    Some(team) => {
+                        let project = project.clone();
+                        Some(
+                            app.blocking(move |app| app.with_tracker(&project, |t| Ok(t.bus().get(&team).map(|t| t.task).unwrap_or(team))))
+                                .await?,
+                        )
+                    }
+                    None => None,
+                },
             };
             Ok(Caller::Agent { name: name.clone(), project: project.clone(), kind, caps, token, team: team.clone(), task })
         }

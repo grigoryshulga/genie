@@ -10,6 +10,7 @@ pub mod agents;
 pub mod automations;
 pub mod console;
 pub mod ctx;
+pub mod decisions;
 pub mod docs;
 pub mod git;
 pub mod ideas;
@@ -131,6 +132,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(tasks::routes())
         .merge(ideas::routes())
         .merge(teams::routes())
+        .merge(decisions::routes())
         .merge(agents::routes())
         .merge(docs::routes())
         .merge(images::routes())

@@ -79,6 +79,7 @@ where
 }
 
 pub struct App {
+    pub decision_gates: crate::decisions::Gates,
     pub data: PathBuf,
     pub cfg: Config,
     /// A directory with the built web UI (`--web`); None: the one built into the binary.
@@ -135,6 +136,7 @@ impl App {
         let prices = RwLock::new(crate::model_prices::State::load(&cfg, &server));
         let slots = Arc::new(tokio::sync::Semaphore::new(cfg.runtime.max_concurrent.max(1)));
         Ok(Arc::new(App {
+            decision_gates: Default::default(),
             data: data.to_path_buf(),
             cfg,
             web_root: web_root.into(),
@@ -161,7 +163,16 @@ impl App {
     /// The model prices in effect: `modelPrices` of config.json over what
     /// LiteLLM returned. What spend, budgets and the web price with.
     pub fn prices(&self) -> AppResult<crate::spend::Prices> {
-        Ok(self.prices.read().map_err(|_| AppError::Internal("prices lock poisoned".into()))?.prices())
+        let mut prices = self.prices.read().map_err(|_| AppError::Internal("prices lock poisoned".into()))?.prices();
+        let model = format!("typesafe/{}", self.cfg.decisions.model);
+        let price = crate::config::price_of(&self.cfg.model_prices, &model).copied().unwrap_or(crate::config::ModelPrice {
+            input: self.cfg.decisions.input_price,
+            output: 0.0,
+            cache_read: Some(0.0),
+            cache_write: Some(0.0),
+        });
+        prices.insert(model, price);
+        Ok(prices)
     }
 
     /// Print the errors of the agent configuration (when the server starts).

@@ -26,6 +26,7 @@ import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
+import { JevSettings } from "./JevSettings.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
 
@@ -43,6 +44,7 @@ export function ProjectSettingsPage() {
   const tabs = [
     { id: "general", title: "Общие" },
     { id: "agents", title: "Работа агентов" },
+    { id: "decisions", title: "Решения с Jev" },
     { id: "repos", title: "Репозитории", n: repos },
     { id: "people", title: "Люди", n: members },
   ];
@@ -69,6 +71,8 @@ export function ProjectSettingsPage() {
           <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>
         ) : section === "agents" ? (
           <AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} />
+        ) : section === "decisions" ? (
+          <JevSettings key={project.slug} slug={project.slug} admin={admin} />
         ) : section === "repos" ? (
           <div className="st-body">
             <RepositoriesSection admin={admin} />

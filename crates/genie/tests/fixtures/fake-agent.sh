@@ -37,7 +37,9 @@ case "$GENIE_AGENT_ROLE" in
       g task status in_progress
       g task artifact --kind test-report --name tests.md --text "cargo test: ok"
       g task status review --note "ready for review"
-      reviewer=$(g team show | awk '/\(reviewer\)/{print $2; exit}')
+      # Drain the CLI output: exiting awk early can make the Rust CLI panic on
+      # a broken stdout pipe under parallel integration-test load.
+      reviewer=$(g team show | awk '/\(reviewer\)/ && !found {print $2; found=1}')
       g mail send "$reviewer" "please review" --intent question
     fi
     ;;

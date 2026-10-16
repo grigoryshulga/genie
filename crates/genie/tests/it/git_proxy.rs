@@ -74,6 +74,7 @@ async fn team(r: &Rig) -> (String, PathBuf, String, String) {
             &app,
             "shop",
             SpawnRequest {
+                decision_override: None,
                 task: t,
                 template: None,
                 members: vec![

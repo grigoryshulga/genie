@@ -15,6 +15,7 @@ pub fn register(all: &mut Vec<Entry>) {
         Board,
         Peek,
         Spawn,
+        Recommend,
         AddMember,
         RemoveMember,
         Stop,
@@ -119,15 +120,31 @@ impl Op for Peek {
     }
 }
 
+/// An explicit model/thinking pair can be copied from a Jev recommendation.
+fn member_spec(text: &str) -> Value {
+    let Some((role, model)) = text.split_once(':') else {
+        return json!({"role":text});
+    };
+    match model.rsplit_once(':') {
+        Some((model, thinking)) if crate::http::teams::THINKING.contains(&thinking) => {
+            json!({"role":role,"model":model,"thinking":thinking})
+        }
+        _ => json!({"role":role,"model":model}),
+    }
+}
+
 /// Assemble a team for a task from a template, or member by member (orchestrator).
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Spawn {
+    /// Keep this proposal after considering Jev; record a specific justification.
+    #[arg(long)]
+    pub decision_override: Option<String>,
     pub task: String,
     /// A team template (`genie team templates`).
     #[arg(long)]
     pub template: Option<String>,
-    /// A member by role instead of the template's roster: `role` or `role:model`; repeat for more.
+    /// A member by role instead of the template's roster: `role`, `role:provider/model` or `role:provider/model:thinking`; repeat for more.
     #[arg(long = "member")]
     #[serde(default)]
     pub members: Vec<String>,
@@ -142,16 +159,9 @@ impl Op for Spawn {
     const LEGACY: Option<&'static str> = Some("spawn");
     const NEED: Need = Need::Orchestrator;
     async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let members: Vec<Value> = self
-            .members
-            .iter()
-            .map(|m| match m.split_once(':') {
-                Some((role, model)) => json!({ "role": role, "model": model }),
-                None => json!({ "role": m }),
-            })
-            .collect();
+        let members: Vec<Value> = self.members.iter().map(|m| member_spec(m)).collect();
         let v = cx
-            .call("POST", "/teams", Some(json!({ "task": self.task, "template": self.template, "members": members, "note": self.note })))
+            .call("POST", "/teams", Some(json!({ "task": self.task, "template": self.template, "members": members, "note": self.note, "decisionOverride":self.decision_override })))
             .await?;
         let names: Vec<String> = v["members"]
             .as_array()
@@ -167,6 +177,28 @@ impl Op for Spawn {
             names.join(", ")
         );
         Ok(Out::new(text, v))
+    }
+}
+
+/// Preview Jev's recommendation before assembling a team; does not start agents.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Recommend {
+    pub task: String,
+    #[arg(long)]
+    pub template: Option<String>,
+    #[arg(long = "member")]
+    #[serde(default)]
+    pub members: Vec<String>,
+}
+impl Op for Recommend {
+    const GROUP: &'static str = "team";
+    const NAME: &'static str = "recommend";
+    const NEED: Need = Need::Orchestrator;
+    const LISTED: Listed = Listed::Orchestrator;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let members: Vec<Value> = self.members.iter().map(|s| member_spec(s)).collect();
+        let v = cx.call("POST", "/teams/recommend", Some(json!({"task":self.task,"template":self.template,"members":members}))).await?;
+        Ok(Out::new(serde_json::to_string_pretty(&v).unwrap_or_default(), v))
     }
 }
 
