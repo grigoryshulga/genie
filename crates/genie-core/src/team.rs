@@ -491,6 +491,7 @@ impl Bus<'_> {
                     team.spec.as_ref().map(Value::to_string)
                 ],
             )?;
+            self.conn().execute("INSERT OR IGNORE INTO task_team_history(task, team) SELECT id, ?2 FROM tasks WHERE id = ?1", params![team.task, team.id])?;
             for (i, m) in team.members.iter().enumerate() {
                 self.insert_member(&team.id, m, i as i64)?;
             }
@@ -584,6 +585,7 @@ impl Bus<'_> {
     /// Delete a team with its roster, mail and log.
     pub fn delete(&self, team: &str) -> Result<()> {
         self.t.tx(|| {
+            self.conn().execute("INSERT OR IGNORE INTO task_team_history(task, team) SELECT t.task, t.id FROM teams t JOIN tasks x ON x.id = t.task WHERE t.id = ?1", [team])?;
             for table in ["mail", "log", "members"] {
                 self.conn().execute(&format!("DELETE FROM {table} WHERE team = ?1"), [team])?;
             }
@@ -734,15 +736,17 @@ impl Bus<'_> {
             return Err(GenieError::invalid("message text is empty"));
         }
         let team = self.get(m.team)?;
+        let manager = self.t.management().recipient(Some(&team.task))?;
         let mut names: Vec<String> = team.members.iter().map(|x| x.name.clone()).collect();
         names.push(ORCHESTRATOR.into());
         let recipients: Vec<String> = if m.to == BROADCAST {
             names.iter().filter(|n| *n != m.from).cloned().collect()
-        } else if names.iter().any(|n| n == m.to) {
+        } else if names.iter().any(|n| n == m.to) || m.to == manager {
             vec![m.to.to_string()]
         } else {
             return Err(GenieError::invalid(format!("team {} has no member \"{}\". Members: {}", team.id, m.to, names.join(", "))));
         };
+        let recipients: Vec<String> = recipients.into_iter().map(|to| if to == ORCHESTRATOR { manager.clone() } else { to }).collect();
         let topic = m.topic.map(str::trim).filter(|t| !t.is_empty());
         let ids = self.t.tx(|| {
             let at = now();
@@ -797,12 +801,19 @@ impl Bus<'_> {
 
     /// A system message to the orchestrator's global mailbox.
     pub fn notify_orchestrator(&self, from: &str, from_role: &str, kind: &str, text: &str, task: Option<&str>) -> Result<()> {
+        let awaiting_person = from_role == "human"
+            && task.is_some_and(|id| self.t.management().clarifications(id).is_ok_and(|qs| qs.iter().any(|q| q.state == "owner")));
+        let recipient = if awaiting_person { ORCHESTRATOR.to_string() } else { self.t.management().recipient(task)? };
+        self.notify_manager(&recipient, from, from_role, kind, text, task)
+    }
+
+    pub fn notify_manager(&self, recipient: &str, from: &str, from_role: &str, kind: &str, text: &str, task: Option<&str>) -> Result<()> {
         self.t.tx(|| {
             self.conn().execute(
-                "INSERT INTO mail(team, at, sender, sender_role, recipient, text, urgent, kind, task) VALUES (NULL, ?1, ?2, ?3, 'orchestrator', ?4, 0, ?5, ?6)",
-                params![now(), from, from_role, text, kind, task],
+                "INSERT INTO mail(team, at, sender, sender_role, recipient, text, urgent, kind, task) VALUES (NULL, ?1, ?2, ?3, ?7, ?4, 0, ?5, ?6)",
+                params![now(), from, from_role, text, kind, task, recipient],
             )?;
-            self.t.append_event(events::MAIL_SENT, task, from, from_role, json!({ "to": ORCHESTRATOR, "kind": kind }))?;
+            self.t.append_event(events::MAIL_SENT, task, from, from_role, json!({ "to": recipient, "kind": kind }))?;
             Ok(())
         })
     }
@@ -886,7 +897,7 @@ impl Bus<'_> {
     pub fn close_undeliverable(&self) -> Result<usize> {
         Ok(self.conn().execute(
             &format!(
-                "UPDATE mail SET delivered_at = ?1 WHERE delivered_at IS NULL AND recipient <> 'orchestrator' AND team IS NOT NULL
+                "UPDATE mail SET delivered_at = ?1 WHERE delivered_at IS NULL AND recipient <> 'orchestrator' AND recipient NOT LIKE 'task-manager:%' AND team IS NOT NULL
                  AND NOT EXISTS (SELECT 1 FROM members m JOIN teams t ON t.id = m.team
                                  WHERE m.team = mail.team AND m.name = mail.recipient AND {KEEPS_MAIL})"
             ),
@@ -908,6 +919,12 @@ impl Bus<'_> {
         }
         if !self.pending(None, ORCHESTRATOR)?.is_empty() {
             out.push(Mailbox { team: None, recipient: ORCHESTRATOR.into() });
+        }
+        for m in self.t.management().managers()?.into_iter().filter(|m| m.state != "completed") {
+            let recipient = crate::management::manager_name(&m.task);
+            if !self.pending(None, &recipient)?.is_empty() {
+                out.push(Mailbox { team: None, recipient });
+            }
         }
         Ok(out)
     }
@@ -1009,7 +1026,7 @@ impl Bus<'_> {
     /// Mailboxes holding an undelivered `interrupt` not yet handed to the session.
     pub fn interrupted_mailboxes(&self) -> Result<Vec<Mailbox>> {
         let mut stmt = self.conn().prepare(
-            "SELECT DISTINCT CASE WHEN recipient = 'orchestrator' THEN NULL ELSE team END, recipient FROM mail
+            "SELECT DISTINCT CASE WHEN recipient = 'orchestrator' OR recipient LIKE 'task-manager:%' THEN NULL ELSE team END, recipient FROM mail
              WHERE level = 'interrupt' AND delivered_at IS NULL AND lease IS NULL AND delivery IS NULL",
         )?;
         Ok(stmt.query_map([], |r| Ok(Mailbox { team: r.get(0)?, recipient: r.get(1)? }))?.collect::<rusqlite::Result<_>>()?)

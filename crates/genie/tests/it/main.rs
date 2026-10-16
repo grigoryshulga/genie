@@ -19,6 +19,7 @@ mod git_proxy;
 mod harness;
 mod ideas;
 mod llm_keys;
+mod management;
 mod mcp_gateway;
 mod mcp_server;
 mod model_prices;

@@ -32,6 +32,7 @@ use crate::config::Config;
 use crate::state::App;
 
 const BUILTIN_ROLES: &[(&str, &str)] = &[
+    ("project-manager", include_str!("../../../agents/project-manager.md")),
     ("orchestrator", include_str!("../../../agents/orchestrator.md")),
     ("analyst", include_str!("../../../agents/analyst.md")),
     ("executor", include_str!("../../../agents/executor.md")),
@@ -900,7 +901,7 @@ impl RoleResolver<'_> {
                     Role::Analyst
                 }
             },
-            (None, None) if id == ORCHESTRATOR && src.origin != Origin::Custom => Role::Orchestrator,
+            (None, None) if matches!(id, ORCHESTRATOR | "project-manager") && src.origin != Origin::Custom => Role::Orchestrator,
             (None, None) => match id.parse::<Role>() {
                 Ok(r) if MEMBER_ROLES.contains(&r) => r,
                 _ => {
@@ -1732,6 +1733,14 @@ fn resolve_roles(
                 roles.insert(id.clone(), RoleDef { stale: true, ..def });
             }
         }
+    }
+    // Existing installations configured the project orchestrator's model. The
+    // new project role inherits it until an administrator chooses its own.
+    let model = roles.get(ORCHESTRATOR).and_then(|r| r.model.clone());
+    if let Some(project_manager) = roles.get_mut("project-manager")
+        && project_manager.model.is_none()
+    {
+        project_manager.model = model;
     }
     // PD24: a role without a model cannot run — the administrator must assign one.
     for (id, def) in &roles {

@@ -31,7 +31,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
       { id: taskId, plan: planToApply(plan, off) },
       {
         onSuccess: (r) => {
-          toast(`${r.epic ? `Эпик ${r.id} и задачи ${r.created.join(", ")}` : [r.id, ...r.created].join(", ")} во входящих · оркестратор уведомлён`);
+          toast(`${r.epic ? `Эпик ${r.id} и задачи ${r.created.join(", ")}` : [r.id, ...r.created].join(", ")} во входящих · менеджер проекта уведомлён`);
           navigate(r.epic ? `/epic/${encodeURIComponent(r.id)}` : `/tasks?task=${encodeURIComponent(r.id)}`);
         },
         onError: (e) => toast(`Не заведено: ${e.message}`, "error"),
@@ -67,7 +67,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
           <div className="ip-note ok">
             <b>План заведён</b>
             <span>
-              {task.type === "epic" ? "Идея стала эпиком, задачи во входящих у оркестратора." : "Задачи во входящих у оркестратора."}{" "}
+              {task.type === "epic" ? "Идея стала эпиком, задачи во входящих у менеджера проекта." : "Задачи во входящих у менеджера проекта."}{" "}
               <Link to={task.type === "epic" ? `/epic/${encodeURIComponent(task.id)}` : `/tasks?task=${encodeURIComponent(task.id)}`}>Открыть {task.id}</Link>
             </span>
           </div>
@@ -170,7 +170,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
             {apply.isPending ? "Заводим…" : applyLabel(!!plan.epic, left)}
           </button>
           <span className="ac-help">
-            {plan.epic ? `${taskId} станет эпиком` : `${taskId} станет первой задачей`}, задачи попадут во входящие с зависимостями, оркестратор возьмёт их как обычно. Разговор закончится, исходная идея сохранится в заметках.
+            {plan.epic ? `${taskId} станет эпиком` : `${taskId} станет первой задачей`}, задачи попадут во входящие с зависимостями, менеджер проекта подготовит их к выполнению. Разговор закончится, исходная идея сохранится в заметках.
           </span>
         </div>
       )}

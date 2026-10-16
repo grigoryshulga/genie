@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Границы менеджеров проекта и задачи</title>
+<style>
+body{margin:0;color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5}
+main{padding:8px 0;max-width:100%}
+.person{text-align:center;font-weight:500}
+.arrow{text-align:center;color:var(--muted-foreground);padding:7px 0}
+.scope{color:var(--muted-foreground);font-size:12px;font-weight:400}
+.project{text-align:center;padding:12px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.title{font-weight:500;margin:0 0 5px}
+.detail{margin:0;color:var(--muted-foreground)}
+.branches{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.task{text-align:center;padding:12px 0}
+.team{padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.feedback{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);text-align:center}
+.note{margin-top:5px;color:var(--muted-foreground)}
+@media(max-width:460px){.branches{grid-template-columns:1fr;gap:8px}.task{padding:10px 0}.arrow{padding:4px 0}}
+</style>
+</head>
+<body>
+<main id="manager-flow" aria-label="Человек обсуждает работу с менеджером проекта. Каждую задачу ведёт отдельный менеджер. Вопросы и выводы возвращаются менеджеру проекта.">
+  <div class="person">Человек</div>
+  <div class="arrow">↕ цели, требования, решения</div>
+  <section class="project" aria-label="Область проекта">
+    <p class="title">Менеджер проекта <span class="scope">· весь проект</span></p>
+    <p class="detail">Общая память → постановка → очередь → выпуск задачи</p>
+    <p class="detail">Запускает сам в рамках автономности проекта</p>
+  </section>
+  <div class="arrow">↓ постановка и источники · ↑ уточнения и результаты</div>
+  <div class="branches">
+    <section class="task" aria-label="Первая задача">
+      <p class="title">Менеджер задачи A</p>
+      <div class="scope">От запуска до публикации ретро</div>
+      <div class="arrow">↕ делегирование и проверка</div>
+      <div class="team">Команда A<br><span class="scope">Роли и модели под задачу</span></div>
+      <div class="arrow">↓</div>
+      <div>Приёмка результата → ретро</div>
+    </section>
+    <section class="task" aria-label="Вторая задача">
+      <p class="title">Менеджер задачи B</p>
+      <div class="scope">От запуска до публикации ретро</div>
+      <div class="arrow">↕ делегирование и проверка</div>
+      <div class="team">Команда B<br><span class="scope">Роли и модели под задачу</span></div>
+      <div class="arrow">↓</div>
+      <div>Приёмка результата → ретро</div>
+    </section>
+  </div>
+  <div class="feedback">
+    <div>Уточнение: менеджер задачи → менеджер проекта → человек</div>
+    <div class="note">Есть действующая договорённость — менеджер проекта отвечает со ссылкой.</div>
+    <div class="note">Нет основания для ответа — запрашивает решение человека.</div>
+  </div>
+  <div class="feedback">
+    <div>Ретро → предложения улучшений → общие знания проекта</div>
+    <div class="note">Результат принимается отдельно. Ретро обязательно. Правки предлагаются к применению.</div>
+  </div>
+</main>
+</body>
+</html>

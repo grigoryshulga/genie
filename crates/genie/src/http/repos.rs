@@ -397,6 +397,7 @@ async fn set_task_repos(
 ) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    crate::management::authorize_task(&app, &access.project, &access.actor, &id)?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only people and the orchestrator name a task's repositories"));
     }

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { invalidateKeys, keys, keysFor, request, useInvalidating } from "@/shared/api";
-import type { CommentBody, CreateBody, DocsImpact, StatusBody, UpdateBody } from "@/shared/api";
+import type { CommentBody, CreateBody, DocsImpact, StatusBody, UpdateBody, TaskManagement, ManagerAction } from "@/shared/api";
 import type { Task, TaskSummary } from "./model.ts";
 
 /** Every task, closed ones included; views and the board filter on the client. */
@@ -15,6 +15,15 @@ export function useEpicMap(): Map<string, TaskSummary> {
 
 export const useTask = (id: string | undefined) =>
   useQuery({ queryKey: keys.task(id ?? ""), queryFn: () => request<Task>("GET", `/api/tasks/${encodeURIComponent(id!)}`), enabled: !!id });
+
+export const useTaskManagement = (id: string) =>
+  useQuery({ queryKey: [...keys.task(id), "management"], queryFn: () => request<TaskManagement>("GET", `/api/management/tasks/${encodeURIComponent(id)}`) });
+
+export const useManageTask = () => useInvalidating(
+  ({ task, action, ...body }: { task: string; action: "dispatch" | "retry" | "answer" | "escalate" } & Partial<ManagerAction>) =>
+    request<unknown>("POST", `/api/management/tasks/${encodeURIComponent(task)}/${action}`, body),
+  [["task"], ["tasks"], ["agents"]],
+);
 
 /**
  * Non-blocking docs-impact hint for a task; the caller gates `enabled` on the

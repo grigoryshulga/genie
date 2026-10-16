@@ -16,6 +16,7 @@ pub mod http;
 pub mod knowledge;
 pub mod llm_key;
 pub mod llm_oauth;
+pub mod management;
 pub mod mcp_gateway;
 pub mod model_prices;
 pub mod notify;

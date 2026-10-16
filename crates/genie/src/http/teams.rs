@@ -76,7 +76,11 @@ fn attach_template_state(app: &App, v: &mut Value) {
 }
 
 /// Agents may touch only their own team; the orchestrator and people any team.
-fn own_team(access: &Access, team: &str) -> ApiResult<()> {
+fn own_team(app: &App, access: &Access, team: &str) -> ApiResult<()> {
+    if genie_core::management::managed_task(&access.actor.name).is_some() {
+        let task = app.with_tracker(&access.project, |t| Ok(t.bus().get(team)?.task))?;
+        crate::management::authorize_task(app, &access.project, &access.actor, &task)?;
+    }
     match (&access.agent_team, access.agent) {
         (_, false) => Ok(()),
         (_, true) if access.actor.role == Role::Orchestrator => Ok(()),
@@ -148,6 +152,7 @@ struct SpawnBody {
 async fn spawn(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<SpawnBody>) -> ApiResult<impl IntoResponse> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    crate::management::authorize_task(&app, &access.project, &access.actor, &b.task)?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) assembles teams"));
     }
@@ -176,6 +181,7 @@ struct StopBody {
 async fn stop(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, body: Option<Json<StopBody>>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    own_team(&app, &access, &id)?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) stops teams"));
     }
@@ -236,7 +242,7 @@ struct MailBody {
 async fn send(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Json(b): Json<MailBody>) -> ApiResult<impl IntoResponse> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
-    own_team(&access, &id)?;
+    own_team(&app, &access, &id)?;
     access.can(if b.to == ORCHESTRATOR { Capability::MailOrchestrator } else { Capability::MailTeam })?;
     let (slug, from, role) = (access.project.clone(), access.actor.name.clone(), access.actor.role);
     let level = b.level.or_else(|| b.urgent.then(|| "high".to_string()));
@@ -252,7 +258,7 @@ async fn send(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Jso
                 }
                 t.bus().send(SendMail {
                     team: &id,
-                    from: if role == Role::Orchestrator { ORCHESTRATOR } else { &from },
+                    from: &from,
                     from_role: role.as_str(),
                     to: &b.to,
                     text: &b.text,
@@ -286,6 +292,7 @@ async fn add_member(
 ) -> ApiResult<impl IntoResponse> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    own_team(&app, &access, &id)?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) changes a team"));
     }
@@ -300,6 +307,7 @@ async fn add_member(
 async fn remove_member(State(app): State<Arc<App>>, ctx: Ctx, Path((id, member)): Path<(String, String)>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    own_team(&app, &access, &id)?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) changes a team"));
     }
@@ -334,6 +342,7 @@ async fn remove_member(State(app): State<Arc<App>>, ctx: Ctx, Path((id, member))
 async fn restart_member(State(app): State<Arc<App>>, ctx: Ctx, Path((id, member)): Path<(String, String)>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    own_team(&app, &access, &id)?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) restarts members"));
     }
@@ -364,6 +373,7 @@ async fn set_model(
 ) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    own_team(&app, &access, &id)?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) changes a member's model"));
     }
@@ -559,11 +569,15 @@ struct JobBody {
     workspace: Option<String>,
 }
 
-async fn create_job(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<JobBody>) -> ApiResult<impl IntoResponse> {
+async fn create_job(State(app): State<Arc<App>>, ctx: Ctx, Json(mut b): Json<JobBody>) -> ApiResult<impl IntoResponse> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) starts jobs"));
+    }
+    if let Some(home) = genie_core::management::managed_task(&access.actor.name) {
+        b.task = Some(b.task.unwrap_or_else(|| home.to_string()));
+        crate::management::authorize_task(&app, &access.project, &access.actor, b.task.as_deref().unwrap_or_default())?;
     }
     let slug = access.project.clone();
     let job = app

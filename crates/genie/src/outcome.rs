@@ -98,6 +98,28 @@ pub fn backoff(n: u32) -> Duration {
 
 /// Record how a run of `key` ended (blocking: it writes the board and the orchestrator's mail).
 pub fn record(app: &App, key: &AgentKey, task: Option<&str>, outcome: Outcome) -> Verdict {
+    let outcome = if matches!(outcome, Outcome::Ran)
+        && let AgentKey::TaskManager { project, task } = key
+    {
+        let unfinished = app
+            .with_tracker(project, |t| {
+                Ok(t.management().manager(task)?.is_some_and(|m| m.state == "retrospective" && m.report.is_none())
+                    && t.bus().pending(None, &key.label())?.is_empty())
+            })
+            .unwrap_or(false);
+        if unfinished {
+            let _ = runtime::note_to_self(
+                app,
+                key,
+                "Your run ended with the required retrospective still unpublished. Resume from durable state, read the sources and publish the report (or publish an explicitly incomplete report with source gaps).",
+            );
+            Outcome::Failed { error: "mandatory retrospective was not published", log: "" }
+        } else {
+            outcome
+        }
+    } else {
+        outcome
+    };
     let max = app.cfg.runtime.max_attempts.max(1);
     let failures = match outcome {
         Outcome::Ran | Outcome::Stopped => {
@@ -143,6 +165,18 @@ fn give_up(app: &App, key: &AgentKey, task: Option<&str>, error: &str, failures:
             eprintln!(
                 "genie runtime: {}: the orchestrator failed {failures} times in a row; retrying with backoff: {error}",
                 key.project()
+            );
+            return;
+        }
+        AgentKey::TaskManager { .. } => {
+            let _ = crate::management::project_note(
+                app,
+                key.project(),
+                &key.label(),
+                &format!(
+                    "Task manager failed {failures} consecutive runs ({error}); its state and mail are kept and retries continue with backoff.\n{tail}"
+                ),
+                task,
             );
             return;
         }

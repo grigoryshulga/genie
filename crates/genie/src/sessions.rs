@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use genie_core::db::now;
-use genie_core::team::{ORCHESTRATOR, QuietTeam};
+use genie_core::team::QuietTeam;
 use genie_core::work::Turn;
 use genie_core::{CheckState, RequestState, Role, Status};
 use serde::Serialize;
@@ -342,7 +342,7 @@ pub fn resume_after_restart(app: &App, turns: &[Turn]) {
     for t in turns.iter().filter(|t| t.job.is_none()) {
         let key = match (&t.member, &t.team) {
             (Some(member), Some(team)) => AgentKey::Member { project: t.project.clone(), team: team.clone(), member: member.clone() },
-            _ => AgentKey::Orchestrator { project: t.project.clone() },
+            _ => AgentKey::mailbox(&t.project, &t.agent),
         };
         // The board must not report an agent without a process as busy. `error` is kept: a member
         // that gave up stays given up until someone restarts it.
@@ -528,6 +528,18 @@ fn args_summary(args: &Value) -> String {
 async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
     let kind = e["type"].as_str().unwrap_or_default();
     s.with_live(|l| l.last_event = Instant::now());
+    // Full settled messages and tool results, independent of the bounded live
+    // preview and of the team's disposable workspace. Never archive token deltas.
+    if matches!(kind, "message_end" | "tool_execution_end" | "agent_end")
+        && let Some(task) = s.task.clone()
+    {
+        let (project, agent, event) = (s.key.project().to_string(), s.key.label(), e.clone());
+        if let Err(error) =
+            app.blocking(move |app| app.with_tracker(&project, |t| t.management().record_execution(&task, &agent, &event))).await
+        {
+            eprintln!("genie runtime: cannot archive execution event: {error}");
+        }
+    }
     match kind {
         "response" => {
             if let Some(id) = e["id"].as_str()
@@ -760,7 +772,7 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
 fn mailbox(k: &AgentKey) -> (Option<String>, String) {
     match k {
         AgentKey::Member { team, member, .. } => (Some(team.clone()), member.clone()),
-        _ => (None, ORCHESTRATOR.to_string()),
+        _ => (None, k.label()),
     }
 }
 
@@ -805,7 +817,7 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
         for b in interrupted {
             let key = match b.team {
                 Some(team) => AgentKey::Member { project: p.slug.clone(), team, member: b.recipient },
-                None => AgentKey::Orchestrator { project: p.slug.clone() },
+                None => AgentKey::mailbox(&p.slug, &b.recipient),
             };
             if let Some(s) = app.sessions.get(&key)
                 && s.is("working")
@@ -912,6 +924,9 @@ fn report_if_silent(app: &App, slug: &str, q: &QuietTeam) -> AppResult<bool> {
     // owner has to decide on is a wait, not silence.
     let Ok(task) = app.with_tracker(slug, |t| t.get(&q.task)) else { return Ok(false) };
     if task.status != Status::InProgress || task.blocked.is_some() || task.needs_owner.is_some() {
+        return Ok(false);
+    }
+    if app.with_tracker(slug, |t| t.management().has_blocking_questions(&q.task))? {
         return Ok(false);
     }
     // Questionnaire, agent job or delivery: someone or something is expected to answer.

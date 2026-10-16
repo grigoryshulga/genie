@@ -32,6 +32,7 @@ export default defineConfig({
       { text: 'Work with Genie', items: [
         { text: 'Tasks and epics', link: '/guide/tasks' },
         { text: 'Roles and teams', link: '/platform/agent-roles-and-teams' },
+          { text: 'Project and task managers', link: '/platform/project-and-task-managers' },
         { text: 'Repositories and delivery', link: '/platform/git-repositories' },
         { text: 'Knowledge vault', link: '/platform/knowledge-vault' },
         { text: 'Automations', link: '/platform/automations' },

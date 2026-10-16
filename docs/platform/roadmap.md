@@ -7,6 +7,8 @@ status: current
 
 # Roadmap
 
+The [project and task manager lifecycle](project-and-task-managers.md) supersedes the earlier proposal for epic orchestrators: execution now belongs to one manager per task, with shared project context and a separate mandatory retrospective.
+
 The 1.0 goal is a team using Genie every day without routinely repairing it. Reliability and useful results take priority over feature breadth. There is no committed release date.
 
 ## Available
@@ -25,8 +27,8 @@ See [release notes](../changelog.md) for changes by version.
 | Priority | Work | Evidence needed |
 | --- | --- | --- |
 | Pilot reliability | Run a short pilot on another real project; resolve runtime and environment failures. | Accepted work, recovery results, cost, and owner effort. |
-| Project manager and memory | Persistent project-level planning and a conversation for ongoing work. | Pilot examples where one project orchestrator loses context or planning intent. |
-| Epic orchestration | Dedicated epic coordination and explicit release of work into execution. | Task ordering and concurrent-epic needs from the pilot. |
+| Manager pilot | Validate shared memory, task dispatch, clarifications, and separate retrospectives on real work. | Source coverage, recovery results, and owner effort. |
+| Project planning | Extend task-manager coordination across epics and queue ordering. | Task ordering and concurrent-epic needs from the pilot. |
 | Routines | Reusable monitoring, cleanup, and digest workflows. | Concrete recurring jobs and their inputs. |
 | Richer workspaces and knowledge | Reproducible tools, optional containers, documentation impact, and richer attachments. | Project environment requirements and navigation failures. |
 

@@ -6,6 +6,8 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 
 ### Added
 
+- Project-level intake and shared memory, separate task managers, versioned briefs, source-backed clarifications, and mandatory retrospectives after result acceptance. Includes CLI/MCP operations, task UI, durable session evidence, and additive tracker schema 6.
+
 - Shared provider keys managed by server administrators. Personal keys override shared defaults; agents can use a shared key when their user has none.
 - Separate Settings mode with personal, project, and server scopes.
 - MCP administration for connections, encrypted secrets, hidden tools, and usage statistics, separate from the client tool catalog.
