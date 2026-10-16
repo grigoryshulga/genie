@@ -8,26 +8,22 @@ import { useState } from "react";
 import { useSharedLlmKeys, type LlmProvider } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { useRefreshingAct as useAct } from "@/shared/ui";
+import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
+import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
 import "@/shared/ui/settings.css";
 
 export function ProvidersAdminSection() {
   const { data } = useSharedLlmKeys();
   const act = useAct();
   const [values, setValues] = useState<Record<string, string>>({});
-  const [adding, setAdding] = useState("");
-  const providers = data?.providers ?? [];
+  const [connecting, setConnecting] = useState(false);
+  const providers = (data?.providers ?? []).filter((p) => p.apiKey);
   const keys = data?.keys ?? {};
-  const strict = providers.find((p) => p.strict);
-  const rest = providers.filter((p) => !p.strict);
-  const shown = rest.filter((p) => keys[p.id] || p.id === adding);
-  const unset = rest.filter((p) => !keys[p.id]);
-
+  const shown = providers.filter((p) => keys[p.id]);
   const save = (p: LlmProvider, key: string) =>
     act(async () => {
       await request("PUT", `/api/llm-keys/${p.id}`, { key });
       setValues((v) => ({ ...v, [p.id]: "" }));
-      setAdding("");
     }, `Ключ ${p.title} сохранён`);
 
   const card = (p: LlmProvider) => {
@@ -95,11 +91,6 @@ export function ProvidersAdminSection() {
           </div>
         </div>
         <div className="st-foot">
-          {!key && p.id === adding && (
-            <button type="button" className="btn ghost" onClick={() => setAdding("")}>
-              Отмена
-            </button>
-          )}
           <span className="grow" />
           <button className="btn primary" disabled={!value.trim()}>
             {key ? `Заменить ключ ${p.title}` : `Сохранить ключ ${p.title}`}
@@ -112,32 +103,16 @@ export function ProvidersAdminSection() {
   return (
     <div className="st-body">
       <div className="st-head">
-        <h2>Провайдеры и ключи сервера</h2>
+        <div className="provider-headline">
+          <h2>Провайдеры и ключи сервера</h2>
+          {providers.length > 0 && <button type="button" className="btn provider-add" aria-label="Добавить провайдера" title="Добавить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
+        </div>
         <p>
-          Общие ключи для всех пользователей. Личный ключ имеет приоритет. Значения хранятся зашифрованными.
+          Общие API-ключи для всех пользователей. Личный ключ имеет приоритет. Значения хранятся зашифрованными.
         </p>
       </div>
-      {strict && card(strict)}
       {shown.map(card)}
-      {unset.length > 0 && (
-        <div className="st-card">
-          <div className="st-row">
-            <label className="lbl" htmlFor="sv-add-provider">
-              <b>Другой провайдер</b>
-            </label>
-            <div className="ctl">
-              <select id="sv-add-provider" className="st-input" value={adding} onChange={(e) => setAdding(e.target.value)}>
-                <option value="">— выбрать провайдера —</option>
-                {unset.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
+      {connecting && <ProviderConnectDialog providers={providers} scope="server" onClose={() => setConnecting(false)} />}
     </div>
   );
 }

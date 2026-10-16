@@ -32,6 +32,7 @@ use genie_core::secrets::LITELLM;
 use genie_core::team::{Mail, ORCHESTRATOR};
 use genie_core::{Actor, Role};
 use serde::Serialize;
+use std::sync::Mutex;
 
 use crate::agent_config::TeamSpec;
 use crate::notify::{self, Message};
@@ -39,6 +40,8 @@ use crate::state::App;
 
 /// The variable the `litellm` provider of pi reads its key from (`models.json`: `"apiKey": "$LITELLM_API_KEY"`).
 pub const KEY_VAR: &str = "LITELLM_API_KEY";
+
+static USER_PI_PROFILE_LOCK: Mutex<()> = Mutex::new(());
 
 /// A provider whose API key a person may keep in their profile: the variable
 /// pi's provider reads it from.
@@ -50,47 +53,56 @@ pub struct Provider {
     pub title: &'static str,
     /// The environment variable pi's provider takes its key from.
     pub key_var: &'static str,
+    /// Whether a key can be entered for this provider.
+    pub api_key: bool,
+    /// Whether pi supports OAuth login for this provider.
+    pub oauth: bool,
     /// The key is owed: an agent on this provider does not start without it.
     pub strict: bool,
 }
 
 const fn pi(id: &'static str, title: &'static str, key_var: &'static str) -> Provider {
-    Provider { id, title, key_var, strict: false }
+    Provider { id, title, key_var, api_key: true, oauth: false, strict: false }
 }
 
-/// The providers people can bring a key for: this deployment's `litellm` proxy,
-/// then the providers pi supports natively with a single API-key variable (pi's
-/// provider registry, `docs/providers.md` of pi). Providers that need more than
-/// a key (Bedrock, Vertex, Azure, Cloudflare) or only log in interactively
-/// (`openai-codex`) stay with the server's own pi configuration, as do the
-/// custom providers of the server user's `models.json`.
+const fn pi_oauth(id: &'static str, title: &'static str, key_var: &'static str) -> Provider {
+    Provider { id, title, key_var, api_key: true, oauth: true, strict: false }
+}
+
+const fn oauth_only(id: &'static str, title: &'static str) -> Provider {
+    Provider { id, title, key_var: "", api_key: false, oauth: true, strict: false }
+}
+
+/// Providers available to personal and shared-key settings. OAuth is exposed
+/// for the Pi providers whose registry supports it; providers with more complex
+/// configuration (Bedrock, Vertex, Azure, Cloudflare) remain server-managed.
 pub const PROVIDERS: &[Provider] = &[
-    Provider { id: "litellm", title: "LiteLLM", key_var: KEY_VAR, strict: true },
-    pi("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
+    Provider { id: "litellm", title: "LiteLLM", key_var: KEY_VAR, api_key: true, oauth: false, strict: true },
+    pi_oauth("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
     pi("ant-ling", "Ant Ling", "ANT_LING_API_KEY"),
-    pi("openai", "OpenAI", "OPENAI_API_KEY"),
+    pi_oauth("openai", "OpenAI", "OPENAI_API_KEY"),
     pi("deepseek", "DeepSeek", "DEEPSEEK_API_KEY"),
     pi("nvidia", "NVIDIA NIM", "NVIDIA_API_KEY"),
     pi("google", "Google Gemini", "GEMINI_API_KEY"),
-    pi("github-copilot", "GitHub Copilot", "COPILOT_GITHUB_TOKEN"),
+    pi_oauth("github-copilot", "GitHub Copilot", "COPILOT_GITHUB_TOKEN"),
     pi("mistral", "Mistral", "MISTRAL_API_KEY"),
     pi("groq", "Groq", "GROQ_API_KEY"),
     pi("cerebras", "Cerebras", "CEREBRAS_API_KEY"),
-    pi("xai", "xAI", "XAI_API_KEY"),
-    pi("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
+    pi_oauth("xai", "xAI", "XAI_API_KEY"),
+    pi_oauth("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
     pi("vercel-ai-gateway", "Vercel AI Gateway", "AI_GATEWAY_API_KEY"),
     pi("zai", "ZAI Coding Plan", "ZAI_API_KEY"),
     pi("zai-coding-cn", "ZAI Coding Plan (China)", "ZAI_CODING_CN_API_KEY"),
     pi("opencode", "OpenCode Zen", "OPENCODE_API_KEY"),
     pi("opencode-go", "OpenCode Zen Go", "OPENCODE_API_KEY"),
-    pi("radius", "Radius", "RADIUS_API_KEY"),
+    pi_oauth("radius", "Radius", "RADIUS_API_KEY"),
     pi("typesafe", "TypeSafe", "TYPESAFE_API_KEY"),
     pi("huggingface", "Hugging Face", "HF_TOKEN"),
     pi("fireworks", "Fireworks", "FIREWORKS_API_KEY"),
     pi("together", "Together AI", "TOGETHER_API_KEY"),
     pi("baseten", "Baseten", "BASETEN_API_KEY"),
-    pi("kimi-coding", "Kimi For Coding", "KIMI_API_KEY"),
-    pi("meta", "Meta", "META_API_KEY"),
+    pi_oauth("kimi-coding", "Kimi For Coding", "KIMI_API_KEY"),
+    pi_oauth("meta", "Meta", "META_API_KEY"),
     pi("minimax", "MiniMax", "MINIMAX_API_KEY"),
     pi("minimax-cn", "MiniMax (China)", "MINIMAX_CN_API_KEY"),
     pi("moonshotai", "Moonshot AI", "MOONSHOT_API_KEY"),
@@ -102,7 +114,13 @@ pub const PROVIDERS: &[Provider] = &[
     pi("xiaomi-token-plan-ams", "Xiaomi MiMo Token Plan (Amsterdam)", "XIAOMI_TOKEN_PLAN_AMS_API_KEY"),
     pi("xiaomi-token-plan-cn", "Xiaomi MiMo Token Plan (China)", "XIAOMI_TOKEN_PLAN_CN_API_KEY"),
     pi("xiaomi-token-plan-sgp", "Xiaomi MiMo Token Plan (Singapore)", "XIAOMI_TOKEN_PLAN_SGP_API_KEY"),
+    oauth_only("openai-codex", "OpenAI Codex"),
 ];
+
+/// Secret name used to keep Pi OAuth credentials encrypted in the user's profile.
+pub fn oauth_secret(id: &str) -> String {
+    format!("pi-oauth:{id}")
+}
 
 /// A provider by its id (the `provider/` prefix of its models).
 pub fn provider(id: &str) -> Option<&'static Provider> {
@@ -120,7 +138,7 @@ fn of_model(model: Option<&str>) -> Option<&'static Provider> {
 /// with a key variable: `litellm` is handled by its own rule, a provider the
 /// server configured in `models.json` has no variable of its own.
 fn native(model: Option<&str>) -> Option<&'static Provider> {
-    of_model(model).filter(|p| !p.strict)
+    of_model(model).filter(|p| !p.strict && p.api_key)
 }
 
 /// Does an agent on `model` need a key it cannot start without — the strict
@@ -136,17 +154,20 @@ pub enum Keys {
     Server,
     /// A person's agent: the variables their keys set, and those through which
     /// the server's own keys must not reach it.
-    Person { set: Vec<(&'static str, String)>, clear: Vec<&'static str> },
+    Person { set: Vec<(&'static str, String)>, clear: Vec<&'static str>, pi_dir: Option<std::path::PathBuf> },
 }
 
 impl Keys {
     pub fn apply(&self, cmd: &mut tokio::process::Command) {
-        if let Keys::Person { set, clear } = self {
+        if let Keys::Person { set, clear, pi_dir } = self {
             for (var, value) in set {
                 cmd.env(var, value);
             }
             for var in clear {
                 cmd.env_remove(var);
+            }
+            if let Some(dir) = pi_dir {
+                cmd.env("PI_CODING_AGENT_DIR", dir);
             }
         }
     }
@@ -196,8 +217,144 @@ pub fn resolve(app: &App, project: &str, who: &str, initiator: Option<&str>, mod
             (None, None) => format!("{who} runs on {model}, but nobody it works for is known to take its LiteLLM key from"),
         });
     }
-    Ok(Keys::Person { set, clear })
+    let pi_dir = match &user {
+        Some(user) => user_pi_dir(app, user.id)?,
+        None => None,
+    };
+    Ok(Keys::Person { set, clear, pi_dir })
 }
+
+/// Materialize OAuth credentials for this user into a private Pi profile. Pi
+/// reads OAuth from auth.json; the database remains the encrypted source of truth.
+fn user_pi_dir(app: &App, user: i64) -> Result<Option<std::path::PathBuf>, String> {
+    sync_user_pi_profile(app, user)?;
+    let personal = user_oauth(app, user)?;
+    if personal.is_empty() {
+        remove_user_pi_profile(app, user)?;
+        return Ok(None);
+    }
+
+    let dir = app.data.join("runtime").join("pi-users").join(user.to_string());
+    let auth_path = dir.join("auth.json");
+    let valid_profile = std::fs::read(&auth_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .is_some_and(|value| value.is_object());
+    if !valid_profile {
+        write_user_pi_profile(app, user)?;
+    }
+    restrict_dir(&dir);
+    restrict_file(&auth_path);
+    Ok(Some(dir))
+}
+
+/// Keep Pi's refreshed OAuth token in the encrypted secret store. Pi updates
+/// auth.json while using OAuth; retain the private profile across server restarts
+/// so its rotated refresh token can be picked up before another agent starts.
+pub fn sync_user_pi_profile(app: &App, user: i64) -> Result<(), String> {
+    let _guard = USER_PI_PROFILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = app.data.join("runtime").join("pi-users").join(user.to_string()).join("auth.json");
+    let Some(profile) = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|value| value.as_object().cloned())
+    else {
+        return Ok(());
+    };
+    app.with_server(|db| {
+        for provider in PROVIDERS.iter().filter(|provider| provider.oauth) {
+            let Some(on_disk) = profile.get(provider.id).filter(|value| value["type"] == "oauth") else { continue };
+            let name = oauth_secret(provider.id);
+            let Some(stored) = db.user_secret(user, &name)? else { continue };
+            let Ok(stored) = serde_json::from_str::<serde_json::Value>(&stored) else { continue };
+            let (Some(disk_expiry), Some(stored_expiry)) = (on_disk["expires"].as_f64(), stored["expires"].as_f64()) else {
+                continue;
+            };
+            if disk_expiry >= stored_expiry && on_disk != &stored {
+                let updated = serde_json::to_string(on_disk).map_err(|e| genie_core::GenieError::invalid(e.to_string()))?;
+                db.set_user_secret(user, &name, &updated)?;
+            }
+        }
+        Ok::<_, genie_core::GenieError>(())
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// Rebuild the private Pi profile from the encrypted user credentials.
+pub fn write_user_pi_profile(app: &App, user: i64) -> Result<(), String> {
+    let _guard = USER_PI_PROFILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let personal = user_oauth(app, user)?;
+    if personal.is_empty() {
+        return remove_user_pi_profile(app, user);
+    }
+
+    let base = crate::runtime::pi_dir(app);
+    let dir = app.data.join("runtime").join("pi-users").join(user.to_string());
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create the user's pi profile: {e}"))?;
+    restrict_dir(&dir);
+    let name = "models.json";
+    let src = base.join(name);
+    if src.is_file() {
+        std::fs::copy(src, dir.join(name)).map_err(|e| format!("cannot copy pi {name}: {e}"))?;
+    }
+    let mut auth = std::fs::read(base.join("auth.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    auth.extend(personal);
+    let path = dir.join("auth.json");
+    let bytes = serde_json::to_vec(&auth).map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| format!("cannot write the user's pi auth file: {e}"))?;
+    restrict_file(&path);
+    Ok(())
+}
+
+fn user_oauth(app: &App, user: i64) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    app.with_server(|db| {
+        let mut auth = serde_json::Map::new();
+        for provider in PROVIDERS.iter().filter(|provider| provider.oauth) {
+            if let Some(raw) = db.user_secret(user, &oauth_secret(provider.id))?
+                && let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw)
+            {
+                auth.insert(provider.id.into(), value);
+            }
+        }
+        Ok::<_, genie_core::GenieError>(auth)
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// Refresh or remove the local runtime profile after OAuth credentials change.
+pub fn refresh_user_pi_profile(app: &App, user: i64) -> Result<(), String> {
+    sync_user_pi_profile(app, user)?;
+    write_user_pi_profile(app, user)
+}
+
+fn remove_user_pi_profile(app: &App, user: i64) -> Result<(), String> {
+    let dir = app.data.join("runtime").join("pi-users").join(user.to_string());
+    std::fs::remove_dir_all(dir)
+        .or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) })
+        .map_err(|e| format!("cannot remove the user's pi profile: {e}"))
+}
+
+#[cfg(unix)]
+fn restrict_dir(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+}
+
+#[cfg(not(unix))]
+fn restrict_dir(_path: &std::path::Path) {}
+
+#[cfg(unix)]
+fn restrict_file(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+}
+
+#[cfg(not(unix))]
+fn restrict_file(_path: &std::path::Path) {}
 
 /// Tell a person (once a day per project) that their agents wait for their key.
 fn tell_missing(app: &App, project: &str, user: i64, login: &str, who: &str, model: &str) {
@@ -294,7 +451,10 @@ mod tests {
         assert!(provider("litellm").unwrap().strict);
         assert_eq!(provider("anthropic").unwrap().key_var, "ANTHROPIC_API_KEY");
         assert_eq!(provider("zai-coding-cn").unwrap().key_var, "ZAI_CODING_CN_API_KEY");
-        assert!(provider("openai-codex").is_none(), "an OAuth-only provider holds no key");
+        let codex = provider("openai-codex").unwrap();
+        assert!(!codex.api_key, "an OAuth-only provider holds no key");
+        assert!(codex.oauth);
+        assert!(native(Some("openai-codex/gpt-6")).is_none());
         assert_eq!(provider("moonshotai").unwrap().key_var, provider("moonshotai-cn").unwrap().key_var);
     }
 

@@ -13,6 +13,7 @@ import { timeAgo } from "@/shared/lib";
 import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
 import { PersonalTelegram } from "./TelegramSettings.tsx";
 import { TokensTab } from "./TokensTab.tsx";
+import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
 import "@/shared/ui/settings.css";
 
 const SECTIONS = [
@@ -293,44 +294,34 @@ function KeysTab() {
   const { data } = useLlmKeys();
   const act = useAct();
   const [values, setValues] = useState<Record<string, string>>({});
-  const [adding, setAdding] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const providers = data?.providers ?? [];
   const keys = data?.keys ?? {};
   const shared = data?.global ?? {};
-  const strict = providers.find((p) => p.strict);
-  const rest = providers.filter((p) => !p.strict);
-  const shown = rest.filter((p) => keys[p.id] || shared[p.id] || p.id === adding);
-  const unset = rest.filter((p) => !keys[p.id] && !shared[p.id]);
-
+  const oauth = data?.oauth ?? {};
+  const shown = providers.filter((p) => keys[p.id] || shared[p.id] || oauth[p.id]);
   const save = (p: LlmProvider, key: string) =>
     act(async () => {
       await request("PUT", `/api/me/llm-keys/${p.id}`, { key });
       setValues((v) => ({ ...v, [p.id]: "" }));
-      setAdding("");
     }, `Ключ ${p.title} сохранён`);
 
   const card = (p: LlmProvider) => {
     const key = keys[p.id];
     const server = shared[p.id];
+    const login = oauth[p.id];
     const value = values[p.id] ?? "";
     return (
-      <form
-        className="st-card"
-        key={p.id}
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save(p, value);
-        }}
-      >
+      <div className="st-card" key={p.id}>
         <div className="st-row">
           <div className="lbl">
             <b>{p.title}</b>
             <span>
               {p.strict
                 ? "Прокси этого сервера. Агенты на моделях litellm/… без него не запускаются; ждущие агенты стартуют сразу после сохранения."
-                : `Провайдер pi: агент на модели этого провайдера (${p.id}/…) получает ключ в переменной ${p.keyVar} — поверх серверного.${
+                : p.apiKey ? `Провайдер pi: агент на модели ${p.id}/… получает личный ключ поверх ключа сервера.${
                     server ? " Без вашего ключа он работает на ключе сервера." : " Без вашего ключа он работает на серверном."
-                  }`}
+                  }` : `Вход pi по OAuth для моделей ${p.id}/….`}
             </span>
           </div>
         </div>
@@ -377,73 +368,59 @@ function KeysTab() {
             </div>
           </div>
         ) : null}
-        <div className="st-row">
-          <label className="lbl" htmlFor={`pf-key-${p.id}`}>
-            <b>{key ? "Новый ключ" : server ? "Свой ключ (необязательный)" : "Ключ"}</b>
-            <span>Агенты на моделях {p.id}/…, которые работают от вашего имени, ходят к провайдеру с ним.</span>
-          </label>
-          <div className="ctl">
-            <input
-              id={`pf-key-${p.id}`}
-              type="password"
-              className="st-input"
-              autoComplete="off"
-              placeholder="sk-…"
-              value={value}
-              onChange={(e) => setValues((v) => ({ ...v, [p.id]: e.target.value }))}
-              required
-            />
+        {login && (
+          <div className="st-row">
+            <div className="lbl">
+              <b>OAuth</b>
+              <span>{login.unreadable ? "Учётные данные сохранены, но их нельзя расшифровать. Подключите провайдера заново." : `Вход подключён ${timeAgo(login.updated)}.`}</span>
+            </div>
+            <div className="ctl" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
+              <button type="button" className="btn ghost" onClick={() => void act(() => request("DELETE", `/api/me/llm-oauth/provider/${p.id}`), `OAuth ${p.title} отключён`)}>Отключить OAuth</button>
+            </div>
           </div>
-        </div>
-        <div className="st-foot">
-          {!key && p.id === adding && (
-            <button type="button" className="btn ghost" onClick={() => setAdding("")}>
-              Отмена
-            </button>
-          )}
-          <span className="grow" />
-          <button className="btn primary" disabled={!value.trim()}>
-            {key ? `Заменить ключ ${p.title}` : server ? `Свой ключ вместо ключа сервера` : `Сохранить ключ ${p.title}`}
-          </button>
-        </div>
-      </form>
+        )}
+        {p.apiKey && (
+          <form onSubmit={(e) => { e.preventDefault(); void save(p, value); }}>
+            <div className="st-row">
+              <label className="lbl" htmlFor={`pf-key-${p.id}`}>
+                <b>{key ? "Новый ключ" : server ? "Свой ключ (необязательный)" : "Личный ключ"}</b>
+                <span>Агенты на моделях {p.id}/…, которые работают от вашего имени, ходят к провайдеру с ним.</span>
+              </label>
+              <div className="ctl">
+                <input
+                  id={`pf-key-${p.id}`}
+                  type="password"
+                  className="st-input"
+                  autoComplete="off"
+                  placeholder="Вставьте ключ API"
+                  value={value}
+                  onChange={(e) => setValues((v) => ({ ...v, [p.id]: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="st-foot">
+              <span className="grow" />
+              <button className="btn primary" disabled={!value.trim()}>
+                {key ? `Заменить ключ ${p.title}` : server ? "Сохранить личный ключ" : `Сохранить ключ ${p.title}`}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     );
   };
 
   return (
     <div className="st-body">
       <div className="st-head">
-        <h2>Провайдеры и ключи</h2>
-        <p>
-          Личные ключи имеют приоритет над ключами сервера.
-        </p>
-      </div>
-      {strict && card(strict)}
-      {shown.map(card)}
-      {unset.length > 0 && (
-        <div className="st-card">
-          <div className="st-row">
-            <label className="lbl" htmlFor="pf-add-provider">
-              <b>Другой провайдер</b>
-            </label>
-            <div className="ctl">
-              <select
-                id="pf-add-provider"
-                className="st-input"
-                value={adding}
-                onChange={(e) => setAdding(e.target.value)}
-              >
-                <option value="">— выбрать провайдера —</option>
-                {unset.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+        <div className="provider-headline">
+          <h2>Провайдеры и ключи</h2>
+          {providers.length > 0 && <button type="button" className="btn provider-add" aria-label="Подключить провайдера" title="Подключить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
         </div>
-      )}
+        <p>Подключите провайдера через OAuth или сохраните API-ключ. Личные ключи имеют приоритет над ключами сервера.</p>
+      </div>
+      {shown.map(card)}
+      {connecting && <ProviderConnectDialog providers={providers} scope="personal" onClose={() => setConnecting(false)} />}
     </div>
   );
 }

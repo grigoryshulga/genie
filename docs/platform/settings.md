@@ -44,9 +44,9 @@ Disabling an account prevents login and invalidates its sessions and tokens. Ren
 
 ## Provider keys
 
-Personal provider keys override server-wide defaults. Administrators set shared keys in **Management → Providers**; users can see that a shared key exists without seeing its value. Keys stored in the database are encrypted using `<data>/secrets.key`.
+Use the **+** button in **Personal → Providers and keys** to connect a provider with OAuth or an API key. OAuth is offered for providers supported by pi; LiteLLM is available in the same provider list. Administrators can add shared API keys in **Management → Providers**; users can see that a shared key exists without seeing its value. Credentials stored in the database are encrypted using `<data>/secrets.key`; Pi's private per-user runtime profile is kept with owner-only permissions so refreshed OAuth tokens survive restarts.
 
-Agents use the credentials resolved for the person they work for. A shared LiteLLM key can serve people who have no personal key. Role model selection is separate: each runnable role must name a model in its [role configuration](agent-roles-and-teams.md).
+The model selector loads the catalogue using the signed-in user's provider credentials. Agents use the credentials resolved for the person they work for. A shared LiteLLM key can serve people who have no personal key. Role model selection is separate: each runnable role must name a model in its [role configuration](agent-roles-and-teams.md).
 
 ## Network settings
 
