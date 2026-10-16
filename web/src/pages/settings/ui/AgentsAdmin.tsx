@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { Icon } from "@/shared/ui";
-import { CreateDialog, History, Problems, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
+import { CreateDialog, History, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
 
 const SECTIONS = ["roles", "templates", "skills", "history"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -28,7 +28,6 @@ export function AgentsAdminPage() {
   }, [linked, section, selected, navigate]);
   const select = (id: string) => setSp({ id });
   const c = cfg.data;
-  const errors = c?.problems.filter((p) => p.level === "error") ?? [];
   return (
     <main className="main agents">
       <header className="topbar">
@@ -41,7 +40,6 @@ export function AgentsAdminPage() {
           ))}
         </div>
         <span className="grow" />
-        <span className="sub d-only">конфигурация сервера · каталог для всех — в рабочей части</span>
         {NEW[section as Section] && c && (
           <button type="button" className="btn primary" onClick={() => setCreating(section as CreateKind)}>
             <Icon.plus size={13} />
@@ -53,12 +51,6 @@ export function AgentsAdminPage() {
           <span className="d-only">Каталог</span>
         </Link>
       </header>
-      {c?.admin && errors.length > 0 && (
-        <div className="ag-banner">
-          <Problems items={errors} />
-          <span className="muted">Сломанные файлы не останавливают работу: действует их последняя рабочая версия.</span>
-        </div>
-      )}
       {!c ? (
         <div className="pane-empty">{cfg.error ? cfg.error.message : "Загрузка…"}</div>
       ) : section === "roles" ? (

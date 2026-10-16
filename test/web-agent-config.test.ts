@@ -6,6 +6,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   allowDeny,
+  mcpGrants,
+  roleMcpAccess,
+  sectionProblems,
+  type Problem,
   basePermissions,
   globMatch,
   layoutTeam,
@@ -195,4 +199,31 @@ test("a running team shows who works and who waits for whose handoff", () => {
   assert.deepEqual(inReview.done, ["executor->reviewer", "executor->tester"], "the handoff on review has happened");
   assert.equal(liveTeam(spec, members, "review", false).live.executor.state, "stopped");
   assert.ok(reached("approved", "review") && !reached("changes_requested", "review") && reached("changes_requested", "in_progress"));
+});
+
+test("configuration failures stay in their own section even when an item could not load", () => {
+  const problems: Problem[] = ["role:broken", "team:missing", "skill", "skill:bad", "mcp.json", "mcp:offline"].map((item) => ({ item, level: "error", message: "Invalid configuration" }));
+  assert.deepEqual(sectionProblems(problems, "roles").map((p) => p.item), ["role:broken"]);
+  assert.deepEqual(sectionProblems(problems, "templates").map((p) => p.item), ["team:missing"]);
+  assert.deepEqual(sectionProblems(problems, "skills").map((p) => p.item), ["skill", "skill:bad"]);
+  assert.deepEqual(sectionProblems(problems, "mcp").map((p) => p.item), ["mcp.json", "mcp:offline"]);
+});
+
+test("MCP edits preserve unavailable grants and explicitly revoke inherited connections", () => {
+  const servers = [{ id: "github" }, { id: "search" }];
+  const access = ["github:get_*", "offline:read"];
+  const grants = mcpGrants(access, servers);
+  assert.equal(grants.github.mode, "tools");
+  assert.deepEqual(grants.github.tools, ["get_*"]);
+  assert.equal(grants.search.mode, "none");
+  grants.github = { mode: "none", tools: [] };
+  grants.search = { mode: "all", tools: [] };
+  assert.deepEqual(roleMcpAccess(access, servers, grants), ["offline:read", "search"]);
+  const wildcard = mcpGrants(["*"], servers);
+  assert.equal(wildcard.github.mode, "all");
+  assert.equal(wildcard.search.mode, "all");
+  wildcard.github.mode = "none";
+  wildcard.search.mode = "none";
+  assert.deepEqual(roleMcpAccess(["*"], servers, wildcard), []);
+  assert.match(setFrontmatterKey("---\nmcp: [github]\n---\n", "mcp", []), /mcp: \[\]/);
 });

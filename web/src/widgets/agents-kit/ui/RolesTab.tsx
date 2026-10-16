@@ -6,14 +6,11 @@
 import { Fragment, type ReactNode, useState } from "react";
 import { Link } from "react-router";
 import {
-  allowDeny,
-  basePermissions,
+  sectionProblems,
   type Catalogue,
   CLASS_TITLE,
   FILES_TITLE,
-  FIXED_PERMISSIONS,
   ORIGIN_TITLE,
-  PERMISSION_GROUPS,
   type RoleDef,
   type RoleDetail,
   STAGE_TITLE,
@@ -24,11 +21,9 @@ import { Badge, ConfirmDialog, Icon, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
-import { useRoleEdit } from "./EditDialog.tsx";
-import { McpDialog } from "./McpDialog.tsx";
+import { PermissionFields, PermissionReference } from "./PermissionFields.tsx";
 import { PromptEditor, PromptView } from "./PromptDialog.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
-import { SkillsDialog } from "./SkillsDialog.tsx";
 
 export function RolesTab({
   cfg,
@@ -45,10 +40,11 @@ export function RolesTab({
   /** Where this tab lives: cross-links to the other tabs stay inside the same mode. */
   base?: string;
 }) {
+  const [search, setSearch] = useState("");
+  const matches = (r: RoleDef) => `${r.title} ${r.id} ${r.description}`.toLocaleLowerCase().includes(search.toLocaleLowerCase());
   const team = cfg.roles.filter((r) => r.class !== "orchestrator");
   const orch = cfg.roles.filter((r) => r.class === "orchestrator");
-  const current = selected ?? team[0]?.id;
-  const titleOf = (id: string) => cfg.roles.find((x) => x.id === id)?.title ?? id;
+  const current = selected ?? team[0]?.id ?? orch[0]?.id;
   const pick = (r: RoleDef) => (
     <button type="button" key={r.id} className={`pick${r.id === current ? " on" : ""}`} onClick={() => onSelect(r.id)} aria-current={r.id === current}>
       <span className="t">
@@ -56,20 +52,19 @@ export function RolesTab({
           {r.title.slice(0, 1).toUpperCase()}
         </span>
         <span>{r.title}</span>
-        {r.origin !== "builtin" && <Badge tone={r.origin === "custom" ? "accent" : "amber"}>{ORIGIN_TITLE[r.origin]}</Badge>}
-      </span>
-      <span className="s">
-        <span className="mono">{r.id}</span> · {r.extends ? `на основе «${titleOf(r.extends)}»` : CLASS_TITLE[r.class]}
-        {r.projects ? ` · ${r.projects.join(", ")}` : ""}
+        {cfg.problems.some((p) => p.item === `role:${r.id}`) && <span className="ag-problem-dot" role="img" aria-label="Есть проблемы" title="Есть проблемы в настройках роли">!</span>}
       </span>
     </button>
   );
   return (
-    <div className="split">
+    <div className="split ag-roles-layout">
       <section className="split-list ag-list" aria-label="Роли">
-        {team.map(pick)}
-        {orch.length > 0 && <span className="label">Оркестратор</span>}
-        {orch.map(pick)}
+        <div className="ag-list-search"><input type="search" className="in" aria-label="Поиск ролей" placeholder="Найти роль…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        <Problems items={sectionProblems(cfg.problems, "roles").filter((p) => p.item !== `role:${current}`)} />
+        {team.filter(matches).map(pick)}
+        {orch.filter(matches).length > 0 && <span className="label">Оркестратор</span>}
+        {orch.filter(matches).map(pick)}
+        {!cfg.roles.some(matches) && <p className="muted ag-list-note">Ничего не найдено.</p>}
       </section>
       <section className="split-main" aria-label="Роль">
         {current ? <RolePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Ролей нет</div>}
@@ -78,7 +73,7 @@ export function RolesTab({
   );
 }
 
-type Dialog = "file" | "prompt" | "settings" | "skills" | "mcp" | "delete";
+type Dialog = "file" | "prompt" | "settings" | "delete";
 
 function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string; cfg: Catalogue; readOnly?: boolean; base?: string }) {
   const detail = useRole(id);
@@ -109,47 +104,26 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
       <div className="pane-head">
         <div className="ttl">
           <h2>{r.title}</h2>
-          <span className="sub">
-            <span className="mono">{r.id}</span> · {ORIGIN_TITLE[r.origin]}
-            {parent ? `, на основе «${parent}»` : ""} · класс {CLASS_TITLE[r.class]}
-            {r.path ? ` · ${r.path}` : ""}
-          </span>
           {r.description && <p className="desc">{r.description}</p>}
         </div>
+        {admin && <button type="button" className="btn primary" onClick={() => setDialog("settings")}><Icon.gear size={13} />Настроить роль</button>}
         <button type="button" className="btn" onClick={() => setDialog("prompt")}>
           Промпт
         </button>
-        {admin && (
-          <button type="button" className="btn" onClick={() => setDialog("file")}>
-            <Icon.file size={13} />
-            Файл
-          </button>
-        )}
-        {admin && hasFile && d.builtin !== null && (
-          <button type="button" className="btn ghost" onClick={() => void act(() => remove("role", r.id, d.file.hash), "Роль снова встроенная")}>
-            Вернуть встроенную
-          </button>
-        )}
-        {admin && hasFile && d.builtin === null && (
-          <button type="button" className="btn ghost" onClick={() => setDialog("delete")}>
-            <Icon.trash size={13} />
-            Удалить
-          </button>
-        )}
       </div>
       <div className="pane-body">
         <Problems items={d.problems} />
         {r.class === "orchestrator" ? (
-          <Section title="Разрешения">
+          <Section title="Разрешённые действия">
             <p className="muted ag-empty">Права оркестратора фиксированы: он разбирает задачи, собирает команды и принимает работу.</p>
           </Section>
         ) : (
-          <Permissions detail={d} cfg={cfg} />
+          <Permissions detail={d} />
         )}
-        <div className="ag-cards">
-          <Workplace role={r} sandbox={cfg.sandbox} onEdit={admin ? () => setDialog("settings") : undefined} />
-          <SkillsCard role={r} cfg={cfg} onEdit={admin ? () => setDialog("skills") : undefined} />
-          <McpCard role={r} cfg={cfg} onEdit={admin && cfg.mcp.length > 0 ? () => setDialog("mcp") : undefined} />
+        <div className="ag-cards ag-role-sections">
+          <Workplace role={r} sandbox={cfg.sandbox} />
+          <SkillsCard role={r} cfg={cfg} />
+          <McpCard role={r} cfg={cfg} />
         </div>
         <p className="ag-used">
           {used.length ? (
@@ -166,11 +140,30 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
             "Пока не используется ни в шаблонах, ни в автоматизациях."
           )}
         </p>
-        {admin && (
-          <Section title="История изменений">
-            <History item={`role:${r.id}`} admin={admin} />
-          </Section>
-        )}
+        <details className="ag-advanced">
+          <summary>Технические сведения и обслуживание</summary>
+          <p className="muted ag-note"><code>{r.id}</code> · {ORIGIN_TITLE[r.origin]} · {CLASS_TITLE[r.class]}{parent ? ` · на основе «${parent}»` : ""}{r.path ? ` · ${r.path}` : ""}</p>
+          <div className="ag-actions">
+            {admin && (
+              <button type="button" className="btn" onClick={() => setDialog("file")}>
+                <Icon.file size={13} />
+                Файл
+              </button>
+            )}
+            {admin && hasFile && d.builtin !== null && (
+              <button type="button" className="btn ghost" onClick={() => void act(() => remove("role", r.id, d.file.hash), "Роль снова встроенная")}>
+                Вернуть встроенную
+              </button>
+            )}
+            {admin && hasFile && d.builtin === null && (
+              <button type="button" className="btn ghost" onClick={() => setDialog("delete")}>
+                <Icon.trash size={13} />
+                Удалить
+              </button>
+            )}
+          </div>
+        </details>
+        {admin && <details className="ag-advanced"><summary>История изменений</summary><History item={`role:${r.id}`} admin={admin} /></details>}
       </div>
       {dialog === "file" && (
         <FileEditor
@@ -189,9 +182,7 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
         />
       )}
       {dialog === "prompt" && (admin ? <PromptEditor detail={d} onClose={close} /> : <PromptView role={r} onClose={close} />)}
-      {dialog === "settings" && <SettingsDialog detail={d} onClose={close} />}
-      {dialog === "skills" && <SkillsDialog detail={d} cfg={cfg} onClose={close} />}
-      {dialog === "mcp" && <McpDialog detail={d} cfg={cfg} onClose={close} />}
+      {dialog === "settings" && <SettingsDialog detail={d} cfg={cfg} onClose={close} />}
       {dialog === "delete" && (
         <ConfirmDialog
           title={`Удалить роль ${r.id}?`}
@@ -210,72 +201,20 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
   );
 }
 
-function Permissions({ detail, cfg }: { detail: RoleDetail; cfg: Catalogue }) {
+function Permissions({ detail }: { detail: RoleDetail }) {
   const r = detail.role;
-  const base = basePermissions(r, cfg.roles, cfg.classes);
-  const [wanted, setWanted] = useState<string[]>(r.capabilities);
-  const edit = useRoleEdit(detail);
-  const act = useAct();
-  const changed = wanted.length !== r.capabilities.length || wanted.some((c) => !r.capabilities.includes(c));
-  const toggle = (c: string, on: boolean) => setWanted((w) => (on ? [...w, c] : w.filter((x) => x !== c)));
-  const baseName = r.extends ? `роли «${cfg.roles.find((x) => x.id === r.extends)?.title ?? r.extends}»` : `класса «${CLASS_TITLE[r.class]}»`;
-  const diffs = PERMISSION_GROUPS.flatMap((g) => g.items).filter((p) => wanted.includes(p.id) !== base.includes(p.id)).length;
-  const save = () => {
-    const { allow, deny } = allowDeny(base, wanted, cfg.permissions);
-    void act(() => edit([["allow", allow], ["deny", deny]]), "Разрешения сохранены: сервер применяет их сразу");
-  };
-  return (
-    <Section
-      title="Разрешения"
-      note={diffs ? `Отличий от ${baseName}: ${diffs}` : `Как у ${baseName}`}
-      aside={
-        detail.admin &&
-        changed && (
-          <span className="ag-actions">
-            <button type="button" className="btn ghost" onClick={() => setWanted(r.capabilities)}>
-              Отменить
-            </button>
-            <button type="button" className="btn primary" onClick={save}>
-              Сохранить разрешения
-            </button>
-          </span>
-        )
-      }
-    >
-      <div className="ag-perms">
-        {PERMISSION_GROUPS.map((g) => (
-          <fieldset key={g.title} disabled={!detail.admin}>
-            <legend>{g.title}</legend>
-            {g.items.map((p) => {
-              const on = wanted.includes(p.id);
-              const inBase = base.includes(p.id);
-              return (
-                <label key={p.id} className={`ag-perm${on ? " on" : ""}`} title={`${p.id}: ${p.text}`}>
-                  <input type="checkbox" checked={on} onChange={(e) => toggle(p.id, e.target.checked)} />
-                  <span className="mono">{p.id}</span>
-                  <span className="txt">{p.text}</span>
-                  {on !== inBase && <span className={`ag-tag ${on ? "plus" : "minus"}`}>{on ? "добавлено" : "убрано"}</span>}
-                </label>
-              );
-            })}
-          </fieldset>
-        ))}
-      </div>
-      <p className="muted ag-note">Разрешения проверяет сервер, отзыв действует сразу. {FIXED_PERMISSIONS}</p>
-    </Section>
-  );
+  return <details className="ag-advanced ag-permissions-view">
+    <summary>Разрешённые действия · {r.capabilities.length}</summary>
+    <PermissionFields wanted={r.capabilities} />
+    <PermissionReference />
+  </details>;
 }
 
-function Card({ title, onEdit, children }: { title: string; onEdit?: () => void; children: ReactNode }) {
+function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="ag-card">
       <div className="ag-card-head">
         <h3>{title}</h3>
-        {onEdit && (
-          <button type="button" className="btn ghost sm" onClick={onEdit}>
-            Изменить
-          </button>
-        )}
       </div>
       {children}
     </section>
@@ -284,14 +223,14 @@ function Card({ title, onEdit, children }: { title: string; onEdit?: () => void;
 
 const SOFT = "Соблюдает харнесс агента: через shell агент может обойти это ограничение, пока агенты не работают в контейнерах";
 
-function Workplace({ role: r, sandbox, onEdit }: { role: RoleDef; sandbox?: Catalogue["sandbox"]; onEdit?: () => void }) {
+function Workplace({ role: r, sandbox }: { role: RoleDef; sandbox?: Catalogue["sandbox"] }) {
   const soft = (
     <span className="ag-soft" title={SOFT}>
       мягко
     </span>
   );
   return (
-    <Card title="Рабочее место" onEdit={onEdit}>
+    <Card title="Рабочее место">
       <dl className="ag-dl">
         <dt>Файлы</dt>
         <dd>
@@ -344,10 +283,10 @@ function Workplace({ role: r, sandbox, onEdit }: { role: RoleDef; sandbox?: Cata
   );
 }
 
-function SkillsCard({ role: r, cfg, onEdit }: { role: RoleDef; cfg: Catalogue; onEdit?: () => void }) {
+function SkillsCard({ role: r, cfg }: { role: RoleDef; cfg: Catalogue }) {
   const missing = (r.skills ?? []).filter((s) => !cfg.skills.some((x) => x.name === s));
   return (
-    <Card title="Навыки" onEdit={onEdit}>
+    <Card title="Навыки">
       {r.skills?.length ? (
         <div className="ag-chips">
           {r.skills.map((s) => (
@@ -366,9 +305,9 @@ function SkillsCard({ role: r, cfg, onEdit }: { role: RoleDef; cfg: Catalogue; o
 /** A grant (`server`, `server:tools`, `*`) as its connection and tools. */
 const splitGrant = (g: string) => (g.includes(":") ? [g.slice(0, g.indexOf(":")), g.slice(g.indexOf(":") + 1)] : [g, ""]);
 
-function McpCard({ role: r, cfg, onEdit }: { role: RoleDef; cfg: Catalogue; onEdit?: () => void }) {
+function McpCard({ role: r, cfg }: { role: RoleDef; cfg: Catalogue }) {
   return (
-    <Card title="MCP" onEdit={onEdit}>
+    <Card title="MCP">
       {r.mcp.length ? (
         <ul className="ag-grant-list">
           {r.mcp.map((g) => {

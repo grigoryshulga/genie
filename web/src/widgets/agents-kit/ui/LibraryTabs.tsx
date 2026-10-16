@@ -4,6 +4,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router";
 import {
+  sectionProblems,
   type Catalogue,
   type RoleDef,
   splitFrontmatter,
@@ -41,6 +42,7 @@ export function SkillsTab({
   return (
     <div className="split">
       <section className="split-list" aria-label="Навыки">
+        <Problems items={sectionProblems(cfg.problems, "skills")} />
         {cfg.skills.map((s) => (
           <button type="button" key={s.name} className={`pick plain${s.name === current ? " on" : ""}`} onClick={() => onSelect(s.name)} aria-current={s.name === current}>
             <span className="t">
