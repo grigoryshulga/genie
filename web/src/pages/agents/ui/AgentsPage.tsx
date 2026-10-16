@@ -7,7 +7,7 @@ import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { Icon } from "@/shared/ui";
-import { McpTab, Problems, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
+import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
 import "@/shared/ui/agents.css";
 
 type Tab = "roles" | "templates" | "skills" | "mcp";
@@ -26,7 +26,6 @@ export function AgentsPage() {
   const selected = sp.get("id") ?? undefined;
   const select = (id: string) => setSp({ tab, id });
   const c = cfg.data;
-  const errors = c?.problems.filter((p) => p.level === "error") ?? [];
   return (
     <main className="main agents">
       <header className="topbar">
@@ -39,7 +38,6 @@ export function AgentsPage() {
           ))}
         </div>
         <span className="grow" />
-        <span className="sub d-only">каталог · настраивают администраторы сервера</span>
         {isAdmin && (
           <Link to={`/settings/server/${tab}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`} className="btn">
             <Icon.gear size={13} />
@@ -47,12 +45,6 @@ export function AgentsPage() {
           </Link>
         )}
       </header>
-      {c?.admin && errors.length > 0 && (
-        <div className="ag-banner">
-          <Problems items={errors} />
-          <span className="muted">Сломанные файлы не останавливают работу: действует их последняя рабочая версия.</span>
-        </div>
-      )}
       {!c ? (
         <div className="pane-empty">{cfg.error ? cfg.error.message : "Загрузка…"}</div>
       ) : tab === "roles" ? (
