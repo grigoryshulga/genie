@@ -1037,6 +1037,7 @@ body:has(.auth-page) { overflow: auto; }
   .presets { padding: 0 12px; }
   .m-nav { padding-top: 12px; }
   .filters { flex-wrap: nowrap; overflow-x: auto; padding: 8px 16px; }
+  .filters.board-filters { flex-wrap: wrap; }
   .fpop { position: fixed; top: auto; left: 0; right: 0; bottom: 0; max-width: none; max-height: 70vh; border-radius: 16px 16px 0 0; }
   .fbtn { min-height: 36px; }
 }

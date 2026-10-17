@@ -53,11 +53,6 @@ export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
           {openCount} {plural(openCount, "задача", "задачи", "задач")}
         </span>
         <span className="grow" />
-        <label className="search">
-          <Icon.search />
-          <input ref={searchRef} type="search" placeholder="Поиск на доске" aria-label="Поиск на доске" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())} />
-          <kbd className="d-only">/</kbd>
-        </label>
         <button type="button" className="btn primary" onClick={() => onNew(epicFilter ? { epic: epicFilter } : undefined)}>
           <Icon.plus size={13} />
           <span className="d-only">Новая задача</span>
@@ -66,7 +61,7 @@ export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
 
       <MobileNav />
 
-      <div className="filters" role="toolbar" aria-label="Фильтры доски">
+      <div className="filters board-filters" role="toolbar" aria-label="Фильтры доски">
         {login && (
           <button type="button" className={`fbtn${mine ? " on" : ""}`} aria-pressed={mine} onClick={toggleMine}>
             <Icon.user size={13} />
@@ -87,20 +82,11 @@ export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
           </select>
         </label>
         <span className="grow" />
-        <span className="muted d-only" style={{ fontSize: 12 }}>
-          Перетащите карточку, чтобы сменить статус
-        </span>
-        <button
-          type="button"
-          className="fbtn d-only"
-          aria-pressed={showDone}
-          onClick={() => {
-            writePref("genie.showDone", showDone ? "0" : "1");
-            setShowDone(!showDone);
-          }}
-        >
-          {showDone ? "Скрыть завершённые" : "Показать завершённые"}
-        </button>
+        <label className="search">
+          <Icon.search />
+          <input ref={searchRef} type="search" placeholder="Поиск на доске" aria-label="Поиск на доске" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())} />
+          <kbd className="d-only">/</kbd>
+        </label>
       </div>
 
       {tasksQ.isPending ? (
