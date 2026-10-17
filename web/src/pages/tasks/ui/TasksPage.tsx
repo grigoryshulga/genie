@@ -102,28 +102,7 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
       <MobileNav />
 
-      <nav className="list-controls" aria-label="Параметры списка">
-        <span className="grow" />
-        <label className="fsel d-only">
-          Порядок
-          <select value={f.sort} onChange={(e) => set({ sort: e.target.value as TaskSort })}>
-            {(Object.keys(SORT_NAME) as TaskSort[]).map((s) => (
-              <option key={s} value={s}>
-                {SORT_NAME[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="fsel d-only">
-          Группы
-          <select value={f.grouped ? "status" : "none"} onChange={(e) => set({ grouped: e.target.value === "status" })}>
-            <option value="status">по статусу</option>
-            <option value="none">без групп</option>
-          </select>
-        </label>
-      </nav>
-
-      <div className="filters" role="toolbar" aria-label="Фильтры">
+      <div className="filters" role="toolbar" aria-label="Фильтры и вид">
         <FilterMenu label="Статус" value={statusValue} active={preset?.id !== "open"}>
           {STATUS_ORDER.map((s) => (
             <FilterOption key={s} kind="checkbox" checked={f.statuses.includes(s)} onChange={() => set({ statuses: toggle(f.statuses, s) })} hint={countOf([s]) || ""}>
@@ -200,6 +179,23 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
               ))}
           </FilterMenu>
         )}
+        <label className="fsel d-only">
+          Порядок
+          <select value={f.sort} onChange={(e) => set({ sort: e.target.value as TaskSort })}>
+            {(Object.keys(SORT_NAME) as TaskSort[]).map((s) => (
+              <option key={s} value={s}>
+                {SORT_NAME[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="fsel d-only">
+          Группы
+          <select value={f.grouped ? "status" : "none"} onChange={(e) => set({ grouped: e.target.value === "status" })}>
+            <option value="status">по статусу</option>
+            <option value="none">без групп</option>
+          </select>
+        </label>
         {isFiltered(f) && (
           <button type="button" className="btn ghost sm" onClick={() => setSp(writeFilter(parseFilter(new URLSearchParams()), new URLSearchParams(selected ? { task: selected } : {})), { replace: true })}>
             Сбросить

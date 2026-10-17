@@ -1020,9 +1020,8 @@ body:has(.auth-page) { overflow: auto; }
 
 /* ------------------------------------------------------------ task list filters and board filters */
 .search.wide { width: 360px; }
-.list-controls { flex: none; display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 28px 0 22px; overflow-x: auto; }
-.list-controls .fsel { margin-left: 12px; }
 .filters { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; padding: 8px 28px; box-sizing: border-box; border-bottom: 1px solid var(--line); }
+.filters:not(.board-filters) { flex-wrap: nowrap; overflow-x: auto; }
 .page-toolbar { height: auto; min-height: 56px; padding: 8px 28px; box-sizing: border-box; }
 .fmenu { position: relative; flex: none; }
 .fbtn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: none; color: var(--text); font-size: 12px; white-space: nowrap; }
@@ -1055,7 +1054,6 @@ body:has(.auth-page) { overflow: auto; }
 .app.with-detail .main .fsel { display: none; }
 @media (max-width: 900px) {
   .search.wide { width: 100%; }
-  .list-controls { padding: 0 12px; }
   .m-nav { padding-top: 12px; }
   .filters { flex-wrap: nowrap; overflow-x: auto; padding: 8px 16px; }
   .filters.board-filters { flex-wrap: wrap; }
