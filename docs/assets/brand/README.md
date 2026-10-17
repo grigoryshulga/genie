@@ -16,4 +16,7 @@ includes an outer margin. It was visually checked at 16, 24, 26, 32, 40, and
 the tapered smoke tip is naturally less distinct; prefer 24 pixels or larger
 when space permits.
 
-This asset does not replace the existing application or documentation logos.
+The same contour is embedded in `docs/public/logo.svg` for the documentation
+navbar and favicon, and in `docs/assets/hero.svg` for the GitHub README hero.
+When editing the lettermark, update those embedded paths as well. The application
+UI logo is unchanged.
