@@ -197,7 +197,7 @@ function TasksRoute() {
 
 function BoardRoute() {
   const ctx = useOutletContext<ShellContext>();
-  return <BoardPage onNew={ctx.onNew} searchRef={ctx.searchRef} />;
+  return <BoardPage searchRef={ctx.searchRef} />;
 }
 
 /** The task list with a preset's statuses, "mine" narrowing it to the viewer. */

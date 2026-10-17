@@ -3,14 +3,13 @@ import { useSearchParams } from "react-router";
 import { useSession } from "@/entities/session";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
-import type { NewTaskPreset } from "@/features/create-task";
 import { plural, readPref, writePref } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 import { Board } from "@/widgets/board";
 import { MobileNav, TeamsSummary } from "@/widgets/sidebar";
 
 /** «Доска»: the project's Kanban board, narrowed by filters («Мои задачи», an epic). */
-export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset) => void; searchRef: React.RefObject<HTMLInputElement | null> }) {
+export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
   const [query, setQuery] = useState("");
   const [showDone, setShowDone] = useState(() => readPref<string>("genie.showDone", "0") === "1");
@@ -52,11 +51,6 @@ export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
         <span className="muted d-only" style={{ fontSize: 12 }}>
           {openCount} {plural(openCount, "задача", "задачи", "задач")}
         </span>
-        <span className="grow" />
-        <button type="button" className="btn primary" onClick={() => onNew(epicFilter ? { epic: epicFilter } : undefined)}>
-          <Icon.plus size={13} />
-          <span className="d-only">Новая задача</span>
-        </button>
       </header>
 
       <MobileNav />
