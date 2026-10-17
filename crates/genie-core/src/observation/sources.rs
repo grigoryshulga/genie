@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS observation_sources (
 /// A source as the administration enters it (§15 `SourceBody`): every field of `SourceConfig`
 /// except the timestamps. Blank optional text counts as absent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NewSource {
     pub name: String,
     pub kind: SourceKind,
@@ -162,7 +162,9 @@ fn url_problems(url: &str) -> Vec<String> {
     if authority.contains('@') {
         problems.push("url must not contain user info; keep credentials in the source's secret".into());
     }
-    if authority.is_empty() {
+    // The host is what precedes an optional port: `https://:9090` has no host.
+    let host = authority.split(':').next().unwrap_or_default();
+    if host.is_empty() {
         problems.push("url needs a host, for example https://prometheus.example.com".into());
     }
     problems
@@ -239,20 +241,25 @@ impl ServerDb {
     /// Replace the configuration of a source. The name cannot change: the source's secret is
     /// sealed under its name, so a renamed source would lose it. The creation time is kept.
     pub fn update_observation_source(&self, project: &str, name: &str, new: NewSource) -> Result<SourceConfig> {
-        let current = self.observation_source(project, name)?.ok_or_else(|| not_found(name))?;
-        if new.name.trim() != name {
-            return Err(GenieError::invalid(format!("source {name} cannot be renamed; add {} and remove {name} instead", new.name.trim())));
-        }
-        let mut source = new.checked(&now())?;
-        source.created = current.created;
         self.tx(|| {
-            self.conn().execute(
+            let current = self.observation_source(project, name)?.ok_or_else(|| not_found(name))?;
+            if new.name.trim() != name {
+                return Err(GenieError::invalid(format!(
+                    "source {name} cannot be renamed; add {} and remove {name} instead",
+                    new.name.trim()
+                )));
+            }
+            let mut source = new.checked(&now())?;
+            source.created = current.created;
+            let changed = self.conn().execute(
                 "UPDATE observation_sources SET kind = ?1, url = ?2, config = ?3, updated = ?4 WHERE project = ?5 AND name = ?6",
                 params![source.kind, source.url, config_json(&source)?, source.updated, project, name],
             )?;
-            Ok(())
-        })?;
-        Ok(source)
+            if changed == 0 {
+                return Err(not_found(name));
+            }
+            Ok(source)
+        })
     }
 
     /// Remove a source and its secret, in one transaction. Cases that use the source keep

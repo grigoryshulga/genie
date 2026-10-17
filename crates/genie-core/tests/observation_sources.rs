@@ -121,6 +121,7 @@ fn invalid_sources_are_refused_with_the_rule_they_break() {
         (prom("prom", "https://prometheus.example.com?query=1"), QUERY.into()),
         (prom("prom", "https://prometheus.example.com#top"), FRAGMENT.into()),
         (prom("prom", "https://"), HOST.into()),
+        (prom("prom", "https://:9090"), HOST.into()),
         (prom("prom", "https://prometheus example.com"), SPACES.into()),
         (sentry("errors", "https://sentry.example.com", None), SENTRY_ORG.into()),
         (sentry("errors", "https://sentry.example.com", Some("   ")), SENTRY_ORG.into()),
@@ -229,6 +230,18 @@ fn a_source_can_be_updated_and_removed_but_not_renamed() {
     db.remove_observation_source("shop", "prom").unwrap();
     assert!(db.observation_source("shop", "prom").unwrap().is_none());
     assert_eq!(missing(db.remove_observation_source("shop", "prom")), "source prom not found");
+}
+
+#[test]
+fn a_source_body_refuses_unknown_fields() {
+    let body =
+        serde_json::json!({"name": "prom", "kind": "prometheus", "url": "https://prometheus.example.com", "secret": "sk-x-0123456789"});
+    let err = serde_json::from_value::<NewSource>(body).unwrap_err().to_string();
+    assert!(err.contains("unknown field `secret`"), "{err}");
+
+    let body = serde_json::json!({"name": "prom", "kind": "prometheus", "url": "https://prometheus.example.com", "timeoutSecs": 30});
+    let source = serde_json::from_value::<NewSource>(body).unwrap();
+    assert_eq!(source.timeout_secs, Some(30));
 }
 
 #[test]
