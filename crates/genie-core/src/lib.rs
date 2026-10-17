@@ -12,6 +12,7 @@ pub mod inbox;
 pub mod management;
 pub mod migrate;
 pub mod model;
+pub mod observation;
 pub mod repos;
 pub mod secrets;
 pub mod server_db;

@@ -21,6 +21,7 @@ pub mod management;
 pub mod mcp_gateway;
 pub mod model_prices;
 pub mod notify;
+pub mod observation;
 pub mod ops;
 pub mod orchestrate;
 pub mod outcome;

@@ -47,6 +47,40 @@ pub const CI_STALLED: &str = "ci.stalled";
 /// The failed checks of a watched ref were rerun on the host (`genie pr rerun`).
 pub const CI_RERUN: &str = "ci.rerun";
 
+// Observation plane (docs/platform/observation-plane.md §12). Subject: `observation:<case id>`.
+/// A case was created.
+pub const OUTCOME_CREATED: &str = "outcome.created";
+/// A case changed: title, policy, tasks, status, contract version or a revision reason.
+pub const OUTCOME_UPDATED: &str = "outcome.updated";
+/// Observation started: the anchor moment of the case.
+pub const OBSERVATION_STARTED: &str = "observation.started";
+/// A deployment was recorded for the case.
+pub const DEPLOYMENT_COMPLETED: &str = "deployment.completed";
+/// A collection pass stored evidence records (counts of records and errors).
+pub const EVIDENCE_COLLECTED: &str = "evidence.collected";
+/// A guardrail check found a violation.
+pub const GUARDRAIL_VIOLATED: &str = "guardrail.violated";
+/// An incident was opened for a guardrail violation.
+pub const INCIDENT_CREATED: &str = "incident.created";
+/// An incident was resolved.
+pub const INCIDENT_RESOLVED: &str = "incident.resolved";
+/// An incident was dismissed as a false positive.
+pub const INCIDENT_DISMISSED: &str = "incident.dismissed";
+/// The case is ready for an evaluation (a window closed or one was requested).
+pub const OUTCOME_READY: &str = "outcome.ready_for_evaluation";
+/// An evaluation ran without a conclusion.
+pub const OUTCOME_EVALUATED: &str = "outcome.evaluated";
+/// The case concluded `confirmed`.
+pub const OUTCOME_CONFIRMED: &str = "outcome.confirmed";
+/// The case concluded `negative`.
+pub const OUTCOME_NEGATIVE: &str = "outcome.negative";
+/// The case concluded `inconclusive`.
+pub const OUTCOME_INCONCLUSIVE: &str = "outcome.inconclusive";
+/// The case was cancelled.
+pub const OUTCOME_CANCELLED: &str = "outcome.cancelled";
+/// A follow-up task was created for a case (or an incident of it).
+pub const FOLLOWUP_TASK_CREATED: &str = "followup_task.created";
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {

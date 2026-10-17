@@ -30,6 +30,7 @@ mod docs;
 mod mail;
 mod management;
 mod me;
+mod observation;
 pub mod render;
 mod repos;
 mod tasks;
@@ -372,6 +373,7 @@ pub fn catalog() -> &'static [Entry] {
         admin::register(&mut all);
         me::register(&mut all);
         repos::register(&mut all);
+        observation::register(&mut all);
         all
     })
 }
