@@ -1,25 +1,12 @@
 name: Docker image
 
 # Builds the server image, smoke-tests it and publishes it to the GitHub Container Registry as
-# ghcr.io/<owner>/<repo>. Runs only on pushes to main (a release from rc) and on version tags (v*):
-# pull requests go to rc and run only the fast checks in ci.yml. A package published from a private
-# repository is private too.
+# ghcr.io/<owner>/<repo>. Only commits pushed to main publish an image; pull requests are checked by
+# ci.yml. A package published from a private repository is private too.
 
 on:
   push:
     branches: [main]
-    paths:
-      - "docker/**"
-      - "crates/**"
-      - "Cargo.*"
-      - "agents/**"
-      - "config/**"
-      - "web/**"
-      - "package*.json"
-      - "tsconfig.json"
-      - ".github/workflows/docker.yml"
-    tags: ["v*"]
-  workflow_dispatch:
 
 concurrency:
   group: docker-${{ github.ref }}

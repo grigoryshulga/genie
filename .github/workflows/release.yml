@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read and validate release version
+        id: release
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          import tomllib
+          from pathlib import Path
+
+          cargo_version = tomllib.loads(Path("Cargo.toml").read_text())["workspace"]["package"]["version"]
+          package_version = json.loads(Path("package.json").read_text())["version"]
+          package_lock_version = json.loads(Path("package-lock.json").read_text())["packages"][""]["version"]
+          if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", cargo_version):
+              raise SystemExit(f"Not a stable SemVer release: {cargo_version}")
+          if cargo_version != package_version or cargo_version != package_lock_version:
+              raise SystemExit("Cargo and npm versions are inconsistent")
+          print(f"version={cargo_version}")
+          PY
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          text = Path("CHANGELOG.md").read_text()
+          match = re.search(
+              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## |\Z)",
+              text,
+              re.MULTILINE | re.DOTALL,
+          )
+          if not match:
+              raise SystemExit(f"CHANGELOG.md has no section for {version}")
+          notes = match.group(1).strip()
+          if not notes:
+              raise SystemExit(f"CHANGELOG.md section for {version} is empty")
+          Path(os.environ["RUNNER_TEMP"], "release-notes.md").write_text(notes + "\n")
+          PY
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "Genie $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

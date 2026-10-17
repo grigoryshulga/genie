@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, rc]
+    branches: [main, dev]
   pull_request:
 
 permissions:
@@ -33,8 +33,7 @@ jobs:
           filters: |
             docker:
               - "docker/**"
-              - ".github/workflows/docker.yml"
-              - ".github/workflows/ci.yml"
+              - ".github/workflows/**"
             rust:
               - "crates/**"
               - "Cargo.*"
@@ -45,7 +44,7 @@ jobs:
               - "package.json"
               - "package-lock.json"
               - "web/src/shared/api/generated/**"
-              - ".github/workflows/ci.yml"
+              - ".github/workflows/**"
             web:
               - "web/**"
               - "test/**"
@@ -55,7 +54,7 @@ jobs:
               - "package-lock.json"
               - "tsconfig.json"
               - "steiger.config.ts"
-              - ".github/workflows/ci.yml"
+              - ".github/workflows/**"
 
   lint:
     name: Rust format and lint
@@ -158,3 +157,41 @@ jobs:
         run: bash -n docker/*.sh
       - name: Check compose configuration
         run: docker compose -f docker/docker-compose.yml config --quiet
+
+  main-release-gate:
+    name: Main release gate
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require dev as the source and a versioned release
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/scripts/release_gate.py
+
+  quality-gate:
+    name: Quality gate
+    if: always()
+    needs: [changes, lint, test, web, docker, main-release-gate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all applicable checks to pass
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          results = {name: job["result"] for name, job in json.loads(os.environ["NEEDS"]).items()}
+          failures = {name: result for name, result in results.items() if result in {"failure", "cancelled"}}
+          if failures:
+              print(f"Applicable checks failed: {failures}")
+              sys.exit(1)
+          print(f"Applicable checks passed: {results}")
+          PY
