@@ -179,6 +179,7 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
               ))}
           </FilterMenu>
         )}
+        <span className="grow" />
         <label className="fsel d-only">
           Порядок
           <select value={f.sort} onChange={(e) => set({ sort: e.target.value as TaskSort })}>
