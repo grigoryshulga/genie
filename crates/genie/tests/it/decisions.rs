@@ -622,3 +622,46 @@ async fn missing_explicit_service_key_never_falls_back_to_a_provider_key() {
     assert_eq!(record["costUsd"], 0.0);
     assert_eq!(s.calls.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn task_manager_infers_its_mcp_task_and_cannot_evaluate_or_preview_another_task() {
+    let (h, s) = harness().await;
+    let task = ready(&h);
+    let other = ready(&h);
+    save(&h, enabled());
+    genie::management::dispatch(&h.app, "shop", &Actor::new("anna", Role::Human), &task).unwrap();
+    let manager = h
+        .app
+        .with_server(|db| {
+            db.create_role_token(
+                "shop",
+                Role::Orchestrator,
+                Some("orchestrator"),
+                &genie_core::management::manager_name(&task),
+                None,
+                None,
+                chrono::Duration::hours(1),
+            )
+        })
+        .unwrap();
+    let mut r = request(&task);
+    r.as_object_mut().unwrap().remove("task");
+    let (status, v, _) = call(&h.remote, "POST", "/mcp")
+        .bearer(&manager)
+        .no_csrf()
+        .json(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+            "name":"genie_decision","arguments":{"action":"evaluate","request":r}
+        }}))
+        .send()
+        .await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    assert_ne!(v["result"]["isError"], true, "{v}");
+    let result: Value = serde_json::from_str(v["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(result["task"], task);
+    assert_eq!(result["status"], "ok");
+    let (status, _, _) = call(&h.router, "POST", "/api/decisions/evaluate").bearer(&manager).json(request(&other)).send().await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, _) = call(&h.router, "POST", "/api/teams/recommend").bearer(&manager).json(spawn(&other)).send().await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(s.calls.load(Ordering::SeqCst), 1);
+}

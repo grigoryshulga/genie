@@ -5,6 +5,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router";
 import {
+  sectionProblems,
   type Catalogue,
   MAIL_TITLE,
   type MemberDef,
@@ -50,6 +51,7 @@ export function TemplatesTab({
   return (
     <div className="split">
       <section className="split-list" aria-label="Шаблоны команд">
+        <Problems items={sectionProblems(cfg.problems, "templates").filter((p) => p.item !== `team:${current}`)} />
         {cfg.teams.map((t) => (
           <button type="button" key={t.id} className={`pick${t.id === current ? " on" : ""}`} onClick={() => onSelect(t.id)} aria-current={t.id === current}>
             <span className="t">
@@ -483,7 +485,7 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
             ])
           }
         />
-        <p className="team-graph-hint">Протяните от участника к участнику, чтобы добавить передачу работы; к оркестратору — доклад. Тип и статус — в списке связей.</p>
+        <p className="team-graph-hint">Перетащите связь между участниками; к оркестратору — для доклада.</p>
         <label className="field">
           Общие правила команды
           <textarea rows={2} value={String(draft.charter ?? "")} onChange={(e) => set("charter", e.target.value)} />

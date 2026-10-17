@@ -1,6 +1,6 @@
 # Overlay: lets the agent sandbox (bubblewrap) work inside the container.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.sandbox.yml up -d
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.sandbox.yml up -d
 #
 # With the sandbox every agent sees the system read-only and does NOT see /data (databases, config.json
 # with the Telegram and SMTP secrets, the vault) or other projects. bubblewrap needs user namespaces and a

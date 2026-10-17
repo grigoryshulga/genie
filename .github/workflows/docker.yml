@@ -8,6 +8,16 @@ name: Docker image
 on:
   push:
     branches: [main]
+    paths:
+      - "docker/**"
+      - "crates/**"
+      - "Cargo.*"
+      - "agents/**"
+      - "config/**"
+      - "web/**"
+      - "package*.json"
+      - "tsconfig.json"
+      - ".github/workflows/docker.yml"
     tags: ["v*"]
   workflow_dispatch:
 
@@ -34,6 +44,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: docker/Dockerfile
           load: true
           tags: genie:ci
           cache-from: type=gha
@@ -67,6 +78,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

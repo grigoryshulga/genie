@@ -28,6 +28,7 @@ mod automations;
 mod decisions;
 mod docs;
 mod mail;
+mod management;
 mod me;
 pub mod render;
 mod repos;
@@ -339,6 +340,7 @@ impl Entry {
 /// The groups of operations, in the order people read them.
 pub const GROUPS: &[(&str, &str)] = &[
     ("decision", "Jev judgements: evaluate alternatives, inspect uncertainty and read recorded decisions"),
+    ("manager", "Project memory and task managers: dispatch, clarification, execution evidence and retrospectives"),
     ("task", "Tasks and epics: read, create, update, move through statuses, comment, attach artifacts"),
     ("team", "Teams of agents: assemble, look at, steer and stop them"),
     ("mail", "Mail between the members of a team, the orchestrator and people"),
@@ -363,6 +365,7 @@ pub fn catalog() -> &'static [Entry] {
         teams::register(&mut all);
         decisions::register(&mut all);
         mail::register(&mut all);
+        management::register(&mut all);
         docs::register(&mut all);
         automations::register(&mut all);
         agents::register(&mut all);

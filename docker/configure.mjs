@@ -6,7 +6,7 @@
 //   GENIE_BIND         bind address        (default 0.0.0.0 — a loopback bind is unreachable through published ports)
 //   GENIE_PUBLIC_URL   base URL of links in mail and Telegram; its host is also added to allowHosts
 //   GENIE_ALLOW_HOSTS  comma-separated Host header values accepted besides localhost:<port>
-//   GENIE_SANDBOX      runtime.sandbox.mode: auto | bwrap | off (see docker-compose.sandbox.yml)
+//   GENIE_SANDBOX      runtime.sandbox.mode: auto | bwrap | off (see docker/docker-compose.sandbox.yml)
 //
 // With a Rust toolchain in the image (build argument RUST_TOOLCHAIN) agents share one build cache,
 // <data>/cache: cargo's downloads and one target directory for everyone (dependencies are built once,

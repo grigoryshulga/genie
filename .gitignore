@@ -6,7 +6,12 @@ docs/migration.md
 migration/
 /target/
 secrets/
+docker/secrets/
 .env
 .pi/
 .claude/worktrees/
-docker-compose.local.yml
+docker/docker-compose.local.yml
+
+# Documentation build output
+docs/.vitepress/cache/
+docs/.vitepress/dist/

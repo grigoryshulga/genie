@@ -1,6 +1,6 @@
 ---
 title: Genie project documentation contract
-summary: The contract for genie's docs system: frontmatter fields, wiki-links, FTS5 search, the deprecated default and the docs index scope.
+summary: Frontmatter fields, wiki-links, search, deprecation, and index scope.
 type: reference
 status: current
 tags: [docs, contract, reference]
@@ -10,7 +10,7 @@ verified: 2026-09-29
 
 # Genie project documentation contract
 
-Genie indexes the Markdown pages of its knowledge vault — a git repository with a space per project ([[platform/knowledge-vault]]). Markdown files remain the source of truth; the SQLite index (`vault-index.db`) is a rebuildable cache, independent of task tracking.
+Genie indexes the Markdown pages of its knowledge vault — a git repository with a space per project ([knowledge vault](../platform/knowledge-vault.md)). Markdown files remain the source of truth; the SQLite index (`vault-index.db`) is a rebuildable cache, independent of task tracking.
 
 ## Frontmatter
 
@@ -23,7 +23,7 @@ type: guide
 status: current
 summary: How browser sessions are issued and renewed.
 tags: [auth, sessions]
-aliases: [login, sign-in, вход]
+aliases: [login, sign-in, authentication]
 paths: [src/auth/**, src/session.ts]
 related: [G-42, G-4]
 verified: 2026-09-27
@@ -52,8 +52,8 @@ Use `[[architecture/auth]]` for a Genie wiki-link. A target may include a headin
 
 ## Search and reads
 
-Search indexes title, summary, headings, body, tags, and aliases using SQLite FTS5. English diacritics are normalized by the tokenizer, and Russian `ё`/`е` are treated symmetrically. Heading reads return that heading's subtree and mark truncated content explicitly.
+Search indexes title, summary, headings, body, tags, and aliases using SQLite FTS5. The tokenizer normalizes diacritics and treats the two Russian letter variants for "e" symmetrically. Heading reads return that heading's subtree and mark truncated content explicitly.
 
-Pages with `status: deprecated` are excluded from search results by default. They are returned only when explicitly requested: an explicit `status` filter (`genie docs search --status deprecated`), a page whose `related` list contains a requested task/epic id, or a page chosen for a task's context because it names the task (L1, [[platform/knowledge-vault#Что агенты знают без запроса]]). The exclusion is applied before the result limit, so a default search never drops a non-deprecated match to make room for a deprecated one. Tree entries and page reads still list deprecated pages with their `deprecated` marker; backlinks are plain source paths with no marker.
+Pages with `status: deprecated` are excluded from search results by default. They are returned only when explicitly requested: an explicit `status` filter (`genie docs search --status deprecated`), a page whose `related` list contains a requested task/epic id, or a page chosen for a task's context because it names the task ([L1 agent context](../platform/knowledge-vault.md#agent-context)). The exclusion is applied before the result limit, so a default search never drops a non-deprecated match to make room for a deprecated one. Tree entries and page reads still list deprecated pages with their `deprecated` marker; backlinks are plain source paths with no marker.
 
 The vault lives in `<data>/vault` (or `vault.path`); the `paths` of a page in a project's space are relative to that project's repository. Rebuilding recreates only the index, never the pages or task data.

@@ -16,12 +16,14 @@ pub mod git;
 pub mod ideas;
 pub mod images;
 pub mod live;
+pub mod management;
 pub mod mcp_admin;
 pub mod mcp_gateway;
 pub mod mcp_server;
 pub mod repos;
 pub mod tasks;
 pub mod teams;
+pub mod telegram;
 pub mod web;
 
 use std::net::SocketAddr;
@@ -131,12 +133,14 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(account::routes())
         .merge(tasks::routes())
         .merge(ideas::routes())
+        .merge(management::routes())
         .merge(teams::routes())
         .merge(decisions::routes())
         .merge(agents::routes())
         .merge(docs::routes())
         .merge(images::routes())
         .merge(automations::routes())
+        .merge(telegram::routes())
         .merge(console::routes())
         .merge(agent_config::routes())
         .merge(mcp_admin::routes())
@@ -153,7 +157,12 @@ pub fn router(app: Arc<App>) -> Router {
         web::WebUi::BuiltIn => router.fallback(|method: Method, uri: Uri, headers: HeaderMap| async move {
             web::respond(web::WEB_ASSETS, &method, uri.path(), &headers)
         }),
-        web::WebUi::Dir(dir) => router.fallback_service(ServeDir::new(&dir).fallback(ServeFile::new(dir.join("index.html")))),
+        web::WebUi::Dir(dir) => router.fallback_service(
+            ServeDir::new(&dir)
+                .precompressed_gzip()
+                .precompressed_br()
+                .fallback(ServeFile::new(dir.join("index.html")).precompressed_gzip().precompressed_br()),
+        ),
         web::WebUi::Missing(why) => router.fallback(move || async move { (StatusCode::SERVICE_UNAVAILABLE, why) }),
     };
     router.layer(middleware::from_fn_with_state(app.clone(), guard)).with_state(app)

@@ -9,8 +9,8 @@ lines, keeps the items, computes the totals and exports the report.
 ```js
 import { parse, createStore, total, money, exportCsv } from "./src/index.js";
 
-const store = createStore(parse("Огурцы;3;10;10\n# a comment\nМорковь;0;25"));
-store.add({ name: "Репа", price: 30, quantity: 2, tags: ["овощи"] });
+const store = createStore(parse("Cucumbers;3;10;10\n# a comment\nCarrots;0;25"));
+store.add({ name: "Turnips", price: 30, quantity: 2, tags: ["vegetables"] });
 
 console.log(money(total(store.all())));
 console.log(exportCsv(store.all()));

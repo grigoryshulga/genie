@@ -4,6 +4,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router";
 import {
+  sectionProblems,
   type Catalogue,
   type RoleDef,
   splitFrontmatter,
@@ -41,6 +42,7 @@ export function SkillsTab({
   return (
     <div className="split">
       <section className="split-list" aria-label="Навыки">
+        <Problems items={sectionProblems(cfg.problems, "skills")} />
         {cfg.skills.map((s) => (
           <button type="button" key={s.name} className={`pick plain${s.name === current ? " on" : ""}`} onClick={() => onSelect(s.name)} aria-current={s.name === current}>
             <span className="t">
@@ -206,7 +208,7 @@ function SkillFiles({ name, files, canEdit }: { name: string; files: string[]; c
           ))}
         </ul>
       ) : (
-        <p className="muted ag-empty">Кроме SKILL.md файлов нет. Сюда кладут скрипты, справочники и шаблоны, на которые ссылаются инструкции навыка (до 5 МБ каждый).</p>
+        <p className="muted ag-empty">Дополнительных файлов нет. Лимит файла — 5 МБ.</p>
       )}
       {open && <SkillFileView name={name} path={open} onClose={() => setOpen(undefined)} />}
       {removing && (
@@ -264,11 +266,11 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
         <div className="ag-intro">
           <p>
             {cfg.mcpGateway
-              ? "Агенты ходят в подключения через шлюз genie: секреты остаются на сервере, агент видит только выданные его роли инструменты, каждый вызов попадает в журнал проекта. Подключение, которое харнесс открывает сам, помечено «напрямую»."
-              : "Шлюз genie выключен (runtime.mcpGateway): харнесс получает подключения вместе с секретами, вызовы genie не видит."}
+              ? "Через шлюз: секреты на сервере, вызовы в журнале проекта."
+              : "Шлюз выключен: подключения передаются агентам с секретами, без журнала вызовов."}
           </p>
         </div>
-        {/* Управление подключениями — в «Настройки» → «Сервер» → «MCP»; каталог не редактирует. */}
+        {/* Управление подключениями — в «Настройки» → «Управление» → «MCP»; каталог не редактирует. */}
       </div>
       {d?.problems && <Problems items={d.problems} />}
       <div className="ag-table-wrap">

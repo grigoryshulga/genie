@@ -13,6 +13,24 @@
 .st-head { display: flex; flex-direction: column; gap: 4px; }
 .st-head h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .st-head p { margin: 0; color: var(--muted); line-height: 1.5; }
+.provider-headline { display: flex; align-items: center; gap: 8px; }
+.provider-add { width: 30px; height: 30px; padding: 0; display: inline-grid; place-items: center; color: var(--text-2); }
+.provider-add:hover { color: var(--text); border-color: var(--accent); }
+.provider-connect .st-input { max-width: none; }
+.provider-connect > .lbl { display: flex; flex-direction: column; gap: 4px; }
+.provider-connect > .lbl b { font-weight: 500; }
+.provider-modes { display: flex; gap: 4px; width: fit-content; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.provider-modes button { height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.provider-modes button.on { background: var(--bg-active); color: var(--text); }
+.provider-key-form { display: flex; flex-direction: column; gap: 10px; }
+.provider-key-form .lbl { display: flex; flex-direction: column; gap: 4px; }
+.provider-key-form .lbl b { font-weight: 500; }
+.provider-key-form .lbl span { color: var(--muted); font-size: 12px; }
+.provider-key-form textarea.st-input { height: auto; min-height: 100px; padding: 10px 12px; resize: vertical; }
+.provider-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.provider-oauth-start, .provider-oauth-flow { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.provider-oauth-start p, .provider-oauth-flow p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.provider-oauth-link { color: var(--accent-text); overflow-wrap: anywhere; }
 
 .st-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-panel); display: flex; flex-direction: column; min-width: 0; }
 .st-card-head { padding: 16px 22px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }

@@ -57,7 +57,12 @@ pub fn resolve(app: &App, project: &str, specs: &[String], ctx: &Value) -> AppRe
                     logins.insert(a);
                 }
             }
-            "task.assignees" | "task.watchers" => {
+            "task.watchers" => {
+                if let Some(t) = &task_id {
+                    ids.extend(app.with_server(|db| db.task_watchers(project, t))?);
+                }
+            }
+            "task.assignees" => {
                 if let Some(t) = &task_id
                     && let Ok(task) = app.with_tracker(project, |tr| tr.get(t))
                 {
@@ -114,10 +119,15 @@ pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> Ap
                 )?;
             }
             let u = db.user(user)?;
-            let telegram = db.channel_address(user, "telegram")?.filter(|_| app.cfg.telegram.is_some() && wants("telegram"));
+            let project_bot = msg.project.as_deref().map(|p| db.project_bot(p)).transpose()?.flatten();
+            let telegram_scope = project_bot.as_ref().map(|b| b.scope.as_str());
+            let authorized = !u.disabled && match msg.project.as_deref() { Some(p) => db.project_role(p, &u)?.is_some(), None => true };
+            let telegram = if !authorized || !wants("telegram") { None }
+                else if let Some(bot) = &project_bot { db.channel_address(user, &bot.scope)?.filter(|_| !bot.token.0.is_empty()) }
+                else { db.channel_address(user, "telegram")?.filter(|_| app.cfg.telegram.is_some()) };
             let email = db.channel_address(user, "email")?.or(u.email.clone()).filter(|_| app.cfg.smtp.is_some() && wants("email"));
             let text = format!("{}\n\n{}{}", msg.title, msg.body, link.as_ref().map(|l| format!("\n\n{l}")).unwrap_or_default());
-            let payload = json!({ "buttons": msg.buttons, "link": link, "kind": msg.kind, "project": msg.project, "task": msg.task });
+            let payload = json!({ "buttons": msg.buttons, "link": link, "kind": msg.kind, "project": msg.project, "task": msg.task, "telegramScope": telegram_scope });
             let key = |ch: &str| dedupe.map(|d| format!("{d}:{user}:{ch}"));
             // One channel per person: Telegram when linked, otherwise e-mail.
             if let Some(chat) = telegram {

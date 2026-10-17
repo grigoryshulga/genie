@@ -1,550 +1,108 @@
 # Changelog
 
-Все значимые изменения проекта. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), нумерация версий — [SemVer](https://semver.org/lang/ru/).
+Notable changes by release. Versions follow [SemVer](https://semver.org/); entries use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Detailed implementation history remains in Git.
 
-## Не выпущено
+## Unreleased
 
-### Добавлено
+### Added
 
-**Ключи провайдеров, общие для всех** (`docs/platform/docker.md`, «Личные ключи моделей»)
-- Администратор сервера задаёт ключи провайдеров, которые действуют по умолчанию для всех: «Настройки» → «Сервер» → «Провайдеры» (новая вкладка; API `GET /api/llm-keys`, `PUT|DELETE /api/llm-keys/{provider}` — только администраторам). Общий ключ стоит рядом с личными в «Настройки» → «Личное» → «Провайдеры и ключи» и виден людям без самого значения.
-- Правило простое: личный ключ человека перекрывает общий, общий подставляется там, где личного нет. Общий ключ LiteLLM удовлетворяет обязательный — агенты на `litellm/…` у людей без своего ключа запускаются, а ждущие стартуют сразу после сохранения (`sessions::retry_now`, как и для личного). Серверный `LITELLM_API_KEY` агентам по-прежнему не передаётся; локальный режим (сервер без пользователей) не меняется.
-- Хранение: таблица `global_secrets` в `server.db`, запечатывание ChaCha20-Poly1305 тем же `secrets.key`, AAD привязывает значение к таблице (`global-key:{provider}`); наружу — только подсказка `…cdef` и время. Тесты: `shared_provider_keys_are_set_by_an_admin_and_offered_to_everyone`, `agents_of_people_without_their_own_key_run_on_the_shared_one`, `a_shared_litellm_key_satisfies_the_owed_one` (`crates/genie/tests/it/llm_keys.rs`), `shared_provider_keys_are_sealed_bound_to_their_table_and_listed` (`crates/genie-core/src/secrets.rs`).
+- Project-level intake and shared memory, separate task managers, versioned briefs, source-backed clarifications, and mandatory retrospectives after result acceptance. Includes CLI/MCP operations, task UI, durable session evidence, and additive tracker schema 6.
 
+- Shared provider keys managed by server administrators. Personal keys override shared defaults; agents can use a shared key when their user has none.
+- Separate Settings mode with personal, project, and server scopes.
+- MCP administration for connections, encrypted secrets, hidden tools, and usage statistics, separate from the client tool catalog.
+- English documentation and a Genie-themed documentation site with local search and a GitHub Pages workflow.
+- Personal keys for all pi providers, LiteLLM tariff imports with separate cache pricing, and failed-check reruns through `genie pr rerun`.
+- Orchestrator-reserved turn capacity, runtime queue inspection, and crash/load drills.
 
+### Changed
 
+- Every runnable role must specify a model. Class model defaults and `roleModels` configuration are removed; missing models are reported by health checks and block launch.
+- Docker agents use Pi-Bolt as `pi`. Agent profiles disable automatic package and extension loading; role and repository skills are passed explicitly.
+- Integrated task workspaces can be cleaned up, and low disk space appears in health checks.
 
-**Модель обязательна у каждой роли; дефолты litellm и `roleModels` убраны** (решение PD24)
-- У конфигурации больше нет классовых моделей по умолчанию: `roleModels` из `config.json` и дефолтного `config/default.json` не читается, `RoleModel` уходит из API конфига. Модель задаёт сама роль — поле `model:` во frontmatter файла (`agents/*.md`; в вебе — «Настройки» → «Сервер» → «Агенты»), поверх него — явный выбор у участника шаблона или при запуске.
-- Роль без модели больше не работает молча на модели харнесса: запуск участника, задания и оркестратора отказывает с ошибкой «role … has no model», `genie doctor` проваливает проверку «models» с подсказкой, а страница «Агентов» и `genie agents check` дают по ошибке на каждую такую роль (сохранение файла роли при этом не блокируется — это пробел настройки, а не дефект файла). Подписи в веб-селекторе модели говорят «модель роли» / «у роли нет модели» вместо «из roleModels сервера».
-- Тесты пересажены с `roleModels` на файлы ролей: общий хелпер `give_roles_models`, `Harness` раздаёт `fake/*` шести командным ролям, проверки `agents check` считают ошибки «нет модели» нормой свежей установки.
+### Removed
 
-**Настройки — отдельный режим: работа и администрирование разделены** (этап 1 PD21–PD23; `docs/platform/settings.md`)
-- Правило разделения: в рабочей части пользуются и наблюдают, в настройках определяют и меняют. Всё, что настраивает сервер, проект или учётную запись, переехало в отдельный режим `/settings` со своим макетом и меню по правам: «Личное» (`account, security, telegram, keys, tokens` — бывший «Профиль»), «Проект» (`general, agents, repos, people` и «Автоматизации» — правила и плейбуки; бывшая страница «Проект и люди») и «Сервер» (`health, stats, projects, accounts, mcp, vault` и «Агенты» — роли, шаблоны, навыки, история; бывшая страница «Сервер»). Вход — шестерёнка в подвале, `G` `S` или палитра команд; «← к работе» возвращает на последний рабочий адрес; на оба режима — одно SSE-соединение; раздел «Сервер» закрыт проверкой на уровне маршрута. Старые адреса (`/profile/*`, `/project/*`, `/server/*`) перенаправляют на те же вкладки, а ссылки в уведомлениях сервера (нет ключа модели, сбой синхронизации базы знаний) ведут прямо в настройки. Отдельный адрес для админки отложен (PD23); дальнейшие этапы — пространства имён `/api/admin`, единый журнал администрирования, параметры сервера прямо в вебе — на странице настроек.
-- Рабочая часть стала чистой: «Агенты» — каталог только для чтения без единого элемента правки (администратору — ссылка «Настроить» на тот же элемент), «Автоматизации» — список правил, «Запустить» и журнал запусков с отменой; редакторы правил — в настройках проекта.
-- Общие части вынесены: `Section`/`Badge`/`Menu`/`BarChart` и `useAct`/`useRefreshingAct` — в `shared/ui`, редактор файла и история правок — в `widgets/agents-kit` (вместе со вкладками ролей и шаблонов). Граница слоёв проверяется Steiger с единственным правилом `fsd/forbidden-imports` (`npm run lint:web`, шаг в CI): срезы одного слоя не импортируют друг друга, так что страницы настроек и работы не пересекаются; `TeamView` стал виджетом (`widgets/team-view`).
-**MCP: админская и клиентская сторона разделены** (`docs/platform/agent-roles-and-teams.md`, «MCP-подключения»; решение PD20)
-- Управление подключениями переехало на страницу «Сервер» (вкладка «MCP», только администраторы): структурированный редактор подключений (HTTP или команда, заголовки/переменные/аргументы, проекты, шлюз, режим JSON для остального — неизвестные поля записи сохраняются), значения переменных окружения `${env:ИМЯ}` — запечатанными в `server.db` (ChaCha20-Poly1305, как личные ключи; наружу только подсказка `…cdef` и время, пустое значение удаляет), проверка подключения (запуск + список инструментов или причина сбоя), скрытие инструментов (`hiddenTools` — шаблоны: шлюз вырезает их из списка и отказывает в вызове при любой выдаче роли, защитное расширение pi блокирует и прямые подключения через `mcpHidden` в правилах) и статистика вызовов шлюза за 7/30/90 дней — по подключениям и инструментам: вызовы, ошибки, среднее время и трафик в обе стороны (таблица `mcp_usage`; отказанные и закрытые вызовы попадают в журнал, но не в статистику). API: `GET /api/mcp-admin`, `PUT|DELETE /api/mcp-admin/servers/{id}`, `PUT|DELETE /api/mcp-admin/secrets/{name}`, `GET /api/mcp-admin/usage?days=` — всё под правами администратора сервера.
-- Клиентская сторона осталась на странице «Агенты»: вкладка MCP — чистый каталог (кто как ходит, какие роли имеют доступ, журнал вызовов проекта), редактор роли выдаёт подключения селектом и предлагает инструменты галочками из кэша последней проверки подключения (закрытые не предлагаются; живой `tools/list` через шлюз обновляет кэш не чаще раза в час), без кэша — шаблоны вручную. `GET /api/mcp` и каталог `/api/agent-config` отдают подключения с кэшем инструментов; события `mcp.called` журнала получили `bytesIn`/`bytesOut` и признак `closed`.
-- Тесты: `hidden_tools_are_closed_for_every_grant_and_usage_counts_what_reached_the_server` (`crates/genie/tests/it/mcp_gateway.rs` — скрытие, кэш, статистика, значение из базы переоткрывает соединение), `mcp_env_values_are_sealed_bound_to_their_name_and_listed` (`crates/genie-core/src/secrets.rs`), `mcp_usage_counts_up_and_the_tool_cache_is_replaced` (`crates/genie-core/src/server_db.rs`), `hidden_tools_close_whatever_a_role_grants` (`crates/genie/src/mcp_gateway.rs`), скрытые инструменты в guard — `test/genie-guard.test.ts`.
-
-**Pi-Bolt — харнесс агентов в Docker-образе** (`docs/platform/docker.md`, «Модели и pi»)
-- pi в образе заменён на [Pi-Bolt](https://github.com/opensec-git/Pi-Bolt) — тот же Pi, скомпилированный в один нативный бинарник (те же команды, сессии, настройки, провайдеры и расширения). Версия и SHA-256 npm-пакета релиза закреплены в Dockerfile (`PI_BOLT_VERSION`/`PI_BOLT_SHA256`, 0.8.5, база — pi 1.1.0); сборка стейджа ходит только на registry.npmjs.org (инсталлер обёртки полез бы и на GitHub, недоступный из некоторых сетей); в контейнере бинарник доступен как `pi` (шаблоны команд genie и `genie doctor` работают без изменений) и как `pi-bolt`; `genie doctor` узнаёт имя `pi-bolt` и в кастомных шаблонах команд. Выигрыш genie: старт процесса ~13× быстрее (13 против 170 мс — ходы в режиме turns спавнят процесс на каждый ход), долгие сессии держат кратно меньше памяти, запись больших файлов инструментами на порядок быстрее; образ худеет на весь `node_modules` pi.
-- Проверено спайком (2026-10-14): все 9 живых тестов `sessions` зелёные против бинарника — RPC-протокол, доставка почты genie-bus, guard с импортом `createMcpExtension` внутри скомпилированного кода, гранты MCP-шлюза, скиллы, восстановление после `kill -9` посреди хода, watchdogs; формат `--list-models` идентичен npm-pi. Сьют сессий быстрее на ~29%.
-- npm-pi (`@earendil-works/pi-coding-agent`) остаётся зависимостью: на нём типизируются расширения genie и работают живые тесты CI; вне Docker замена — `npm install -g pi-bolt` и симлинк `pi` → `pi-bolt` (или имя `pi-bolt` в `runtime.command`).
-
-**Чистый профиль pi для агентов; pi-mcp-adapter удалён** (`docs/platform/docker.md`, «Профиль pi агентов»)
-- Агенты genie больше не наследуют pi-профиль пользователя сервера: каждый получает `PI_CODING_AGENT_DIR=<data>/pi-agent` — профиль, которым управляет genie. При старте агента genie создаёт его и держит чистым: из `settings.json` вырезаются списки `packages` и `extensions` (остальное — тема, блок `litellm` — сохраняется), а `models.json` и `auth.json` засеиваются туда один раз из прежнего каталога (`~/.pi/agent`), если они там есть. pi больше не подхватывает ни сторонних расширений, ни пакетов, ни pi-установленных навыков: агент загружает ровно то, что передал genie (`-e`, `--skill`, модель). Другой каталог — `runtime.env.PI_CODING_AGENT_DIR`; пульт оркестратора (`genie orchestrate`) работает с профилем пользователя как раньше. Песочница видит новый профиль (writable, как раньше).
-- `pi-mcp-adapter` выпилен целиком: настройка `runtime.mcpAdapter` не читается, `docker/configure.mjs` ничего не вычищает при старте, предупреждения `genie doctor`, `genie agents check` и страницы «Агенты» убраны вместе с полями `mcpAdapterLoaded` API и веба, guard больше не детектирует и не блокирует инструменты адаптера — профиль агентов чист по построению.
-- Тесты: `the_pi_profile_starts_empty_and_strips_extension_lists`, `the_pi_profile_takes_the_operators_models_and_logins_once` (`crates/genie/src/runtime.rs`), окружение и settings профиля агента — в `crates/genie/tests/it/harness.rs`.
-**Личные ключи любых провайдеров pi, а не только LiteLLM** (`docs/platform/docker.md`, «Личные ключи моделей»)
-- В профиле — вкладка «Провайдеры и ключи» вместо «Ключ LiteLLM»: помимо ключа LiteLLM человек хранит ключи провайдеров, которых pi поддерживает сам и которые обходятся одним ключом (Anthropic, OpenAI, Google Gemini, xAI, Groq, Mistral, OpenRouter, DeepSeek, Moonshot, Qwen, ZAI и другие — реестр `PROVIDERS` в `crates/genie/src/llm_key.rs`; провайдеры с настройкой сложнее ключа — Bedrock, Vertex, Azure, Cloudflare — и интерактивный вход `openai-codex` остаются с pi серверового пользователя). Ключи по-прежнему зашифрованы в `server.db` и не показываются обратно.
-- Агент получает ключи инициатора в переменных окружения, которые читает pi: `LITELLM_API_KEY` — как раньше, обязателен для моделей `litellm/…` (без него агент не стартует, человек получает уведомление), а для остальных провайдеров — своя переменная по префиксу модели (`anthropic/claude-…` → `ANTHROPIC_API_KEY`). Личный ключ перекрывает серверный; без него агент работает как раньше. Серверный `LITELLM_API_KEY` агентам по-прежнему не передаётся, локальный режим не меняется.
-- API: `GET /api/me/llm-keys` (каталог провайдеров и заданные ключи), `PUT|DELETE /api/me/llm-keys/{provider}`; прежние `/api/me/litellm-key` удалены (ключи, сохранённые раньше, остаются на месте — имя секрета не менялось). Тесты: `keys_are_set_in_the_profile_and_never_shown_back`, `a_persons_key_of_a_pi_provider_overrides_the_servers`, `the_registry_covers_the_providers_pi_takes_a_key_variable_for` (`crates/genie/tests/it/llm_keys.rs`, `crates/genie/src/llm_key.rs`).
-
-**Тарифы моделей из LiteLLM и честный расчёт кэша** (`docs/platform/docker.md`, «Цены моделей и расходы»)
-- Сервер берёт тарифы моделей из LiteLLM (`GET /model/info` сервисным ключом без доступа к вызовам моделей: `litellm.infoToken` в config.json или `LITELLM_INFO_TOKEN`; адрес — `litellm.baseUrl`): один раз при старте и по действию администратора «Подтянуть тарифы из LiteLLM» — кнопка на странице «Расходы» или `genie server prices --refresh`; фонового опроса нет. Тарифы хранятся в `server.db` (таблица `model_prices`, версия схемы 3), `modelPrices` из config.json перекрывает их по полям — имя без провайдера находит модель с тем же именем (`deepseek-chat` правит цену `litellm/deepseek-chat`): свои вход/выход побеждают, цены кэша — если указаны; недостающее берётся из LiteLLM. Несколько деплоев одной модели схлопываются в одну цену. При недоступности LiteLLM сервер работает на полученном ранее и на `modelPrices`; страница «Расходы» и `genie doctor` показывают ошибку последней загрузки, а дата загрузки остаётся датой последней удачной. Сервисный ключ (и его `*_FILE`) вычищается из окружения каждого агента и консоли оркестратора: он остаётся у сервера.
-- **Кэш без цены кэша больше не тарифицируется по цене входа** (причина этой задачи: почти весь объём — кэш, и расходы завышались в разы; на G-119 — $6.22 вместо ~$0.43). Такие токены показываются как неоценённые: плитка «Не оценено» и пометка в строке модели на странице «Расходы», поле `unpricedTokens` у модели в `Spend`. Цены кэша приходят из LiteLLM (`cache_read_input_token_cost`/`cache_creation_input_token_cost`, доллары за токен → за миллион; ноль — настоящая цена, например бесплатная запись кэша DeepSeek). Когда бюджеты заданы, `genie doctor` предупреждает и о модели без цены, и о модели без цены кэша — её кэш-доллары бюджеты не видят.
-- Тесты: `prices_arrive_at_boot_merge_with_modelprices_and_refresh_by_an_administrator`, `a_failed_refresh_keeps_the_time_of_the_last_successful_fetch`, `the_price_source_tells_what_config_json_overrides`, `a_refusing_token_is_an_error_and_a_dead_litellm_keeps_the_manual_prices`, `a_wrong_service_token_is_explained` (`crates/genie/tests/it/model_prices.rs`, с поддельным LiteLLM), юнит-тесты слияния цен и расчёта кэша (`crates/genie/src/model_prices.rs`, `crates/genie-core/src/usage.rs`), `a_failed_price_fetch_leaves_the_last_fetch_alone` (`crates/genie-core/src/server_db.rs`), `budgets_warn_about_models_whose_cache_price_is_missing` (`crates/genie/src/doctor.rs`), а то, что ключи хостинга и LiteLLM не доходят до агентов, проверяет `agents_deliver_through_the_proxy_and_a_person_merges` (`crates/genie/tests/it/git_flow.rs`).
-
-**Закрытая задача освобождает свой worktree; место на диске видно** (`docs/platform/agent-roles-and-teams.md`, «Работающие команды»; `docs/platform/docker.md`, «Место на диске»)
-- Задача, закрывшаяся (`done`/`cancelled`), больше не держит гигабайты сборок: команда на ней останавливается, и задачу зачищает её собственная проверка (отчёт — в журнал). Worktree с веткой убирается, когда ветка уже в основной ветке репозитория, а в worktree нет ни незафиксированных, ни посторонних файлов — `target/` и `node_modules` не держат, а незакоммиченная работа держит. Невлитая или незафиксированная работа остаётся до следующей проверки: при старте сервер проходит по всем закрытым задачам (`runtime::sweep_worktrees`), и worktree освобождается, как только работа попадает в основную ветку. Рабочие пространства команд в `<data>/workspaces` убираются, когда во всех их репозиториях чисто и всё перенесено на git-хостинг.
-- `runtime.lowDiskGb` (по умолчанию 5): меньше свободного на диске данных или репозитория проекта — предупреждение при старте сервера и в `genie doctor` (меньше 1 ГБ — ошибка); проверка — по всем файловым системам, где сервер работает, без повторов. Тесты: `a_closed_task_frees_its_merged_worktree_and_branch`, `unmerged_work_stays_until_it_is_in_the_main_branch`, `uncommitted_work_keeps_the_worktree_even_when_the_branch_is_in_main`, `closing_a_task_sweeps_only_the_task_it_closes`, `the_start_sweep_catches_tasks_closed_earlier` (`crates/genie/tests/it/worktrees.rs`), `low_disk_warnings_name_a_filesystem_once` (`crates/genie/src/doctor.rs`).
-
-**Слот оркестратора и очередь ходов; репетиции падения и нагрузки** (`docs/platform/agent-bus.md`, `docs/platform/pilot.md`, «Репетиция»)
-- В режиме ходов участники и задания не занимают последний слот `maxConcurrent` — оркестратор, проснувшийся в заполненный планировщик, стартует сразу, а не ждёт конца чужого хода; при нескольких кандидатах оркестратор идёт первым. Очередь перед слотами видна: `genie server runtime` и `GET /api/runtime` (идущие ходы, ждущие по типам, свободные слоты). Тест: `the_last_slot_stays_free_for_the_orchestrator` (`crates/genie/tests/it/runtime.rs`), `the_runtime_view_shows_the_scheduler_queue` (`crates/genie/tests/it/api.rs`).
-- `deploy/crash-drill.sh` (G-133, сценарий G-79): стенд с настоящим pi и моделью из `bws-run` — `kill -9` агента и сервера посреди задачи; проверяется, что маркерные комментарии пришли ровно по одному (ни потерь, ни дублей), письма не доставлены дважды, сирот процессов и worktree нет, задача не висит в работе. Заодно сервер повторяет bind занятого порта (~18 с с нарастающим ожиданием) — быстрый рестарт после `kill -9` больше не падает «Address already in use».
-- `deploy/load-drill.sh` (G-83): нагрузочный стенд с поддельной моделью — команды, почта, cron-автоматизация и веб (API + поток событий) одновременно; в конце печатает задержки ходов и API (p50/p95/max), письма, очередь перед слотами, память сервера и ошибки блокировки SQLite, и проваливается, если были упавшие ходы или потерянные письма.
-
-**Повтор упавших проверок CI: `genie pr rerun`** (`docs/platform/git-repositories.md`, «Повтор упавших проверок»)
-- `genie pr rerun [--repo имя] [--task id]` (исполнитель) просит хостинг перезапустить **упавшие** проверки наблюдаемого коммита задачи: GitHub — `rerun-failed-jobs` у завершившихся workflow runs, GitLab — `retry` последнего пайплайна. Команда сначала спрашивает хостинг и отказывается, если проверки не упали (`pending`/`passed`/`stalled`/`none`); на успешный повтор наблюдатель снова смотрит на коммит (строка возвращается в `pending`, часы `ciPendingSecs` начинаются заново), в журнал пишется `ci.rerun`. Письма на сам повтор нет: кто запустил, тот и знает, а упавший снова прогон пришлёт новое `ci.failed`.
-- Лимиты: один повтор на коммит (решение владельца), `runtime.ciRerunsPerRequest` (по умолчанию 2) на доставку и `runtime.ciRerunsPerTask` (по умолчанию 3) на задачу по всем её репозиториям; `0` в любом из ключей выключает повторы (новые колонки `task_repos.ci_rerun_sha`/`ci_reruns`, `reset_ci` их не стирает). Лимит резервируется до вызова хостинга одной транзакцией и возвращается, если хостинг отказал, — сломанный токен не сжигает попытку. Проверки без API перезапуска (упавшие статусы коммита и check runs другого приложения, `plain`-хостинг) объясняются в ответе.
-- Тесты: `a_failed_check_is_rerun_once_and_the_watch_follows_it`, `a_rerun_needs_a_failed_check_and_a_watched_commit`, `the_rerun_limits_stop_a_second_rerun`, `a_host_refusing_a_rerun_does_not_burn_the_limit`, `reruns_are_switched_off_by_the_config`, `a_plain_host_cannot_rerun_checks`, `a_github_failure_without_actions_runs_is_explained` (`crates/genie/tests/delivery.rs`), `github_provider`/`gitlab_provider` (`crates/genie/tests/providers.rs`), `a_delivery_remembers_the_rerun_and_a_re_arm_does_not_erase_it` (`crates/genie-core/src/repos.rs`); фейковые хостинги получили эндпоинты перезапуска (`tests/common/fakehost.rs`).
-
-### Изменено
-
-- **pi 1.0.2 → 1.2.0** (`package-lock.json`). Что видно genie: обрезанный на лимите вывода ответ `pi -p` теперь выходит с кодом 1 и предупреждением в stderr — такой ход честно падает вместо молчаливого успеха с обрезком; переходные ошибки провайдера («The upstream provider returned an error», `server_busy`) pi повторяет сам — меньше упавших ходов и повторов планировщиком; у события `agent_settled` появилось поле `aborted`; прогоны от `sendMessage({triggerTurn})` проходят через `before_agent_start`, а сессия считается занятой на старте прогона (`genie-bus` это уже учитывал — доставка почты проверена живыми тестами). Прочее: `--tools`/`--exclude-tools` понимают шаблоны `*` и `+имя`/`-имя`, появился `--no-mcp`, провайдер Azure переименован (`azure-openai-responses` → `azure`; env `AZURE_OPENAI_*` без изменений, в реестре ключей genie его нет), компакция не сериализует thinking, зависимость chord удалена. Расширения genie (bus/guard/console) компилируются и работают без изменений: полные прогоны зелёные (269 Rust с живым pi 1.2.0, 83 TS).
-- **Раздутые функции разложены на фазы и обработчики.** `runtime::spawn_team` (233 строки → оркестратор на 55 + фазовые хелперы: поиск задачи и стражи, ростер, проверки лимитов, workspace/worktree, распределение имён и ключей, постановка в трекере, кикоффы), `AgentConfig::load_with` (320 → 9 строк поверх загрузки по видам каталога; порядок проблем для `genie agents check` не изменился), `engine::execute` (229 → диспетчер на 26 строк и 16 обработчиков `step_*` по видам шагов автоматизаций) и вебовский `RolesTab.tsx` (779 → 380: список и карточки остались, просмотр/правка промпта, настройки, навыки и MCP-гранты — в отдельных диалогах `PromptDialog`/`SettingsDialog`/`SkillsDialog`/`McpDialog` с общей рамкой `EditDialog`). Чистое перемещение кода: поведение, порядок побочных эффектов и тексты не менялись; независимое ревью расхождений не нашло, найденные им замечания (7 копий замыкания problem, комплексные типы кортежей, 8-аргументный хелпер, разлетевшийся save-паттерн диалогов) закрыты тем же батчем — clippy без предупреждений.
-
-- **Фоновые воркеры спят до события, а не по таймеру.** Журнал читает один поллер на проект для всех SSE-клиентов (цена не растёт с числом вкладок, скрытая вкладка закрывает поток). Движок, планировщик, outbox и delivery-поллер спят до пробуждения (`Notify` теперь зовётся из каждой записи журнала и каждого места создания работы) или ближайшего дедлайна (cron автоматизаций, напоминания вопросников, backoff'ы) со страховочной сетью 60 с; локальный CLI без токена будит сервер через `POST /api/wake` (только loopback). Пробуждений в простое: ~77/мин → ~12/мин.
-- **SQLite под нагрузкой.** Горячие запросы фоновых циклов — через `prepare_cached` (ёмкость кэша 64); индексы под запросы, читавшие таблицы целиком (по аудиту `EXPLAIN QUERY PLAN`); `temp_store=MEMORY`, `mmap_size` 64 МиБ и `PRAGMA optimize` при открытии и закрытии каждой базы.
-- **Веб-интерфейс точнее и легче.** Событие журнала или мутация инвалидирует только затронутые запросы (неизвестный тип события — широкая инвалидация, ничего не устаревает). Первый экран: 844 → 497 КБ JS (gzip 241 → 158); встроенный UI отдаётся заранее сжатым brotli/gzip (по сети 989 → 220 КБ, без CPU в рантайме); карты кода не собираются по умолчанию (`GENIE_WEB_SOURCEMAP=1`).
-- **Release-профиль и ресурсы сессий pi.** `[profile.release]`: thin LTO, `codegen-units = 1`, strip (бинарник 25,8 → 23,4 МБ). Простаивающая сессия останавливается через 5 минут вместо 15 (холодный старт ~0,4 с); новый `runtime.nodeHeapMb` (по умолчанию 2048, 0 — выкл) ограничивает кучу V8 только процессов pi, команды агента лимит не наследуют.
-- **pi 1.0.2 и нативный MCP** (`docs/platform/agent-roles-and-teams.md`). pi и pi-ai обновлены с 0.87.1; `pi-mcp-adapter` больше не нужен: guard подменяет встроенный MCP pi и регистрирует только подключения роли (пользовательский и репозиторный `mcp.json` агент не читает), агенты запускаются с `--no-approve`; изоляция и недоступность исключённых инструментов из codemode покрыты живыми тестами. pi ставится в образ из локфайла genie (воспроизводимо: pi ≥1.0.1 выходит без npm-shrinkwrap); при старте контейнера адаптер вычищается из настроек, `genie doctor` предупреждает об остатках. В pi 1.0 куча на сообщение в длинных сессиях заметно меньше, отправка промпта не замедляется с ростом сессии, первый промпт не ждёт MCP-подключений.
-- **Сборка и тесты быстрее и легче для диска.** Интеграционные тесты сервера — один бинарник `crates/genie/tests/it/` вместо 28 (отдельно остались `sandbox.rs` и `migrate.rs`: им нужно состояние всего процесса); один файл — `cargo test -p genie --test it <файл>::`. Отладочная информация в dev-профиле — только номера строк, у зависимостей её нет: тестовые бинарники весят в разы меньше (было ~10 ГБ записи на полный прогон). Полный прогон после сборки — около 20 секунд.
-- **Rust для агентов в образе и общий кэш сборки** (`docs/platform/docker.md`, «Rust»). Аргумент сборки `RUST_TOOLCHAIN` кладёт в образ тулчейн с clippy и rustfmt, gcc и mold; контейнер при старте даёт агентам общий кэш `/data/cache` (скачанные крейты и один каталог сборки: зависимости собираются один раз, сборки агентов идут по очереди), линковку через mold и `CARGO_BUILD_JOBS` (по умолчанию 8). Раньше агент на Rust-задаче ставил себе тулчейн и gcc сам — около 2 ГБ на каждого.
-- **CI**: задания «формат и lint», «тесты Rust» и «TypeScript и веб» идут параллельно и только когда изменение их касается (правка документации не запускает ничего тяжёлого); запросы на слияние берут кэш сборки `main` и не пишут свой; тесты линкуются mold и идут в 8 потоков. Зависимости в dev-профиле собираются с оптимизацией: тесты проводят в них заметное время (argon2, TLS, SQLite), а собираются они один раз и лежат в кэше.
-
-### Удалено
-
-**Зачистка зависимостей и мёртвого кода**
-- npm: из package.json ушли `@earendil-works/pi-ai` (ставится транзитивно с `pi-coding-agent`), `@dnd-kit/sortable` и `@dnd-kit/utilities` (нужен только `@dnd-kit/core` — перетаскивание карточек) — ни одного импорта в коде не было.
-- Cargo: у `genie` убраны дев-зависимости, дублирующие обычные (`base64`, `chrono`, `tower`); дев-строка `chrono` ещё и незаметно возвращала тестам выключенные по умолчанию фичи.
-- **axum обрезан до используемых фич** (`json`, `query`, `tokio`, `http1`): `form`, `matched-path`, `original-uri` и трассировочный слой дефолтных фич не имели вызовов — `tracing` в графе сборки остаётся только у остальных потребителей.
-- **ts-rs без `serde-json-impl`**: ни один экспортируемый тип не содержит `serde_json::Value` (используются `#[ts(type)]`-оверрайды), сгенерированные TS-типы не изменились ни на байт.
-- `futures-util` включает `std` явно: `StreamExt::chain`, `stream::unfold` и `BoxFuture` — std-gated API, прежде фича включалась транзитивно чужой зависимостью.
-- Удалены `ServerDb::acquire_lock`/`release_lock`/`lock_holder` и таблица `locks` (аренду оркестратора делает `take_console`; в существующих базах таблица остаётся лежать без вреда) и `team::pick_name` (без производственных вызовов: имена выбирает `pick_from` по пулу роли).
+- The `pi-mcp-adapter` path; pi's built-in MCP integration is used instead.
+- Unused npm/Cargo dependencies and obsolete lock/name-selection helpers.
 
 ## [0.4.0] — 2026-10-04
 
-Готовность к пилоту: живые сессии агентов, репозитории проектов с ворота­ми CI перед ревью, бюджеты и учёт расходов, песочница, резервные копии с восстановлением, версионные миграции с откатом, каталог операций (CLI и MCP) и пульт оркестратора; TS-ядро удалено. Внутри — модули команд над задачами, исхода прогона агента и доставки, которые держат правила в одном месте. Запуск и обновление — `docs/platform/getting-started.md`.
+### Added
 
-### Добавлено
+- Personal LiteLLM credentials, per-agent model changes, token/cost reporting, and task, epic, and daily budgets.
+- Per-repository encrypted access tokens, server Git proxy, scoped task repositories, PR/MR delivery policies, and GitHub/GitLab integration.
+- CI feedback for task branches and merge commits, review gates for failed checks, stalled-check reports, failed-log excerpts.
+- Idea shaping with a planner agent that proposes a task or epic for a person to create.
+- Owner-question actions, ready/start/next playbooks, epic concurrency limits, and silent-team supervision.
+- Docker deployment, isolated pilot instances, backup restore, migration checks on copies, and rollback drills.
+- Configurable roles, team templates, skills, permissions, and live pi sessions.
+- A unified operation catalog for CLI and MCP, an interactive orchestrator console, and pilot health checks.
 
-**Проверки CI на ветке, как ворота перед ревью, и письмо о зависших проверках** (`docs/platform/git-repositories.md`, «Ворота рабочего процесса», «Наблюдатель»)
-- Переход `in_progress → review` агентом закрыт, если проверки наблюдаемого коммита упали: отказ называет ветку и репозиторий. Проверки спрашиваются у хостинга сейчас, а при недоступности хостинга решает записанное состояние — сбой хостинга не останавливает работу. `pending` и `stalled` ворота не закрывают (разбудить агента на зелёные проверки некому, а упавшие уже письмо послали). Люди решают сами, как и раньше.
-- Проверки **ветки** наблюдаются и без запроса: push ветки задачи (а при политике `branches`/`direct` — любой разрешённой ветки) записывает ветку и коммит в `task_repos` (`ci_ref`, `ci_sha`, `ci_since`), наблюдатель опрашивает их и пишет `ci.failed`/`ci.passed` с письмом команде. Строка от прежней версии (наблюдаемого коммита нет) получает его при первом же взгляде из запроса, а уехавшая мимо прокси голова ветки — при следующем: ворота и наблюдатель смотрят на один коммит. Плашка проверок в вебе и строка `genie pr show` видны без запроса и без хостинга под рукой.
-- Репозиторий без CI не опрашивается вечно: первый ответ «проверок нет» получает ещё один взгляд (они могли начаться сразу после push), второй прекращает наблюдение.
-- После слияния наблюдается **основная ветка**: `ci_ref` = целевая ветка, `ci_sha` = коммит слияния (`merge_commit_sha`), — так слияние человеком мимо упавших проверок не остаётся незамеченным.
-- Проверки, которые идут дольше `runtime.ciPendingSecs` (по умолчанию 1800 с, 0 — выключить), дают событие `ci.stalled` и **одно** письмо — команде или, если активной команды нет, оркестратору. Дальше хостинг об этом коммите не опрашивается, письмо не повторяется, а сторож тихих команд считает `stalled` ожиданием. Перезапуск упавших проверок остаётся за человеком (G-115).
-- Тесты: `a_pushed_branch_is_watched_without_a_request`, `the_target_branch_is_checked_after_a_merge_past_the_checks`, `review_is_closed_when_the_checks_failed`, `checks_pending_too_long_are_reported_once`, `a_delivery_from_before_the_watch_does_not_slip_past_a_failed_check`, `a_branch_without_checks_is_watched_once_more_and_then_left_alone` (`crates/genie/tests/delivery.rs`), `pending_ci_is_not_silence` (`crates/genie/tests/watchdog.rs`).
+### Changed
 
-**Пилотный экземпляр сервера: свои данные, порт и worktree** (`docs/platform/pilot.md`, «Пилотный экземпляр сервера (отдельно от рабочего)»)
-- `deploy/pilot.sh` — второй экземпляр genie рядом с рабочим одной командой: свой каталог данных (`GENIE_PILOT_DATA`, по умолчанию `~/.local/share/genie-pilot`), свой порт (`GENIE_PILOT_PORT`, 7421), свой префикс задач (`PIL`) и свой каталог worktree (`deploy/pilot.config.json`), при том же репозитории. Рабочий сервер не трогается: ни настройки, ни данные, ни перезапуск.
-- Ключ LiteLLM берётся из Bitwarden через `bws-run` и в файлы не пишется; без ключа запуск останавливается. Скрипт сам заводит каталог данных в первый раз (`config.json` из шаблона и проект), снимает `GENIE_URL`/`GENIE_TOKEN`, чтобы операции не ушли на рабочий сервер, и не стартует ни на занятом порту, ни поверх работающего экземпляра на тех же данных (`pilot.lock`): два сервера на одной базе встают намертво вместо понятной ошибки.
-- Тест `a_pilot_instance_keeps_worktrees_and_branches_apart` проверяет сам шаблон `deploy/pilot.config.json`: другой порт, другой корень worktree, а команда пилота (`PIL-*`) работает в `<репозиторий>.pilot.worktrees/<команда>` с веткой `genie/PIL-*`.
+- Agents that exhaust retries remain in `error` with a reason.
+- Sandbox handling restricts Git hooks/configuration and privileged container sockets.
 
-**Версионные миграции: проверка на копии и тренировка «обновил — откатился»** (`docs/platform/getting-started.md`, «Обновление и откат»; `docs/platform/docker.md`)
-- Перед тем как тронуть базу, genie читает, что она записывает (`meta.schema`) и каких колонок схемы ей не хватает, и, если миграция предстоит, прогоняет её на копии (`VACUUM INTO` во временный каталог) и проверяет копию: `integrity_check`, внешние ключи, состав таблиц, неизменность числа строк и записанную версию. Только после этого мигрируется живой файл; копия удаляется на любом пути, ошибок в том числе. Данные, записанные более новым genie, отвергаются с названием обеих версий и подсказкой восстановить копию.
-- Путь один и тот же для трекеров и `server.db`: у серверной базы теперь настоящая версия схемы (`SERVER_SCHEMA_VERSION = 2`; раньше в `meta` навсегда записывалась «1», так что отличить мигрированную базу от нетронутой было нечем). `vault-index.db` — кэш, он не проверяется (`genie vault reindex`).
-- `genie migrate [--check] [--json]`: читает `server.db` и трекер каждого проекта; `--check` ничего не пишет (каталог данных остаётся побайтово тем же — база читается без `-shm`/`-wal`, если WAL рядом нет) и печатает, что предстоит; без `--check` применяет миграции (сервер остановлен). `genie serve` проходит тот же путь и пишет по строке на базу в stderr (`journalctl -u genie`), `genie doctor` показывает версии схем или отказ вместо паники.
-- `MANIFEST.json` копии теперь содержит `schemas` (версия каждой базы), а `genie restore` отказывается восстанавливать копию более нового genie, ничего не записав.
-- `deploy/rollback-drill.sh` — репетиция на копии данных во временном каталоге: два бинарника, сев фикстуры прежним, копия, `migrate --check` (каталог данных не меняется), `migrate`, сверка числа строк, `doctor`, откат копией на прежнем бинарнике, отказ на более новых данных, возврат потерянной колонки. Тесты: `crates/genie/tests/migrate.rs`.
-- В таблицу репетиции пилота (`docs/platform/pilot.md`) добавлена строка об обновлении и откате.
+### Removed
 
-**Восстановление из резервной копии: `genie restore`** (`docs/platform/getting-started.md`, «Резервные копии»)
-- `genie restore <копия> [--force]` кладёт копию обратно: сначала проверяет целостность каждой базы и пока ничего не пишет; затем `server.db`, трекеры (проекты без кода переезжают с каталогом данных), vault из бандла, конфигурацию, `secrets.key`. Сервер с `server.db` без `--force` не перезаписывается.
-- `genie backup` теперь копирует и `git.json` (раньше описание git-хостингов терялось), пишет `MANIFEST.json` и с `--with-secrets` кладёт `secrets.key` (по умолчанию его нет в копии, об этом говорит отчёт). Тест тренировки: `a_backup_restores_into_an_empty_directory_with_everything_in_it`.
+- The TypeScript domain core, local CLI, web server, and original pi extension. Rust owns server behavior; TypeScript remains for the web UI and harness extensions.
 
-**Бюджеты расходов: задача, эпик, сутки** (`docs/platform/docker.md`, «Бюджеты»)
-- `budgets` в `config.json`: `perTask`, `perEpic`, `perDay` в долларах (0 — без лимита). Исчерпанный бюджет останавливает команды, на которые он распространяется (причина `budget`, переживает рестарт сервера), один раз уведомляет автора задачи и владельцев проекта и пишет оркестратору. Новая команда на такую задачу не создаётся, пока лимит не поднят; `genie doctor` предупреждает о моделях без цены.
+### Fixed
 
-**Песочница: хуки и конфигурация git, сокеты контейнеров** (`docs/platform/getting-started.md`, «Песочница агентов»)
-- Набор проверок побегов расширен (`crates/genie/tests/sandbox.rs`): ссылки внутри worktree на скрытые данные и на запись вовне, `..`, ключ `secrets.key`, сокеты контейнеров, хуки и конфигурация git, запрос к API без токена.
-- Нашлось и закрыто: агент мог записать хук (`hooks/post-checkout`) или ключ (`core.fsmonitor`) в общий `.git` репозитория, и они сработали бы с правами сервера вне песочницы; теперь `hooks`, `config`, `config.worktree` и `info/attributes` только для чтения (коммиты работают, `git push -u` нет). Сокеты Docker, podman, containerd, cri-o и buildkit закрыты.
-- `genie doctor` честнее про сервер без пользователей: всё на этой машине, в том числе агенты, действует как владелец.
-
-**Упавшие проверки CI: какие и почему** (`docs/platform/git-repositories.md`, «Наблюдатель»)
-- Когда проверки запроса падают, команда получает не только ссылку, а список упавших проверок: имя, ссылка и конец лога. GitLab: упавшие задания последнего пайплайна и их `trace` (без цветовых кодов); GitHub: упавшие check runs (заголовок и описание) и упавшие статусы коммита. До 5 проверок, до 600 знаков. Событие `ci.failed` несёт то же в `payload.failures`, так что на него можно вешать автоматизации. Хост, который ничего не говорит, оставляет список пустым.
-
-**Лимит работы по эпикам и очередь «Готово к работе»** (`docs/platform/automations.md`)
-- `limits.maxActiveTeamsPerEpic` в `config.json`: активных команд на задачи одного эпика (0 — без лимита, по умолчанию). Сверх лимита сервер отказывает в команде с понятной причиной, задача остаётся в `ready`.
-- Плейбук `ready-next` (веб: «Автоматизации» → «Плейбуки»; `genie automation install ready-next`): когда команда остановилась, оркестратор просыпается и берёт следующие готовые задачи без команды по приоритету, сколько позволяют лимиты. `ready-start` теперь говорит оркестратору не повторять спавн при отказе по лимиту.
-
-**Агент, который сдался, остаётся в `error` с причиной** (живые сессии)
-- После `maxAttempts` сбоев подряд (например, исчерпан лимит провайдера) агент оставался в `error` лишь до штатной остановки его сессии, которая сразу возвращала `idle`: на доске он выглядел здоровым. Теперь `error` держится до `genie team restart`, причина (`stopped: …`) в статусе участника, а в журнал команды пишется `agent_error`, как у режима ходов.
-
-**Сторож тихих команд: команда, которая ничего не делает, будит оркестратора** (`docs/platform/agent-bus.md`, «Надзор»)
-- Сторожа шага и цикла следят за участником в `working`; случай «никто не работает и никто ничего не ждёт» оставался незамеченным: команда читала последнее письмо, отвечала и замирала, оставляя задачу «в работе» навсегда.
-- Теперь активная команда на задаче «в работе», где все участники `idle`, нет недоставленной почты и нет ожидания человека или CI дольше `runtime.stallSecs` (по умолчанию 900 с, 0 — выключить), получает письмо оркестратору — одно на каждую полосу тишины (`team_silent` в журнале команды, так что рестарт сервера письмо не повторяет).
-- Ожиданием считается: заблокированная задача, `needs_owner`, открытый опрос, незапущенное задание агента, запущенные проверки (`ci_state = pending`) и запрос, ждущий ревью или мержа (`cr_state = open`). Участник в `paused`, `stopped` или `error` — также не тишина.
-- Сторож вызывается на каждом тике `runtime::schedule` в обоих режимах (`sessions` и `turns`); в веб-журнал команды добавлена подпись события. Тесты: `crates/genie/tests/watchdog.rs` (письмо и идемпотентность, ожидание человека и CI, порог, выключение), юнит-тесты предиката в `crates/genie-core/src/team.rs`.
-
-**Расходы на модели: чат, задача, эпик, проект** (`docs/platform/docker.md`, «Цены моделей и расходы»)
-- Агенты сообщают токены каждого ответа модели (`POST /api/agent/usage` из расширения `genie-guard`, в живых сессиях и разовых заданиях). Сервер копит их в трекере проекта (таблица `usage`): день, чат агента, задача, модель, вход, выход, чтение и запись кэша.
-- Цены — `modelPrices` в config.json, доллары за миллион токенов. Стоимость считается при показе, модель без цены показывает только токены.
-- Веб: «Сервер» → «Статистика» → «Расходы»: сумма, токены, средняя стоимость готовой задачи, модели без цены, график по дням и моделям, таблица по моделям с ценами и разрезы по проектам, эпикам, задачам и чатам. Строка «Расходы» в задаче (вместе с подзадачами) и в эпике (с ценой каждой задачи в списке), «Потрачено» в чате агента.
-- `genie stats` печатает расходы проекта по моделям и эпикам; `GET /api/stats` — поле `usage` у проекта и `cost`, `tokens`, `costByModel` по дням; `GET /api/tasks/{id}/usage`, `GET /api/agents/{team}/{member}/usage`.
-**Плейбук «Готово к работе» → оркестратор запускает работу»** (`docs/platform/automations.md`)
-- Плейбук `ready-start` (веб: «Автоматизации» → «Плейбуки»; `genie automation install ready-start`): когда задача переходит в «Готово к работе» (сама, через `auto-ready`, или вручную), оркестратор просыпается и запускает работу над ней: собирает команду. Если над задачей уже работают, ничего не делает; если для старта не хватает решения владельца (интеграция, репозитории), спрашивает его. Эпики не запускает. Работает только в проектах, где его добавили.
-**Токен доступа у репозитория проекта** (веб: «Проект» → «Репозитории», поле «Токен доступа»; CLI: `genie repos add|set --token-stdin`, `genie repos set --clear-token`)
-- Администратор проекта вводит PAT при добавлении репозитория или позже. **Токенов хостинга в `git.json` больше нет**: поля `token` и `token_file` не читаются, хостинг с ними отклоняется с подсказкой (переносите токены на репозитории); `${ENV}`-токены и вырезание их имён из окружения агентов ушли вместе с ними. Сервер хранит токен репозитория в `server.db` зашифрованным (ключ `secrets.key`, как у ключей LiteLLM), привязанным к проекту и репозиторию; API и веб показывают только последние символы, агентам он недоступен, в командную строку аргументом не передаётся. API: поле `token` в `POST /api/repos` и `PATCH /api/repos/<имя>` (пустое — удалить), в ответе — `token: {set, hint, updated, unreadable}`.
-- `genie doctor` предупреждает о репозитории без токена; `genie repos hosts --check` проверяет описание хостинга, а доступность и права токена — `genie repos check <имя>`.
-
-**Разбор идеи с агентом** (веб: «Новая задача» → «Обсудить с агентом», ⌘K «Обсудить идею с агентом»)
-- Сырая идея своими словами уходит не оркестратору, а планировщику: сервер заводит черновик с меткой «идея» и команду из шаблона `idea` с одной новой ролью `planner` (на базе аналитика, только чтение). Открывается обычный чат с агентом; оркестратор идею не трогает.
-- Планировщик задаёт вопросы по одному и держит предложение в артефакте `plan.json`: одна задача, несколько задач или эпик с задачами, у каждой описание, критерии приёмки и зависимости, плюс допущения и открытые вопросы. План показан справа от чата (на телефоне — шторкой «План») и обновляется по ходу разговора; лишние задачи снимаются галочкой.
-- «Завести эпик и N задач»: идея становится эпиком (или первой задачей), задачи создаются во входящих с зависимостями, исходный текст идеи остаётся в заметках, планировщик останавливается, оркестратор получает одно сообщение на весь план. API: `POST /api/ideas` (`text`), `POST /api/ideas/{id}/apply` (`plan`).
-
-**Действия агента в вопросе владельцу** (веб: блок «Нужно ваше решение» в задаче)
-- Переводя задачу в `needs_owner`, оркестратор может приложить действие: `ask-owner-question` (2–6 вариантов кнопками), `ask-for-merge-pr` («Посмотреть PR» и «Слить PR» для запроса задачи), `ask-free-form` (обычный вопрос). Свободный ответ есть всегда. CLI: `genie task status needs_owner -m "…" --action ask-owner-question --option A --option B` или `--action ask-for-merge-pr --repo api`; MCP: `ownerAction`, `options`, `repo`; API: `action` в `POST /api/tasks/{id}/status`, в задаче — `needsOwner.action`.
-- «Слить PR» сливает по политике репозитория (`POST …/cr/merge` с `{"policy": true}`): метод, обязательные проверки и одобрения, нажатие человека считается одним одобрением. Пока политика не пускает, кнопка неактивна и объясняет почему; после слияния задача возвращается в прежний статус.
-- Виды действий расширяемые: новый вид — вариант `OwnerAction` на сервере и карточка в `features/owner-decision`. Вид, которого веб ещё не знает, показывается как обычный вопрос.
-
-**Страница «Сервер» по вкладкам, статистика с графиками** (веб: «Сервер»)
-- Вместо одной длинной страницы — вкладки «Состояние», «Статистика», «Проекты», «Учётные записи», «База знаний» (`/server/stats` и т. д.).
-- «Состояние»: вердикт проверки сервера, под ним только то, что требует внимания; что в порядке — свёрнуто. Ниже — последние 7 дней в четырёх цифрах со ссылкой на статистику.
-- «Статистика»: неделя или месяц, все проекты или один; цифры, графики «Задачи по дням» (создано и готово) и «Запуски агентов» (со сбоем и без), таблица по проектам, редкие счётчики — под катом.
-- «Проекты» и «Учётные записи»: список слева, форма нового справа; путь к репозиторию и префикс задач — в «Дополнительно», отключение учётной записи — в меню «⋯».
-- `genie stats --json` и `GET /api/stats`: у проекта поле `daily` — созданные и готовые задачи, запуски и сбои по дням.
-
-**Вкладка «Репозитории» переделана** (веб: «Проект» → «Репозитории»)
-- Репозиторий добавляют по ссылке: адрес страницы из браузера (любой страницы внутри репозитория), https- или ssh-адрес для clone. Веб сам находит хостинг из `git.json` и путь, предлагает имя в проекте; про чужой хостинг говорит, какие подключены. Форма открывается кнопкой «Добавить репозиторий» и идёт по шагам: ссылка, имя, что можно агентам.
-- У каждого репозитория карточка: имя, хостинг со ссылкой, ветка; ниже переключатель «Только читать / Читать и предлагать изменения» и правило, как изменения попадают в основную ветку, с пояснением. Проверка доступа показывает результат и статус у имени; обновление веток, пробная отправка и отсоединение — в меню «⋯»; папка в рабочей копии и правило в JSON — в «Дополнительно».
-
-**Плейбук «Задачу ничего не держит → «Готово к работе»»** (`docs/platform/automations.md`)
-- Новый шаг автоматизаций `task.ready`: переводит задачу из «Черновика» или «Уточнения» в «Готово к работе», если на ней нет блока, все зависимости закрыты, она не ждёт решения владельца, ответов на вопросы, агентного задания или работающей команды и выполнен Definition of Ready. Проверяет и задачи, которые зависят от этой, так что закрытие зависимости освобождает их. Выход — `{moved, held}`: кого перевели и что держит остальных.
-- Плейбук `auto-ready` (веб: «Автоматизации» → «Плейбуки»; `genie automation install auto-ready`) запускает шаг на любое событие задачи в «Черновике», «Уточнении» или «Готово». Сам по себе ничего не включает: работает только в проектах, где его добавили.
-
-**Настройки профиля и проекта по вкладкам**
-- Профиль: вкладки «Аккаунт», «Вход и пароль», «Telegram», «Токены CLI и MCP». В аккаунте можно поставить фото (веб обрезает его до квадрата 256×256), сменить отображаемое имя, логин и почту.
-- Смена логина: `PATCH /api/users/{id}` с `login`. Сессии, токены и участие в проектах идут за учётной записью, задачи с ответственным и консоль оркестратора переходят на новый логин.
-- Фото: `PUT /api/users/{id}/avatar` (PNG, JPEG или WebP до 512 КБ), `DELETE` убирает, `GET` отдаёт; у пользователя поле `avatar` с адресом, который меняется вместе с фото. Фото видно в меню слева, в списке людей проекта и на странице «Сервер».
-- Токены на отдельной вкладке: инструкция для Claude Code, Codex и командной строки, выпуск с именем устройства, список с датой выдачи и последним использованием, отзыв. `GET /api/auth/tokens` (без секретов), `DELETE /api/auth/tokens/{id}`; сервер отмечает использование токена не чаще раза в минуту.
-- Проект: вкладки «Общие», «Работа агентов», «Репозитории», «Люди». Режимы оркестратора показаны карточками с ответом, кто ведёт задачи и кто их закрывает; у интеграции по умолчанию есть шаблоны; приглашения — в колонке рядом со списком людей.
-
-**Личные ключи LiteLLM** (`docs/platform/docker.md`, «Личные ключи LiteLLM»)
-- Каждый пользователь указывает свой ключ LiteLLM в профиле (веб: «Профиль» → «Ключ LiteLLM»; `GET|PUT|DELETE /api/me/litellm-key`). Ключ хранится в `server.db` зашифрованным ключом `<data>/secrets.key`, который `genie backup` не копирует; обратно не показывается — только последние символы.
-- Агенты, которых запускает сервер, получают в `LITELLM_API_KEY` ключ своего инициатора: участники команды — того, кто собрал команду (для команд оркестратора и автоматизаций — человека задачи), задания — того, кто их запустил, оркестратор — того, чьё письмо разбирает. Инициатор команды хранится в её спецификации, задания — в `agent_jobs.initiator`.
-- Агент на модели `litellm/…` без ключа у инициатора не запускается; человеку приходит уведомление со ссылкой на профиль, после сохранения ключа агенты пробуют сразу. Серверный `LITELLM_API_KEY` агентам больше не передаётся, если на сервере есть пользователи; сервер без пользователей работает как раньше.
-
-**Своя модель у каждого агента**
-- В чате с агентом строка «Модель» открывает меню: модели pi по провайдерам с поиском, «как у роли», уровень размышления. Выбор действует только на этого участника команды; метка «своя» или «роль» показывает, откуда модель.
-- `GET /api/models`: каталог `pi --list-models` (кэш 5 минут, `?refresh=1`) и модели из `roleModels`, ролей и шаблонов; `PATCH /api/teams/{id}/members/{member}` с `model` и `thinking` (пусто — как у роли), `genie team set-model`. Люди и оркестратор; событие `member_model` в журнале команды.
-- Агент переходит на новую модель без потери разговора: свободная сессия перезапускается сразу, занятая — когда закончит текущий шаг.
-
-**Репозитории проектов и git** (`docs/platform/git-repositories.md`)
-- Проект подключает один или несколько репозиториев на GitHub, GitLab (в том числе self-hosted) и любом git-сервере (`plain`); у каждого — путь в рабочем пространстве проекта (`mount`), максимум доступа агентов и политика. Хостинги и токены — в `<data>/git.json` (`${ENV}` или файл; читается при каждом обращении), внутренний CA, прокси, SSH-транспорт, шаблоны адресов.
-- Агенты не получают учётных данных хостинга: их клоны смотрят на прокси сервера (`/git/<проект>/<репо>.git`), который проверяет каждый push по эффективной политике (репозиторий ∩ роль ∩ задача) до приёма пакета, пересылает разрешённое на хостинг с токеном хостинга и откатывает зеркало, если хостинг отказал. Токены хостингов вырезаются из окружения агентов.
-- Политика: `none`/`pr_only`/`branches`/`direct`, ветка задачи `genie/{task}`, защищённые ветки (основная — всегда, пока не снято явно), force-push и удаление, запросы (PR/MR) и слияние (`human`, `agent_after_approval`, `auto`), проверки и одобрения. Поле `git` у роли.
-- Рабочие пространства: клон каждого репозитория по `mount` на ветке задачи (несколько репозиториев, корневой и вложенные), пересборка не теряет коммиты агента; чтение без задачи — по «виду» основной ветки.
-- `genie pr open|show|comments|comment|merge`, `genie repos list`, `genie repos use` (и те же операции MCP-сервера: `genie_pr`, `genie_repos`); запросы открываются идемпотентно, текст с хостинга помечается как данные.
-- Ворота: без запроса нельзя перевести в `review`, пока запрос открыт — нельзя закрыть. Наблюдатель записывает слияния, закрытия и результаты CI, передаёт комментарии и ревью людей из запроса в задачу (комментарий `review`) и команде, будит оркестратора, при `merge: auto` сливает сам. События `git.pushed`, `git.denied`, `cr.opened`, `cr.merged`, `cr.closed`, `ci.failed`, `ci.passed` — для автоматизаций.
-- `genie repos hosts|list|add|set|remove|sync|check` (`check --probe-push` пробует настоящий push временной ветки), проверки в `genie doctor`, раздел «Репозитории» на странице проекта и поставка на карточке задачи.
-
-**Полное удаление задачи**
-- `DELETE /api/tasks/{id}` (только администраторы проекта; агенты, включая оркестратора, задачи не удаляют): задача исчезает вместе с комментариями, критериями, артефактами и историей.
-- Подзадачи: задача с подзадачами удаляется только с `?cascade=1` — тогда они уходят вместе с ней; без него сервер отказывает и называет их число.
-- Что чистится вокруг: команды задач останавливаются и удаляются (worktree убирается, ветка git остаётся), зависимости других задач от удалённой снимаются, почта и уведомления о ней удаляются, очередные задания агентов отменяются; в журнале событий остаётся `task.deleted`.
-- Веб: кнопка-корзина в карточке задачи (видна администраторам проекта) с подтверждением, где сказано, что уйдут подзадачи и команда.
-
-**Каталог операций: командная строка для людей, скриптов и агентов** (`docs/platform/getting-started.md`, раздел «Командная строка»)
-- `genie <объект> <действие>` — всё, что есть в вебе: `task`, `team`, `mail`, `docs`, `job`, `automation`, `agents`, `project`, `user`, `me`, `server`. `list` отвечает и на `ls`, `--json` печатает ответ API, `--project` (или `GENIE_PROJECT`) выбирает проект и не подменяет недоступный другим.
-- С `GENIE_TOKEN` команды идут на сервер `GENIE_URL` от имени владельца токена; без токена — в каталог данных как оператор сервера, запущен сервер или нет.
-- Каждая операция описана один раз (`crates/genie/src/ops`): аргументы, кому она доступна (класс агента, разрешения роли), обработчик поверх API. Из описания получаются командная строка, JSON-схема для будущего MCP-сервера и таблица команд в промпте агента.
-- Человек отвечает на вопросы агентов из терминала: `genie me questions`, `genie me answer <опросник> 1=… 2=…` (`POST /api/questions/<id>/answer`); уведомления — `genie me notifications`, `genie me read`.
-- Настройка агентов без веба: `genie agents show|save|delete|history <элемент>` (`role:<id>`, `team:<id>`, `skill:<имя>[/<файл>]`, `mcp`) с проверкой файла перед записью и защитой от чужой правки (`--base-hash`), `genie agents preview <шаблон>`, `genie agents mcp-check`, `genie agents mcp-calls`.
-- **Знания в контексте агентов** (`docs/platform/knowledge-vault.md`, «Что агенты знают без запроса»): перечень страниц пространства проекта — в промпте оркестратора и ролей с `docs.read` (L0, ~600 единиц, сжатие с пометкой), страницы, подобранные для задачи, — в kickoff её команды (L1: до трёх страниц и 4000 единиц; сначала связанные с задачей или эпиком, затем по путям из текста задачи, затем по словам в названии, описании, заголовках, тегах и алиасах; обрезка по разделам с пометкой). Перенесено из `src/docs/context.ts` вместе с его тестами.
-- **Картинки из файлов проекта в чате команды**: `!image[docs/shot.png]` — файл рабочей копии команды (у команды без неё — репозитория проекта), `GET /api/images?path=…&team=…`. Только PNG, JPEG, GIF и WebP по содержимому файла, до 10 МБ; путь за пределы корня и через символическую ссылку не открывается.
-- **Пульт оркестратора** `genie orchestrate [--force] [-- <аргументы pi>]`: ваш pi в терминале становится оркестратором проекта, серверный оркестратор ждёт. Сессия получает промпт и токен оркестратора (личный токен в неё не попадает); почта оркестратора приходит в разговор между шагами и сама будит простаивающую сессию (genie-bus в режиме пульта); над полем ввода — карточка команд по живому потоку сервера, `/genie` — доска задач, `/genie agents` — состояние агентов. Пульт — аренда на 2 минуты с продлением, пока работает pi (`GET/POST/DELETE /api/orchestrator/console`, `…/renew`); вышли — пульт возвращается сразу, и серверный оркестратор подхватывает накопившуюся почту. Пока пульт занят, почту оркестратора берёт только его токен. Берут пульт администраторы проекта, `--force` забирает занятый.
-- **MCP-сервер genie** `POST /mcp` (Streamable HTTP, JSON-ответы): каталог операций как инструменты для своего агента человека (Claude Code, pi, Codex…) — инструмент на группу (`genie_task` с `action`), аргументы действий в описании, ответы — текст командной строки. Токен решает, кто вызывает: человек видит действия людей (администраторы — и администрирование) и выбирает проект аргументом `project`, агент genie — команды своей таблицы. Подсказка подключения — в профиле рядом с токеном.
-- Автоматизации (`genie automation list|show|create|update|delete|enable|disable|run|playbooks|install|runs|run-show|cancel`), разовые задания (`genie job start|list|show`), ходы агентов (`genie team turns`), журнал проекта (`genie project events`), предложения и пространства знаний, чейнджлог и релиз (`genie docs proposals|approve|reject|spaces|space|changelog|release`), `genie docs note`, `genie docs impact`, `genie mail list`, `genie user update|passwd|token`.
-
-**Docker-образ сервера** (`docs/platform/docker.md`)
-- `Dockerfile` (сборка веба, Rust-сервера и рантайма с pi, git, ssh и ripgrep) и `docker-compose.yml` с томами `/data` и `/workspace`, проверкой здоровья, ротацией логов и урезанными правами контейнера.
-- Точка входа: сервер и агенты работают не от root, `GENIE_UID`/`GENIE_GID` подгоняют владельца под смонтированные репозитории, переменные окружения (`GENIE_PUBLIC_URL`, `GENIE_ALLOW_HOSTS`, `GENIE_BIND`) применяются к `config.json`, `pi-mcp-adapter` подключается сам, `GITHUB_TOKEN` работает как git-пароль без записи на диск.
-- Корректная остановка: tini как PID 1 от имени пользователя сервера (после стартового этапа от root), `STOPSIGNAL SIGINT`.
-- Песочница агентов в контейнере: `bubblewrap` в образе и опциональный `docker-compose.sandbox.yml` (для неё нужны `seccomp=unconfined` и `systempaths=unconfined`; компромисс описан в `docs/platform/docker.md`).
-- Публикация образа в GitHub Container Registry (`.github/workflows/docker.yml`) и smoke-тест `docker/smoke-test.sh`.
-- Секреты из файлов: `NAME_FILE` для `*_API_KEY`, `*_TOKEN`, `*_PASSWORD`, `*_SECRET` (Docker secrets, `docker-compose.secrets.yml`); пример настройки LiteLLM (`docker/examples/litellm/`).
-- `genie` внутри контейнера понижает права до пользователя сервера, поэтому `docker exec … genie user add` не портит владельца `server.db`.
-
-**Шина агентов: живые сессии** (`docs/platform/agent-bus.md`)
-- Участники команд и оркестратор работают долгоживущими сессиями `pi --mode rpc` с расширением genie-bus вместо запуска `pi --print` на каждый ход.
-- Почта доходит до занятого агента на ближайшей границе шага, свободного — примерно за 20 мс (замер на настоящем pi с поддельной моделью).
-- Уровень `interrupt` останавливает текущий шаг, даже долгую команду (~30 мс); прерывают только оркестратор и люди, в вебе — уровень «прервать» в чате команды.
-- Надёжная доставка:
-  - подтверждение, когда модель увидела письмо;
-  - возврат неподтверждённого в очередь;
-  - без дублей после падений;
-  - перезапуск упавшей сессии с тем же разговором за ~1,5 с.
-- Пачка по приоритету в пределах бюджета, обрезка длинных писем, темы (`--topic`), которые заменяют прежнее сообщение, дайджест для оркестратора.
-- `genie agent`:
-  - `ask` — вопрос с ожиданием ответа до 3 минут;
-  - `reply`, `mail`;
-  - `peek` — что делает сосед, `--deep` — его разговор;
-  - `board`;
-  - `interrupt`, `pause`, `resume`.
-- API: `/api/agent/inbox/*`, `/api/agent/ask`, `/api/agent/reply`, `/api/agents` (доска и задержки доставки за сутки), `peek`, `pause`, `resume`.
-- Надзор:
-  - повтор неудачного прогона;
-  - сторожа тишины и цикла с письмом оркестратору;
-  - остановка простаивающих сессий, лимит живых сессий;
-  - остановка осиротевших процессов после рестарта сервера.
-- Веб: в карточке участника — текущий шаг или последние слова агента, страница команды обновляется, пока агенты работают.
-- Настройки `runtime`: `mode` (`auto` | `sessions` | `turns`), `sessionCommand`, `maxSessions`, `idleStopSecs`, `askTimeoutSecs`, `deliveryBudget`. Разовые задания и другие харнессы работают ходами, как раньше.
-
-**Роли агентов и шаблоны команд** (`docs/platform/agent-roles-and-teams.md`)
-- Роли и пресеты команд — конфигурация сервера: встроенные по умолчанию, `<data>/agents/<id>.md` и `<data>/teams/<id>.json` переопределяют их или добавляют новые (`extends`, `projects`), изменения подхватываются без перезапуска, сломанный файл не останавливает работу.
-- Роль — класс процесса плюс разрешения из каталога (`allow`, `deny`): переходы статусов, поля задачи, критерии, почта, знания. Разрешения проверяет сервер по токену агента, отзыв действует сразу; сдавший работу не может сам её одобрить.
-- Шаблон задаёт связи участников: `handoff`, `returns`, `reports`, `consults`; связи с `on: <статус>` исполняет сам genie, письмом адресату. Kickoff участника собирается из связей.
-- Новая роль `researcher` (аналитик, который сдаёт выводы на ревью) для шаблона `spike`.
-- Каталог шаблонов и ролей в промпте оркестратора; `genie agent spawn --member`, `add-member`, `templates`, `roles`; шаги автоматизаций `agent` и `team` принимают любые роли и шаблоны.
-- API для администратора с проверкой перед сохранением, защитой от одновременной правки и журналом изменений; `genie agents check|ls`.
-- Навыки роли (`skills`) доходят до pi: только они (`--no-skills` и `--skill`) плюс навыки репозитория, которые теперь передаются явно — без этого pi в безголовом режиме не загружал их в недоверенном проекте.
-- MCP-подключения роли (`mcp`, в том числе отдельные инструменты `сервер:шаблон`) из `<data>/mcp.json`: агент получает конфиг pi-mcp-adapter только с ними (`--mcp-config` и режим `exclusive`, секреты `${env:…}` подставлены, файл доступен только владельцу). Наличие адаптера определяется по настройкам pi или задаётся `runtime.mcpAdapter`; без адаптера агенты работают без MCP, `genie agents check` предупреждает.
-- Защитное расширение genie для pi (`genie-guard`) у всех агентов:
-  - блокирует команды shell по шаблонам `denyCommands` роли;
-  - не пропускает запись у read-only ролей, вызовы MCP к невыданным подключениям и инструментам и установку MCP-серверов агентом;
-  - получает изменённые правила на ходу, без перезапуска сессии.
-- Подстановки в командах рантайма: `{skill}` — список, повторяющий свою группу; `{?имя}` — условие группы; `{guard}`, `{mcpConfig}`, `{limitSkills}`.
-- В промпте агента — выданные роли MCP-подключения с описаниями.
-- Веб: страница «Агенты» («Команда и правила»):
-  - вкладки «Роли», «Шаблоны команд», «Навыки», «MCP», «История»; все видят, администраторы сервера правят;
-  - роль: разрешения флажками (набор класса отмечен, отличия подсвечены), настройки, навыки, доступ к MCP, промпт, где используется;
-  - шаблон: участники и связи — таблицы и граф, форма с живым графом, «что получит каждый участник»;
-  - новые роли, шаблоны и навыки; правка файлов целиком с проверкой и защитой от одновременной правки; история правок с возвратом версии.
-- «Собрать команду» в карточке задачи: шаблон, подходящий стадии задачи, с графом связей и своими моделями участников — или команда из ролей; `POST /api/teams` и шаг `team` принимают `models` по ключам участников.
-- «Добавить участника» предлагает роли из конфигурации сервера; редактор правил автоматизаций подсказывает шаблоны и роли.
-- Связи в работе:
-  - режим почты `flow` проверяет сервер: участник пишет только по связям шаблона, оркестратору без `reports` — только вопросы и блокеры, рассылка всем запрещена, ответы проходят всегда; kickoff называет маршрут;
-  - схема на экране команды: граф её связей с живым состоянием участников — кто работает, кто ждёт чьей передачи, какие передачи впереди;
-  - пометка «шаблон изменён после запуска» (команда помнит хэш шаблона, по которому собрана) и перезапуск участника с текущей ролью;
-  - связь в редакторе шаблона протягивается мышью от участника к участнику.
-- Шлюз MCP: агенты ходят в выданные роли MCP-подключения через сервер (`/api/mcp-gateway/<подключение>`, MCP Streamable HTTP со своим токеном):
-  - сервер проверяет выдачу при каждом запросе — отзыв подключения или инструмента действует сразу;
-  - сам запускает MCP-сервер в рабочем каталоге агента или ходит к нему по HTTP (сессии, ответы потоком) с секретами из своего окружения; в конфиге агента только адрес шлюза и `${GENIE_TOKEN}`, а переменные, на которые ссылается `mcp.json`, убраны из окружения агентов;
-  - агент видит только выданные инструменты, вызов другого получает отказ; ресурсы и промпты — только при выдаче всего подключения; запросы сервера к клиенту отклоняются;
-  - каждый вызов инструмента — событие `mcp.called` в журнале проекта (агент, роль, команда или задание, итог, время, аргументы);
-  - одно соединение на агента и подключение, простаивающее закрывается через 10 минут, упавший сервер поднимается при следующем запросе.
-- `"gateway": false` у подключения в `mcp.json` — отдать его харнессу напрямую, как раньше; `runtime.mcpGateway: false` выключает шлюз целиком.
-- Проверка MCP-подключения для администраторов (`POST /api/mcp/<id>/check`): запуск, список инструментов или ошибка с последними строками stderr сервера. Журнал вызовов — `GET /api/mcp/calls`.
-- Веб, вкладка «MCP»: как агенты доходят до подключения (через genie или напрямую), «Проверить» — инструменты и роли, которым каждый доступен, или причина сбоя; журнал вызовов проекта с фильтром по подключению.
-- Веб, «Агенты»:
-  - промпт роли правится в редакторе с живым предпросмотром Markdown, встроенный текст роли — рядом, его можно взять за основу; пустой текст оставляет встроенный промпт (или промпт родителя для `extends`), настройки во frontmatter не трогаются;
-  - сопутствующие файлы навыка (скрипты, справочники, шаблоны) загружаются в выбранную папку, открываются и удаляются; `GET/PUT/DELETE /api/skills/<имя>/files/<путь>`, до 5 МБ на файл, в истории правок;
-  - редактор файла нумерует строки и отмечает те, на которые указывают ошибки конфигурации или отказ сохранения, с переходом к строке;
-  - страница роли и шаблона показывает, где они используются (шаблоны, автоматизации — `automations` в `GET /api/agent-config`); ограничения, которые соблюдает только харнесс (`files`, `denyCommands`), помечены «мягко».
-
-**Готовность к пилоту** (`docs/platform/getting-started.md`)
-- Песочница агентов на bubblewrap (`runtime.sandbox`: `auto` | `bwrap` | `off`, свои `writable` и `hidden`):
-  - система видна агенту только для чтения, писать можно в рабочий каталог и его git-репозиторий, файлы своих сессий, каталог pi, свой `/tmp` и кэши инструментов;
-  - каталог данных сервера (базы, `config.json` с секретами каналов, vault), другие проекты с их worktree, файлы трекеров, ключи и учётные данные из домашнего каталога агенту не видны;
-  - свой `/proc`: процессы и окружение сервера скрыты; сеть общая;
-  - `genie agents check` и страница «Агенты» говорят, работает ли песочница; в CI тесты живых сессий идут в ней.
-- Автономность `assisted` работает: оркестратор ведёт задачи, но закрыть их (`done`, `cancelled`) ему не даёт сервер — готовую задачу он переводит в «Нужно решение» с итогом и тем, что проверить.
-- Интеграция по умолчанию у проекта (`integration` в `PATCH /api/projects/<slug>`): команда получает её вместе с задачей, если в задаче не договорились иначе; оркестратор знает её из промпта.
-- Люди в задачах:
-  - ответственный — человек проекта (`assignee` в `PATCH /api/tasks/<id>`, `genie agent update --assignee`); назначенный получает уведомление, вопросы агентов («Нужно решение») идут ответственному и автору;
-  - упоминание `@login` в комментарии уведомляет участника проекта — от людей и от агентов; оркестратор знает людей проекта из промпта;
-  - «Мои задачи» (`/mine`, `G` `M`) — задачи, за которые вы отвечаете, и число ждущих вашего решения в меню; аватар ответственного в списке и на доске.
-- Веб для администраторов:
-  - «Проект и люди» — название, оркестратор, интеграция по умолчанию, участники и роли, ссылки-приглашения;
-  - «Сервер» — проекты и новый проект, учётные записи: права администратора, отключение, новая учётная запись;
-  - сервер без проектов предлагает создать первый, в локальном режиме можно создать администратора прямо в вебе.
-- Эксплуатация:
-  - `genie doctor` — готовность сервера: каталог данных и место на диске, веб, люди и проекты, конфигурация агентов, `pi` и доступность моделей ролей (`pi --list-models`), песочница, git, Telegram и почта, `bind`/`allowHosts`/`publicUrl`; ненулевой код выхода при проблемах; то же — `GET /api/doctor` и раздел «Готовность» на странице «Сервер»;
-  - `deploy/`: `genie.service`, ежедневный `genie-backup.timer`, `install.sh` (бинарь и веб в `/opt/genie`, пользователь `genie`, `/var/lib/genie`, `/var/backups/genie`, `/etc/genie/secrets.env` для секретов MCP);
-  - `genie backup --keep N` оставляет N последних копий; копия включает конфигурацию сервера (`config.json`, роли, шаблоны, навыки, `mcp.json`) и закрыта правами 0700;
-  - если у пользователя сервера нет имени для git, агенты коммитят под своими (`bender (executor) <bender@genie.local>`), а не падают на `git commit`.
-- База знаний в Obsidian у каждого: `vault.remote` (имя ремоута или адрес), `vault.branch`, `vault.syncSecs`:
-  - сервер каждые 2 минуты забирает правки из репозитория, сливает со своими и отправляет свои; ошибка (нет сети, доступа) не мешает работе — администраторы получают одно уведомление в день;
-  - ничего не теряется: где одни и те же строки изменили в двух местах, на странице остаётся версия сервера, а версия из репозитория ложится рядом (`<страница>.conflict-<время>.md`); страница, удалённая в одном месте и изменённая в другом, остаётся; владельцы раздела и администраторы получают уведомление;
-  - личные файлы Obsidian (открытые вкладки, кэш, корзина) исключены `.gitignore`;
-  - `genie vault sync`, `GET/POST /api/vault/sync`, раздел «База знаний» на странице «Сервер», проверка репозитория в `genie doctor`.
-- `genie stats [--days N] [--project x] [--json]` — как идёт работа: задачи (создано, людьми, готово, отменено, открыто), время до готовности (медиана и 90%), вопросы агентов и скорость ответа людей, возвраты с ревью, запуски агентов и сбои, вызовы MCP, предложения в базу знаний, активные люди; то же — `GET /api/stats` и «Как идёт работа» на странице «Сервер».
-- Runbook пилота `docs/platform/pilot.md`: критерии успеха, подготовка, репетиция, первый день, ежедневные и еженедельные действия, что делать при сбоях; решения по умолчанию для пилота — в `docs/platform/decisions.md` (PP11–PP18).
-
-### Изменено
-
-**Боковая панель: «Доска», «Задачи», «Эпики»** (веб)
-- Вместо разделов-фильтров («Мои задачи», «Входящие», «Нужно решение», «Все активные», «Подготовка», «Завершённые»), у каждого из которых были и список, и доска, теперь три пункта. «Доска» (`/board`, открывается по умолчанию) — Kanban проекта с фильтрами «Мои задачи» (запоминается) и «Эпик». «Задачи» (`/tasks`) — только список: поиск по названию, номеру, меткам и вопросу; быстрые наборы статусов; фильтры по статусу, готовности (по критериям приёмки), времени (обновлены или созданы: сегодня, за 7 и 30 дней, давно не менялись), приоритету, эпику и ответственному; порядок и группировка. Фильтры живут в адресе, ссылкой можно поделиться. «Эпики» без изменений.
-- Старые адреса (`/inbox`, `/decisions?task=…`, `/active?layout=board`, ссылки из уведомлений) ведут на доску или на список с тем же фильтром. Клавиши: `G B` доска, `G T` задачи, `G E` эпики; `G M/I/D/A/P/C` — наборы списка; переключателя `B` больше нет.
-
-**Чат с агентом стал тише**
-- Шаги агента свёрнуты в полупрозрачные строки: вызов инструмента — подсвеченное имя, аргументы, длительность и статус; размышление — «Thinking…». Щелчок раскрывает вывод команды или текст размышления.
-- Несколько шагов подряд, между которыми агент ничего не сказал, складываются в одну строку: «4 шага · bash ×2 · Thinking ×2 · 6 с · готово»; пока шаг идёт, в ней видна текущая команда.
-- Меню модели не уходит за край экрана: открывается вниз или вверх, где больше места, не выше 640 px; список моделей прокручивается внутри, а «Размышление» и «Применить» всегда видны.
-
-- **Веб внутри бинаря**: `genie serve` раздаёт веб, встроенный при сборке (`npm run build:web` до `cargo build`; с `GENIE_WEB_DIST=web/dist` сборка без веба падает). `--web <каталог>` — свежая сборка веба без пересборки бинаря; каталог без веба (юнит systemd с `--web /opt/genie/web`) уступает встроенному, `genie doctor` предупреждает. Образ Docker, юнит systemd и `deploy/install.sh` больше не раскладывают веб отдельно.
-- Тест совместимости с трекером TS-версии не запускает Node: база, записанная TS-CLI, сохранена (`crates/genie-core/tests/fixtures/ts-tracker.db`).
-- Веб берёт типы API из Rust-структур сервера — их генерирует `ts-rs` при `cargo test` в `web/src/shared/api/generated`, CI проверяет, что они закоммичены — и больше не зависит от TS-ядра `src/`: раньше компилятор сверял веб со старой TS-моделью, а отвечал ему Rust-сервер. Заодно убраны проверки состояния участника «lost», которого Rust-сервер не присылает (у него `error`).
-
-- README начинается с сервера: что это, быстрый старт, документация, переход с расширения pi.
-- Описания встроенных ролей и шаблонов команд — по-русски: их читают люди в вебе и оркестратор в каталоге.
-- `genie project list` показывает каталог трекера проекта (для восстановления из копии).
-- Веб приведён к дизайн-системе Genie (макеты в артефакте дизайна):
-  - список задач: номер, отметка только у срочных и высоких, название, метки, команда и время в одну строку, без значка статуса у каждой задачи; рядом с открытой задачей — компактный список; вид «список/доска» — иконками;
-  - карточка задачи: команда с участниками и «сейчас никто не работает» одной строкой, «нет» и «не задана» вместо пустых полей, ветка вместо пути worktree; заметка к смене статуса не повторяется отдельным комментарием;
-  - команда: путь «Задачи / G-5 / Команда» и название задачи в шапке; схема по ширине страницы с русскими статусами на связях, связи окрашены по тому, что уже случилось и чего ждут, схема сворачивается в строку «кто чем занят» (на телефоне свёрнута сразу); почта без пузырей и без бейджа «обычный»; «Кому» и «Важность» — списками в одной строке с полем; участники — состоянием словами, без «starting» и «модель по умолчанию»;
-  - «Агенты»: списки ролей и шаблонов в две строки, без описаний; разрешения — русскими статусами с метками «добавлено» и «убрано»; рабочее место, навыки и MCP роли — карточками, правка в диалогах; участники и связи шаблона — списками вместо таблиц с прочерками; в вызовах MCP — имена агентов и ролей, отказ по-русски;
-  - «Собрать команду»: шаблоны слева, выбранный — с графом и моделями участников справа;
-  - автоматизации: триггер и шаги словами («Событие: статус → «Готово», без метки no-docs», «Документатор · задание агенту · только чтение»), плейбуки — за кнопкой в шапке;
-  - документация: название и первый абзац страницы не повторяются, тип и «статус не указан» не занимают место значками, обозначения дерева свёрнуты;
-  - общий граф команды (шаблон, сборка, живая команда): узлы с аватаром роли, подписи статусов по-русски, одна подпись на связь с несколькими адресатами, граф ужимается по ширине.
-- Таблица команд в промпте агента строится из каталога операций: только операции и аргументы, разрешённые его классу и роли (у исполнителя в `genie task update` есть `--plan`, но нет `--title`), с названием инструмента из текста роли и описанием; разовые задания получают инструменты своей роли (read-only роли — без записи файлов).
-- Агенты и тексты для них — kickoff, подсказки в письмах, сообщения о сбоях, цели плейбуков — используют команды каталога (`genie task show`, `genie mail reply`, `genie job output`…); прежние `genie agent …` работают как псевдонимы. `genie agents check` и `genie agents ls` читают файлы как они есть сейчас, `check` завершается с ошибкой после полного отчёта.
-- `workspace` разовых заданий соблюдается: `read-only` — репозиторий без инструментов записи, `worktree` — свой worktree `job-<id>` на ветке `genie/job-<id>` (раньше оба работали в основной рабочей копии). Роль с `files: none` работает в пустом каталоге.
-- Агенты pi больше не видят MCP-серверы из глобальных конфигов pi-mcp-adapter пользователя сервера: только выданные роли из `<data>/mcp.json`.
-- Пути worktree команд без `..` (`repo.worktrees/…` вместо `repo/../repo.worktrees/…`).
-- Встроенные пресеты команд Rust-сервера переехали в `config/teams/*.json`.
-- Тексты ролей называют инструменты именами каталога — `genie_mail` action `send`, `genie_task` action `artifact-read`, `genie_team` action `spawn` (это и действия MCP-сервера); таблица команд в промпте агента показывает те же имена.
-- Расширения pi на стороне харнесса (`crates/genie/pi/*.ts`) проверяются `tsc` (`npm run typecheck`).
-- MCP-подключения по умолчанию идут через шлюз genie: агенты больше не получают значения `${env:…}` ни в конфиге, ни в окружении. Подключениям, которым нужен сам харнесс (вход через OAuth в браузере), нужен `"gateway": false`.
-
-### Удалено
-
-- **TS-ядро и расширение pi** (`docs/platform/getting-started.md`, «Переход с расширения pi»): `src/` — трекер, команды, docs, веб-сервер, CLI и расширение pi с инструментами `genie_task`, `team_*`, `docs_*` и карточками в терминале, — `bin/genie`, skill `genie-workflow`, `scripts/e2e*.ts`, тесты старого ядра, TS-ключи `config/default.json` (`spawn`, `orchestrator`, `notify`, `gates`, `docs`, `web`, `teams`) и манифест pi в `package.json`. Задачи репозитория переезжают на месте: `genie project add <slug> --repo <путь>` подключает его `.genie/` с задачами и номерами; оркестратор в своей сессии pi — `genie orchestrate`, инструменты для своего агента — MCP-сервер genie.
-
-### Исправлено
-
-- **Автоматизации обходили правила, которые сервер держит для оркестратора** (`crates/genie/src/tasks.rs`). Шаг `task.status` звал трекер напрямую, мимо HTTP-обработчика, поэтому автоматизация закрывала задачу в проекте `assisted` и переводила задачу в `review`/`done` мимо открытого запроса и упавших проверок CI; `@login` в комментарии автоматизации никого не уведомлял. Теперь все команды над задачами (создать, изменить, сменить статус, прокомментировать, удалить) — один модуль: HTTP, движок автоматизаций и ответы на опросники зовут его, и правила одни для всех. Тесты: `crates/genie/tests/tasks.rs`.
-- **Участник, который сдался, мог тихо вернуться в работу** (`crates/genie-core/src/team.rs`). `set_activity("idle")` в SQL переводил состояние `error` обратно в `active`, а конец сессии после отказа звал именно его. Теперь состояния участника и команды — перечисления (`MemberState`, `TeamState`, `Activity`), а меняются они только именованными переходами: `member_working`, `member_idle` (не трогает `error`), `member_gave_up` (причина — в строке статуса и в журнале команды), `member_restarted`. «Может ли участник работать» и «активная команда задачи» — `Bus::runnable` и `Bus::active_team_of` вместо пяти разных проверок.
-- **Три ветки «агент сдался» разошлись** (`crates/genie/src/outcome.rs`). Ход (`runtime::finish`), прогон живой сессии (`settled`) и падение сессии (`on_exit`) каждый решали сами: причину в строке статуса писал только второй, конец журнала в письме оркестратору — первый и третий, паузы считались по двум формулам в трёх счётчиках. Теперь они только сообщают, чем кончился прогон (`Ran`, `Failed`, `Crashed`, `Stopped`), а модуль `outcome` ведёт один счётчик неудач подряд с одной паузой (1 с, 10 с, 20 с… до 10 минут; первый повтор хода — через 1 с вместо 10 с), отказ, строку статуса и письмо оркестратору. `runtime::tell_orchestrator` пишет и сразу будит оркестратора — письмо о бюджете больше не ждёт трёхсекундного опроса. Тесты без процессов pi: `crates/genie/tests/outcome.rs`.
-- **Состояние доставки — типы и переходы в ядре, а не строки в четырёх местах** (`crates/genie-core/src/repos.rs`). Строку `task_repos` писали прокси (`record_pushed`), открытие запроса, взгляд на запрос и взгляд на проверки — каждый своим патчем, а правило сброса жило в `CASE` SQL. Теперь состояния — `DeliveryState`, `RequestState`, `CheckState`, а меняется строка только переходами `branch_pushed`, `request_opened`, `request_looked` (передача наблюдения коммиту слияния), `checks_looked` (часы ожидания, `stalled` один раз, второй `none` заканчивает наблюдение), `stop_watching`, `name_branch`; патч и SQL — внутри. Ответ хостинга (`Ci`) больше не несёт `stalled` — это состояние наблюдателя. Веб берёт `TaskRepo` из сгенерированных типов вместо ручной копии.
-- `genie task create --plan` терял план: сервер молча отбрасывал поле `plan`. Теперь план записывается при создании (нужно право `task.plan`).
-- Тела запросов задач (`CreateBody`, `UpdateBody`, `StatusBody`, `CommentBody`) — общие структуры сервера, каталога операций (CLI и MCP) и веба (TS-типы генерируются): неизвестный ключ отклоняется с 400 вместо того, чтобы молча пропасть.
-- Удаление задачи закрывает и её открытые опросники (`cancelled`); всё, что `server.db` хранит о задаче, убирает `ServerDb::forget_task`.
-
-- **Падение сервера посреди шага оставляло живого агента без процесса** (`crates/genie/src/runtime.rs`, `crates/genie/src/sessions.rs`). Почта подтверждается в тот момент, когда модель вот-вот её увидит, поэтому `kill -9` сервера оставлял письмо доставленным, а ход — незавершённым: возвращать в очередь было нечего, а сессия поднимается только на *ожидающее* письмо, так что агент оставался в статусе «работает» без процесса и без хода — до нового письма от человека. Теперь `recover()` для каждого прерванного хода живой сессии оставляет агенту записку «продолжи с места остановки» (то же, что при падении процесса), возвращает участника в `idle` (не сбрасывая `error`) и не пишет вторую записку, пока первая не прочитана. Подтверждённое письмо при этом не доставляется дважды.
-- `POST /api/tasks/<id>/artifacts` отклоняет неизвестный вид артефакта: раньше он молча сохранялся как `doc`.
-- Страница, которую агент пишет по своей задаче и которая уходит на ревью, ссылается на эту задачу.
-- `genie serve` не завершался по Ctrl-C, пока в браузере открыта вкладка (поток событий держит соединение), и не обрабатывал SIGTERM. Теперь оба сигнала останавливают сервер: открытые запросы получают 5 секунд.
-- Движок автоматизаций пропускал событие, если правило создавалось во время прохода: теперь события читаются раньше правил, и правило срабатывает на события после своего создания.
-- Clippy 1.98: счётчик цикла при добавлении критериев приёмки.
-- Шаблон `spike`: участники получали инструкции про исполнителя, которого в команде нет, и задача не доходила до `approved` без `force`.
-- Первый запрос новой живой сессии уходил к модели без системного промпта, то есть без роли агента: genie-bus будил свежую сессию сообщением, а такой запуск в pi обходит подготовку промпта. Теперь свежая сессия будится обычным промптом, почта идёт рядом.
-- Разовое задание, которое не удалось запустить (роль удалена из конфигурации), оставалось «в работе» до перезапуска сервера; теперь это неуспешная попытка с повтором.
-- Страница «Агенты»: высокая таблица на странице сжималась по высоте и обрезалась вместо прокрутки страницы.
-- Ошибки разбора frontmatter роли называют строку файла во всех случаях (раньше — не для списков и продолжений значения).
-- Новый проект проверяется до того, как что-то создано на диске: неверный код (`../x`) или несуществующий путь к репозиторию больше не оставляют каталог трекера; код с заглавными буквами приводится к строчным и для каталога.
-- Буквы в крупных аватарах (почта команды, карточки участников) были светлыми на цветном фоне из-за класса Markdown `.md`.
-- Подсказка «Документация, которую могла затронуть задача» в карточке задачи на ревью молча не показывалась: Rust-сервер не отвечал на `GET /api/tasks/<id>/docs-impact` (был только в TS-сервере). Теперь сервер сам сопоставляет изменения ветки команды с `paths` страниц проекта и находит страницы, которые ссылаются на задачу или её эпик в `related`.
+- Delivery observation now follows the checked commit, including branches without requests and the target branch after merging.
+- Stalled CI and legitimate human waits no longer look like silent teams.
+- Backup restoration and schema-version checks prevent unsupported binary-only rollback paths.
 
 ## [0.3.0] — 2026-09-28
 
-genie становится веб-сервисом для небольшой команды: сервер на Rust, пользователи и проекты, агенты по триггерам, автоматизации, база знаний в Obsidian-совместимом хранилище, Telegram и почта. Запуск и эксплуатация — `docs/platform/getting-started.md`.
+### Added
 
-### Добавлено
+- Standalone Rust server with REST/SSE, authentication, users, project roles, invitations, personal tokens, and notifications.
+- Agent turn execution, server orchestration, durable automation rules and jobs, Telegram/SMTP delivery, and human questionnaires.
+- A separate knowledge vault with Git synchronization, section policies, proposals, review, changelogs, and releases.
+- Server administration, statistics, health checks, backups, and end-to-end workflow scenarios.
 
-**Страница «Сервер» по вкладкам, статистика с графиками** (веб: «Сервер»)
-- Вместо одной длинной страницы — вкладки «Состояние», «Статистика», «Проекты», «Учётные записи», «База знаний» (`/server/stats` и т. д.).
-- «Состояние»: вердикт проверки сервера, под ним только то, что требует внимания; что в порядке — свёрнуто. Ниже — последние 7 дней в четырёх цифрах со ссылкой на статистику.
-- «Статистика»: неделя или месяц, все проекты или один; цифры, графики «Задачи по дням» (создано и готово) и «Запуски агентов» (со сбоем и без), таблица по проектам, редкие счётчики — под катом.
-- «Проекты» и «Учётные записи»: список слева, форма нового справа; путь к репозиторию и префикс задач — в «Дополнительно», отключение учётной записи — в меню «⋯».
-- `genie stats --json` и `GET /api/stats`: у проекта поле `daily` — созданные и готовые задачи, запуски и сбои по дням.
+### Fixed
 
-**Сервер `genie serve` (Rust)**
-- Cargo-workspace: синхронное ядро `genie-core` (SQLite, журнал событий, трекер, команды, знания, автоматизации, уведомления) и бинарь `genie` на axum/tokio. Один процесс отдаёт веб, API и живой поток и сам запускает агентов.
-- Трекер-БД репозиториев открываются на месте: схема TS-версии v3 плюс журнал событий (v4), TS-инструменты продолжают работать с тем же файлом.
-- Журнал событий с курсорами подписчиков: запись в той же транзакции, что изменение; доставка не реже одного раза.
-
-**Люди и проекты**
-- Несколько проектов на инсталляцию, в том числе без кода. Пользователи с паролями (argon2), роли в проекте viewer/member/admin/owner, приглашения по ссылке, сессии и личные токены для CLI.
-- Пока пользователей нет, сервер доступен без входа, но только с этой машины. Защита от CSRF и DNS rebinding: заголовок `X-Genie` и список разрешённых хостов.
-- CLI администрирования: `genie project|user|member|invite|backup|vault|init`.
-
-**Агенты по ходам**
-- Участники команд и разовые агентные задания запускаются «ходами» харнесса (по умолчанию `pi --print`). Письмо доставляется только после успешного хода; сбой хода повторяется с паузой, после исчерпания попыток — статус `error` и письмо оркестратору.
-- После рестарта прерванные ходы возвращают письма, а осиротевшие процессы агентов останавливаются.
-- Агенты действуют через `genie agent …` с токеном на ход. Сервер проверяет права: агент меняет только свою задачу и её подзадачи.
-
-**Автоматизации**
-- Правила в JSON. Триггеры: событие журнала с фильтром `where`, расписание (cron с часовым поясом), ручной запуск, webhook.
-- 14 видов шагов: задачи, уведомления, агентные задания, команды, вопросы людям, ожидание, чейнджлог, релиз, HTTP.
-- Долговечные идемпотентные запуски, лимиты, пробный режим, защита от каскадов. Встроенные уведомления о решениях и закрытых задачах.
-- Готовые плейбуки: «задача закрыта → знания, чейнджлог и уведомление», «новая задача → аналитик → вопросы автору», «решение не принято за сутки → напоминание».
-
-**База знаний**
-- Obsidian-совместимое хранилище (git-репозиторий) с пространствами проектов, полнотекстовым поиском и ссылками.
-- Политики публикации по разделам: прямо, на ревью или закрыто, отдельно для людей и агентов. Предложения правок с проверкой конфликтов.
-- Чейнджлог проекта и релизы. Импорт существующих `docs/`.
-
-**Каналы**
-- Telegram (long polling): привязка чата кодом, уведомления, вопросы с кнопками, ответ reply, `/new` — задача во входящие.
-- Почта через SMTP. Очередь доставки с повторами и отсечением дублей.
-- Опросники: вопросы агента человеку со страницей ответа без входа, напоминаниями и сроком.
-
-**Веб**
-- Страницы входа и приглашения, переключатель проектов, автоматизации (правило, шаги, запуски по шагам), уведомления, предложения в базу знаний (сравнение «сейчас / предложение»), профиль (Telegram, пароль, токен), страница ответа на вопросы для телефона.
-- Обновлённый дизайн по макету «Genie — аккуратный дизайн»:
-  - единые токены цвета и сетка, шапки одной высоты, меньше рамок;
-  - боковая панель с разделами «Знания» и «Команда и правила», блоком «Работают сейчас» и пользователем внизу.
-
-**Надёжность и проверки**
-- `genie backup`: консистентные снимки баз и git bundle хранилища.
-- CI: `cargo fmt`, `clippy`, тесты ядра и сервера, TS-тесты, typecheck и сборка веба.
-- Сквозные тесты обоих сценариев владельца: реальные процессы агентов, поддельный Telegram и SMTP.
-
-### Исправлено
-
-- Чтение страницы базы знаний отдаёт текст без frontmatter, как в контракте TS-версии. Раньше в вебе frontmatter показывался в тексте страницы, а редактор при сохранении мог его задублировать.
+- Reliability and access checks across the server, agent jobs, channels, and knowledge workflows.
 
 ## [0.2.0] — 2026-09-27
 
-Система документации проекта, новая модель доставки почты команд, предпросмотр изображений и таблицы в вебе.
+### Added
 
-### Добавлено
+- Markdown documentation indexing with frontmatter, FTS5 search, wiki-links, backlinks, heading reads, and task/code relationships.
+- L0/L1 knowledge context and documentation warnings for task review.
+- Mail priority and intent, orchestrator digests, and persistent delivery queues.
+- Image previews for artifacts and team-chat references; Markdown tables in task content.
 
-**Страница «Сервер» по вкладкам, статистика с графиками** (веб: «Сервер»)
-- Вместо одной длинной страницы — вкладки «Состояние», «Статистика», «Проекты», «Учётные записи», «База знаний» (`/server/stats` и т. д.).
-- «Состояние»: вердикт проверки сервера, под ним только то, что требует внимания; что в порядке — свёрнуто. Ниже — последние 7 дней в четырёх цифрах со ссылкой на статистику.
-- «Статистика»: неделя или месяц, все проекты или один; цифры, графики «Задачи по дням» (создано и готово) и «Запуски агентов» (со сбоем и без), таблица по проектам, редкие счётчики — под катом.
-- «Проекты» и «Учётные записи»: список слева, форма нового справа; путь к репозиторию и префикс задач — в «Дополнительно», отключение учётной записи — в меню «⋯».
-- `genie stats --json` и `GET /api/stats`: у проекта поле `daily` — созданные и готовые задачи, запуски и сбои по дням.
+### Changed
 
-**Система документации (эпик G-4)**
-- Доки — Markdown-файлы в `docs/` проекта (корень настраивается через `docs.root`); индекс — это кэш SQLite (FTS5), перестраиваемый из файлов; frontmatter: `title`, `summary`, `type`, `status`, `tags`, `paths`, `related`, `verified`. Контракт описан в `docs/reference/genie-docs-system.md`.
-- Поиск FTS5 с ранжированием BM25 и сниппетами, симметричная нормализация `ё/е`, исключение `deprecated`-страниц по умолчанию; чтение по секциям с пометкой об обрезке; `[[wiki-links]]` и бэклинки; метка «возможно устарела», когда код под `paths` менялся после `verified`.
-- Инструменты агентов `docs_search`, `docs_read`, `docs_note`: компактный L0-индекс документации в системном промпте и L1-подбор релевантных страниц в кикофф команды с причинами выбора.
-- CLI `genie docs tree|search|read|note|rebuild` (и `--json`) и веб-страница Docs: дерево, поиск, просмотр с бэклинками, редактор с валидацией frontmatter и предпросмотром, сообщение о конфликте сохранения, мобильная шторка, группа «Документация» в ⌘K.
-- Неблокирующее предупреждение «затронутая документация» в карточке задачи, в веб-API и CLI для задач в `review`/`done`.
+- Tracker schema version 3 adds mail levels and intents.
+- Progress belongs in tasks and agent status rather than routine mail.
 
-**Почта команд (модель доставки)**
-- Уровни `low`/`normal`/`high` и намерения `question`/`blocker`/`verdict`/`done`/`fyi` у сообщений; `urgent: true` сохранён как алиас `high`.
-- Почта забирается в момент доставки: пока получатель занят, письма остаются непрочитанными — счётчик непрочитанных в вебе честный, а сообщения не теряются при падении; срочные письма по-прежнему прерывают текущий шаг.
-- Оркестратор получает сводку вместо потока писем: группировка по командам, по одной строке на отправителя, порядок по важности, FYI — одной строкой.
-- Дисциплина переписки в промптах ролей: прогресс идёт в задачу, письмо — только для вопросов, блокеров и результата; в оркестратор говорит один голос от команды.
+### Fixed
 
-**Предпросмотр изображений**
-- Растровые картинки (PNG/JPEG/GIF/WebP) в артефактах: миниатюра в списке, превью в карточке, лайтбокс с зумом и панорамированием. Ссылка на артефакт или файл из репозитория в чате даёт превью (`!image[artifact:G-7/3]`, `!image[docs/shot.png]`); агент получает изображение в ответе инструмента, а не путь к файлу.
-
-**Веб-UI**
-- Таблицы Markdown (GFM) рендерятся как таблицы в описаниях задач, комментариях и артефактах.
-
-### Изменено
-
-- Схема трекера: `SCHEMA_VERSION` 2 → 3 (уровни и намерения почты).
-- Роли больше не пишут прогресс в почту — он виден в задаче и в карточке команды.
-
-### Исправлено
-
-- `deprecated`-страницы больше не попадают в поиск документации по умолчанию.
-- Подбор L1 по терминам: затухание частых слов и учёт заголовков и резюме; идентичность проекта определяется по главному чекауту, а не по имени каталога worktree.
-- Запись веб-документации: отказ записи «сквозь» симлинк, корректные статусы для ошибок клиента, отказ от пустого содержимого.
-- Изображения из репозитория проверяются по размеру до чтения, а не после (защита от чтения многогигабайтных файлов в память).
+- Deprecated pages are excluded from default search.
+- Context selection reduces the influence of common terms.
+- Documentation and image reads reject unsafe paths and oversized image input.
 
 ## [0.1.0] — 2026-09-27
 
-Первый релиз: оркестратор и фокус-команды агентов поверх [pi](https://pi.dev) — локальный трекер задач, эпики, веб-доска и прямое общение агентов.
+Initial release as a local pi extension.
 
-### Добавлено
+### Added
 
-**Страница «Сервер» по вкладкам, статистика с графиками** (веб: «Сервер»)
-- Вместо одной длинной страницы — вкладки «Состояние», «Статистика», «Проекты», «Учётные записи», «База знаний» (`/server/stats` и т. д.).
-- «Состояние»: вердикт проверки сервера, под ним только то, что требует внимания; что в порядке — свёрнуто. Ниже — последние 7 дней в четырёх цифрах со ссылкой на статистику.
-- «Статистика»: неделя или месяц, все проекты или один; цифры, графики «Задачи по дням» (создано и готово) и «Запуски агентов» (со сбоем и без), таблица по проектам, редкие счётчики — под катом.
-- «Проекты» и «Учётные записи»: список слева, форма нового справа; путь к репозиторию и префикс задач — в «Дополнительно», отключение учётной записи — в меню «⋯».
-- `genie stats --json` и `GET /api/stats`: у проекта поле `daily` — созданные и готовые задачи, запуски и сбои по дням.
+- SQLite task tracker with acceptance criteria, dependencies, epics, comments, artifacts, and history.
+- Orchestrator workflow and focused agent teams with role-specific models, worktrees, direct mail, and recovery.
+- Web board, task/epic detail, team chat, command palette, keyboard navigation, and mobile layouts.
+- Local CLI and pi tools for tasks and team control.
+- React client organized with Feature-Sliced Design.
 
-**Трекер задач**
-- Локальная база `.genie/genie.db` (SQLite, без runtime-зависимостей) и полный цикл статусов: `inbox → draft → refining → ready → in_progress → review → changes_requested → approved → needs_owner → done/cancelled`.
-- Типы `task` / `bug` / `spike` / `epic`, приоритеты, метки, зависимости (`deps`), подзадачи (`split`), блокировки (`block`/`unblock`).
-- Критерии приёмки с отметками и автором проверки, план, заметки, комментарии (`note`, `progress`, `question`, `decision`, `review`, `handoff`, `owner`), артефакты (`analysis`, `plan`, `code`, `review`, `test-report`, `diff`, `doc`, `log`, `other`).
-- Права: участник меняет только свою задачу и её подзадачи (плюс комментарии и артефакты в своём эпике); `draft`/`ready`/`needs_owner`/`done`/`cancelled` двигает только оркестратор.
+### Limitations
 
-**Оркестратор**
-- Жизненный цикл задачи: приём из чата и входящих → уточнение (при необходимости командой аналитиков) → Definition of Ready → сбор команды под задачу → надзор → приёмка по доказательствам и интеграция.
-- Согласованная стратегия интеграции (`mergeStrategy`), статус `needs_owner` для решений, которые может принять только владелец, и трактовка действий владельца в вебе/CLI как авторитетных.
-
-**Фокус-команды**
-- Роли `analyst`, `executor`, `reviewer`, `tester`, `documenter`; модель и уровень thinking на каждую роль; шаблоны `standard`, `pair`, `full`, `abap`, `spike`, `research`.
-- Отдельный git-worktree `genie/<задача>` на команду, запуск участников в herdr или headless, heartbeat и восстановление потерянных участников с продолжением их сессии, живая карточка команды в чате.
-- Прямое общение и управление: `team_spawn`, `team_add_member`, `team_remove_member`, `team_recover`, `team_send`, `team_status`, `team_set_status`, `team_stop`.
-
-**Имена участников**
-- Шуточные пулы имён по ролям: детективы у аналитиков, роботы у исполнителей, мудрецы у ревьюеров, хаос у тестировщиков, писатели у документаторов — «Sherlock — аналитик», «Bender — исполнитель». Имя служит адресом в `team_send` и не повторяется среди активных команд; пулы переопределяются ключом `names` в конфиге.
-
-**Эпики**
-- Эпик как веха: цель, критерии успеха, дорожная карта (`plan`) и общие артефакты; задачи эпика видят его цель и материалы в kickoff и в `show`, прогресс считается по закрытым дочерним задачам, `parent` задаёт принадлежность при создании, `update` переносит задачу в/из эпика. Эпик не вкладывается в эпик и не отдаётся команде.
-
-**Веб-интерфейс**
-- Kanban-доска с перетаскиванием, список задач, экраны эпиков и эпика с прогрессом, карточка задачи с блоком «Нужно ваше решение», чат команды, входящие, модалка артефактов, палитра `⌘K`, горячие клавиши, адаптивная вёрстка для телефона.
-
-**CLI и pi**
-- CLI: `genie init|new|epic|epics|ls|ready|show|edit|status|comment|check|artifact|artifact-show|split|block|unblock|board|teams|team|send|mail|web`.
-- В pi: `/genie`, `/genie settings`, `/genie web [--tailscale]`, `/genie team|mail`, `/genie recover`, `/genie off|on`.
-- Уведомления о переходах в `needs_owner`/`done` и о потерянных участниках команды.
-
-**Отображение в pi (G-2)**
-- Собственный рендеринг вызова и результата для всех инструментов `genie_task` и `team_*`: компактная строка «действие + цель», сводка результата с явными состояниями (частичный/успех/ошибка), подробности по расширению (`ctrl+o`), цвета активной темы, аккуратный перенос на узких терминалах и живая карточка для `team_spawn`/`team_add_member`.
-
-**Веб-рефакторинг (G-1)**
-- Фронтенд переведён на Feature-Sliced Design: `app`, `pages`, `widgets`, `features`, `entities`, `shared`.
-
-### Ограничения
-- Веб-интерфейс без аутентификации: рассчитан на localhost или tailnet (`--tailscale`).
-- Участнику команды запрещено запускать pi-сессию из своей сессии (guardrail), поэтому TUI-проверки выполняются на уровне реальных компонентов, а не живого терминала.
+- The original web server had no account authentication and was intended for localhost or a trusted tailnet.
+- This extension architecture has since been replaced by the standalone server.
 
 [0.4.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.4.0
 [0.3.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.3.0

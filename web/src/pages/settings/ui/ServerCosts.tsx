@@ -215,9 +215,6 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
         </section>
       </div>
       <SpendTable view={view} setView={setView} cols={cols} rows={rows} share={share} />
-      <p className="sv-cli">
-        То же в терминале: <code>genie stats --days {days}</code>
-      </p>
     </>
   );
 }

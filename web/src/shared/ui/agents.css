@@ -87,14 +87,11 @@
 .ag-skill-body, .ag-prompt .md { padding: 14px 16px; border-radius: 10px; background: var(--bg-panel); border: 1px solid var(--line); }
 
 /* permissions */
-.ag-perms { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.ag-perms { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
 .ag-perms fieldset { margin: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-panel); display: flex; flex-direction: column; gap: 0; min-width: 0; }
 .ag-perms legend { padding: 0 4px; margin-left: -4px; font-size: 12px; font-weight: 500; color: var(--muted); }
-.ag-perm { display: grid; grid-template-columns: 16px 128px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 26px; font-size: 12.5px; cursor: pointer; }
+.ag-perm { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; padding: 6px 0; gap: 8px; min-height: 26px; font-size: 12.5px; cursor: pointer; }
 .ag-perm input { accent-color: var(--accent); margin: 0; }
-.ag-perm .mono { font-size: 12px; color: var(--muted); }
-.ag-perm.on .mono { color: var(--text); }
-.ag-perm .txt { padding: 4px 0; color: var(--muted); line-height: 1.35; }
 .ag-tag { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; white-space: nowrap; }
 .ag-tag.plus { background: var(--accent-soft); color: var(--accent-text); }
 .ag-tag.minus { background: var(--amber-bg); color: var(--amber); }
@@ -146,7 +143,7 @@ fieldset:disabled .ag-perm { cursor: default; }
 .ag-checks { display: flex; flex-direction: column; gap: 4px; padding: 6px 0 0 24px; }
 .ag-checks label { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); gap: 8px; align-items: baseline; }
 .ag-grants { display: flex; flex-direction: column; gap: 8px; }
-.ag-grant { display: grid; grid-template-columns: 140px minmax(0, 1fr) 170px minmax(120px, 200px); gap: 10px; align-items: center; font-size: 12.5px; }
+.ag-grant { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 10px; align-items: center; font-size: 12.5px; }
 .ag-grant select, .ag-grant input, .ag-member-row select, .ag-member-row input, .ag-relation-row select, .ag-relation-row input, .ag-preview-form input {
   height: 32px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-panel); color: var(--text); padding: 0 10px; font-size: 12.5px; outline: 0; min-width: 0;
 }
@@ -229,7 +226,7 @@ fieldset:disabled .ag-perm { cursor: default; }
 .ag-history-body pre.bd { margin: 0; white-space: pre-wrap; font: 11.5px/1.5 var(--mono); color: var(--text-2); max-height: 360px; overflow: auto; }
 .ag-history-body .btn { align-self: flex-start; }
 
-/* MCP: picking a role's tools of a connection (the dialog of McpDialog) */
+/* MCP tools in the role settings form. */
 .mc-role-tools { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 0 24px; }
 .mc-role-tools .chips { min-height: 30px; }
 .mc-role-tools .ag-checks { padding-left: 0; }
@@ -241,4 +238,55 @@ fieldset:disabled .ag-perm { cursor: default; }
   .ag-member-row, .ag-relation-row { grid-template-columns: 1fr 1fr; }
   .ag-history-row { grid-template-columns: 100px minmax(0, 1fr) 70px; }
   .agents .topbar { padding: 0 16px; }
+}
+
+/* Role setup follows one reading order; long diagnostics stay folded locally. */
+.ag-problem-summary { margin: 0; border: 1px solid var(--amber-line); border-radius: var(--radius); background: var(--amber-bg); font-size: 12.5px; }
+.ag-problem-summary > summary { padding: 9px 12px; cursor: pointer; color: var(--amber); }
+.ag-problem-summary.error > summary { color: var(--red); }
+.ag-problem-summary > .ag-problems { max-height: 240px; overflow-y: auto; padding: 0 8px 8px; }
+.ag-problem-summary > p { padding: 0 12px 10px; }
+.ag-problems li { overflow-wrap: anywhere; }
+.ag-problems small { display: block; font-size: 11px; }
+.ag-list > .ag-problem-summary, .split-list > .ag-problem-summary { margin: 8px; }
+.ag-list-search { padding: 12px; position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.ag-list-search input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-panel); color: var(--text); font: inherit; }
+.ag-list .pick { padding-top: 10px; padding-bottom: 10px; }
+.ag-problem-dot { margin-left: auto; color: var(--amber); font-size: 12px; }
+.ag-role-sections { grid-template-columns: minmax(0, 1fr); }
+.ag-role-sections .ag-card { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 16px 0; }
+.ag-role-sections .ag-card-head h3 { color: var(--text); font-size: 14px; }
+.ag-perm input { margin-top: 3px; }
+.ag-perm-label { color: var(--text-2); line-height: 1.4; }
+.ag-advanced { font-size: 12.5px; color: var(--text-2); }
+.ag-advanced > summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
+.ag-advanced[open] > summary { margin-bottom: 10px; }
+.ag-advanced > .ag-actions { margin-top: 12px; }
+.ag-advanced .ag-dl { margin-top: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.ag-settings section.ag-settings-stack { display: flex; flex-direction: column; align-items: stretch; }
+.ag-settings .ag-choice label { display: flex; flex-direction: row; align-items: center; padding: 4px 0; }
+.ag-option-list, .mc-role-tools .ag-checks { max-height: 280px; overflow-y: auto; padding: 0; }
+.ag-settings .ag-checks label { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 8px; }
+.ag-checks label input { margin-top: 3px; }
+.ag-checks label strong { font-size: 12.5px; font-weight: 500; overflow-wrap: anywhere; }
+.ag-checks label > span > .muted, .ag-option-description { display: block; font-size: 11.5px; line-height: 1.45; margin-top: 3px; }
+.ag-grants > div { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.ag-grant strong { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .ag-perms, .ag-grant { grid-template-columns: minmax(0, 1fr); }
+  .ag-grant select { width: 100%; }
+  .mc-role-tools { padding-left: 0; }
+}
+.ag-edit-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+.ag-roles-layout { grid-template-columns: 260px minmax(0, 1fr); }
+.ag-permissions-view > summary { font-size: 14px; color: var(--text); }
+.ag-settings .ag-perms fieldset { display: flex; }
+.ag-settings .ag-perm { display: grid; grid-template-columns: 16px minmax(0, 1fr); padding: 6px 0; }
+@media (max-width: 900px) {
+  .ag-roles-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .modal:has(.ag-settings) .mf { flex-wrap: wrap; }
+  .ag-save-note { flex-basis: 100%; }
 }

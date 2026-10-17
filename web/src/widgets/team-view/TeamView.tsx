@@ -281,7 +281,7 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
                 <option value="orchestrator">оркестратору</option>
               </select>
             </label>
-            <select className="tc-level" aria-label="Важность" title="Важность: прервать шаг — остановить текущий шаг агента (даже долгую команду) и передать сообщение первым" value={level} onChange={(e) => setLevel(e.target.value as MailLevel)}>
+            <select className="tc-level" aria-label="Важность" title="«Прервать шаг» остановит текущую команду" value={level} onChange={(e) => setLevel(e.target.value as MailLevel)}>
               {(["low", "normal", "high", "interrupt"] as MailLevel[])
                 .filter((l) => l !== "interrupt" || (to !== "all" && to !== "orchestrator"))
                 .map((l) => (

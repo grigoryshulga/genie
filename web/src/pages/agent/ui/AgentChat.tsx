@@ -611,7 +611,7 @@ function AgentInfo({ member, team, live, st, queued }: { member: Member; team: T
         <h2>Ждут доставки</h2>
         <p className="muted">{queued.length ? `${queued.length} ${plural(queued.length, "письмо", "письма", "писем")}: ${queued.map((m) => (m.fromRole === "human" ? "ваше" : displayName(m.from))).join(", ")}` : "Нет писем."}</p>
       </section>
-      <p className="ac-help">Поправка приходит агенту письмом в его разговор. «Прервать шаг» останавливает текущую команду; «на следующем шаге» ждёт, пока он закончит.</p>
+      <p className="ac-help">«Прервать шаг» остановит текущую команду.</p>
     </div>
   );
 }
@@ -658,7 +658,7 @@ function PausedPanel({ who, since, queued, busy, onResume, onRestart }: { who: s
             <span className="text">{m.text}</span>
           </article>
         ))}
-        {!queued.length && <p className="muted">Писем нет. Поправку можно написать внизу: она придёт первой.</p>}
+        {!queued.length && <p className="muted">Писем нет.</p>}
       </section>
       <span className="grow" />
       <div className="ac-paused-actions">
@@ -669,7 +669,7 @@ function PausedPanel({ who, since, queued, busy, onResume, onRestart }: { who: s
           Перезапустить
         </button>
       </div>
-      <p className="ac-help">Перезапуск поднимет новый процесс с текущими настройками роли; разговор, рабочая копия и почта сохранятся.</p>
+      <p className="ac-help">При перезапуске разговор, рабочая копия и почта сохранятся.</p>
     </div>
   );
 }

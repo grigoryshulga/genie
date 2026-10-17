@@ -37,7 +37,9 @@ import { OwnerDecision } from "@/features/owner-decision";
 import { SpawnTeamDialog } from "@/features/spawn-team";
 import { plural, timeAgo, useTick } from "@/shared/lib";
 import { ConfirmDialog, Icon, Markdown, useToast } from "@/shared/ui";
+import { FollowTask } from "@/features/follow-task";
 import { TaskDelivery } from "./TaskDelivery.tsx";
+import { TaskManager } from "./TaskManager.tsx";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };
 
@@ -169,7 +171,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <span className="k">Ответственный</span>
           <span className="wide" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
             {t.assignee && <PersonAvatar login={t.assignee} name={responsibleName} prefix="" />}
-            <select aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Человек, который отвечает за задачу: ему приходят вопросы агентов">
+            <select aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Получает вопросы агентов">
               <option value="">Не назначен</option>
               {people.map((p) => (
                 <option key={p.login} value={p.login}>
@@ -253,7 +255,6 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             <input
               key={`${t.id}-merge-${t.mergeStrategy}`}
               aria-label="Интеграция"
-              title="Как результат попадёт в систему: договоритесь с оркестратором"
               defaultValue={t.mergeStrategy}
               placeholder="не задана"
               onBlur={(e) => e.target.value !== t.mergeStrategy && patch.mutate({ id: t.id, patch: { mergeStrategy: e.target.value } }, { onError: fail })}
@@ -400,8 +401,9 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             <Icon.back />
           </button>
           {crumbs}
+          <FollowTask task={t.id} />
           <span className="grow" />
-          <Link className="btn" to={pageLink} title="Открыть страницу задачи с командой и активностью">
+          <Link className="btn" to={pageLink}>
             <Icon.external size={12} />
             Открыть страницу
           </Link>
@@ -416,10 +418,11 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             {props}
           </div>
           {epicLink}
-          <OwnerDecision task={t} />
+          {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
           {description}
           {criteria}
           {!isEpic && <TaskDelivery task={t.id} />}
+          {!isEpic && <TaskManager key={t.id} task={t} />}
           <footer className="detail-more">
             {last && <span className="muted">Последнее: {last.kind === "event" ? `${last.h.actor} ${historyText(last.h, isEpic)}` : `${last.c.author}, ${KIND_NAME[last.c.kind] ?? last.c.kind}`} · {timeAgo(last.at)}</span>}
             <span className="grow" />
@@ -437,6 +440,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <Icon.back />
         </Link>
         {crumbs}
+        <FollowTask task={t.id} />
         <span className="grow" />
         {team?.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] && (
           // An idea being shaped: back to the conversation with its planner.
@@ -484,10 +488,11 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <div className="tp-main">
             {epicLink}
             {impactEnabled && <DocsImpactBlock result={impact.data} />}
-            <OwnerDecision task={t} />
+            {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
             {description}
             {criteria}
             {!isEpic && <TaskDelivery task={t.id} />}
+            {!isEpic && <TaskManager key={t.id} task={t} />}
             {t.plan.trim() && (
               <section className="sec">
                 <h3>{isEpic ? "Дорожная карта" : "План"}</h3>
@@ -664,7 +669,6 @@ function DocsImpactBlock({ result }: { result: DocsImpact | undefined }) {
         <Icon.file size={14} />
         Документация, которую могла затронуть задача
         {candidates.length > 0 && <span className="n">{candidates.length}</span>}
-        <span className="hint">подсказка · не блокирует</span>
       </div>
       {candidates.length > 0 ? (
         <div className="rows">

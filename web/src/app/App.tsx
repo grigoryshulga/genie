@@ -8,7 +8,7 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
-import { isTyping, rememberWorkRoute } from "@/shared/lib";
+import { isTyping, readPref, rememberWorkRoute, writePref } from "@/shared/lib";
 import { Sidebar } from "@/widgets/sidebar";
 import { lazyPage } from "./lazyPage.ts";
 
@@ -28,6 +28,7 @@ const AutomationsSettingsPage = lazyPage(() => import("@/pages/settings").then((
 const AgentsAdminPage = lazyPage(() => import("@/pages/settings").then((m) => m.AgentsAdminPage));
 const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
 const ServerSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerSettingsPage));
+const ServerStatisticsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerStatisticsPage));
 const SettingsShell = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.SettingsShell));
 const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m.FirstProjectPage));
 const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.AnswerPage));
@@ -49,11 +50,17 @@ function Shell() {
   const location = useLocation();
   const [sp, setSp] = useSearchParams();
   const [dialog, setDialog] = useState<"new" | "palette" | undefined>();
+  const [sidebarCompact, setSidebarCompact] = useState(() => readPref<string>("sidebar-compact", "false") === "true");
   const [preset, setPreset] = useState<NewTaskPreset | undefined>();
   const newTask = useCallback((p?: NewTaskPreset) => {
     setPreset(p);
     setDialog("new");
   }, []);
+  const toggleSidebar = useCallback(() => {
+    const next = !sidebarCompact;
+    setSidebarCompact(next);
+    writePref("sidebar-compact", String(next));
+  }, [sidebarCompact]);
   const searchRef = useRef<HTMLInputElement>(null);
   const teams = useTeamMap();
   const tasks = useTasks().data;
@@ -142,10 +149,10 @@ function Shell() {
   }, [dialog, openTaskId, closeTask, actions, navigate, newTask]);
 
   const agentRoute = /^\/team\/[^/]+\/[^/]+/.test(location.pathname);
-  const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app";
+  const cls = `${agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app"}${sidebarCompact ? " sidebar-compact" : ""}`;
   return (
     <div className={cls}>
-      <Sidebar onNew={() => newTask()} online={online} />
+      <Sidebar onNew={() => newTask()} online={online} compact={sidebarCompact} onToggleCompact={toggleSidebar} />
       <Suspense fallback={<PageFallback />}>
         <Outlet context={{ onNew: newTask, searchRef }} />
       </Suspense>
@@ -249,7 +256,7 @@ function Gate() {
 function RequireServerAdmin({ children }: { children: ReactNode }) {
   const session = useSession();
   if (session.isLoading) return <div className="empty">Загрузка…</div>;
-  if (!session.data?.user.isAdmin) return <div className="empty">Раздел «Сервер» — для администраторов сервера.</div>;
+  if (!session.data?.user.isAdmin) return <div className="empty">Раздел доступен администраторам сервера.</div>;
   return children;
 }
 
@@ -270,7 +277,8 @@ function LegacyProject() {
 /** `/server/…` — the server administration before the settings mode (PD21); old links keep working. */
 function LegacyServer() {
   const { tab } = useParams();
-  const section = tab === "stats" || tab === "projects" || tab === "accounts" || tab === "mcp" || tab === "vault" ? tab : "health";
+  if (tab === "stats") return <Navigate to="/settings/stats" replace />;
+  const section = tab === "projects" || tab === "accounts" || tab === "mcp" || tab === "vault" ? tab : "health";
   return <Navigate to={`/settings/server/${section}`} replace />;
 }
 
@@ -319,22 +327,31 @@ export const router = createBrowserRouter([
           { path: "me/:section?", element: <MeSettingsPage /> },
           { path: "project/automations", element: <AutomationsSettingsPage /> },
           { path: "project/:section?", element: <ProjectSettingsPage /> },
-        {
-          path: "server",
-          element: (
-            <RequireServerAdmin>
-              <Outlet />
-            </RequireServerAdmin>
-          ),
-          children: [
-            { index: true, element: <Navigate to="/settings/server/health" replace /> },
-            { path: "roles", element: <AgentsAdminPage /> },
-            { path: "templates", element: <AgentsAdminPage /> },
-            { path: "skills", element: <AgentsAdminPage /> },
-            { path: "history", element: <AgentsAdminPage /> },
-            { path: ":section?", element: <ServerSettingsPage /> },
-          ],
-        },
+          {
+            path: "stats",
+            element: (
+              <RequireServerAdmin>
+                <ServerStatisticsPage />
+              </RequireServerAdmin>
+            ),
+          },
+          {
+            path: "server",
+            element: (
+              <RequireServerAdmin>
+                <Outlet />
+              </RequireServerAdmin>
+            ),
+            children: [
+              { index: true, element: <Navigate to="/settings/server/health" replace /> },
+              { path: "stats", element: <Navigate to="/settings/stats" replace /> },
+              { path: "roles", element: <AgentsAdminPage /> },
+              { path: "templates", element: <AgentsAdminPage /> },
+              { path: "skills", element: <AgentsAdminPage /> },
+              { path: "history", element: <AgentsAdminPage /> },
+              { path: ":section?", element: <ServerSettingsPage /> },
+            ],
+          },
         ],
       },
       { path: "profile/:tab?", element: <LegacyProfile /> },

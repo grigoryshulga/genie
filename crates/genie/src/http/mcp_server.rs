@@ -110,21 +110,26 @@ async fn caller(app: &Arc<App>, ctx: &Ctx, headers: &HeaderMap) -> ApiResult<Cal
                 .as_deref()
                 .and_then(|id| app.agents().roles.get(id).map(|r| r.capabilities.clone()))
                 .unwrap_or_else(|| genie_core::class_capabilities(*role));
-            // A team works on the task it is named after; a job on its own.
+            // Resolve the task manager, actual team task or job scope.
             let task = match job {
                 Some(j) => {
                     let j = *j;
                     app.blocking(move |app| app.with_server(|db| db.job(j))).await?.task
                 }
-                None => match team.clone() {
-                    Some(team) => {
-                        let project = project.clone();
-                        Some(
-                            app.blocking(move |app| app.with_tracker(&project, |t| Ok(t.bus().get(&team).map(|t| t.task).unwrap_or(team))))
+                None => match genie_core::management::managed_task(name) {
+                    Some(task) => Some(task.to_string()),
+                    None => match team.clone() {
+                        Some(team) => {
+                            let project = project.clone();
+                            Some(
+                                app.blocking(move |app| {
+                                    app.with_tracker(&project, |t| Ok(t.bus().get(&team).map(|t| t.task).unwrap_or(team)))
+                                })
                                 .await?,
-                        )
-                    }
-                    None => None,
+                            )
+                        }
+                        None => None,
+                    },
                 },
             };
             Ok(Caller::Agent { name: name.clone(), project: project.clone(), kind, caps, token, team: team.clone(), task })

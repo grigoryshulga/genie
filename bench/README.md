@@ -2,9 +2,8 @@
 
 A fixed set of small tasks on a throwaway training project, worked by a genie
 team, measured **before and after** a change to a role, a prompt, a skill or a
-team template. It answers the first gap of `docs/platform/proposals.md` ("Нет проверки
-качества агентов"): did the tasks reach «Готово», how often did the work come
-back from review, what did it cost.
+team template. It measures whether tasks reached `done`, how often work returned from review,
+and what it cost.
 
 The weekly retrospective (and a later CI) gates an edit on `compare`: a change is
 applied only when the second round is no worse than the first.

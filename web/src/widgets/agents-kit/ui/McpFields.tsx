@@ -5,41 +5,27 @@
 // catalogue does not know are kept as written.
 
 import { useState } from "react";
-import { type Catalogue, globMatch, type RoleDetail } from "@/entities/agent-config";
+import { type Catalogue, globMatch, type McpGrant, mcpGrants, roleMcpAccess, type RoleDetail } from "@/entities/agent-config";
 import { ChipInput } from "@/shared/ui";
-import { EditDialog, useRoleSave } from "./EditDialog.tsx";
 
-type Grant = { mode: "none" | "all" | "tools"; tools: string[] };
 
-export function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogue; onClose: () => void }) {
-  const r = detail.role;
-  const [grants, setGrants] = useState(
-    (): Record<string, Grant> =>
-      Object.fromEntries(
-        cfg.mcp.map((s) => {
-          const whole = r.mcp.includes(s.id) || r.mcp.includes("*");
-          const tools = r.mcp.filter((g) => g.startsWith(`${s.id}:`)).map((g) => g.slice(s.id.length + 1));
-          return [s.id, { mode: whole ? "all" : tools.length ? "tools" : "none", tools } satisfies Grant];
-        }),
-      ),
-  );
-  const [busy, saveFields] = useRoleSave(detail, onClose);
-  const unknown = r.mcp.filter((g) => g !== "*" && !cfg.mcp.some((s) => s.id === g.split(":")[0]));
-  const save = async () => {
-    const out: string[] = [...unknown];
-    for (const s of cfg.mcp) {
-      const g = grants[s.id];
-      if (g.mode === "all") out.push(s.id);
-      if (g.mode === "tools") out.push(...g.tools.map((t) => `${s.id}:${t}`));
-    }
-    await saveFields([["mcp", out.length ? out : undefined]], "Доступ к MCP сохранён");
-  };
+export function useMcpSettings(detail: RoleDetail, cfg: Catalogue) {
+  const access = detail.role.mcp;
+  const [grants, setGrants] = useState(() => mcpGrants(access, cfg.mcp));
+  const unknown = access.filter((g) => g !== "*" && !cfg.mcp.some((s) => s.id === g.split(":")[0]));
+  return { grants, setGrants, value: () => roleMcpAccess(access, cfg.mcp, grants), unknown };
+}
+
+export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<typeof useMcpSettings> }) {
+  const { grants, setGrants, unknown } = state;
   return (
-    <EditDialog title={`MCP роли ${r.id}`} note="Закрытое подключение перестаёт работать сразу; новое агент получит со следующего старта сессии" busy={busy} onClose={onClose} onSave={() => void save()}>
       <div className="ag-grants">
+        <p className="muted ag-note">Закрытый доступ отзывается сразу. Новые инструменты появятся при следующем старте сессии.</p>
+        {!cfg.mcp.length && <p className="muted ag-note">Подключений пока нет. Добавьте их в настройках MCP.</p>}
+        {unknown.length > 0 && <p className="ag-warn">Подключения вне библиотеки (сохранены): {unknown.join(", ")}</p>}
         {cfg.mcp.map((s) => {
           const g = grants[s.id];
-          const set = (v: Partial<Grant>) => setGrants((x) => ({ ...x, [s.id]: { ...x[s.id], ...v } }));
+          const set = (v: Partial<McpGrant>) => setGrants((x) => ({ ...x, [s.id]: { ...x[s.id], ...v } }));
           const cached = s.tools ?? [];
           // Grants the cached listing does not know: an exact tool that is gone, or a pattern.
           const extra = g.tools.filter((p) => !cached.some((t) => globMatch(p, t.name)));
@@ -50,9 +36,8 @@ export function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: C
           return (
             <div key={s.id}>
               <div className="ag-grant">
-                <span className="mono">{s.id}</span>
-                <span className="muted">{s.description}</span>
-                <select value={g.mode} onChange={(e) => set({ mode: e.target.value as Grant["mode"] })} aria-label={`Доступ к ${s.id}`}>
+                <span><strong>{s.id}</strong>{s.description && <span className="muted ag-option-description">{s.description}</span>}</span>
+                <select value={g.mode} onChange={(e) => set({ mode: e.target.value as McpGrant["mode"] })} aria-label={`Доступ к ${s.id}`}>
                   <option value="none">нет доступа</option>
                   <option value="all">все инструменты</option>
                   <option value="tools">только выбранные</option>
@@ -81,8 +66,7 @@ export function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: C
                         return (
                           <label key={t.name} title={t.description}>
                             <input type="checkbox" checked={on} onChange={() => toggle(t.name)} />
-                            <span className="mono">{t.name}</span>
-                            <span className="muted">{t.description}</span>
+                            <span><strong>{t.name}</strong>{t.description && <span className="muted ag-option-description">{t.description}</span>}</span>
                           </label>
                         );
                       })}
@@ -91,13 +75,13 @@ export function McpDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: C
                 ) : (
                   <div className="mc-role-tools">
                     <ChipInput values={g.tools} onChange={(tools) => set({ tools })} placeholder="шаблоны через запятую, например get_*" mono />
-                    <p className="muted ag-note">Проверьте подключение в «Настройки» → «Сервер» → «MCP», чтобы выбирать инструменты списком.</p>
+                    <p className="muted ag-note">Проверьте подключение в «Настройки» → «Управление» → «MCP», чтобы выбирать инструменты списком.</p>
                   </div>
                 ))}
             </div>
           );
         })}
       </div>
-    </EditDialog>
+
   );
 }

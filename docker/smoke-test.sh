@@ -34,7 +34,19 @@ echo 'smoke-test-pw-1' | docker exec -i "$name" genie user add smoke --admin --p
 [ -z "$(docker exec "$name" find /data ! -user genie -print -quit)" ] || fail "files in /data not owned by genie"
 [ "$(docker exec "$name" ps -o user= -p 1 | tr -d ' ')" = genie ] || fail "PID 1 does not run as the service user"
 docker exec -u genie "$name" pi --version >/dev/null || fail "pi is not runnable"
+docker exec -u genie "$name" node --version >/dev/null || fail "node is not runnable"
+docker exec -u genie "$name" npx --version >/dev/null || fail "npx is not runnable"
 docker exec -u genie "$name" git --version >/dev/null || fail "git is not runnable"
+
+# The harness the server runs: Pi-Bolt must resolve the pi SDK it bundles (`@earendil-works/pi-coding-agent`,
+# which the genie guard extension imports), and the guard must start the role's MCP connections. The guard
+# is the extension this checkout ships (the server embeds the same file); the MCP connection is a local
+# stdio fake, so no model and no network are used. See docker/mcp-smoke.mjs for what it proves.
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+docker cp "$repo/docker/mcp-smoke.mjs" "$name":/tmp/genie-mcp-smoke.mjs
+docker cp "$repo/crates/genie/pi/genie-guard.ts" "$name":/tmp/genie-guard-smoke.ts
+docker exec -u genie "$name" node /tmp/genie-mcp-smoke.mjs --guard /tmp/genie-guard-smoke.ts ||
+  fail "the pi SDK or the genie guard extension does not work inside the image"
 
 docker kill --signal SIGINT "$name" >/dev/null
 for _ in $(seq 1 20); do
@@ -44,7 +56,7 @@ done
 [ "$(docker inspect -f '{{.State.Running}}' "$name")" = false ] || fail "did not stop within 20 s"
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$name")" = 0 ] || fail "exit code $(docker inspect -f '{{.State.ExitCode}}' "$name") on SIGINT"
 
-# The agent sandbox (bubblewrap) needs seccomp and /proc unconfined (docker-compose.sandbox.yml). Whether
+# The agent sandbox (bubblewrap) needs seccomp and /proc unconfined (docker/docker-compose.sandbox.yml). Whether
 # the host's kernel allows it varies, so this only fails the test when SMOKE_REQUIRE_SANDBOX=1.
 sandbox_name="$name-sandbox"
 trap 'docker rm -f -v "$name" "$sandbox_name" >/dev/null 2>&1 || true' EXIT
@@ -56,12 +68,13 @@ for _ in $(seq 1 30); do
   [ "$(docker inspect -f '{{.State.Health.Status}}' "$sandbox_name")" = healthy ] && break
   sleep 2
 done
-if docker exec -u genie "$sandbox_name" genie agents check 2>&1 | grep -q 'agents run in a bubblewrap sandbox'; then
-  echo "sandbox: works with the docker-compose.sandbox.yml options"
+sandbox_output="$(docker exec -u genie "$sandbox_name" genie agents check 2>&1)" || true
+if grep -q 'agents run in a bubblewrap sandbox' <<<"$sandbox_output"; then
+  echo "sandbox: works with the docker/docker-compose.sandbox.yml options"
 elif [ "${SMOKE_REQUIRE_SANDBOX:-0}" = 1 ]; then
-  fail "the agent sandbox does not work with the docker-compose.sandbox.yml options: $(docker exec -u genie "$sandbox_name" genie agents check 2>&1 | grep -i sandbox)"
+  fail "the agent sandbox does not work with the docker/docker-compose.sandbox.yml options: $sandbox_output"
 else
-  echo "sandbox: NOT working on this host (not required): $(docker exec -u genie "$sandbox_name" genie agents check 2>&1 | grep -i sandbox)"
+  echo "sandbox: NOT working on this host (not required): $sandbox_output"
 fi
 
 echo "smoke test passed: $image"

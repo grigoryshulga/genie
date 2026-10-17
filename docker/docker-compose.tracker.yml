@@ -1,0 +1,44 @@
+# Local task tracking for this repository, independent of the main deployment.
+# Setup and CLI: docs/development/genie-cli.md
+name: genie-tracker
+
+services:
+  genie:
+    image: ${GENIE_TRACKER_IMAGE:-genie-local:latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: genie-tracker
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7422:7422"
+    environment:
+      GENIE_PORT: "7422"
+      GENIE_PUBLIC_URL: http://127.0.0.1:7422
+      GENIE_SANDBOX: "off"
+      TZ: Asia/Yekaterinburg
+    volumes:
+      - data:/data
+      - workspace:/workspace
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    pids_limit: 256
+    stop_signal: SIGINT
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:
+  workspace:

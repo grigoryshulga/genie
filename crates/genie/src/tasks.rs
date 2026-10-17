@@ -71,7 +71,7 @@ pub enum Touch {
 pub fn authorize(app: &App, caller: &Caller, id: &str, touch: Touch) -> AppResult<()> {
     let Kind::Agent { team, job } = &caller.kind else { return Ok(()) };
     if caller.actor.role == Role::Orchestrator {
-        return Ok(());
+        return crate::management::authorize_task(app, &caller.project, &caller.actor, id);
     }
     let home = match (team, job) {
         (Some(t), _) => Some(app.with_tracker(&caller.project, |tr| Ok(tr.bus().get(t)?.task))?),
@@ -287,6 +287,9 @@ mod lenient {
 // --- commands -----------------------------------------------------------------------------------
 
 pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
+    if genie_core::management::managed_task(&caller.actor.name).is_some() {
+        return Err(AppError::Forbidden("task managers ask the project manager to create or split work".into()));
+    }
     let parent = body.parent.filter(|p| !p.is_empty());
     if matches!(caller.kind, Kind::Agent { .. }) && caller.actor.role != Role::Orchestrator {
         let Some(parent) = &parent else {
@@ -321,6 +324,21 @@ pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
 
 pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResult<Task> {
     authorize(app, caller, id, Touch::Edit)?;
+    if genie_core::management::managed_task(&caller.actor.name).is_some()
+        && (body.task_type.is_some()
+            || body.description.is_some()
+            || body.title.is_some()
+            || body.priority.is_some()
+            || body.merge_strategy.is_some()
+            || body.assignee.is_some()
+            || body.add_acceptance.is_some()
+            || body.remove_acceptance.is_some()
+            || body.add_deps.is_some()
+            || body.remove_deps.is_some()
+            || body.parent.is_some())
+    {
+        return Err(AppError::Forbidden("scope, requirements and priority changes belong to the project manager".into()));
+    }
     let assignee = body.assignee.map(|a| a.map(|s| s.trim().trim_start_matches('@').to_lowercase()).filter(|s| !s.is_empty()));
     let assigned = assignee.clone().flatten();
     // The person responsible is someone who works in the project.
@@ -374,6 +392,9 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
 pub fn set_status(app: &App, caller: &Caller, id: &str, body: StatusBody) -> AppResult<Task> {
     authorize(app, caller, id, Touch::Edit)?;
     let to = body.status;
+    if to == Status::Done && !caller.is_person() && app.with_tracker(&caller.project, |t| t.management().has_blocking_questions(id))? {
+        return Err(AppError::Conflict("answer blocking clarifications before accepting the result".into()));
+    }
     // In an `assisted` project people close tasks; the orchestrator asks one instead.
     if caller.is_orchestrator() && CLOSED.contains(&to) && app.with_server(|db| db.project(&caller.project))?.autonomy == "assisted" {
         return Err(AppError::Conflict(
@@ -446,7 +467,8 @@ pub fn comment(app: &App, caller: &Caller, id: &str, body: CommentBody) -> AppRe
             link: Some(format!("/active?task={}", task.id)),
             ..Default::default()
         };
-        crate::notify::send(app, &users, &msg, None)?;
+        let dedupe = task.comments.last().map(|c| format!("comment:{}:{}:{}", caller.project, task.id, c.id));
+        crate::notify::send(app, &users, &msg, dedupe.as_deref())?;
     }
     changed(app);
     Ok(task)
@@ -525,4 +547,36 @@ pub fn from_step<T: serde::de::DeserializeOwned>(input: &Value, skip: &[&str]) -
         }
     }
     serde_json::from_value(v).map_err(|e| AppError::Genie(genie_core::GenieError::invalid(e.to_string())))
+}
+
+/// A personal subscription, independent of assignment. Authors always receive updates.
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TaskWatch {
+    pub watching: bool,
+    pub author: bool,
+}
+
+pub fn watch(app: &App, caller: &Caller, id: &str, value: Option<bool>) -> AppResult<TaskWatch> {
+    if !caller.is_person() {
+        return Err(AppError::Forbidden("Only people can follow tasks".into()));
+    }
+    let user = app.with_server(|db| {
+        let user = db
+            .user_by_login(&caller.actor.name)?
+            .ok_or_else(|| genie_core::GenieError::invalid("Create an account before following tasks"))?;
+        if user.disabled || db.project_role(&caller.project, &user)?.is_none() {
+            return Err(genie_core::GenieError::Denied("No access to this project".into()));
+        }
+        Ok(user)
+    })?;
+    let task = app.with_tracker(&caller.project, |tr| tr.get(id))?;
+    let author = task.history.iter().find(|h| h.event == "created" && h.role == Role::Human).is_some_and(|h| h.actor == user.login);
+    app.with_server(|db| {
+        if let Some(value) = value {
+            db.set_task_watch(&caller.project, &task.id, user.id, value)?;
+        }
+        Ok(TaskWatch { author, watching: author || db.task_watchers(&caller.project, &task.id)?.contains(&user.id) })
+    })
 }

@@ -102,13 +102,15 @@ export const useProposal = (id?: number) =>
   });
 
 export const useChannels = () =>
-  useQuery({ queryKey: ["channels"], queryFn: () => request<{ links: { channel: string; address: string }[]; telegram: boolean; email: boolean }>("GET", "/api/me/channels") });
+  useQuery({ queryKey: ["channels"], refetchInterval: 5000, queryFn: () => request<{ links: { channel: string; address: string }[]; telegram: boolean; email: boolean }>("GET", "/api/me/channels") });
 
 /** A provider whose API key a person may keep: pi reads it from `keyVar`. */
 export interface LlmProvider {
   id: string;
   title: string;
   keyVar: string;
+  apiKey: boolean;
+  oauth: boolean;
   /** The key is owed: an agent on this provider does not start without it. */
   strict: boolean;
 }
@@ -120,11 +122,17 @@ export interface LlmKeyInfo {
   unreadable?: boolean;
 }
 
+/** A provider OAuth login stored in the caller's encrypted profile. */
+export interface LlmOAuthInfo {
+  updated: string;
+  unreadable?: boolean;
+}
+
 /** The keys a person's agents use: their own, and the shared ones that stand in where they keep none. */
 export const useLlmKeys = () =>
   useQuery({
     queryKey: ["llm-keys"],
-    queryFn: () => request<{ providers: LlmProvider[]; keys: Record<string, LlmKeyInfo>; global: Record<string, LlmKeyInfo> }>("GET", "/api/me/llm-keys"),
+    queryFn: () => request<{ providers: LlmProvider[]; keys: Record<string, LlmKeyInfo>; global: Record<string, LlmKeyInfo>; oauth: Record<string, LlmOAuthInfo> }>("GET", "/api/me/llm-keys"),
   });
 
 /** The provider keys the server shares with everyone, for its administrators. */
@@ -145,3 +153,5 @@ export const RUN_STATUS: Record<string, string> = {
   pending: "ожидает",
 };
 
+
+export * from "./telegram.ts";

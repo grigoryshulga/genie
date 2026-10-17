@@ -310,41 +310,41 @@ export const ON_TITLE: Record<string, string> = {
 };
 
 /** Permission groups with what each permission gives. */
-export const PERMISSION_GROUPS: { title: string; items: { id: string; text: string }[] }[] = [
+export const PERMISSION_GROUPS: { title: string; items: { id: string; title: string; text: string }[] }[] = [
   {
     title: "Статусы задачи",
     items: [
-      { id: "status.refine", text: "черновик → уточнение" },
-      { id: "status.start", text: "готово к работе → в работе" },
-      { id: "status.rework", text: "доработка → в работе" },
-      { id: "status.submit", text: "в работе → на ревью" },
-      { id: "status.approve", text: "на ревью → одобрено" },
-      { id: "status.return", text: "на ревью → доработка" },
+      { id: "status.refine", title: "Начать уточнение", text: "черновик → уточнение" },
+      { id: "status.start", title: "Начать работу", text: "готово к работе → в работе" },
+      { id: "status.rework", title: "Продолжить доработку", text: "доработка → в работе" },
+      { id: "status.submit", title: "Отправить на ревью", text: "в работе → на ревью" },
+      { id: "status.approve", title: "Одобрить работу", text: "на ревью → одобрено" },
+      { id: "status.return", title: "Вернуть на доработку", text: "на ревью → доработка" },
     ],
   },
   {
     title: "Задача",
     items: [
-      { id: "task.scope", text: "название, тип, описание, критерии, зависимости, эпик" },
-      { id: "task.plan", text: "план реализации" },
-      { id: "task.check", text: "отмечать критерии приёмки" },
-      { id: "task.create", text: "подзадачи своей задачи" },
-      { id: "task.block", text: "блокировать и снимать блок" },
+      { id: "task.scope", title: "Уточнять задачу", text: "название, тип, описание, критерии, зависимости, эпик" },
+      { id: "task.plan", title: "Редактировать план", text: "план реализации" },
+      { id: "task.check", title: "Проверять критерии", text: "отмечать критерии приёмки" },
+      { id: "task.create", title: "Создавать подзадачи", text: "подзадачи своей задачи" },
+      { id: "task.block", title: "Управлять блокировкой", text: "блокировать и снимать блок" },
     ],
   },
   {
     title: "Знания",
     items: [
-      { id: "docs.read", text: "поиск и чтение базы знаний" },
-      { id: "docs.write", text: "запись страниц по политике раздела" },
+      { id: "docs.read", title: "Читать базу знаний", text: "поиск и чтение базы знаний" },
+      { id: "docs.write", title: "Обновлять базу знаний", text: "запись страниц по политике раздела" },
     ],
   },
   {
     title: "Общение",
     items: [
-      { id: "mail.team", text: "письма и вопросы команде" },
-      { id: "mail.orchestrator", text: "письма оркестратору напрямую, в обход «голоса команды»" },
-      { id: "team.peek", text: "смотреть, чем занят сосед" },
+      { id: "mail.team", title: "Общаться с командой", text: "письма и вопросы команде" },
+      { id: "mail.orchestrator", title: "Писать оркестратору", text: "письма оркестратору напрямую, в обход «голоса команды»" },
+      { id: "team.peek", title: "Смотреть работу коллег", text: "смотреть, чем занят сосед" },
     ],
   },
 ];
@@ -638,4 +638,29 @@ export function liveTeam(
   }
   const done = spec.relations.filter((r) => r.on && reached(taskStatus, r.on)).flatMap((r) => r.to.map((to) => `${r.from}->${to}`));
   return { live, pending, done };
+}
+
+/** Problems belong to their configuration section, including files that failed to load. */
+export function sectionProblems(problems: Problem[], section: "roles" | "templates" | "skills" | "mcp"): Problem[] {
+  const kind = { roles: "role", templates: "team", skills: "skill", mcp: "mcp" }[section];
+  return problems.filter((p) => p.item === kind || p.item.startsWith(`${kind}:`) || p.item === `${kind}.json`);
+}
+
+export type McpGrant = { mode: "none" | "all" | "tools"; tools: string[] };
+
+/** Expand role access for the editor, without discarding unavailable connections. */
+export function mcpGrants(access: string[], servers: Pick<McpServer, "id">[]): Record<string, McpGrant> {
+  return Object.fromEntries(servers.map(({ id }) => {
+    const tools = access.filter((g) => g.startsWith(`${id}:`)).map((g) => g.slice(id.length + 1));
+    return [id, { mode: access.includes(id) || access.includes("*") ? "all" : tools.length ? "tools" : "none", tools } satisfies McpGrant];
+  }));
+}
+
+/** An explicit empty list revokes inherited access; undefined would restore it. */
+export function roleMcpAccess(access: string[], servers: Pick<McpServer, "id">[], grants: Record<string, McpGrant>): string[] {
+  const unknown = access.filter((g) => g !== "*" && !servers.some((s) => s.id === g.split(":")[0]));
+  return [...unknown, ...servers.flatMap(({ id }) => {
+    const grant = grants[id];
+    return grant.mode === "all" ? [id] : grant.mode === "tools" ? grant.tools.map((t) => `${id}:${t}`) : [];
+  })];
 }

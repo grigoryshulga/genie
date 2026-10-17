@@ -1,6 +1,6 @@
-// «Сервер» — server administration, a section each: health (the doctor check, the week
-// in numbers), statistics and costs, projects, accounts, the provider keys shared
-// with everyone, MCP connections and the knowledge vault sync. Server
+// «Управление» — global server administration, a section each: health (the doctor
+// check, the week in numbers), projects, accounts, the provider keys shared with
+// everyone, MCP connections and the knowledge vault sync. Server
 // administrators only.
 import { ProvidersAdminSection } from "./ProvidersAdmin.tsx";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,7 +45,6 @@ export function ServerSettingsPage() {
   const accounts = useUsers(admin && !local).data?.length ?? 0;
   const tabs = [
     { id: "health", title: "Состояние" },
-    { id: "stats", title: "Статистика" },
     { id: "projects", title: "Проекты", n: projects },
     ...(local ? [] : [{ id: "accounts", title: "Учётные записи", n: accounts }]),
     { id: "providers", title: "Провайдеры" },
@@ -55,9 +54,9 @@ export function ServerSettingsPage() {
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Сервер</h1>
+        <h1>Управление</h1>
         <span className="sub">{local ? "локальный режим" : "администрирование"}</span>
-        <nav className="st-tabs" aria-label="Разделы сервера">
+        <nav className="st-tabs" aria-label="Глобальные настройки сервера">
           {tabs.map((t) => (
             <NavLink key={t.id} to={`/settings/server/${t.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
               {t.title}
@@ -67,9 +66,7 @@ export function ServerSettingsPage() {
         </nav>
       </header>
       <div className="scroll">
-        {section === "stats" ? (
-          <Statistics />
-        ) : section === "projects" ? (
+        {section === "projects" ? (
           <Projects current={session?.project} />
         ) : section === "accounts" && !local ? (
           <Accounts me={session?.user.login} />
@@ -82,6 +79,20 @@ export function ServerSettingsPage() {
         ) : (
           <Health />
         )}
+      </div>
+    </main>
+  );
+}
+
+/** The server-wide work and cost statistics, available to server administrators. */
+export function ServerStatisticsPage() {
+  return (
+    <main className="main">
+      <header className="topbar">
+        <h1>Статистика</h1>
+      </header>
+      <div className="scroll">
+        <Statistics />
       </div>
     </main>
   );
@@ -101,7 +112,6 @@ function Health() {
     <div className="st-body sv-wide">
       <div className="st-head">
         <h2>Состояние</h2>
-        <p>Готов ли сервер к работе и что требует внимания.</p>
       </div>
       <section className="st-card">
         {doctor.isPending ? (
@@ -134,9 +144,6 @@ function Health() {
         )}
       </section>
       <Week />
-      <p className="sv-cli">
-        То же в терминале: <code>genie doctor</code>
-      </p>
     </div>
   );
 }
@@ -158,7 +165,7 @@ function Checks({ list }: { list: DoctorCheck[] }) {
   );
 }
 
-/** The last seven days in four numbers; the details are on the statistics tab. */
+/** The last seven days in four numbers; the details are on the statistics page. */
 function Week() {
   const stats = useStats(7);
   const t = statsTotals(stats.data?.projects ?? []);
@@ -167,7 +174,7 @@ function Week() {
       <div className="sv-section-head">
         <h3>Последние 7 дней</h3>
         <span className="muted">все проекты</span>
-        <Link to="/settings/server/stats" className="sv-more">
+        <Link to="/settings/stats" className="sv-more">
           Вся статистика
           <Icon.chevron size={12} />
         </Link>
@@ -178,7 +185,7 @@ function Week() {
         <div className="sv-tiles">
           <Tile label="Готово задач" value={t.done} sub={`из ${t.created} новых`} />
           <Tile label="Открыто сейчас" value={t.open} sub={t.openProjects ? `в проектах: ${t.openProjects}` : "открытых задач нет"} />
-          <Tile label="Вопросы агентов людям" value={t.decisions} sub={t.decisions ? "время ответа — во вкладке «Статистика»" : "агенты ничего не спрашивали"} />
+          <Tile label="Вопросы агентов людям" value={t.decisions} sub={t.decisions ? "время ответа — на странице «Статистика»" : "агенты ничего не спрашивали"} />
           <Tile label="Сбои агентов" value={t.runsFailed} sub={`из ${t.runs} запусков`} bad={t.runsFailed > 0} />
         </div>
       )}
@@ -209,10 +216,6 @@ function Statistics() {
   return (
     <div className="st-body sv-stats">
       <div className="sv-top">
-        <div className="st-head">
-          <h2>Статистика</h2>
-          <p>{view === "work" ? "Как шла работа: задачи, вопросы агентов людям, запуски агентов." : "Сколько стоила работа агентов: по моделям, проектам, эпикам, задачам и чатам."}</p>
-        </div>
         <div className="seg" role="group" aria-label="Что показать">
           {(["work", "cost"] as const).map((v) => (
             <button key={v} type="button" className={v === view ? "on" : ""} aria-pressed={v === view} onClick={() => setView(v)}>
@@ -273,9 +276,6 @@ function Statistics() {
             />
           </div>
           <ProjectTable list={list} />
-          <p className="sv-cli">
-            То же в терминале: <code>genie stats --days {days}</code>
-          </p>
         </>
       )}
     </div>
@@ -346,7 +346,6 @@ function Knowledge() {
     <div className="st-body">
       <div className="st-head">
         <h2>База знаний</h2>
-        <p>Где ещё лежит база знаний и как прошла последняя синхронизация.</p>
       </div>
       {!s ? (
         <p className="muted">{sync.isPending ? "Загрузка…" : sync.error?.message}</p>
@@ -429,7 +428,6 @@ function Projects({ current }: { current?: string }) {
       <div className="st-col">
         <div className="st-head">
           <h2>Проекты</h2>
-          <p>Все проекты сервера. Открытый — тот, с которым вы сейчас работаете.</p>
         </div>
         <section className="st-card">
           <ul className="sv-list">
@@ -469,7 +467,6 @@ function Projects({ current }: { current?: string }) {
       <aside className="st-card" aria-label="Новый проект">
         <div className="st-card-head">
           <h3>Новый проект</h3>
-          <p>Сервер сразу откроет его.</p>
         </div>
         <div className="st-card-body">
           <NewProjectForm folded />
@@ -489,7 +486,7 @@ export function FirstProjectPage() {
             <Icon.mark size={22} />
           </span>
           <h1>Первый проект</h1>
-          <p className="auth-sub">Проектов на сервере пока нет. Создайте первый — с репозиторием кода на этой машине или без кода.</p>
+          <p className="auth-sub">Создайте первый проект.</p>
         </div>
         <NewProjectForm />
       </div>
@@ -508,7 +505,7 @@ export function NewProjectForm({ onCreated, folded }: { onCreated?: () => void; 
       <label className="field">
         Репозиторий кода на этой машине
         <input className="mono" value={form.repo} placeholder="/home/team/code/shop — пусто, если проект без кода" onChange={(e) => setForm({ ...form, repo: e.target.value })} />
-        <span className="pj-hint">Репозиторий, где уже есть .genie/, подключается со всеми задачами. Без репозитория команды работают в своих каталогах, результат — артефакты и документация.</span>
+        <span className="pj-hint">Задачи из .genie/ будут импортированы.</span>
       </label>
       <label className="field">
         Префикс задач
@@ -580,7 +577,7 @@ function Accounts({ me }: { me?: string }) {
       <div className="st-col">
         <div className="st-head">
           <h2>Учётные записи</h2>
-          <p>Все, кто может войти на сервер. В проекты людей удобнее звать ссылкой-приглашением со страницы проекта.</p>
+          <p>В проект можно пригласить по ссылке со страницы проекта.</p>
         </div>
         <section className="st-card">
           <ul className="sv-list">
@@ -652,7 +649,6 @@ function Accounts({ me }: { me?: string }) {
       <aside className="st-card" aria-label="Новая учётная запись">
         <div className="st-card-head">
           <h3>Новая учётная запись</h3>
-          <p>Когда ссылка-приглашение не подходит.</p>
         </div>
         <form
           className="pj-form st-card-body"

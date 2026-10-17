@@ -25,6 +25,7 @@ import { useRepos } from "@/entities/repo";
 import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
+import { TelegramSettings } from "./TelegramSettings.tsx";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
 import { JevSettings } from "./JevSettings.tsx";
 import "@/shared/ui/settings.css";
@@ -47,11 +48,12 @@ export function ProjectSettingsPage() {
     { id: "decisions", title: "Решения с Jev" },
     { id: "repos", title: "Репозитории", n: repos },
     { id: "people", title: "Люди", n: members },
+    { id: "telegram", title: "Telegram" },
   ];
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Проект</h1>
+        <h1>Настройки проекта</h1>
         {project && (
           <span className="sub">
             {project.name} · {PROJECT_ROLE_NAME[project.role]}
@@ -69,6 +71,8 @@ export function ProjectSettingsPage() {
       <div className="scroll">
         {!project ? (
           <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>
+        ) : section === "telegram" ? (
+          <TelegramSettings key={project.slug} project={project.slug} admin={admin} />
         ) : section === "agents" ? (
           <AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} />
         ) : section === "decisions" ? (
@@ -87,7 +91,7 @@ export function ProjectSettingsPage() {
               <div className="st-col">
                 <div className="st-head">
                   <h2>Люди</h2>
-                  <p>Кто работает в проекте и что каждому можно. Администраторы сервера работают во всех проектах как владельцы, даже если их нет в списке.</p>
+                  <p>Администраторы сервера имеют права владельца во всех проектах.</p>
                 </div>
                 <People slug={project.slug} admin={admin} me={session?.user.login} />
                 <details className="st-card">
@@ -124,7 +128,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
     <div className="st-body">
       <div className="st-head">
         <h2>Общие</h2>
-        <p>Имя проекта и где лежат его результаты.{admin ? "" : " Менять их могут админы и владельцы проекта."}</p>
+        {!admin && <p>Изменять настройки могут администраторы и владельцы проекта.</p>}
       </div>
       <form
         className="st-card"
@@ -135,7 +139,6 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
       >
         <div className="st-card-head">
           <h3>Проект</h3>
-          <p>Как проект называется и как на него ссылаться.</p>
         </div>
         <div className="st-row">
           <label className="lbl" htmlFor="pj-name">
@@ -183,7 +186,6 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
       <section className="st-card">
         <div className="st-card-head">
           <h3>Где живут результаты</h3>
-          <p>Куда агенты кладут то, что сделали.</p>
         </div>
         <div className="st-row">
           <div className="lbl">
@@ -251,7 +253,6 @@ function AgentsTab({ project, admin }: { project: ProjectInfo; admin: boolean })
     <div className="st-body">
       <div className="st-head">
         <h2>Работа агентов</h2>
-        <p>Насколько самостоятельно оркестратор ведёт задачи и как результат попадает в систему.</p>
       </div>
       <section className="st-card">
         <div className="st-card-head">

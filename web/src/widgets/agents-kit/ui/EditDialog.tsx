@@ -1,9 +1,9 @@
 // The shared frame of the dialogs that edit fields of the role file, and the
 // hooks that apply those fields to it and save them.
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { setFrontmatterKey, type RoleDetail, useSaveConfig } from "@/entities/agent-config";
-import { Icon, Modal, useAct } from "@/shared/ui";
+import { Icon, Modal, useToast } from "@/shared/ui";
 
 /** Changed frontmatter fields of a role file: a key with its new value (`undefined` removes it). */
 type RoleFields = [string, string | string[] | undefined][];
@@ -21,18 +21,32 @@ export function useRoleEdit(detail: RoleDetail) {
 /** Save changed fields of the role file: `busy` while saving, the dialog closed on success. */
 export function useRoleSave(detail: RoleDetail, onClose: () => void) {
   const edit = useRoleEdit(detail);
-  const act = useAct();
+  const toast = useToast();
+  const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const save = async (fields: RoleFields, ok: string) => {
+    if (busy) return;
     setBusy(true);
-    if (await act(() => edit(fields), ok)) onClose();
-    setBusy(false);
+    setError(undefined);
+    try {
+      await edit(fields);
+      toast(ok);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
-  return [busy, save] as const;
+  return [busy, save, error] as const;
 }
 
 /** A dialog that edits part of the role file. */
-export function EditDialog({ title, note, busy, narrow, onClose, onSave, children }: { title: string; note?: string; busy?: boolean; narrow?: boolean; onClose: () => void; onSave: () => void; children: ReactNode }) {
+export function EditDialog({ title, note, busy, error, narrow, onClose, onSave, children }: { title: string; note?: string; busy?: boolean; error?: string; narrow?: boolean; onClose: () => void; onSave: () => void; children: ReactNode }) {
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (error) form.current?.scrollTo({ top: 0 });
+  }, [error]);
   return (
     <Modal label={title} onClose={onClose} wide={!narrow}>
       <div className="mh">
@@ -43,6 +57,7 @@ export function EditDialog({ title, note, busy, narrow, onClose, onSave, childre
         </button>
       </div>
       <form
+        ref={form}
         className="mb ag-form"
         id="ag-edit"
         onSubmit={(e) => {
@@ -50,10 +65,11 @@ export function EditDialog({ title, note, busy, narrow, onClose, onSave, childre
           onSave();
         }}
       >
-        {children}
+        {error && <div className="ag-warn" role="alert">{error}</div>}
+        <fieldset className="ag-edit-fields" disabled={busy}>{children}</fieldset>
       </form>
       <div className="mf">
-        {note}
+        {note && <span className="ag-save-note">{note}</span>}
         <span className="grow" />
         <button type="button" className="btn ghost" onClick={onClose}>
           Отмена

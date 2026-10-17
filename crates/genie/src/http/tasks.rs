@@ -292,6 +292,9 @@ async fn split(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Js
     let access = ctx.access(&app, None).await?;
     access.write()?;
     in_scope(&app, &access, &id, Touch::Edit).await?;
+    if genie_core::management::managed_task(&access.actor.name).is_some() {
+        return Err(ApiError::bad("task decomposition belongs to the project manager"));
+    }
     let children: Vec<CreateInput> = b["children"]
         .as_array()
         .map(|a| {

@@ -1,10 +1,10 @@
 # Genie server. Guide: docs/platform/docker.md
 #
-#   cp .env.example .env      # model keys, public URL, …
-#   docker compose up -d --build
-#   docker compose exec genie genie user add admin --admin --password-stdin   # BEFORE exposing the port
+#   cp docker/.env.example docker/.env # model keys, public URL, …
+#   docker compose -f docker/docker-compose.yml up -d --build
+#   docker compose -f docker/docker-compose.yml exec genie genie user add admin --admin --password-stdin   # BEFORE exposing the port
 #
-# Settings come from .env (optional file) — see .env.example for every variable.
+# Settings come from docker/.env (optional file) — see docker/.env.example for every variable.
 
 name: genie
 
@@ -12,7 +12,8 @@ services:
   genie:
     image: ${GENIE_IMAGE:-genie:latest}
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
         RUST_TOOLCHAIN: ${RUST_TOOLCHAIN:-}
@@ -33,7 +34,7 @@ services:
       GENIE_GID: ${GENIE_GID:-1000}
       GENIE_PUBLIC_URL: ${GENIE_PUBLIC_URL:-}
       GENIE_ALLOW_HOSTS: ${GENIE_ALLOW_HOSTS:-}
-      # off: agents run without the sandbox, on purpose (docker-compose.sandbox.yml switches it on)
+      # off: agents run without the sandbox, on purpose (docker/docker-compose.sandbox.yml switches it on)
       GENIE_SANDBOX: ${GENIE_SANDBOX:-off}
       GENIE_AGENT_BUILD_JOBS: ${GENIE_AGENT_BUILD_JOBS:-8}
       TZ: ${TZ:-UTC}
@@ -69,7 +70,7 @@ services:
     pids_limit: ${GENIE_PIDS_LIMIT:-4096}
     # Every live agent session is a Node process of ~0.5 GB; size this for runtime.maxSessions (12 by
     # default): about maxSessions x 0.5 GB + 2 GB, i.e. GENIE_MEM_LIMIT=8g, or lower maxSessions.
-    # Unlimited by default so that existing installations are not OOM-killed (.env.example, docs/platform/docker.md).
+    # Unlimited by default so that existing installations are not OOM-killed (docker/.env.example, docs/platform/docker.md).
     mem_limit: ${GENIE_MEM_LIMIT:-0}
 
     logging:

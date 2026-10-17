@@ -2,11 +2,14 @@
 // role's file, the rest keep their inherited or built-in values.
 
 import { useState } from "react";
-import { FILES_TITLE, type RoleDetail, STAGE_TITLE } from "@/entities/agent-config";
+import { allowDeny, basePermissions, FILES_TITLE, type Catalogue, type RoleDetail, STAGE_TITLE } from "@/entities/agent-config";
 import { useMeta, useProjects } from "@/entities/project";
 import { ModelPicker } from "@/features/agent-model";
 import { ChipInput, Icon } from "@/shared/ui";
 import { EditDialog, useRoleSave } from "./EditDialog.tsx";
+import { PermissionFields, PermissionReference } from "./PermissionFields.tsx";
+import { SkillsFields, useSkillsSettings } from "./SkillsFields.tsx";
+import { McpFields, useMcpSettings } from "./McpFields.tsx";
 
 const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -23,9 +26,10 @@ function Segments({ label, value, options, onChange }: { label: string; value: s
   );
 }
 
-export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClose: () => void }) {
+export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogue; onClose: () => void }) {
   const r = detail.role;
   const initial = {
+    capabilities: r.capabilities,
     title: r.title,
     description: r.description,
     model: r.model ?? "",
@@ -37,8 +41,11 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
     names: r.names,
     instructions: r.instructions ?? "",
   };
+  const skills = useSkillsSettings(detail);
+  const mcp = useMcpSettings(detail, cfg);
+  const [initialMcp] = useState(mcp.grants);
   const [f, setF] = useState(initial);
-  const [busy, saveFields] = useRoleSave(detail, onClose);
+  const [busy, saveFields, error] = useRoleSave(detail, onClose);
   const meta = useMeta().data;
   const projects = useProjects().data;
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -60,12 +67,19 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
     items("projects");
     items("denyCommands");
     items("names");
+    if (JSON.stringify(f.capabilities) !== JSON.stringify(initial.capabilities)) {
+      const { allow, deny } = allowDeny(basePermissions(r, cfg.roles, cfg.classes), f.capabilities, cfg.permissions);
+      fields.push(["allow", allow], ["deny", deny]);
+    }
+    if (JSON.stringify(skills.value) !== JSON.stringify(r.skills)) fields.push(["skills", skills.value]);
+    // Preserve wildcard grants and unknown entries unless access was actually edited.
+    if (JSON.stringify(mcp.grants) !== JSON.stringify(initialMcp)) fields.push(["mcp", mcp.value()]);
     if (!fields.length) return onClose();
     await saveFields(fields, "Настройки роли сохранены");
   };
   const hint = (text: string) => <span className="hint">{text}</span>;
   return (
-    <EditDialog title={`Настройки роли ${r.id}`} note="Промпт, модель и навыки дойдут до агентов со следующего старта их сессии" busy={busy} onClose={onClose} onSave={() => void save()} narrow>
+    <EditDialog title={`Настройки · ${r.title}`} note="Параметры сессии — со следующего запуска" busy={busy} error={error} onClose={onClose} onSave={() => void save()} narrow>
       <div className="ag-settings">
         <section>
           <h4>О роли</h4>
@@ -73,7 +87,6 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
           <input id="rs-title" className="in" value={f.title} onChange={(e) => set("title", e.target.value)} required />
           <label htmlFor="rs-desc">
             Описание
-            {hint("Видят оркестратор и люди при выборе роли")}
           </label>
           <textarea id="rs-desc" className="in" rows={2} value={f.description} onChange={(e) => set("description", e.target.value)} />
         </section>
@@ -81,7 +94,6 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
           <h4>Модель</h4>
           <label htmlFor="rs-model">
             Модель
-            {hint("Агенту её можно сменить в чате")}
           </label>
           <ModelPicker id="rs-model" value={f.model} onChange={(m) => set("model", m)} fallback={meta?.roleModels?.[r.id]?.model} />
           <span className="lbl">Размышление</span>
@@ -93,7 +105,6 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
           <Segments label="Файлы проекта" value={f.files} options={(["write", "read", "none"] as const).map((x) => [x, FILES_TITLE[x]])} onChange={(v) => set("files", v)} />
           <span className="lbl">
             Стадии задачи
-            {hint("Когда роль можно звать в команду")}
           </span>
           <div className="ag-toggles">
             {(["refinement", "delivery"] as const).map((s) => {
@@ -111,6 +122,20 @@ export function SettingsDialog({ detail, onClose }: { detail: RoleDetail; onClos
             {hint("Shell; * — любой текст")}
           </label>
           <ChipInput id="rs-deny" values={f.denyCommands} onChange={(v) => set("denyCommands", v)} placeholder="git push*" mono />
+        </section>
+        {r.class !== "orchestrator" && <section className="ag-settings-stack">
+          <h4>Разрешённые действия</h4>
+          <p className="muted ag-note">Действуют сразу. Пояснения — в подсказках и технических сведениях.</p>
+          <PermissionFields wanted={f.capabilities} onChange={(v) => set("capabilities", v)} />
+          <PermissionReference />
+        </section>}
+        <section className="ag-settings-stack">
+          <h4>Навыки</h4>
+          <SkillsFields cfg={cfg} state={skills} />
+        </section>
+        <section className="ag-settings-stack">
+          <h4>Инструменты MCP</h4>
+          <McpFields cfg={cfg} state={mcp} />
         </section>
         <section>
           <h4>Команда</h4>

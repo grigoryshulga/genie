@@ -41,6 +41,7 @@ use crate::state::{App, AppError, AppResult, SAFETY_NET};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AgentKey {
     Orchestrator { project: String },
+    TaskManager { project: String, task: String },
     Member { project: String, team: String, member: String },
     Job { project: String, job: i64 },
 }
@@ -48,14 +49,25 @@ pub enum AgentKey {
 impl AgentKey {
     pub fn project(&self) -> &str {
         match self {
-            AgentKey::Orchestrator { project } | AgentKey::Member { project, .. } | AgentKey::Job { project, .. } => project,
+            AgentKey::Orchestrator { project }
+            | AgentKey::TaskManager { project, .. }
+            | AgentKey::Member { project, .. }
+            | AgentKey::Job { project, .. } => project,
         }
     }
     pub fn label(&self) -> String {
         match self {
             AgentKey::Orchestrator { .. } => ORCHESTRATOR.into(),
+            AgentKey::TaskManager { task, .. } => genie_core::management::manager_name(task),
             AgentKey::Member { team, member, .. } => format!("{team}/{member}"),
             AgentKey::Job { job, .. } => format!("job/{job}"),
+        }
+    }
+
+    pub fn mailbox(project: &str, recipient: &str) -> Self {
+        match genie_core::management::managed_task(recipient) {
+            Some(task) => Self::TaskManager { project: project.into(), task: task.into() },
+            None => Self::Orchestrator { project: project.into() },
         }
     }
 }
@@ -69,7 +81,7 @@ struct SchedState {
     running: HashSet<AgentKey>,
     /// What the last pass saw waiting for a slot, by kind — the queue the web and
     /// `genie server runtime` show (`waiting`).
-    waiting: [usize; 3],
+    waiting: [usize; 4],
 }
 
 impl Sched {
@@ -87,8 +99,9 @@ impl Sched {
         self.with(|s| RuntimeView {
             running: s.running.len(),
             orchestrators_waiting: s.waiting[0],
-            members_waiting: s.waiting[1],
-            jobs_waiting: s.waiting[2],
+            task_managers_waiting: s.waiting[1],
+            members_waiting: s.waiting[2],
+            jobs_waiting: s.waiting[3],
             max_concurrent,
             permits,
         })
@@ -101,6 +114,7 @@ impl Sched {
 pub struct RuntimeView {
     pub running: usize,
     pub orchestrators_waiting: usize,
+    pub task_managers_waiting: usize,
     pub members_waiting: usize,
     pub jobs_waiting: usize,
     /// `runtime.maxConcurrent`.
@@ -202,7 +216,7 @@ pub fn recover(app: &App) -> AppResult<()> {
         let name = match (&t.member, t.job) {
             (Some(m), _) => m.clone(),
             (None, Some(j)) => format!("job-{j}"),
-            _ => ORCHESTRATOR.to_string(),
+            _ => t.agent.clone(),
         };
         if is_our_agent(pid, &t.project, &name) {
             let _ = std::process::Command::new("kill").arg("-TERM").arg(pid.to_string()).status();
@@ -244,6 +258,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
             let mut out = Vec::new();
             let mut console = None::<Duration>;
             for p in app.with_server(|db| db.projects())? {
+                crate::management::reconcile(app, &p.slug)?;
                 let boxes = match app.with_tracker(&p.slug, |t| t.bus().mailboxes_with_mail()) {
                     Ok(b) => b,
                     Err(e) => {
@@ -253,6 +268,9 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
                 };
                 for b in boxes {
                     match b.team {
+                        None if genie_core::management::managed_task(&b.recipient).is_some() => {
+                            out.push(AgentKey::mailbox(&p.slug, &b.recipient))
+                        }
                         None if orchestrator_runs(app, &p) => out.push(AgentKey::Orchestrator { project: p.slug.clone() }),
                         // A person's console lapses by itself: the orchestrator takes its mail then.
                         None if p.autonomy != "manual" => {
@@ -281,16 +299,21 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
     // with more than one slot the members and jobs never take the last one — the
     // orchestrator that wakes up into a full scheduler would otherwise starve
     // until a member finishes (G-83: «один слот всегда свободен для оркестратора»).
-    candidates.sort_by_key(|k| !matches!(k, AgentKey::Orchestrator { .. }));
+    candidates.sort_by_key(|k| match k {
+        AgentKey::Orchestrator { .. } => 0,
+        AgentKey::TaskManager { .. } => 1,
+        _ => 2,
+    });
     let reserve_last = app.cfg.runtime.max_concurrent > 1;
     let kind = |k: &AgentKey| match k {
         AgentKey::Orchestrator { .. } => 0usize,
-        AgentKey::Member { .. } => 1,
-        AgentKey::Job { .. } => 2,
+        AgentKey::TaskManager { .. } => 1,
+        AgentKey::Member { .. } => 2,
+        AgentKey::Job { .. } => 3,
     };
     // Each key is counted as waiting only after its own checks: one that runs,
     // backs off or was delivered to its live session is not in the queue.
-    let mut waiting = [0usize; 3];
+    let mut waiting = [0usize; 4];
     for key in candidates {
         if live && !matches!(key, AgentKey::Job { .. }) {
             if let Some(d) = crate::sessions::deliver(app, &key).await {
@@ -457,6 +480,18 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
     let project = project_of(app, key.project())?;
     let label = key.label();
     match key {
+        AgentKey::TaskManager { project: slug, task } => {
+            let Some(spec) = task_manager_spec(app, &project, task, false)? else { return Ok(None) };
+            let turn = app.with_server(|db| db.start_turn(slug, &label, None, None, None))?;
+            let mail = app.with_tracker(slug, |t| t.bus().lease(None, &label, turn))?;
+            if mail.is_empty() {
+                app.with_server(|db| db.finish_turn(turn, "skipped", None, None, None))?;
+                return Ok(None);
+            }
+            app.with_server(|db| db.set_turn_mail(turn, &mail.iter().map(|m| m.id).collect::<Vec<_>>()))?;
+            let llm = turn_key(app, slug, turn, &label, spec.initiator.as_deref(), spec.model.as_deref())?;
+            Ok(Some(Prepared { spec, turn, message: member_message(&mail), token: String::new(), llm }))
+        }
         AgentKey::Orchestrator { project: slug } => {
             let turn = app.with_server(|db| db.start_turn(slug, &label, None, None, None))?;
             let mail = app.with_tracker(slug, |t| t.bus().lease(None, ORCHESTRATOR, turn))?;
@@ -1189,7 +1224,7 @@ impl AgentSpec {
 /// The project's orchestrator (`live`: as a session; `initiator`: whom it works for now).
 fn orchestrator_spec(app: &App, project: &Project, live: bool, initiator: Option<String>) -> AppResult<AgentSpec> {
     let agents = app.agents();
-    let def = orchestrator_role(&agents)?;
+    let def = project_manager_role(&agents)?;
     let (model, thinking) = role_model(&def, None, None)?;
     let cwd = project_workspace(app, project, "orchestrator");
     Ok(AgentSpec {
@@ -1210,12 +1245,57 @@ fn orchestrator_spec(app: &App, project: &Project, live: bool, initiator: Option
     })
 }
 
+fn project_manager_role(agents: &AgentConfig) -> AppResult<RoleDef> {
+    agents
+        .roles
+        .get(genie_core::management::PROJECT_MANAGER)
+        .cloned()
+        .ok_or_else(|| AppError::Internal("the project-manager role is missing".into()))
+}
+
+fn task_manager_spec(app: &App, project: &Project, task: &str, live: bool) -> AppResult<Option<AgentSpec>> {
+    let m = app.with_tracker(&project.slug, |t| t.management().manager(task))?;
+    if m.is_none_or(|m| m.state == "completed") {
+        return Ok(None);
+    }
+    let agents = app.agents();
+    let def = orchestrator_role(&agents)?;
+    let (model, thinking) = role_model(&def, None, None)?;
+    let name = genie_core::management::manager_name(task);
+    let cwd = project_workspace(app, project, &name);
+    let mut prompt = agent_prompt(app, &agents, project, &def, None, live, AgentKind::Orchestrator, &who(&def, None, None));
+    prompt.push_str(&format!("\n## Your task\n\nYou manage only `{task}`. Read `genie manager show` for the brief and durable lifecycle. Project-wide requirements and decisions go through `genie manager clarify`.\n"));
+    Ok(Some(AgentSpec {
+        role: Role::Orchestrator,
+        role_id: def.id.clone(),
+        readonly: def.excluded_tools().unwrap_or_default(),
+        name,
+        team: None,
+        task: Some(task.into()),
+        job: None,
+        kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
+        cwd,
+        session_id: format!("{}-task-manager-{task}", project.slug),
+        model: Some(model),
+        thinking,
+        prompt,
+        initiator: crate::llm_key::task_person(app, &project.slug, task),
+    }))
+}
+
 /// A member of a team (`live`: as a session).
 fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, live: bool) -> AppResult<AgentSpec> {
     let agents = app.agents();
     let def = running_role(&agents, &m.role)?;
     let (model, thinking) = role_model(&def, m.model.clone(), m.thinking.clone())?;
     let cwd = member_workspace(app, project, &def, &t.cwd, &t.id, &m.name);
+    let mut prompt =
+        agent_prompt(app, &agents, project, &def, m.instructions.as_deref(), live, AgentKind::Member, &who(&def, Some(&t.id), None));
+    if def.id == "planner" && t.template.as_deref() == Some("idea") {
+        let project_rules = project_manager_role(&agents)?.full_prompt();
+        prompt = format!("{project_rules}\n\n## Conversation mode (applies instead of queue dispatch in this conversation)\n\n{prompt}");
+        prompt.push_str("\n## Project-manager conversation\n\nThis conversation is the project manager's intake mode. Read shared project knowledge using `genie manager memory` before asking questions. Preserve only confirmed reusable project decisions with `genie manager remember --text ... --source ...`, citing the idea/task and its decision comment. Personal assumptions stay in the proposal. The conversation and execution are separate: apply the agreed plan with the existing plan proposal flow; the project manager service releases its tasks.\n");
+    }
     Ok(AgentSpec {
         role: def.class,
         role_id: def.id.clone(),
@@ -1229,16 +1309,7 @@ fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, l
         session_id: m.session_file.clone().unwrap_or_else(|| format!("{}-{}", t.id, m.name).to_lowercase()),
         model: Some(model),
         thinking,
-        prompt: agent_prompt(
-            app,
-            &agents,
-            project,
-            &def,
-            m.instructions.as_deref(),
-            live,
-            AgentKind::Member,
-            &who(&def, Some(&t.id), None),
-        ),
+        prompt,
         initiator: crate::llm_key::team_initiator(app, &project.slug, &t.id),
     })
 }
@@ -1267,11 +1338,11 @@ pub(crate) struct ConsoleSpec {
 pub(crate) fn console_spec(app: &App, slug: &str, user: &str) -> AppResult<ConsoleSpec> {
     let project = project_of(app, slug)?;
     let agents = app.agents();
-    let def = orchestrator_role(&agents)?;
+    let def = project_manager_role(&agents)?;
     let (model, thinking) = role_model(&def, None, None)?;
     let mut prompt = agent_prompt(app, &agents, &project, &def, None, true, AgentKind::Orchestrator, &who(&def, None, None));
     prompt.push_str(&format!(
-        "\n## The console\n\nYou run in the pi session of @{user} at the orchestrator console of the project: they talk to you directly and see your work. Team mail arrives in this conversation as `[genie mail]` blocks — between your steps, or on its own when you are idle. The server's orchestrator waits while this session holds the console.\n"
+        "\n## The console\n\nYou run in the pi session of @{user} at the orchestrator console of the project: they talk to you directly and see your work. Project intake, clarification requests and task-manager results arrive in this conversation as `[genie mail]` blocks — between your steps, or on its own when you are idle. The server's orchestrator waits while this session holds the console.\n"
     ));
     Ok(ConsoleSpec { role_id: def.id.clone(), prompt, model: Some(model), thinking })
 }
@@ -1282,6 +1353,7 @@ pub(crate) fn console_spec(app: &App, slug: &str, user: &str) -> AppResult<Conso
 pub(crate) fn session_spec(app: &App, key: &AgentKey) -> AppResult<Option<AgentSpec>> {
     let project = project_of(app, key.project())?;
     match key {
+        AgentKey::TaskManager { task, .. } => task_manager_spec(app, &project, task, true),
         AgentKey::Orchestrator { project: slug } if orchestrator_runs(app, &project) => {
             orchestrator_spec(app, &project, true, crate::llm_key::orchestrator_initiator(app, slug)).map(Some)
         }
@@ -1377,7 +1449,7 @@ fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, 
             let max_attempts = i64::from(app.cfg.runtime.max_attempts.max(1));
             app.with_server(|db| db.finish_job(*job, ok, err, max_attempts))?;
         }
-        AgentKey::Orchestrator { .. } | AgentKey::Member { .. } => {
+        AgentKey::Orchestrator { .. } | AgentKey::TaskManager { .. } | AgentKey::Member { .. } => {
             app.with_tracker(slug, |t| if ok { t.bus().complete_lease(p.turn) } else { t.bus().release_lease(p.turn) })?;
         }
     }
@@ -1582,7 +1654,7 @@ fn orchestrator_message(project: &Project, mail: &[Mail]) -> String {
         out.push_str(&digest);
         out.push('\n');
     }
-    out.push_str("\nAct on these now (take inbox tasks, answer teams, dispatch ready work, accept approved work), then end your turn.");
+    out.push_str("\nAct on these now as the project manager: shape inbox tasks, release ready unblocked work to task managers, answer clarification requests from confirmed sources or escalate them, and preserve supported lessons from results and retrospectives. Then end your turn.");
     out
 }
 
@@ -2648,7 +2720,7 @@ pub fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
                 ..Default::default()
             })
             .map(|_| ()),
-        _ => t.bus().notify_orchestrator("genie", "system", "system", text, None),
+        _ => t.bus().notify_manager(&k.label(), "genie", "system", "system", text, None),
     })?;
     app.wake_runtime.notify_one();
     Ok(())

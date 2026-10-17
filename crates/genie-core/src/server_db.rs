@@ -8,7 +8,7 @@
 //!
 //! Secrets are never stored: sessions, API tokens, invites and answer links are
 //! kept as SHA-256 hashes; passwords as Argon2id hashes. The one exception is a
-//! person's own keys for their agents, which must be read back: they are sealed
+//! person's own keys and integration credentials, which must be read back: they are sealed
 //! (see `secrets`).
 
 use std::path::Path;
@@ -371,7 +371,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 5;
+pub const SERVER_SCHEMA_VERSION: i64 = 6;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -638,6 +638,7 @@ pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
     let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
     db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
     db.conn().execute_batch(crate::decisions::SCHEMA)?;
+    db.conn().execute_batch(crate::telegram::SCHEMA)?;
     db.add_columns(SERVER_COLUMN_MIGRATIONS)?;
     // Indexes on the columns the background loops filter and order by every couple of seconds —
     // open questionnaires, queued jobs, an automation's run history and the delivery poller.
@@ -1385,6 +1386,7 @@ impl ServerDb {
         )?;
         self.conn().execute("DELETE FROM notifications WHERE project = ?1 AND task = ?2", params![project, task])?;
         self.conn().execute("DELETE FROM task_repos WHERE project = ?1 AND task = ?2", params![project, task])?;
+        self.conn().execute("DELETE FROM task_watches WHERE project = ?1 AND task = ?2", params![project, task])?;
         Ok(())
     }
 }

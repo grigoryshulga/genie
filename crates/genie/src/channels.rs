@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use crate::state::{App, SAFETY_NET, sleep_until};
 
 pub fn start(app: &Arc<App>) {
+    crate::telegram::start(app.clone());
     let a = app.clone();
     tokio::spawn(async move {
         loop {
@@ -87,7 +88,7 @@ pub async fn dispatch(app: &Arc<App>) {
     }
 }
 
-async fn send_telegram(app: &App, item: &OutboxItem) -> Result<Option<String>, String> {
+async fn send_telegram(app: &Arc<App>, item: &OutboxItem) -> Result<Option<String>, String> {
     let mut body =
         json!({ "chat_id": item.address, "text": item.body.chars().take(4000).collect::<String>(), "disable_web_page_preview": true });
     let buttons: Vec<(String, String)> = serde_json::from_value(item.payload["buttons"].clone()).unwrap_or_default();
@@ -98,7 +99,35 @@ async fn send_telegram(app: &App, item: &OutboxItem) -> Result<Option<String>, S
     } else if item.payload["forceReply"] == json!(true) {
         body["reply_markup"] = json!({ "force_reply": true, "input_field_placeholder": "Ваш ответ" });
     }
-    let sent = tg(app, "sendMessage", body).await?;
+    let sent = if let Some(scope) = item.payload["telegramScope"].as_str() {
+        let scope = scope.to_string();
+        let user = item.user;
+        let chat = item.address.clone();
+        let bot = app
+            .blocking(move |app| {
+                app.with_server(|db| {
+                    let bot = db.project_bots()?.into_iter().find(|b| b.scope == scope);
+                    if let (Some(bot), Some(user)) = (&bot, user) {
+                        let u = db.user(user)?;
+                        if u.disabled
+                            || db.project_role(&bot.project, &u)?.is_none()
+                            || db.channel_address(user, &scope)?.as_deref() != Some(&chat)
+                        {
+                            return Ok(None);
+                        }
+                    } else {
+                        return Ok(None);
+                    }
+                    Ok(bot)
+                })
+            })
+            .await
+            .map_err(|_| "Cannot read Telegram configuration")?;
+        let Some(bot) = bot else { return Ok(None) };
+        crate::telegram::call(app, &bot.token.0, "sendMessage", body).await?
+    } else {
+        tg(app, "sendMessage", body).await?
+    };
     Ok(sent["message_id"].as_i64().map(|m| format!("{}:{m}", item.address)))
 }
 

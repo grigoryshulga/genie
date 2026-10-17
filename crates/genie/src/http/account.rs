@@ -30,6 +30,10 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/auth/tokens/{id}", delete(revoke_token))
         .route("/me/llm-keys", get(llm_keys))
         .route("/me/llm-keys/{provider}", put(set_llm_key).delete(delete_llm_key))
+        .route("/me/llm-oauth", post(start_llm_oauth))
+        .route("/me/llm-oauth/{session}", get(llm_oauth_session).delete(cancel_llm_oauth))
+        .route("/me/llm-oauth/{session}/respond", post(respond_llm_oauth))
+        .route("/me/llm-oauth/provider/{provider}", delete(disconnect_llm_oauth))
         .route("/llm-keys", get(global_llm_keys))
         .route("/llm-keys/{provider}", put(set_global_llm_key).delete(delete_global_llm_key))
         .route("/session/project", post(select_project))
@@ -210,7 +214,7 @@ async fn revoke_token(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>
 /// hold the key the server shares with everyone instead.
 async fn llm_keys(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
-    let (keys, global) = app
+    let (keys, global, oauth) = app
         .blocking(move |app| {
             app.with_server(|db| {
                 let mut keys = serde_json::Map::new();
@@ -225,11 +229,17 @@ async fn llm_keys(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value
                         global.insert(p.id.into(), serde_json::to_value(info)?);
                     }
                 }
-                Ok::<_, genie_core::GenieError>((keys, global))
+                let mut oauth = serde_json::Map::new();
+                for p in crate::llm_key::PROVIDERS.iter().filter(|p| p.oauth) {
+                    if let Some(info) = db.user_secret_info(user.id, &crate::llm_key::oauth_secret(p.id))? {
+                        oauth.insert(p.id.into(), json!({ "updated": info.updated, "unreadable": info.unreadable }));
+                    }
+                }
+                Ok::<_, genie_core::GenieError>((keys, global, oauth))
             })
         })
         .await?;
-    Ok(Json(json!({ "providers": crate::llm_key::PROVIDERS, "keys": keys, "global": global })))
+    Ok(Json(json!({ "providers": crate::llm_key::PROVIDERS, "keys": keys, "global": global, "oauth": oauth })))
 }
 
 /// A provider of the registry a key can be kept for, by its id.
@@ -252,6 +262,9 @@ async fn set_llm_key(
 ) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
     let p = keyed_provider(&provider)?;
+    if !p.api_key {
+        return Err(ApiError::bad(format!("{} supports OAuth, not API keys", p.title)));
+    }
     if user.id == 0 {
         return Err(ApiError::bad(format!("a {} key needs a real user: genie user add <login> --admin", p.id)));
     }
@@ -259,15 +272,17 @@ async fn set_llm_key(
         return Err(ApiError::bad("the key is empty"));
     }
     let id = p.id;
+    let user_id = user.id;
     let info = app
         .blocking(move |app| {
             app.with_server(|db| {
-                db.set_user_secret(user.id, id, &b.key)?;
-                db.user_secret_info(user.id, id)
+                db.set_user_secret(user_id, id, &b.key)?;
+                db.user_secret_info(user_id, id)
             })
         })
         .await?;
     // Agents that waited for the key start now.
+    crate::http::teams::invalidate_models(Some(user_id));
     crate::sessions::retry_now(&app);
     Ok(Json(json!({ "key": info })))
 }
@@ -275,9 +290,63 @@ async fn set_llm_key(
 async fn delete_llm_key(State(app): State<Arc<App>>, ctx: Ctx, Path(provider): Path<String>) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
     let p = keyed_provider(&provider)?;
+    if !p.api_key {
+        return Err(ApiError::bad(format!("{} supports OAuth, not API keys", p.title)));
+    }
     let id = p.id;
-    app.blocking(move |app| app.with_server(|db| db.delete_user_secret(user.id, id))).await?;
+    let user_id = user.id;
+    app.blocking(move |app| app.with_server(|db| db.delete_user_secret(user_id, id))).await?;
+    crate::http::teams::invalidate_models(Some(user_id));
     Ok(Json(json!({ "key": null })))
+}
+
+#[derive(Deserialize)]
+struct LlmOAuthStartBody {
+    provider: String,
+}
+
+async fn start_llm_oauth(State(app): State<Arc<App>>, ctx: Ctx, Json(body): Json<LlmOAuthStartBody>) -> ApiResult<Json<Value>> {
+    let user = ctx.user()?.clone();
+    if user.id == 0 {
+        return Err(ApiError::bad("OAuth needs a signed-in user profile"));
+    }
+    let provider = crate::llm_key::provider(&body.provider)
+        .filter(|p| p.oauth)
+        .ok_or_else(|| ApiError::bad("this provider does not support OAuth"))?;
+    let session = app.llm_oauth.start(&app, user.id, provider).await.map_err(ApiError::bad)?;
+    Ok(Json(json!({ "id": session })))
+}
+
+async fn llm_oauth_session(State(app): State<Arc<App>>, ctx: Ctx, Path(session): Path<String>) -> ApiResult<Json<Value>> {
+    let user = ctx.user()?;
+    let snapshot =
+        app.llm_oauth.snapshot(user.id, &session).ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "OAuth session not found"))?;
+    Ok(Json(serde_json::to_value(snapshot).expect("OAuth snapshot serializes")))
+}
+
+async fn respond_llm_oauth(
+    State(app): State<Arc<App>>,
+    ctx: Ctx,
+    Path(session): Path<String>,
+    Json(body): Json<crate::llm_oauth::ResponseBody>,
+) -> ApiResult<Json<Value>> {
+    let user = ctx.user()?;
+    app.llm_oauth.respond(user.id, &session, body).map_err(ApiError::bad)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn cancel_llm_oauth(State(app): State<Arc<App>>, ctx: Ctx, Path(session): Path<String>) -> ApiResult<Json<Value>> {
+    let user = ctx.user()?;
+    app.llm_oauth.cancel(user.id, &session).await.map_err(ApiError::bad)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn disconnect_llm_oauth(State(app): State<Arc<App>>, ctx: Ctx, Path(provider): Path<String>) -> ApiResult<Json<Value>> {
+    let user = ctx.user()?.clone();
+    let provider =
+        crate::llm_key::provider(&provider).filter(|p| p.oauth).ok_or_else(|| ApiError::bad("this provider does not support OAuth"))?;
+    app.llm_oauth.disconnect(&app, user.id, provider).await.map_err(ApiError::bad)?;
+    Ok(Json(json!({ "connected": false })))
 }
 
 /// The provider keys the server shares with everyone, as far as they may be
@@ -311,6 +380,9 @@ async fn set_global_llm_key(
 ) -> ApiResult<Json<Value>> {
     ctx.server_admin()?;
     let p = keyed_provider(&provider)?;
+    if !p.api_key {
+        return Err(ApiError::bad(format!("{} supports OAuth, not API keys", p.title)));
+    }
     if b.key.trim().is_empty() {
         return Err(ApiError::bad("the key is empty"));
     }
@@ -324,6 +396,7 @@ async fn set_global_llm_key(
         })
         .await?;
     // Agents that waited for a LiteLLM key start now.
+    crate::http::teams::invalidate_models(None);
     crate::sessions::retry_now(&app);
     Ok(Json(json!({ "key": info })))
 }
@@ -331,8 +404,12 @@ async fn set_global_llm_key(
 async fn delete_global_llm_key(State(app): State<Arc<App>>, ctx: Ctx, Path(provider): Path<String>) -> ApiResult<Json<Value>> {
     ctx.server_admin()?;
     let p = keyed_provider(&provider)?;
+    if !p.api_key {
+        return Err(ApiError::bad(format!("{} supports OAuth, not API keys", p.title)));
+    }
     let id = p.id;
     app.blocking(move |app| app.with_server(|db| db.delete_global_secret(id))).await?;
+    crate::http::teams::invalidate_models(None);
     Ok(Json(json!({ "key": null })))
 }
 
