@@ -80,6 +80,9 @@ pub async fn spawn(token: Option<&str>) -> FakeMetrics {
     let app = Router::new()
         .route("/api/v1/query", get(answer))
         .route("/api/0/organizations/{org}/events/", get(answer))
+        // A source served under a path prefix, such as a proxy in front of Prometheus.
+        .route("/prefix/api/v1/query", get(answer))
+        .route("/prefix/api/0/organizations/{org}/events/", get(answer))
         .with_state(state.clone());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     FakeMetrics { url, state }

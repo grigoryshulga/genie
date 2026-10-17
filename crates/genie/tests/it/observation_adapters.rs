@@ -154,8 +154,8 @@ async fn prometheus_non_success_status_is_http_with_a_short_body() {
     match measure(&prometheus(&fake), None, "broken_probe", None, span()).await.unwrap_err() {
         SourceError::Http { status, body } => {
             assert_eq!(status, 500);
-            assert_eq!(body.chars().count(), 500, "the body is cut to 500 characters");
-            assert!(body.starts_with("{\"error\":\"xxx"), "{body}");
+            // The JSON `error` string is what is shown, cut to 500 characters.
+            assert_eq!(body, "x".repeat(500));
         }
         other => panic!("expected an HTTP error, got {other:?}"),
     }
@@ -430,4 +430,105 @@ fn source_errors_read_as_sentences() {
         "cannot read the source answer: query returned no series"
     );
     assert_eq!(SourceError::Network("source a did not answer within 30 s".into()).to_string(), "source a did not answer within 30 s");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_short_basic_password_does_not_corrupt_the_answer() {
+    // The password "1" also occurs in the answer's digits; redaction must not touch what is parsed.
+    let fake = fakemetrics::spawn(None).await;
+    fake.state.lock().respond("short_probe", json!({ "data": [{ "count()": 10 }] }));
+    let src = SourceConfig { organization: Some("acme".into()), ..source(&fake, SourceKind::Sentry, SourceAuth::Basic) };
+    let m = measure(&src, Some("ops:1"), "short_probe", None, span()).await.unwrap();
+    assert_eq!(m.value, 10.0);
+    assert_eq!(m.samples, Some(10));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn basic_credentials_are_redacted_in_every_form_an_echo_can_take() {
+    let (user, password) = ("ops", "pa55");
+    let pair = format!("{user}:{password}");
+    let encoded = base64_of(&pair);
+    let header = format!("Basic {encoded}");
+    let fake = fakemetrics::spawn(Some(&pair)).await;
+    // The source echoes the Authorization header, the pair, its base64 and the password.
+    let mut answer = scalar("3");
+    answer["note"] = json!(format!("{header} {pair} {encoded} {password}"));
+    fake.state.lock().respond("echo_basic", answer);
+    fake.state.lock().respond("echo_error", json!({ "status": "error", "error": format!("rejected {header}") }));
+    let src = source(&fake, SourceKind::Prometheus, SourceAuth::Basic);
+
+    let m = measure(&src, Some(&pair), "echo_basic", None, span()).await.unwrap();
+    let excerpt = m.provenance["excerpt"].as_str().unwrap();
+    for secret in [&header, &pair, &encoded, &password.to_string()] {
+        assert!(!excerpt.contains(secret.as_str()), "{excerpt}");
+    }
+    assert!(excerpt.contains("[redacted]"), "{excerpt}");
+
+    let msg = parse_error(measure(&src, Some(&pair), "echo_error", None, span()).await.unwrap_err());
+    assert!(!msg.contains(&encoded) && !msg.contains(&header), "{msg}");
+    assert_eq!(msg, "rejected [redacted]");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_answer_with_an_error_string_keeps_its_status_and_shows_the_error() {
+    let fake = fakemetrics::spawn(None).await;
+    fake.state.lock().respond("syntax_probe", json!({ "status": "error", "errorType": "bad_data", "error": "parse error at char 5" }));
+    fake.state.lock().status = Some(400);
+    match measure(&prometheus(&fake), None, "syntax_probe", None, span()).await.unwrap_err() {
+        SourceError::Http { status, body } => {
+            assert_eq!(status, 400);
+            assert_eq!(body, "parse error at char 5");
+        }
+        other => panic!("expected an HTTP error, got {other:?}"),
+    }
+    // The same for 503 with a non-JSON body: the body itself is shown.
+    fake.state.lock().respond("down_probe", json!("upstream down"));
+    fake.state.lock().status = Some(503);
+    match measure(&prometheus(&fake), None, "down_probe", None, span()).await.unwrap_err() {
+        SourceError::Http { status, body } => {
+            assert_eq!(status, 503);
+            assert_eq!(body, "\"upstream down\"");
+        }
+        other => panic!("expected an HTTP error, got {other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_time_parameter_keeps_milliseconds() {
+    let fake = fakemetrics::spawn(None).await;
+    fake.state.lock().respond("millis_probe", vector("1"));
+    let end = at("2026-10-17T12:00:00.250Z");
+    let window = Span { start: end - chrono::Duration::hours(24), end };
+    measure(&prometheus(&fake), None, "millis_probe", None, window).await.unwrap();
+    let sent = &calls(&fake)[0];
+    assert_eq!(param(sent, "time").as_deref(), Some(format!("{}.250", end.timestamp()).as_str()));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sentry_without_project_or_environment_sends_neither() {
+    let fake = fakemetrics::spawn(None).await;
+    fake.state.lock().respond("bare_probe", json!({ "data": [{ "count()": 1 }] }));
+    measure(&sentry(&fake), None, "bare_probe", None, span()).await.unwrap();
+    let sent = &calls(&fake)[0];
+    assert_eq!(param(sent, "project"), None);
+    assert_eq!(param(sent, "environment"), None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_base_url_with_a_path_prefix_is_joined_to_the_endpoints() {
+    let fake = fakemetrics::spawn(None).await;
+    fake.state.lock().respond("prefix_probe", vector("2"));
+    fake.state.lock().respond("prefix_sentry", json!({ "data": [{ "count()": 4 }] }));
+    for base in [format!("{}/prefix", fake.url), format!("{}/prefix/", fake.url)] {
+        let src = source_at(&base, SourceKind::Prometheus, SourceAuth::None);
+        let m = measure(&src, None, "prefix_probe", None, span()).await.unwrap();
+        assert_eq!(m.value, 2.0);
+    }
+    let src = SourceConfig {
+        organization: Some("acme".into()),
+        ..source_at(&format!("{}/prefix", fake.url), SourceKind::Sentry, SourceAuth::None)
+    };
+    assert_eq!(measure(&src, None, "prefix_sentry", None, span()).await.unwrap().value, 4.0);
+    let paths: Vec<String> = calls(&fake).iter().map(|c| Url::parse(&c.url).unwrap().path().to_string()).collect();
+    assert_eq!(paths, ["/prefix/api/v1/query", "/prefix/api/v1/query", "/prefix/api/0/organizations/acme/events/"]);
 }

@@ -6,6 +6,8 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use chrono::{DateTime, Utc};
 use genie_core::observation::{SourceAuth, SourceConfig, SourceKind, ts};
 use reqwest::{Client, RequestBuilder, Response, Url};
@@ -131,14 +133,23 @@ impl Auth {
         }
     }
 
-    /// The values that must never appear in an answer shown to people.
-    fn secrets(&self) -> Vec<&str> {
-        match self {
+    /// Every form of the credentials that must never appear in an answer shown to people: the
+    /// secret, the header value and, for basic auth, the `user:password` pair and its base64.
+    /// Longest first, so a whole header is replaced before its parts.
+    fn secrets(&self) -> Vec<String> {
+        let mut out = match self {
             Auth::Anonymous => Vec::new(),
-            Auth::Bearer(token) => vec![token.as_str()],
-            Auth::Basic { password, .. } if !password.is_empty() => vec![password.as_str()],
-            Auth::Basic { .. } => Vec::new(),
-        }
+            Auth::Bearer(token) => vec![token.clone(), format!("Bearer {token}")],
+            Auth::Basic { user, password } => {
+                let pair = format!("{user}:{password}");
+                let encoded = STANDARD.encode(&pair);
+                vec![password.clone(), pair, format!("Basic {encoded}"), encoded]
+            }
+        };
+        out.retain(|s| !s.is_empty());
+        out.sort_by_key(|s| std::cmp::Reverse(s.len()));
+        out.dedup();
+        out
     }
 }
 
@@ -169,7 +180,7 @@ impl Conn<'_> {
             }
             None => None,
         };
-        Ok(Measurement { value, samples, query: expanded, provenance: provenance("prometheus", &reply) })
+        Ok(Measurement { value, samples, query: expanded, provenance: self.provenance("prometheus", &reply) })
     }
 
     /// One instant query at the end of the span; returns the single sample and the answer.
@@ -178,7 +189,7 @@ impl Conn<'_> {
         url.query_pairs_mut().append_pair("query", query).append_pair("time", &unix_time(span.end));
         let reply = self.get(url).await?;
         let answer: Value = serde_json::from_str(&reply.body).map_err(|_| SourceError::Parse("response is not JSON".into()))?;
-        Ok((prometheus_sample(&answer)?, reply))
+        Ok((prometheus_sample(&answer, &|text| self.redact(text))?, reply))
     }
 
     async fn sentry(&self, base: &Url, query: &str, span: Span) -> Result<Measurement, SourceError> {
@@ -207,7 +218,7 @@ impl Conn<'_> {
         let value = sentry_value(&reply.body, field)?;
         // Only count fields are event counts; any other aggregate has no sample size (§7.3).
         let samples = field.starts_with("count").then(|| round_count(value));
-        Ok(Measurement { value, samples, query: query.to_string(), provenance: provenance("sentry", &reply) })
+        Ok(Measurement { value, samples, query: query.to_string(), provenance: self.provenance("sentry", &reply) })
     }
 
     /// One GET with the source's credentials. 401 and 403 are `Unauthorized`; other non-2xx
@@ -222,7 +233,7 @@ impl Conn<'_> {
         let ok = res.status().is_success();
         let body = self.read(res, !ok).await?;
         if !ok {
-            return Err(SourceError::Http { status, body: head(&body, ERROR_BODY_CHARS) });
+            return Err(SourceError::Http { status, body: head(&self.redact(&error_text(&body)), ERROR_BODY_CHARS) });
         }
         Ok(Reply { url: url.to_string(), status, duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX), body })
     }
@@ -245,11 +256,24 @@ impl Conn<'_> {
             }
             bytes.extend_from_slice(&chunk);
         }
-        Ok(self.redact(String::from_utf8_lossy(&bytes).into_owned()))
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
-    fn redact(&self, text: String) -> String {
-        self.auth.secrets().into_iter().fold(text, |t, secret| t.replace(secret, REDACTED))
+    /// `text` with every form of the credentials replaced.
+    fn redact(&self, text: &str) -> String {
+        self.auth.secrets().iter().fold(text.to_string(), |t, secret| t.replace(secret.as_str(), REDACTED))
+    }
+
+    /// The provenance of a successful measurement (§7.4). The URL has no credentials and the body
+    /// excerpt is redacted before it is kept.
+    fn provenance(&self, adapter: &str, reply: &Reply) -> Value {
+        json!({
+            "adapter": adapter,
+            "url": reply.url,
+            "status": reply.status,
+            "durationMs": reply.duration_ms,
+            "excerpt": head(&self.redact(&reply.body), EXCERPT_CHARS),
+        })
     }
 
     fn network(&self, e: reqwest::Error) -> SourceError {
@@ -301,10 +325,11 @@ fn sentry_value(body: &str, field: &str) -> Result<f64, SourceError> {
 }
 
 /// The single sample of a Prometheus instant query (§7.3).
-fn prometheus_sample(answer: &Value) -> Result<f64, SourceError> {
+/// `redact` is applied to the text the source wrote into a message.
+fn prometheus_sample(answer: &Value, redact: &dyn Fn(&str) -> String) -> Result<f64, SourceError> {
     if answer["status"].as_str() != Some("success") {
         let message = answer["error"].as_str().unwrap_or("query failed");
-        return Err(SourceError::Parse(message.to_string()));
+        return Err(SourceError::Parse(redact(message)));
     }
     let data = &answer["data"];
     let result = &data["result"];
@@ -318,7 +343,7 @@ fn prometheus_sample(answer: &Value) -> Result<f64, SourceError> {
             }
         }
         "scalar" => sample(result),
-        other => Err(SourceError::Parse(format!("unsupported result type {other}"))),
+        other => Err(SourceError::Parse(format!("unsupported result type {}", redact(other)))),
     }
 }
 
@@ -340,16 +365,9 @@ fn unix_time(at: DateTime<Utc>) -> String {
     format!("{}.{:03}", ms.div_euclid(1000), ms.rem_euclid(1000))
 }
 
-/// The provenance of a successful measurement (§7.4). The URL has no credentials and the body
-/// excerpt is redacted before it is kept.
-fn provenance(adapter: &str, reply: &Reply) -> Value {
-    json!({
-        "adapter": adapter,
-        "url": reply.url,
-        "status": reply.status,
-        "durationMs": reply.duration_ms,
-        "excerpt": head(&reply.body, EXCERPT_CHARS),
-    })
+/// The error text of a failed answer: the `error` string of a JSON body, else the body itself.
+fn error_text(body: &str) -> String {
+    serde_json::from_str::<Value>(body).ok().and_then(|v| v["error"].as_str().map(str::to_string)).unwrap_or_else(|| body.to_string())
 }
 
 fn head(text: &str, chars: usize) -> String {
