@@ -7,7 +7,7 @@ status: current
 
 # Knowledge vault
 
-Genie stores knowledge in a separate Git repository at `<data>/vault`, or the configured `vault.path`. Each project has a space; shared spaces can hold team-wide material. Files are the source of truth. `vault-index.db` is a rebuildable search cache.
+Genie stores knowledge in a separate Git repository at `<data>/vault`, or the configured `vault.path`. Each project has one or more documentation roots bound to it in `vault.json`. Project documentation shows only those roots; unbound and other projects' pages stay outside the project space. Files are the source of truth. `vault-index.db` is a rebuildable search cache.
 
 This project website is built from the repository's `docs/` directory. A running Genie server indexes its **vault**, not this website directory, unless you import those pages.
 
@@ -23,6 +23,18 @@ genie vault reindex
 ```
 
 Pages support Markdown, frontmatter, wiki-links, heading reads, and backlinks. Search indexes titles, summaries, headings, body text, tags, and aliases. See the [documentation contract](../reference/genie-docs-system.md) for exact field and search behavior.
+
+## Navigate the project space
+
+The Docs screen opens a space overview with sections and articles. Navigation uses article titles rather than Markdown filenames. Titles come from `title`, then the first H1; legacy filenames receive a readable display name.
+
+Create an article by entering its title and selecting a section. To add a section, choose **Create section**, name it, and choose its parent. Genie creates an overview article at `<section>/index.md`; its title names the section in navigation. Existing `README.md` pages also serve as section overviews, with `index.md` taking priority. Nested directories without an overview still appear as sections with readable names. Editing the overview article's title renames the section in navigation without moving files or breaking links.
+
+Breadcrumbs return to any parent section or the space overview. Type and status badges have their own row above the article title; tags appear in the article footer. Markdown stays the portable storage format and remains editable outside Genie. The article editor opens in visual mode: select text and use the toolbar for bold, italic, strikethrough, headings, lists, quotes, code, links, and dividers. Undo/redo and standard formatting shortcuts work in the visual editor. Switch to **Markdown** for source editing, **Together** for source with live preview. Switching views does not save or discard a draft.
+
+Visual edits serialize back to Markdown and can normalize whitespace and marker style. Tables, task lists, images, code languages, and vault wiki-links retain their meaning. Articles containing raw HTML use source editing, since arbitrary HTML cannot be represented by the visual schema; HTML inside code remains visually editable.
+
+Tree, search, page reads/writes, link resolution, backlinks, proposals, and change signatures are scoped to the selected project's configured roots, including for CLI and MCP callers. A project without roots has an empty documentation space; it never falls back to the entire vault. Notes also require a project root. Use `genie --project shop docs space handbook --of shop` to bind an additional unused root. The project API cannot reassign another project's root.
 
 ## Publication policies
 
