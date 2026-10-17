@@ -22,9 +22,8 @@ export function EpicsPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }
   const shown = (tab === "open" ? open : done).filter((e) => !q || e.title.toLowerCase().includes(q) || e.id.toLowerCase().includes(q));
 
   return (
-    <main className="main">
+    <main className="main" aria-label="Эпики">
       <header className="topbar">
-        <h1>Эпики</h1>
         <div className="seg" role="group" aria-label="Какие эпики показать">
           <button type="button" className={tab === "open" ? "on" : ""} aria-pressed={tab === "open"} onClick={() => setTab("open")}>
             Открытые · {open.length}

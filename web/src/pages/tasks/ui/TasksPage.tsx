@@ -91,9 +91,8 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
   const epicName = f.epic === "none" ? "без эпика" : f.epic ? f.epic : "любой";
 
   return (
-    <main className="main">
+    <main className="main" aria-label="Задачи">
       <header className="topbar">
-        <h1>Задачи</h1>
         <span className="muted d-only" style={{ fontSize: 12 }}>
           {shown.length} {plural(shown.length, "задача", "задачи", "задач")}
         </span>

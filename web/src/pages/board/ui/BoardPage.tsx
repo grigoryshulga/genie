@@ -45,13 +45,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
   };
 
   return (
-    <main className="main">
-      <header className="topbar">
-        <h1>Доска</h1>
-        <span className="muted d-only" style={{ fontSize: 12 }}>
-          {openCount} {plural(openCount, "задача", "задачи", "задач")}
-        </span>
-      </header>
+    <main className="main" aria-label="Доска">
 
       <MobileNav />
 
@@ -75,6 +69,9 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
             ))}
           </select>
         </label>
+        <span className="muted d-only" style={{ fontSize: 12 }}>
+          {openCount} {plural(openCount, "задача", "задачи", "задач")}
+        </span>
         <span className="grow" />
         <label className="search">
           <Icon.search />
