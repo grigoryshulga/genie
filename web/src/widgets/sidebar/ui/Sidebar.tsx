@@ -6,7 +6,7 @@ import { useLogout, useSession, useSwitchProject } from "@/entities/session";
 import { useNotifications, useProposals } from "@/entities/platform";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
-import { timeAgo, useTick } from "@/shared/lib";
+import { canManageProject, timeAgo, useTick } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 
 export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: () => void; online: boolean; compact: boolean; onToggleCompact: () => void }) {
@@ -124,6 +124,17 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
           {unread > 0 && <span className="unread-dot" role="img" aria-label={`непрочитанных: ${unread}`} />}
         </NavLink>
       </div>
+
+      {canManageProject(!!session?.user.isAdmin, project?.role) && (
+        <div className="nav-group">
+          <span className="nav-label">Управление</span>
+          <NavLink to="/manage/project/general" className="nav-item"><Icon.folder size={15} /><span className="grow">Управление проектом</span></NavLink>
+          {session?.user.isAdmin && <>
+            <NavLink to="/manage/server/projects" className="nav-item"><Icon.server size={15} /><span className="grow">Глобальные настройки</span></NavLink>
+            <NavLink to="/statistics" className="nav-item"><Icon.chart size={15} /><span className="grow">Статистика</span></NavLink>
+          </>}
+        </div>
+      )}
 
       {teams.length > 0 && (
         <div className="nav-group">

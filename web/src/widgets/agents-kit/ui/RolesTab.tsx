@@ -94,7 +94,7 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
       </Link>
     )),
     ...d.usedBy.automations.map((a) => (
-      <Link key={`a-${a.id}`} to={`/settings/project/automations?rule=${a.id}`}>
+      <Link key={`a-${a.id}`} to={`/manage/project/automations?rule=${a.id}`}>
         автоматизация «{a.name}»{a.project ? ` (${a.project})` : ""}
       </Link>
     )),

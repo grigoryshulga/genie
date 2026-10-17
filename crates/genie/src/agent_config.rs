@@ -538,9 +538,19 @@ pub struct AgentConfig {
     pub teams: BTreeMap<String, TeamDef>,
     pub skills: BTreeMap<String, SkillDef>,
     pub mcp: BTreeMap<String, McpServer>,
+    pub project_tools: BTreeMap<String, ProjectTools>,
     pub problems: Vec<Problem>,
     #[serde(skip)]
     pub signature: String,
+}
+
+/// Project choices restrict server grants; absent lists preserve existing behavior.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ts_rs::TS)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+#[ts(export)]
+pub struct ProjectTools {
+    pub skills: Option<Vec<String>>,
+    pub mcp: Option<Vec<String>>,
 }
 
 fn valid_id(id: &str) -> bool {
@@ -1461,6 +1471,9 @@ pub fn signature(data: &Path, cfg: &Config) -> String {
     };
     add(&data.join("config.json"));
     add(&data.join("mcp.json"));
+    for (_, p) in md_files(&data.join("project-tools"), "json", &Overlay::new()) {
+        add(&p);
+    }
     let none = Overlay::new();
     for (_, p) in md_files(&data.join("agents"), "md", &none).into_iter().chain(md_files(&data.join("teams"), "json", &none)) {
         add(&p);
@@ -1948,7 +1961,24 @@ impl AgentConfig {
         let mcp = load_mcp(data, overlay, &mut problems);
         let roles = load_roles(data, previous, &skills, &mcp, overlay, &mut problems);
         let teams = load_teams(data, cfg, previous, &roles, overlay, &mut problems);
-        AgentConfig { roles, teams, skills, mcp, problems, signature: signature(data, cfg) }
+        let mut project_tools = BTreeMap::new();
+        for (slug, path) in md_files(&data.join("project-tools"), "json", overlay) {
+            match read(&path, overlay).and_then(|s| serde_json::from_str::<ProjectTools>(&s).map_err(std::io::Error::other)) {
+                Ok(tools) => {
+                    project_tools.insert(slug, tools);
+                }
+                Err(e) => {
+                    push_problem(&mut problems, Level::Error, format!("project-tools:{slug}"), Some(rel_path(data, &path)), e.to_string());
+                    // A broken restriction must never restore all server tools.
+                    let last = previous
+                        .and_then(|p| p.project_tools.get(&slug))
+                        .cloned()
+                        .unwrap_or(ProjectTools { skills: Some(Vec::new()), mcp: Some(Vec::new()) });
+                    project_tools.insert(slug, last);
+                }
+            }
+        }
+        AgentConfig { roles, teams, skills, mcp, project_tools, problems, signature: signature(data, cfg) }
     }
 
     pub fn errors(&self) -> impl Iterator<Item = &Problem> {
@@ -2014,7 +2044,9 @@ impl AgentConfig {
     /// MCP connections a role may use in a project.
     pub fn mcp_for(&self, project: &str, role: &RoleDef) -> Vec<(&McpServer, Option<Vec<String>>)> {
         let mut out: Vec<(&McpServer, Option<Vec<String>>)> = Vec::new();
-        for s in self.mcp.values().filter(|s| s.available_in(project)) {
+        for s in self.mcp.values().filter(|s| {
+            s.available_in(project) && self.project_tools.get(project).and_then(|t| t.mcp.as_ref()).is_none_or(|ids| ids.contains(&s.id))
+        }) {
             let mut all = false;
             let mut tools = Vec::new();
             for g in &role.mcp {

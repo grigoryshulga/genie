@@ -110,3 +110,5 @@ export const useModelPrices = () =>
 /** «Pull the config»: ask LiteLLM for the tariffs again; the stats reprice with what comes back. */
 export const useRefreshModelPrices = () =>
   useInvalidating(() => request<{ received: number; priced: number; fetchedAt: string }>("POST", "/api/model-prices"), [["model-prices"], ["stats"]]);
+
+export const useDeleteUser = () => useInvalidating((id: number) => request("DELETE", `/api/users/${id}`), [["users"], ["members"], ["session"]]);

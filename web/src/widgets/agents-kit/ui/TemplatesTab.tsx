@@ -101,7 +101,7 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
     return m ? (m.name ? `${m.name[0].toUpperCase()}${m.name.slice(1)}` : roleTitle(m.role)) : key;
   };
   const used = d.usedBy.automations.map((a) => (
-    <Link key={a.id} to={`/settings/project/automations?rule=${a.id}`}>
+    <Link key={a.id} to={`/manage/project/automations?rule=${a.id}`}>
       автоматизация «{a.name}»{a.project ? ` (${a.project})` : ""}
     </Link>
   ));

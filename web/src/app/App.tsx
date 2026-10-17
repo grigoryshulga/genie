@@ -8,7 +8,7 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
-import { isTyping, readPref, rememberWorkRoute, writePref } from "@/shared/lib";
+import { canManageProject, managementDestination, isTyping, readPref, rememberWorkRoute, writePref } from "@/shared/lib";
 import { Sidebar } from "@/widgets/sidebar";
 import { lazyPage } from "./lazyPage.ts";
 
@@ -67,7 +67,7 @@ function Shell() {
   const teamRoute = location.pathname.startsWith("/team/");
   const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
-  const platformRoute = ["/automations", "/agents", "/notifications"].some((p) => location.pathname.startsWith(p));
+  const platformRoute = ["/automations", "/agents", "/notifications", "/statistics"].some((p) => location.pathname.startsWith(p));
   // Pages without the task list or board: opening a task from the palette goes to the list.
   const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
@@ -260,6 +260,24 @@ function RequireServerAdmin({ children }: { children: ReactNode }) {
   return children;
 }
 
+function RequireProjectAdmin({ children }: { children: ReactNode }) {
+  const { data, isLoading } = useSession();
+  if (isLoading) return <PageFallback />;
+  const role = data?.projects.find((p) => p.slug === data.project)?.role;
+  if (!canManageProject(!!data?.user.isAdmin, role))
+    return <div className="empty">Управление проектом доступно администраторам проекта и сервера.</div>;
+  return children;
+}
+
+function LegacyManagement({ scope, legacySection }: { scope: "project" | "server"; legacySection?: string }) {
+  const { section: routeSection } = useParams();
+  const section = legacySection ?? routeSection ?? (scope === "project" ? "general" : "projects");
+  const { search, hash } = useLocation();
+  const params = new URLSearchParams(search);
+  if (scope === "project" && (section === "decisions" || section === "agents")) params.set("tab", section === "decisions" ? "jev" : "agents");
+  return <Navigate to={{ pathname: managementDestination(scope, section), search: params.toString(), hash }} replace />;
+}
+
 /** `/profile/…` — the personal settings before the settings mode (PD21); old notifications still carry these links. */
 function LegacyProfile() {
   const { tab } = useParams();
@@ -269,17 +287,12 @@ function LegacyProfile() {
 
 /** `/project/…` — the project settings before the settings mode (PD21); old links keep working. */
 function LegacyProject() {
-  const { tab } = useParams();
-  const section = tab === "agents" || tab === "repos" || tab === "people" ? tab : "general";
-  return <Navigate to={`/settings/project/${section}`} replace />;
+  return <LegacyManagement scope="project" legacySection={useParams().tab ?? "general"} />;
 }
 
-/** `/server/…` — the server administration before the settings mode (PD21); old links keep working. */
+/** Old server administration links retain the selected editor and query. */
 function LegacyServer() {
-  const { tab } = useParams();
-  if (tab === "stats") return <Navigate to="/settings/stats" replace />;
-  const section = tab === "projects" || tab === "accounts" || tab === "mcp" || tab === "vault" ? tab : "health";
-  return <Navigate to={`/settings/server/${section}`} replace />;
+  return <LegacyManagement scope="server" legacySection={useParams().tab ?? "health"} />;
 }
 
 export const router = createBrowserRouter([
@@ -315,43 +328,34 @@ export const router = createBrowserRouter([
           { path: "automations", element: <AutomationsPage /> },
           { path: "agents", element: <AgentsPage /> },
           { path: "notifications", element: <NotificationsPage /> },
+          { path: "statistics", element: <RequireServerAdmin><ServerStatisticsPage /></RequireServerAdmin> },
           { path: ":view", element: <LegacyView /> },
         ],
       },
-      // The settings mode (PD21): its own layout; «Личное» first, the project and server sections follow.
       {
-        path: "settings",
-        element: <SettingsShell />,
+        path: "settings", element: <SettingsShell />,
         children: [
           { index: true, element: <Navigate to="/settings/me/account" replace /> },
           { path: "me/:section?", element: <MeSettingsPage /> },
-          { path: "project/automations", element: <AutomationsSettingsPage /> },
-          { path: "project/:section?", element: <ProjectSettingsPage /> },
-          {
-            path: "stats",
-            element: (
-              <RequireServerAdmin>
-                <ServerStatisticsPage />
-              </RequireServerAdmin>
-            ),
-          },
-          {
-            path: "server",
-            element: (
-              <RequireServerAdmin>
-                <Outlet />
-              </RequireServerAdmin>
-            ),
-            children: [
-              { index: true, element: <Navigate to="/settings/server/health" replace /> },
-              { path: "stats", element: <Navigate to="/settings/stats" replace /> },
-              { path: "roles", element: <AgentsAdminPage /> },
-              { path: "templates", element: <AgentsAdminPage /> },
-              { path: "skills", element: <AgentsAdminPage /> },
-              { path: "history", element: <AgentsAdminPage /> },
-              { path: ":section?", element: <ServerSettingsPage /> },
-            ],
-          },
+        ],
+      },
+      { path: "settings/stats", element: <Navigate to="/statistics" replace /> },
+      { path: "settings/project/:section?", element: <LegacyManagement scope="project" /> },
+      { path: "settings/server/:section?", element: <LegacyManagement scope="server" /> },
+      {
+        path: "manage/project", element: <RequireProjectAdmin><SettingsShell /></RequireProjectAdmin>,
+        children: [
+          { index: true, element: <Navigate to="general" replace /> },
+          { path: "automations", element: <AutomationsSettingsPage /> },
+          { path: ":section", element: <ProjectSettingsPage /> },
+        ],
+      },
+      {
+        path: "manage/server", element: <RequireServerAdmin><SettingsShell /></RequireServerAdmin>,
+        children: [
+          { index: true, element: <Navigate to="projects" replace /> },
+          ...["roles", "templates", "skills", "history"].map((section) => ({ path: section, element: <AgentsAdminPage /> })),
+          { path: ":section", element: <ServerSettingsPage /> },
         ],
       },
       { path: "profile/:tab?", element: <LegacyProfile /> },

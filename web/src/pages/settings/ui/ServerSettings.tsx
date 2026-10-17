@@ -6,7 +6,7 @@ import { ProvidersAdminSection } from "./ProvidersAdmin.tsx";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useState } from "react";
-import { Link, NavLink, useParams } from "react-router";
+import { Link, Navigate, useParams } from "react-router";
 import {
   AUTONOMY,
   DOCTOR_AREA,
@@ -20,6 +20,9 @@ import {
   sumDays,
   useCreateProject,
   useCreateUser,
+  useDeleteUser,
+  useSetMember,
+  type Person,
   useDoctor,
   usePatchUser,
   useProjects,
@@ -29,9 +32,13 @@ import {
   useVaultSync,
 } from "@/entities/project";
 import { useSession } from "@/entities/session";
+import { settingsTabHref } from "@/shared/lib";
 import { request } from "@/shared/api";
-import { BarChart, Icon, Menu, useAct } from "@/shared/ui";
+import { BarChart, ConfirmDialog, Icon, Menu, useAct, useToast } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
+import { FirstAdmin } from "./ProjectSettings.tsx";
+import { SettingsTabs, useSettingsTab } from "./SettingsTabs.tsx";
+import { SystemOneSettings } from "./SystemOneSettings.tsx";
 import { Costs } from "./ServerCosts.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
@@ -39,41 +46,26 @@ import "@/shared/ui/project.css";
 export function ServerSettingsPage() {
   const session = useSession().data;
   const { section = "health" } = useParams();
-  const admin = !!session?.user.isAdmin;
   const local = session?.mode === "local";
-  const projects = useProjects().data?.length ?? 0;
-  const accounts = useUsers(admin && !local).data?.length ?? 0;
-  const tabs = [
-    { id: "health", title: "Состояние" },
-    { id: "projects", title: "Проекты", n: projects },
-    ...(local ? [] : [{ id: "accounts", title: "Учётные записи", n: accounts }]),
-    { id: "providers", title: "Провайдеры" },
-    { id: "mcp", title: "MCP" },
-    { id: "vault", title: "База знаний" },
-  ];
+  const tab = useSettingsTab("server", section);
+  if (section === "tools" && (tab === "agents" || tab === "health" || tab === "vault"))
+    return <Navigate to={settingsTabHref("server", "tools", tab)} replace />;
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Управление</h1>
+        <h1>Глобальные настройки</h1>
         <span className="sub">{local ? "локальный режим" : "администрирование"}</span>
-        <nav className="st-tabs" aria-label="Глобальные настройки сервера">
-          {tabs.map((t) => (
-            <NavLink key={t.id} to={`/settings/server/${t.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
-              {t.title}
-              {!!t.n && <span className="n">{t.n}</span>}
-            </NavLink>
-          ))}
-        </nav>
       </header>
+        <SettingsTabs scope="server" section={section === "health" || section === "vault" ? "tools" : section} current={section === "health" || section === "vault" ? section : undefined} />
       <div className="scroll">
         {section === "projects" ? (
-          <Projects current={session?.project} />
-        ) : section === "accounts" && !local ? (
-          <Accounts me={session?.user.login} />
+          <Projects current={session?.project} tab={tab} />
+        ) : section === "accounts" ? (
+          local ? <div className="st-body"><FirstAdmin /></div> : <Accounts me={session?.user.login} tab={tab} />
         ) : section === "providers" ? (
           <ProvidersAdminSection />
-        ) : section === "mcp" ? (
-          <McpAdminSection />
+        ) : section === "tools" ? (
+          <><div hidden={tab !== "jev"}><SystemOneSettings /></div><div hidden={tab !== "mcp"}><McpAdminSection /></div></>
         ) : section === "vault" ? (
           <Knowledge />
         ) : (
@@ -174,7 +166,7 @@ function Week() {
       <div className="sv-section-head">
         <h3>Последние 7 дней</h3>
         <span className="muted">все проекты</span>
-        <Link to="/settings/stats" className="sv-more">
+        <Link to="/statistics" className="sv-more">
           Вся статистика
           <Icon.chevron size={12} />
         </Link>
@@ -419,13 +411,13 @@ function Knowledge() {
   );
 }
 
-function Projects({ current }: { current?: string }) {
+function Projects({ current, tab }: { current?: string; tab: string }) {
   const projects = useProjects();
   const qc = useQueryClient();
   const act = useAct();
   return (
-    <div className="st-body split">
-      <div className="st-col">
+    <div className="st-body">
+      <div className="st-col" hidden={tab !== "list"}>
         <div className="st-head">
           <h2>Проекты</h2>
         </div>
@@ -464,7 +456,7 @@ function Projects({ current }: { current?: string }) {
           </ul>
         </section>
       </div>
-      <aside className="st-card" aria-label="Новый проект">
+      <aside className="st-card" aria-label="Новый проект" hidden={tab !== "create"}>
         <div className="st-card-head">
           <h3>Новый проект</h3>
         </div>
@@ -565,16 +557,23 @@ export function NewProjectForm({ onCreated, folded }: { onCreated?: () => void; 
   );
 }
 
-function Accounts({ me }: { me?: string }) {
+function Accounts({ me, tab }: { me?: string; tab: string }) {
   const users = useUsers();
+  const projects = useProjects();
+  const member = useSetMember();
+  const remove = useDeleteUser();
+  const toast = useToast();
+  const [removing, setRemoving] = useState<Person>();
+  const [credentials, setCredentials] = useState<{ login: string; password: string }>();
+  const [assignment, setAssignment] = useState<{ user: number; slug: string }>({ user: 0, slug: "" });
   const patch = usePatchUser();
   const create = useCreateUser();
   const act = useAct();
   const [form, setForm] = useState({ login: "", name: "", password: "", isAdmin: false });
   const list = users.data ?? [];
   return (
-    <div className="st-body split">
-      <div className="st-col">
+    <div className="st-body">
+      <div className="st-col" hidden={tab !== "list"}>
         <div className="st-head">
           <h2>Учётные записи</h2>
           <p>В проект можно пригласить по ссылке со страницы проекта.</p>
@@ -613,6 +612,7 @@ function Accounts({ me }: { me?: string }) {
                 ) : (
                   <Menu label={`Ещё для ${u.login}`}>
                     {(close) => (
+                      <><button type="button" role="menuitem" onClick={() => { close(); setRemoving(u); }}>Удалить учётную запись</button>
                       <button
                         type="button"
                         role="menuitem"
@@ -624,7 +624,7 @@ function Accounts({ me }: { me?: string }) {
                         }}
                       >
                         {u.disabled ? "Включить учётную запись" : "Отключить учётную запись"}
-                      </button>
+                      </button></>
                     )}
                   </Menu>
                 )}
@@ -646,7 +646,16 @@ function Accounts({ me }: { me?: string }) {
           </dl>
         </details>
       </div>
-      <aside className="st-card" aria-label="Новая учётная запись">
+      <div hidden={tab !== "access"}>        <form className="st-card" onSubmit={(e) => { e.preventDefault(); void act(() => member.mutateAsync({ slug: assignment.slug, user: assignment.user, role: "admin" }), "Администратор проекта назначен"); }}>
+          <div className="st-card-head"><h3>Назначить администратора проекта</h3><p>Роль назначается для выбранного проекта.</p></div>
+          <div className="st-card-body pj-form">
+            <label className="field">Учётная запись<select required value={assignment.user || ""} onChange={(e) => setAssignment({ ...assignment, user: Number(e.target.value) })}><option value="">Выберите пользователя</option>{list.filter((u) => !u.disabled && !u.isAdmin).map((u) => <option key={u.id} value={u.id}>{personName(u)}</option>)}</select></label>
+            <label className="field">Проект<select required value={assignment.slug} onChange={(e) => setAssignment({ ...assignment, slug: e.target.value })}><option value="">Выберите проект</option>{projects.data?.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}</select></label>
+            <button className="btn" disabled={!assignment.user || !assignment.slug || member.isPending}>Назначить</button>
+          </div>
+        </form>
+</div>
+      <aside className="st-card" aria-label="Новая учётная запись" hidden={tab !== "create"}>
         <div className="st-card-head">
           <h3>Новая учётная запись</h3>
         </div>
@@ -656,6 +665,7 @@ function Accounts({ me }: { me?: string }) {
             e.preventDefault();
             void act(async () => {
               await create.mutateAsync({ login: form.login.trim(), name: form.name.trim(), password: form.password, isAdmin: form.isAdmin });
+              setCredentials({ login: form.login.trim(), password: form.password });
               setForm({ login: "", name: "", password: "", isAdmin: false });
             }, "Учётная запись создана: добавьте человека в проект на странице проекта");
           }}
@@ -682,7 +692,14 @@ function Accounts({ me }: { me?: string }) {
           </button>
           <span className="pj-hint">Потом добавьте человека в проект на странице проекта.</span>
         </form>
+        {credentials && <div className="st-card-body"><p>Создана учётная запись @{credentials.login}.</p><button type="button" className="btn" onClick={() => void act(async () => {
+          await navigator.clipboard.writeText(`Адрес: ${location.origin}\nЛогин: ${credentials.login}\nПароль: ${credentials.password}`);
+          toast("Данные скопированы");
+        })}>Скопировать данные для входа</button><button type="button" className="btn ghost" onClick={() => setCredentials(undefined)}>Скрыть данные</button></div>}
       </aside>
+      {removing && <ConfirmDialog title="Удалить учётную запись?" confirmLabel="Удалить" danger busy={remove.isPending} onClose={() => setRemoving(undefined)} onConfirm={() => void act(() => remove.mutateAsync(removing.id), "Учётная запись удалена").then((ok) => { if (ok) setRemoving(undefined); })}>
+        Учётная запись @{removing.login}, её доступ к проектам, сессии и токены будут удалены. История задач сохранится.
+      </ConfirmDialog>}
     </div>
   );
 }

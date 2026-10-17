@@ -17,6 +17,8 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 
 ### Changed
 
+- The settings gear now opens profile settings only. Project management, global settings, and statistics have separate sidebar destinations with role guards and redirects for old links. Project tools can restrict installed skills and MCP connections; account management adds deletion, project administrator assignment, and copying new credentials.
+
 - Every runnable role must specify a model. Class model defaults and `roleModels` configuration are removed; missing models are reported by health checks and block launch.
 - Docker agents use Pi-Bolt as `pi`. Agent profiles disable automatic package and extension loading; role and repository skills are passed explicitly.
 - Integrated task workspaces can be cleaned up, and low disk space appears in health checks.

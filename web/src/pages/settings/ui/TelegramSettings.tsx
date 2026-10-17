@@ -209,7 +209,7 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
               </div>
             </form>
           )}
-          {!admin && <Link to="/settings/project/telegram">Настройки бота проекта →</Link>}
+          {!admin && <Link to="/manage/project/channels">Настройки бота проекта →</Link>}
         </>
       )}
       {removing && (

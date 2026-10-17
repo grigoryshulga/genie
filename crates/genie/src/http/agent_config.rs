@@ -29,6 +29,7 @@ use crate::state::{App, AppError};
 pub fn routes() -> Router<Arc<App>> {
     Router::new()
         .route("/agent-config", get(catalogue))
+        .route("/projects/{slug}/tools", get(project_tools).put(put_project_tools))
         .route("/agent-config/history", get(history))
         .route("/agent-config/report", get(report))
         .route("/roles/{id}", get(role).put(put_role).delete(delete_role))
@@ -740,4 +741,86 @@ async fn put_mcp(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<FileBody>)
     let user = ctx.server_admin()?.login.clone();
     let content = b.content.ok_or_else(|| ApiError::bad("pass mcp.json as `content`"))?;
     app.blocking(move |app| Ok(save(app, &user, &Target::mcp(app), Some(content), b.base_hash.as_deref()))).await?.map(Json)
+}
+
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export)]
+struct ProjectToolOption {
+    id: String,
+    description: String,
+}
+
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export)]
+struct ProjectToolsView {
+    settings: agent_config::ProjectTools,
+    hash: String,
+    skills: Vec<ProjectToolOption>,
+    mcp: Vec<ProjectToolOption>,
+}
+
+async fn project_tools(State(app): State<Arc<App>>, ctx: Ctx, Path(slug): Path<String>) -> ApiResult<Json<ProjectToolsView>> {
+    ctx.access(&app, Some(&slug)).await?.admin()?;
+    let out = app
+        .blocking(move |app| {
+            let agents = app.agents();
+            let path = app.data.join("project-tools").join(format!("{slug}.json"));
+            let (_, hash) = file_state(&path);
+            Ok(ProjectToolsView {
+                settings: agents.project_tools.get(&slug).cloned().unwrap_or_default(),
+                hash,
+                skills: agents
+                    .skills
+                    .values()
+                    .map(|s| ProjectToolOption { id: s.name.clone(), description: s.description.clone() })
+                    .collect(),
+                mcp: agents
+                    .mcp
+                    .values()
+                    .filter(|s| s.available_in(&slug))
+                    .map(|s| ProjectToolOption { id: s.id.clone(), description: s.description.clone() })
+                    .collect(),
+            })
+        })
+        .await?;
+    Ok(Json(out))
+}
+
+#[derive(Deserialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+struct ProjectToolsWrite {
+    settings: agent_config::ProjectTools,
+    base_hash: String,
+}
+
+async fn put_project_tools(
+    State(app): State<Arc<App>>,
+    ctx: Ctx,
+    Path(slug): Path<String>,
+    Json(body): Json<ProjectToolsWrite>,
+) -> ApiResult<Json<Value>> {
+    let access = ctx.access(&app, Some(&slug)).await?;
+    access.admin()?;
+    let out = app
+        .blocking(move |app| {
+            let agents = app.agents();
+            if body.settings.skills.iter().flatten().any(|id| !agents.skills.contains_key(id))
+                || body.settings.mcp.iter().flatten().any(|id| !agents.mcp.get(id).is_some_and(|s| s.available_in(&slug)))
+            {
+                return Ok(Err(ApiError::bad("choose tools available to this project")));
+            }
+            let rel = format!("project-tools/{slug}.json");
+            let target =
+                Target { path: app.data.join(&rel), rel, item: format!("project-tools:{slug}"), problem_prefix: "project-tools:".into() };
+            Ok(save(
+                app,
+                &access.actor.name,
+                &target,
+                Some(serde_json::to_string_pretty(&body.settings).map_err(|e| AppError::Internal(e.to_string()))?),
+                Some(&body.base_hash),
+            ))
+        })
+        .await??;
+    Ok(Json(out))
 }

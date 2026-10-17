@@ -7,18 +7,40 @@ status: current
 
 # Settings and access
 
-Open `/settings`, use the sidebar gear, or press `G` then `S`. The menu separates personal settings from administration:
+Open `/settings`, use the sidebar gear, or press `G` then `S` for personal settings only: account, password, Telegram subscription, provider keys, and CLI/MCP tokens.
 
-| Scope | Contents | Who can change it |
-| --- | --- | --- |
-| Personal | Account, password, Telegram, provider keys, CLI/MCP tokens | The account owner |
-| Project settings | General settings, agent autonomy, integration, repositories, and people | Project administrators and owners |
-| Automations | Project rules and playbooks | Project administrators and owners |
-| Management | Health, server projects, accounts, providers, MCP, and vault | Server administrators |
-| Agents | Roles, team templates, skills, and edit history | Server administrators |
-| Statistics | Project activity, agent runs, and costs | Server administrators |
+The working sidebar has a separate **Management** group:
 
-Project settings and Automations use the selected project. Server administration is separate from the working catalog. Routes remain under `/settings/project/*`, `/settings/server/*`, and `/settings/stats`.
+- **Project management** (`/manage/project/general`): project and server administrators only. Its sidebar contains General settings, Repositories and environment, Tools, Access and roles, Communication channels, and Knowledge base.
+- **Global settings** (`/manage/server/projects`): server administrators only. Its sidebar contains Projects, Accounts, Providers, and Tools.
+- **Statistics** (`/statistics`): server-wide activity and costs, available to server administrators.
+
+Most sections have URL-backed tabs (`?tab=`), including project general settings, repositories, tools, access, knowledge storage, server projects, and accounts. Project Tools has Skills, MCP, Jev, and Automations tabs; global Tools has MCP, Jev, Agents, Health, and Knowledge tabs. General settings, tool selections, and account creation retain drafts when switching tabs on the same page.
+
+General settings include project naming, agent autonomy, and result integration. Project Tools selects installed server skills and available MCP connections, configures Jev, and links to automation rules. Global Tools retains MCP connections, agent roles, team templates, skill editing, configuration history, server health, and whole-vault synchronization. The Jev connection card shows server configuration and links to provider credentials. Endpoint, model, and enablement still require `decisions` in `config.json` and a server restart.
+
+Project tool selections are stored in `<data>/project-tools/<slug>.json`, with optimistic version checks and configuration history. An omitted/null list inherits current and future server tools; an empty list selects none. Skill selections intersect explicit role lists; repository-local skills remain available. MCP selections intersect server project restrictions and role grants, including gateway authorization and running-agent policies. Changes affect skill loading on subsequent agent starts; MCP policy refresh follows the existing reload behavior. Broken selection files keep the last valid restriction, or deny all tools on a cold load.
+
+Accounts supports creation, copying newly created login credentials, deletion, server administrator promotion, and assignment as administrator of a specific project. Copied passwords remain only in component memory until hidden or leaving the page; they are not returned by account APIs. Deletion cannot target the caller or the last active administrator, and removes sessions, tokens, and memberships while task history remains.
+
+Old `/settings/project/*`, `/settings/server/*`, `/settings/stats`, `/project/*`, and `/server/*` links redirect to the appropriate destination, preserving query parameters on settings redirects. Administrative routes remain protected when opened directly or after changing project.
+
+Pending capabilities have visible placeholders and tracked Feature Requests:
+
+- **GNE-5:** project Git tokens and repository credentials.
+- **GNE-6:** dependencies, preparation tools, and project sandbox configuration.
+- **GNE-7:** per-member activity history.
+- **GNE-8:** project backups, remote knowledge storage, and restore. Existing vault sync is server-wide and is not exposed to project administrators as a project backup facility.
+
+Communication channels currently configures the existing project Telegram bot. Slack and Mattermost remain future integrations.
+
+```bash
+genie project tools shop                         # inspect selections and available tools
+genie project tools shop --skills code-review --mcp docs
+genie project tools shop --skills '' --mcp ''    # select none
+genie project tools shop --all-skills --all-mcp  # inherit available server tools
+genie user delete former-user                   # server administrator; irreversible
+```
 
 Configuration not exposed in the UI remains in `<data>/config.json`. Restart the server after changing that file. Role and team files reload separately without a restart.
 

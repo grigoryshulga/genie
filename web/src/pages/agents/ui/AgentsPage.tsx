@@ -39,7 +39,7 @@ export function AgentsPage() {
         </div>
         <span className="grow" />
         {isAdmin && (
-          <Link to={`/settings/server/${tab}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`} className="btn">
+          <Link to={`/manage/server/${tab}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`} className="btn">
             <Icon.gear size={13} />
             <span className="d-only">Настроить</span>
           </Link>

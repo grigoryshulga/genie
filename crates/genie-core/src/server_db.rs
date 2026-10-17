@@ -946,6 +946,18 @@ impl ServerDb {
         self.user(user)
     }
 
+    /// Delete an account and revoke its references through the schema's foreign keys.
+    pub fn delete_user(&self, user: i64) -> Result<()> {
+        self.tx(|| {
+            let target = self.user(user)?;
+            if target.is_admin && !target.disabled && self.users()?.iter().filter(|u| u.is_admin && !u.disabled).count() <= 1 {
+                return Err(GenieError::invalid("cannot delete the last active server administrator"));
+            }
+            self.conn().execute("DELETE FROM users WHERE id = ?1", [user])?;
+            Ok(())
+        })
+    }
+
     /// Check a login and password; disabled users and users without a password cannot log in.
     pub fn authenticate(&self, login: &str, password: &str) -> Result<Option<User>> {
         let row: Option<(i64, Option<String>, i64)> = self
