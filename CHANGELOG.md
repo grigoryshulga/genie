@@ -2,7 +2,7 @@
 
 Notable changes by release. Versions follow [SemVer](https://semver.org/); entries use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Detailed implementation history remains in Git.
 
-## Unreleased
+## [0.5.0] — 2026-10-17
 
 ### Added
 
@@ -27,6 +27,8 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 
 - The `pi-mcp-adapter` path; pi's built-in MCP integration is used instead.
 - Unused npm/Cargo dependencies and obsolete lock/name-selection helpers.
+
+## Unreleased
 
 ## [0.4.0] — 2026-10-04
 
@@ -106,6 +108,7 @@ Initial release as a local pi extension.
 - The original web server had no account authentication and was intended for localhost or a trusted tailnet.
 - This extension architecture has since been replaced by the standalone server.
 
+[0.5.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.5.0
 [0.4.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.4.0
 [0.3.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.3.0
 [0.2.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.2.0
