@@ -18,6 +18,7 @@ use std::sync::{
 #[derive(Default)]
 struct FakeState {
     calls: AtomicUsize,
+    expected_key: Mutex<Option<String>>,
     requests: Mutex<Vec<Value>>,
     status: Mutex<Option<StatusCode>>,
     flat: Mutex<bool>,
@@ -25,7 +26,9 @@ struct FakeState {
     hook: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
 async fn fake(State(s): State<Arc<FakeState>>, headers: HeaderMap, Json(request): Json<Value>) -> axum::response::Response {
-    assert_eq!(headers["authorization"], "Bearer test-typesafe-key");
+    let expected = s.expected_key.lock().unwrap();
+    assert_eq!(headers["authorization"], format!("Bearer {}", expected.as_deref().unwrap_or("test-typesafe-key")));
+    drop(expected);
     s.calls.fetch_add(1, Ordering::SeqCst);
     s.requests.lock().unwrap().push(request.clone());
     if let Some(hook) = s.hook.lock().unwrap().take() {
@@ -67,14 +70,24 @@ async fn fake(State(s): State<Arc<FakeState>>, headers: HeaderMap, Json(request)
     Json(json!({"model":"jev-1.13.0","answers":answers,"usage":{"input_tokens":100,"output_tokens":20}})).into_response()
 }
 async fn harness() -> (Harness, Arc<FakeState>) {
+    connection_harness(|_| {}).await
+}
+async fn connection_harness(configure: impl FnOnce(&mut genie::decisions::Config)) -> (Harness, Arc<FakeState>) {
     let state = Arc::new(FakeState::default());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}/v1/", listener.local_addr().unwrap());
-    let router = Router::new().route("/v1/systemone", post(fake)).with_state(state.clone());
+    let router = Router::new()
+        .route("/v1/systemone", post(fake))
+        .route("/api/v1/systemone", post(fake))
+        .route("/custom/classify", post(fake))
+        .with_state(state.clone());
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
-    let h = Harness::with_config(|c| c.decisions.base_url = url);
+    let h = Harness::with_config(|c| {
+        c.decisions.base_url = url;
+        configure(&mut c.decisions);
+    });
     h.project("shop");
     h.app.with_server(|db| db.set_global_secret("typesafe", "test-typesafe-key")).unwrap();
     (h, state)
@@ -498,4 +511,114 @@ async fn automatic_unavailability_keeps_the_proposal_and_fixed_model_filters_inc
     let (status, v, _) = call(&h.router, "POST", "/api/teams").bearer(&orchestrator).json(spawn(&task)).send().await;
     assert_eq!(status, StatusCode::CREATED, "{v}");
     assert_eq!(v["template"], "standard");
+}
+
+#[tokio::test]
+async fn openrouter_uses_its_personal_key_model_and_accounting_namespace() {
+    let (h, s) = connection_harness(|c| {
+        c.base_url = c.base_url.replace("/v1/", "/api/v1/");
+        c.key_provider = "openrouter".into();
+        c.model = "typesafe/jev-1.13".into();
+    })
+    .await;
+    let task = ready(&h);
+    save(&h, enabled());
+    let user = h
+        .app
+        .with_server(|db| {
+            let user = db.create_user("anna", "Anna", None, Some("password-1"), false)?;
+            db.set_global_secret("openrouter", "shared-or-key")?;
+            db.set_user_secret(user.id, "openrouter", "personal-or-key")?;
+            Ok(user)
+        })
+        .unwrap();
+    let user_token = h
+        .app
+        .with_server(|db| {
+            db.set_membership("shop", user.id, genie_core::server_db::ProjectRole::Admin)?;
+            db.create_user_token(user.id, "test")
+        })
+        .unwrap();
+    *s.expected_key.lock().unwrap() = Some("personal-or-key".into());
+    let r = serde_json::from_value(request(&task)).unwrap();
+    let actor = Actor::new("anna", Role::Human);
+    let personal = genie::decisions::evaluate(&h.app, "shop", &actor, Some("anna"), &r, None).await.unwrap();
+    assert_eq!(personal.status, "ok");
+    h.app.with_server(|db| db.delete_user_secret(user.id, "openrouter")).unwrap();
+    *s.expected_key.lock().unwrap() = Some("shared-or-key".into());
+    let shared = genie::decisions::evaluate(&h.app, "shop", &actor, Some("anna"), &r, None).await.unwrap();
+    assert_eq!(shared.status, "ok");
+    assert_eq!(s.requests.lock().unwrap()[0]["model"], "typesafe/jev-1.13");
+    let rows = h.app.with_tracker("shop", |t| t.usage_of_task(&task)).unwrap();
+    let spend = genie::spend::Spend::of(&h.app.prices().unwrap(), &rows);
+    assert_eq!(spend.unpriced_tokens, 0);
+    assert!(rows.iter().all(|row| row.model == "openrouter/typesafe/jev-1.13"));
+    let (_, settings, _) = call(&h.router, "GET", "/api/decisions/policy").bearer(&user_token).send().await;
+    assert_eq!(settings["keyProvider"], "openrouter");
+    assert!(settings["endpoint"].as_str().unwrap().ends_with("/api/v1/systemone"));
+    for key in ["personal-or-key", "shared-or-key", "test-typesafe-key"] {
+        assert!(!json!([settings, json!(personal), json!(shared)]).to_string().contains(key));
+    }
+}
+
+#[tokio::test]
+async fn custom_endpoint_uses_only_the_explicit_server_environment_credential() {
+    // Use a harmless existing variable as the test credential, without mutating
+    // the process environment while concurrent Rust tests run.
+    let test_key = std::env::var("HOME").unwrap();
+    let (h, s) = connection_harness(|c| {
+        c.endpoint = Some(format!("{}custom/classify", c.base_url.trim_end_matches("v1/")));
+        c.base_url = "https://unused.invalid/".into();
+        c.key_provider = "private-decisions".into();
+        c.api_key_env = Some("HOME".into());
+        c.model = "custom-jev".into();
+    })
+    .await;
+    *s.expected_key.lock().unwrap() = Some(test_key);
+    // Explicit service keys are intentional server grants, including with users.
+    let user_token = h
+        .app
+        .with_server(|db| {
+            let user = db.create_user("anna", "Anna", None, Some("password-1"), false)?;
+            db.set_membership("shop", user.id, genie_core::server_db::ProjectRole::Admin)?;
+            db.create_user_token(user.id, "test")
+        })
+        .unwrap();
+    let task = ready(&h);
+    save(&h, enabled());
+    let (_, result, _) = call(&h.router, "POST", "/api/decisions/evaluate").bearer(&user_token).json(request(&task)).send().await;
+    assert_eq!(result["status"], "ok", "{result}");
+    assert_eq!(s.requests.lock().unwrap()[0]["model"], "custom-jev");
+    let (_, settings, _) = call(&h.router, "GET", "/api/decisions/policy").bearer(&user_token).send().await;
+    assert_eq!(settings["serverKey"], true);
+    assert!(settings["endpoint"].as_str().unwrap().ends_with("/custom/classify"));
+    assert!(settings.get("apiKeyEnv").is_none());
+}
+
+#[test]
+fn connection_urls_reject_embedded_credentials_and_insecure_remote_transport() {
+    for endpoint in [
+        "https://user:secret@example.com/systemone",
+        "https://example.com/systemone?key=secret",
+        "https://example.com/systemone#secret",
+        "http://example.com/systemone",
+    ] {
+        let c = genie::decisions::Config { endpoint: Some(endpoint.into()), ..Default::default() };
+        let error = c.endpoint_url().unwrap_err();
+        assert!(!error.contains("secret"));
+    }
+}
+
+#[tokio::test]
+async fn missing_explicit_service_key_never_falls_back_to_a_provider_key() {
+    let (h, s) = connection_harness(|c| {
+        c.api_key_env = Some("GENIE_JEV_TEST_DELIBERATELY_ABSENT_KEY_1789000000".into());
+    })
+    .await;
+    let task = ready(&h);
+    save(&h, enabled());
+    let (_, record, _) = call(&h.router, "POST", "/api/decisions/evaluate").json(request(&task)).send().await;
+    assert_eq!(record["status"], "unavailable");
+    assert_eq!(record["costUsd"], 0.0);
+    assert_eq!(s.calls.load(Ordering::SeqCst), 0);
 }

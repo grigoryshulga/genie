@@ -164,7 +164,7 @@ impl App {
     /// LiteLLM returned. What spend, budgets and the web price with.
     pub fn prices(&self) -> AppResult<crate::spend::Prices> {
         let mut prices = self.prices.read().map_err(|_| AppError::Internal("prices lock poisoned".into()))?.prices();
-        let model = format!("typesafe/{}", self.cfg.decisions.model);
+        let model = self.cfg.decisions.usage_model();
         let price = crate::config::price_of(&self.cfg.model_prices, &model).copied().unwrap_or(crate::config::ModelPrice {
             input: self.cfg.decisions.input_price,
             output: 0.0,

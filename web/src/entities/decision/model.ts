@@ -23,6 +23,9 @@ export interface DecisionPolicy {
 export interface DecisionSettings {
   policy: DecisionPolicy;
   available: boolean;
+  endpoint: string | null;
+  keyProvider: string;
+  serverKey: boolean;
   model: string;
   inputPrice: number;
 }

@@ -40,9 +40,9 @@ function PolicyForm({ slug, admin, settings }: { slug: string; admin: boolean; s
     <fieldset disabled={!admin || save.isPending} style={{ border: 0, padding: 0, margin: 0 }}>
       <legend className="sr-only">Настройки Jev</legend>
       <section className="st-card">
-        <div className="st-card-head"><h3>Подключение</h3><p>Jev оценивает переданные ему факты и варианты. Для вызовов нужен личный или общий ключ TypeSafe.</p></div>
-        <div className="st-row"><label className="lbl" htmlFor="jev-external"><b>Передавать контекст в TypeSafe</b><span>Разрешает внешние обращения для этого проекта.</span></label><div className="ctl"><input id="jev-external" type="checkbox" style={{ alignSelf: "flex-start" }} checked={p.allowExternal} onChange={(e) => field("allowExternal", e.target.checked)} /></div></div>
-        <div className="st-row"><div className="lbl"><b>Подключённая модель</b><span>{settings.model} · ${settings.inputPrice} за миллион входных токенов.</span></div><div className="ctl"><Link to="/settings/me/keys">Личный ключ TypeSafe</Link></div></div>
+        <div className="st-card-head"><h3>Подключение</h3><p>Jev оценивает переданные ему факты и варианты. Подключение к совместимому System One API задаётся в конфигурации сервера.</p></div>
+        <div className="st-row"><label className="lbl" htmlFor="jev-external"><b>Передавать контекст сервису решений</b><span>Разрешает внешние обращения для этого проекта.</span></label><div className="ctl"><input id="jev-external" type="checkbox" style={{ alignSelf: "flex-start" }} checked={p.allowExternal} onChange={(e) => field("allowExternal", e.target.checked)} /></div></div>
+        <div className="st-row"><div className="lbl"><b>Подключённая модель</b><span>{settings.model} · ${settings.inputPrice} за миллион входных токенов.<br />{settings.endpoint ?? "Некорректный endpoint в конфигурации сервера"}</span></div><div className="ctl">{settings.serverKey ? <span className="muted">Ключ задан на сервере</span> : <Link to="/settings/me/keys">Ключ провайдера {settings.keyProvider}</Link>}</div></div>
       </section>
       <section className="st-card" style={{ marginTop: 20 }}>
         <div className="st-card-head"><h3>Влияние на новую команду</h3><p>Применяется к delivery-командам, которые запускает менеджер или автоматизация. Выбор человека сохраняется.</p></div>

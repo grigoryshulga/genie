@@ -72,12 +72,18 @@ impl Default for Policy {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct Config {
     /// Server-wide availability. Projects opt into external calls separately.
     pub enabled: bool,
     pub base_url: String,
+    /// Full System One URL; when set, takes precedence over base_url.
+    pub endpoint: Option<String>,
+    /// Namespace of the personal/shared key and usage accounting.
+    pub key_provider: String,
+    /// Explicit server service credential. Overrides personal/shared keys.
+    pub api_key_env: Option<String>,
     pub model: String,
     pub timeout_ms: u64,
     pub max_request_bytes: usize,
@@ -90,12 +96,39 @@ impl Default for Config {
         Self {
             enabled: true,
             base_url: "https://api.typesafe.ai/v1/".into(),
+            endpoint: None,
+            key_provider: "typesafe".into(),
+            api_key_env: None,
             model: "jev-1.13.0".into(),
             timeout_ms: 5000,
             max_request_bytes: 32_000,
             input_price: 0.042,
             defaults: Policy::default(),
         }
+    }
+}
+
+impl Config {
+    pub fn endpoint_url(&self) -> Result<reqwest::Url, String> {
+        let url = reqwest::Url::parse(self.endpoint.as_deref().unwrap_or(&self.base_url)).map_err(|_| "invalid decision endpoint")?;
+        let loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
+        if url.scheme() != "https" && !(url.scheme() == "http" && loopback) {
+            return Err("decision endpoint requires HTTPS".into());
+        }
+        if !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+            return Err("decision endpoint must not contain credentials, query or fragment".into());
+        }
+        if self.endpoint.is_some() {
+            Ok(url)
+        } else {
+            reqwest::Url::parse(&format!("{}/", self.base_url.trim_end_matches('/')))
+                .and_then(|base| base.join("systemone"))
+                .map_err(|_| "invalid decision baseUrl".into())
+        }
+    }
+
+    pub fn usage_model(&self) -> String {
+        format!("{}/{}", self.key_provider, self.model)
     }
 }
 
@@ -229,20 +262,32 @@ fn wire(r: &Request, model: &str) -> Value {
     json!({"model":model,"state":r.state,"questions":questions})
 }
 
-/// Profile/shared key first; only a userless local installation may use the server environment.
+/// Explicit service credentials are server-only. Otherwise use the initiator's
+/// provider key, a shared key, or the provider environment in userless local mode.
 fn key(app: &App, initiator: Option<&str>) -> AppResult<Option<String>> {
+    let config = &app.cfg.decisions;
+    if let Some(name) = &config.api_key_env {
+        if name.is_empty() || !name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+            return Err(AppError::Bad("invalid decisions.apiKeyEnv".into()));
+        }
+        return Ok(std::env::var(name).ok().filter(|s| !s.trim().is_empty()));
+    }
     app.with_server(|db| {
         let personal = match initiator {
             Some(login) => match db.user_by_login(login)?.filter(|u| !u.disabled) {
-                Some(u) => db.user_secret(u.id, "typesafe")?,
+                Some(u) => db.user_secret(u.id, &config.key_provider)?,
                 None => None,
             },
             None => None,
         };
-        let shared = db.global_secret("typesafe")?;
+        let shared = db.global_secret(&config.key_provider)?;
         Ok(personal
             .or(shared)
-            .or_else(|| (db.user_count().ok() == Some(0)).then(|| std::env::var("TYPESAFE_API_KEY").ok()).flatten())
+            .or_else(|| {
+                (db.user_count().ok() == Some(0))
+                    .then(|| crate::llm_key::provider(&config.key_provider).and_then(|p| std::env::var(p.key_var).ok()))
+                    .flatten()
+            })
             .filter(|s| !s.trim().is_empty()))
     })
 }
@@ -306,23 +351,13 @@ fn checked_answers(r: &Request, raw: &Value, p: &Policy) -> Result<(Value, bool)
 
 async fn send(app: &App, payload: &Value, key: &str) -> Result<Value, String> {
     let c = &app.cfg.decisions;
-    let base = reqwest::Url::parse(&format!("{}/", c.base_url.trim_end_matches('/'))).map_err(|_| "invalid Jev baseUrl")?;
-    let loopback = matches!(base.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
-    if base.scheme() != "https" && !(base.scheme() == "http" && loopback) {
-        return Err("Jev baseUrl requires HTTPS".into());
-    }
+    let endpoint = c.endpoint_url()?;
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_millis(c.timeout_ms.clamp(100, 30_000)))
         .build()
         .map_err(|_| "cannot create Jev client")?;
-    let mut response = client
-        .post(base.join("systemone").map_err(|_| "invalid Jev endpoint")?)
-        .bearer_auth(key)
-        .json(payload)
-        .send()
-        .await
-        .map_err(|_| "Jev request failed or timed out")?;
+    let mut response = client.post(endpoint).bearer_auth(key).json(payload).send().await.map_err(|_| "Jev request failed or timed out")?;
     if !response.status().is_success() {
         return Err(format!("Jev HTTP {}", response.status().as_u16()));
     }
@@ -405,8 +440,8 @@ pub async fn evaluate(
     let start = Instant::now();
     let (raw, sent) = match key(app, initiator) {
         Ok(Some(k)) => (send(app, &payload, &k).await, true),
-        Ok(None) => (Err("No TypeSafe key: set your typesafe provider key or a shared key".into()), false),
-        Err(_) => (Err("Cannot read the TypeSafe key".into()), false),
+        Ok(None) => (Err("No decision service key: configure the selected provider key or apiKeyEnv".into()), false),
+        Err(_) => (Err("Cannot read the decision service key".into()), false),
     };
     let (status, result, cost) = match raw {
         Ok(raw) => {
@@ -423,7 +458,7 @@ pub async fn evaluate(
             if let Some(input) = input {
                 // Price under the configured id (which may be an alias); the actual
                 // responding version remains in the decision evidence.
-                let model_id = format!("typesafe/{}", app.cfg.decisions.model);
+                let model_id = app.cfg.decisions.usage_model();
                 app.with_tracker(project, |t| {
                     t.record_usage(
                         "jev",

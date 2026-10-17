@@ -36,7 +36,7 @@ fn judge(
     questions: BTreeMap<String, super::Question>,
 ) -> AppResult<Decision> {
     let request = Request { task: Some(task.id.clone()), purpose: "team-plan".into(), state, questions };
-    let fingerprint = json!({"request":request,"policy":p,"model":app.cfg.decisions.model});
+    let fingerprint = json!({"request":request,"policy":p,"connection":app.cfg.decisions});
     let key = genie_core::server_db::hash_secret(&fingerprint.to_string());
     let initiator = req.initiator.clone().or_else(|| super::initiator(app, project, &req.by, &task.id));
     crate::state::block_on(evaluate(app, project, &req.by, initiator.as_deref(), &request, Some(&key)))

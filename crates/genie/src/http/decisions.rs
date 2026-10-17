@@ -32,7 +32,10 @@ async fn policy(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>>
         .blocking(move |app| {
             Ok(json!({
                 "policy":decisions::policy(app,&slug)?,"available":app.cfg.decisions.enabled,
-                "model":app.cfg.decisions.model,"inputPrice":app.cfg.decisions.input_price
+                "model":app.cfg.decisions.model,"inputPrice":app.cfg.decisions.input_price,
+                "endpoint":app.cfg.decisions.endpoint_url().ok().map(|u| u.to_string()),
+                "keyProvider":app.cfg.decisions.key_provider,
+                "serverKey":app.cfg.decisions.api_key_env.is_some()
             }))
         })
         .await?;
