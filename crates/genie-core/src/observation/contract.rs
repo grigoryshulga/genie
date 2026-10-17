@@ -222,25 +222,34 @@ impl Contract {
 
     /// The windows with the §5.1 defaults applied. Call only on a valid contract.
     pub fn resolved(&self) -> Resolved {
+        self.try_resolved().expect(INVALID_RESOLVE)
+    }
+
+    /// The windows with the §5.1 defaults applied, or `None` when a duration does not parse.
+    /// Unlike `resolved`, this accepts any stored contract, so callers can answer for invalid data
+    /// without panicking. It does not check the rules of §5.3.
+    pub fn try_resolved(&self) -> Option<Resolved> {
         let w = &self.observation;
-        let minimum_window = duration(&w.minimum_window).expect(INVALID_RESOLVE);
-        let or_default =
-            |value: &Option<String>, default: Duration| value.as_deref().map_or(default, |s| duration(s).expect(INVALID_RESOLVE));
-        let preferred_window = w.preferred_window.as_deref().map_or(minimum_window, |s| duration(s).expect(INVALID_RESOLVE));
-        Resolved {
-            baseline_window: or_default(&w.baseline_window, Duration::days(7)),
+        let minimum_window = duration(&w.minimum_window)?;
+        let or_default = |value: &Option<String>, default: Duration| value.as_deref().map_or(Some(default), duration);
+        let preferred_window = match w.preferred_window.as_deref() {
+            Some(s) => duration(s)?,
+            None => minimum_window,
+        };
+        Some(Resolved {
+            baseline_window: or_default(&w.baseline_window, Duration::days(7))?,
             minimum_window,
             preferred_window,
             minimum_samples: w.minimum_samples,
-            evaluation_interval: or_default(&w.evaluation_interval, Duration::hours(6)),
-            guardrail_interval: or_default(&w.guardrail_interval, Duration::minutes(15)),
+            evaluation_interval: or_default(&w.evaluation_interval, Duration::hours(6))?,
+            guardrail_interval: or_default(&w.guardrail_interval, Duration::minutes(15))?,
             // The default 1h is clamped, so a short contract (minimumWindow 30m) watches 30m and
             // the guardrail window never exceeds the preferred window.
-            guardrail_window: w
-                .guardrail_window
-                .as_deref()
-                .map_or(Duration::hours(1).min(preferred_window), |s| duration(s).expect(INVALID_RESOLVE)),
-        }
+            guardrail_window: match w.guardrail_window.as_deref() {
+                Some(s) => duration(s)?,
+                None => Duration::hours(1).min(preferred_window),
+            },
+        })
     }
 
     /// Whether `criterion` needs a baseline record (§5.3): a hypothesis with `expect.change`, or a
@@ -917,6 +926,13 @@ mod tests {
     #[should_panic(expected = "call validate first")]
     fn resolved_refuses_an_invalid_contract() {
         contract(with_windows(json!({ "minimumWindow": "soon" }))).resolved();
+    }
+
+    #[test]
+    fn try_resolved_answers_none_for_an_unparseable_duration() {
+        assert_eq!(contract(with_windows(json!({ "minimumWindow": "soon" }))).try_resolved(), None);
+        assert_eq!(contract(with_windows(json!({ "minimumWindow": "1d", "guardrailInterval": "x" }))).try_resolved(), None);
+        assert_eq!(contract(valid_verify()).try_resolved(), Some(contract(valid_verify()).resolved()));
     }
 
     #[test]
