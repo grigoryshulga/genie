@@ -1020,14 +1020,8 @@ body:has(.auth-page) { overflow: auto; }
 
 /* ------------------------------------------------------------ task list filters and board filters */
 .search.wide { width: 360px; }
-.presets { flex: none; display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 28px 0 22px; overflow-x: auto; }
-.presets .fsel { margin-left: 12px; }
-.presets button { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; }
-.presets button:hover { color: var(--text); }
-.presets button.on { background: var(--bg-active); color: var(--text); }
-.presets button .n { color: var(--off); }
-.presets button.on .n { color: var(--muted); }
-.presets button.amber, .presets button.amber .n { color: var(--amber); }
+.list-controls { flex: none; display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 28px 0 22px; overflow-x: auto; }
+.list-controls .fsel { margin-left: 12px; }
 .filters { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; padding: 8px 28px; box-sizing: border-box; border-bottom: 1px solid var(--line); }
 .page-toolbar { height: auto; min-height: 56px; padding: 8px 28px; box-sizing: border-box; }
 .fmenu { position: relative; flex: none; }
@@ -1061,7 +1055,7 @@ body:has(.auth-page) { overflow: auto; }
 .app.with-detail .main .fsel { display: none; }
 @media (max-width: 900px) {
   .search.wide { width: 100%; }
-  .presets { padding: 0 12px; }
+  .list-controls { padding: 0 12px; }
   .m-nav { padding-top: 12px; }
   .filters { flex-wrap: nowrap; overflow-x: auto; padding: 8px 16px; }
   .filters.board-filters { flex-wrap: wrap; }

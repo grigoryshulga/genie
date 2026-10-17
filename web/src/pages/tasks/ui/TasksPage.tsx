@@ -102,18 +102,7 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
       <MobileNav />
 
-      <nav className="presets" aria-label="Быстрые наборы">
-        {PRESETS.map((p) => {
-          const n = countOf(p.statuses);
-          const on = preset?.id === p.id;
-          const cls = [on ? "on" : "", p.id === "decisions" && n ? "amber" : ""].filter(Boolean).join(" ");
-          return (
-            <button key={p.id} type="button" className={cls} aria-pressed={on} onClick={() => set({ statuses: p.statuses })}>
-              {p.name}
-              <span className="n">{n || ""}</span>
-            </button>
-          );
-        })}
+      <nav className="list-controls" aria-label="Параметры списка">
         <span className="grow" />
         <label className="fsel d-only">
           Порядок
