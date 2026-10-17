@@ -276,7 +276,7 @@ pub struct ObservationWindows { #[serde(default)] pub start: StartOn,           
 4. `query` is non-empty unless `source` is `manual`; at most 4000 characters. `samplesQuery`, when present, is non-empty and at most 4000 characters.
 5. `expect` has exactly one of `change`, `max`, `min`; `change` parses (§5.2) and is not zero.
 6. A guardrail has at least one of `maxChange`, `minChange`, `max`, `min`; each present change parses.
-7. Every duration parses and is positive. `guardrailInterval` ≥ 1 minute. `minimumWindow` ≤ `preferredWindow` ≤ 90 days. `baselineWindow` ≤ 90 days. `guardrailWindow` ≤ `preferredWindow`.
+7. Every duration parses and is positive. `guardrailInterval` ≥ 1 minute. `minimumWindow` ≤ `preferredWindow` ≤ 90 days. `baselineWindow` ≤ 90 days. `guardrailWindow`, `guardrailInterval`, and `evaluationInterval` ≤ the effective `preferredWindow` (`minimumWindow` when absent); the default `guardrailWindow` is `min(1h, preferredWindow)`.
 8. `minimumSamples`, when present, is ≥ 1.
 9. At most 20 hypotheses and 20 guardrails.
 
