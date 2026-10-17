@@ -23,7 +23,7 @@ export function EpicsPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }
 
   return (
     <main className="main" aria-label="Эпики">
-      <header className="topbar">
+      <header className="topbar page-toolbar">
         <div className="seg" role="group" aria-label="Какие эпики показать">
           <button type="button" className={tab === "open" ? "on" : ""} aria-pressed={tab === "open"} onClick={() => setTab("open")}>
             Открытые · {open.length}

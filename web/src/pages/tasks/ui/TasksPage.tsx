@@ -92,7 +92,7 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main" aria-label="Задачи">
-      <header className="topbar">
+      <header className="topbar page-toolbar">
         <span className="muted d-only" style={{ fontSize: 12 }}>
           {shown.length} {plural(shown.length, "задача", "задачи", "задач")}
         </span>

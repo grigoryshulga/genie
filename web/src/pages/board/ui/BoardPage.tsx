@@ -46,10 +46,9 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main" aria-label="Доска">
-
       <MobileNav />
 
-      <div className="filters board-filters" role="toolbar" aria-label="Фильтры доски">
+      <div className="filters board-filters page-toolbar" role="toolbar" aria-label="Фильтры доски">
         {login && (
           <button type="button" className={`fbtn${mine ? " on" : ""}`} aria-pressed={mine} onClick={toggleMine}>
             <Icon.user size={13} />
