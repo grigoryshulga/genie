@@ -28,6 +28,7 @@ pub struct Hypothesis {
     pub source: String,
     #[serde(default)]
     pub query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub samples_query: Option<String>,
     pub expect: Expectation,
 }
@@ -37,8 +38,11 @@ pub struct Hypothesis {
 #[ts(export, optional_fields)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Expectation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub change: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min: Option<f64>,
 }
 
@@ -51,9 +55,13 @@ pub struct Guardrail {
     pub source: String,
     #[serde(default)]
     pub query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_change: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_change: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min: Option<f64>,
 }
 
@@ -65,15 +73,21 @@ pub struct ObservationWindows {
     #[serde(default)]
     pub start: StartOn,
     /// Default `7d`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline_window: Option<String>,
     pub minimum_window: String,
     /// Default: `minimum_window`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_window: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minimum_samples: Option<u64>,
     /// Default `6h`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluation_interval: Option<String>,
     /// Default `15m`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guardrail_interval: Option<String>,
     /// Default `1h`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guardrail_window: Option<String>,
 }

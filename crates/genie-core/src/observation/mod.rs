@@ -246,7 +246,9 @@ pub struct ObservationCase {
     pub title: String,
     pub policy: ObservationPolicy,
     pub status: CaseStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<CaseResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<Confidence>,
     /// Summary of the concluding evaluation, or the cancellation reason.
     pub conclusion: String,
@@ -258,18 +260,25 @@ pub struct ObservationCase {
     pub created: String,
     pub updated: String,
     /// When the case entered `waiting`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub armed_at: Option<String>,
     /// The anchor: when observation started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observation_started_at: Option<String>,
     /// When the case concluded or was cancelled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observation_completed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_evaluation_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_guardrail_at: Option<String>,
     /// `manual` or `final` when an evaluation was requested (§6.4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluation_requested: Option<EvalTrigger>,
     /// Consecutive scheduler passes with a collection error.
     pub failures: i64,
     /// Last collection error, for the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
 }
 
@@ -336,18 +345,24 @@ pub struct Evidence {
     pub window_start: String,
     pub window_end: String,
     /// `None` when `error` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
     /// Copied from the baseline record for change criteria.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline: Option<f64>,
     /// `value - baseline`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delta_abs: Option<f64>,
     /// `(value - baseline) / abs(baseline) * 100`; `None` when the baseline is 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delta_rel: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub samples: Option<i64>,
     #[ts(type = "unknown")]
     pub provenance: Value,
     pub trust: TrustLevel,
     /// Collection failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Free text for manual reports.
     pub note: String,
@@ -364,6 +379,7 @@ pub struct Evaluation {
     pub at: String,
     pub trigger: EvalTrigger,
     pub verdict: Verdict,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<Confidence>,
     pub summary: String,
     pub details: Vec<CriterionResult>,
@@ -379,6 +395,7 @@ pub struct CriterionResult {
     pub kind: CriterionKind,
     pub state: CriterionState,
     /// The evidence record used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<i64>,
     /// Human-readable English, such as `delta -23.1% meets target -20%`.
     pub reason: String,
@@ -396,9 +413,12 @@ pub struct Incident {
     pub guardrail: String,
     pub status: IncidentStatus,
     pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<i64>,
     pub created: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed_by: Option<String>,
     pub note: String,
     /// Task IDs.
@@ -412,6 +432,7 @@ pub struct Incident {
 pub struct Followup {
     pub id: i64,
     pub case_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub incident: Option<i64>,
     pub task: String,
     pub actor: String,
@@ -427,11 +448,17 @@ pub struct SourceConfig {
     pub kind: SourceKind,
     pub url: String,
     pub auth: SourceAuth,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub organization: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sentry_project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dataset: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_secs: Option<u64>,
     pub created: String,
     pub updated: String,
@@ -686,5 +713,146 @@ mod tests {
 
         let err = serde_json::from_value::<Contract>(json!({ "observation": {} })).unwrap_err().to_string();
         assert!(err.contains("minimumWindow"), "{err}");
+    }
+
+    fn case_with_every_option_empty() -> ObservationCase {
+        ObservationCase {
+            id: 7,
+            key: "O-7".into(),
+            title: "Checkout latency".into(),
+            policy: ObservationPolicy::Verify,
+            status: CaseStatus::Proposed,
+            result: None,
+            confidence: None,
+            conclusion: String::new(),
+            contract_version: 0,
+            tasks: vec!["GNE-1".into()],
+            author: "project-manager".into(),
+            created: "2026-10-17T12:00:00.000Z".into(),
+            updated: "2026-10-17T12:00:00.000Z".into(),
+            armed_at: None,
+            observation_started_at: None,
+            observation_completed_at: None,
+            next_evaluation_at: None,
+            next_guardrail_at: None,
+            evaluation_requested: None,
+            failures: 0,
+            last_error: None,
+        }
+    }
+
+    #[test]
+    fn absent_optional_fields_are_left_out_of_the_wire_shape() {
+        let v = serde_json::to_value(case_with_every_option_empty()).unwrap();
+        let obj = v.as_object().unwrap();
+        for key in [
+            "result",
+            "confidence",
+            "armedAt",
+            "observationStartedAt",
+            "observationCompletedAt",
+            "nextEvaluationAt",
+            "nextGuardrailAt",
+            "evaluationRequested",
+            "lastError",
+        ] {
+            assert!(!obj.contains_key(key), "{key} must be absent when None, got {v}");
+        }
+        // Required fields are still written, in camelCase.
+        assert_eq!(obj["key"], "O-7");
+        assert_eq!(obj["contractVersion"], 0);
+        assert_eq!(obj["tasks"], json!(["GNE-1"]));
+        assert_eq!(obj["failures"], 0);
+        // And the object reads back to the same case.
+        let back: ObservationCase = serde_json::from_value(v).unwrap();
+        assert_eq!(back.result, None);
+        assert_eq!(back.last_error, None);
+    }
+
+    #[test]
+    fn present_optional_fields_keep_their_wire_names() {
+        let mut c = case_with_every_option_empty();
+        c.result = Some(CaseResult::Negative);
+        c.confidence = Some(Confidence::High);
+        c.evaluation_requested = Some(EvalTrigger::Final);
+        c.last_error = Some("prometheus: timeout".into());
+        let v = serde_json::to_value(c).unwrap();
+        assert_eq!(v["result"], "negative");
+        assert_eq!(v["confidence"], "high");
+        assert_eq!(v["evaluationRequested"], "final");
+        assert_eq!(v["lastError"], "prometheus: timeout");
+        assert!(v.get("armedAt").is_none());
+    }
+
+    #[test]
+    fn a_deployment_serializes_its_reference_as_ref() {
+        let d = Deployment {
+            id: 1,
+            case_id: 7,
+            reference: "3f2a9c1".into(),
+            environment: String::new(),
+            at: "2026-10-17T12:00:00.000Z".into(),
+            recorded_by: "ops".into(),
+            created: "2026-10-17T12:00:00.000Z".into(),
+        };
+        let v = serde_json::to_value(&d).unwrap();
+        assert_eq!(v["ref"], "3f2a9c1");
+        assert!(v.get("reference").is_none(), "{v}");
+        assert_eq!(v["recordedBy"], "ops");
+        let back: Deployment = serde_json::from_value(json!({
+            "id": 1, "caseId": 7, "ref": "v1.2.0", "environment": "", "at": "x", "recordedBy": "ops", "created": "x"
+        }))
+        .unwrap();
+        assert_eq!(back.reference, "v1.2.0");
+    }
+
+    #[test]
+    fn evidence_leaves_out_the_values_of_a_failed_collection() {
+        let e = Evidence {
+            id: 3,
+            case_id: 7,
+            contract_version: 1,
+            criterion: "error_rate".into(),
+            kind: CriterionKind::Guardrail,
+            phase: EvidencePhase::Observed,
+            source: "prom".into(),
+            query: "up".into(),
+            at: "2026-10-17T12:00:00.000Z".into(),
+            window_start: "2026-10-17T11:00:00.000Z".into(),
+            window_end: "2026-10-17T12:00:00.000Z".into(),
+            value: None,
+            baseline: None,
+            delta_abs: None,
+            delta_rel: None,
+            samples: None,
+            provenance: json!({}),
+            trust: TrustLevel::Measured,
+            error: Some("connection refused".into()),
+            note: String::new(),
+        };
+        let v = serde_json::to_value(e).unwrap();
+        for key in ["value", "baseline", "deltaAbs", "deltaRel", "samples"] {
+            assert!(v.get(key).is_none(), "{key} must be absent: {v}");
+        }
+        assert_eq!(v["error"], "connection refused");
+        assert_eq!(v["windowStart"], "2026-10-17T11:00:00.000Z");
+    }
+
+    #[test]
+    fn a_contract_stores_only_the_keys_it_sets() {
+        let c: Contract = serde_json::from_value(json!({
+            "hypotheses": [{ "id": "p95", "source": "prom", "expect": { "change": "-20%" } }],
+            "observation": { "minimumWindow": "24h" }
+        }))
+        .unwrap();
+        let v = serde_json::to_value(&c).unwrap();
+        let mut keys: Vec<&str> = v["hypotheses"][0].as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["expect", "id", "query", "source"], "{v}");
+        assert!(v["hypotheses"][0].get("samplesQuery").is_none(), "{v}");
+        assert!(v["hypotheses"][0]["expect"].get("max").is_none(), "{v}");
+        assert!(v["observation"].get("baselineWindow").is_none(), "{v}");
+        assert_eq!(v["observation"]["minimumWindow"], "24h");
+        assert_eq!(v["followup"], "manual");
     }
 }
