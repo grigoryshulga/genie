@@ -11,6 +11,12 @@ Requires stable Rust, Node 22.19+, Git, and bubblewrap for Linux sandbox tests. 
 
 Follow the [repository workflow](development/genie-cli.md) to track a task, isolate changes, and publish a PR with successful CI.
 
+## Release flow
+
+Feature work enters the protected `dev` branch through pull requests. Releases go from `dev` to the protected `main` branch through a pull request; direct pushes and force pushes to either branch are blocked.
+
+Before opening a release PR to `main`, increase the shared version in `Cargo.toml` and `package.json`, update `Cargo.lock` and `package-lock.json`, and add a dated section for that version in `CHANGELOG.md`. The required release gate checks that the PR comes from `dev` and that the version files and changelog agree. When the PR is merged, GitHub Actions creates the `v<version>` tag and published GitHub Release using those notes. Docker images are built and published on pushes to `main` only.
+
 ## Application
 
 ```bash

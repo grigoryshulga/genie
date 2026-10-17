@@ -30,6 +30,12 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 
 ## Unreleased
 
+## [0.5.1] — 2026-10-17
+
+### Changed
+
+- Releases now flow from protected `dev` to protected `main` through pull requests. Main release PRs validate aligned Cargo/npm versions and changelog entries; merges publish a GitHub Release and tag. Docker images publish only from pushes to `main`.
+
 ## [0.4.0] — 2026-10-04
 
 ### Added
@@ -108,6 +114,7 @@ Initial release as a local pi extension.
 - The original web server had no account authentication and was intended for localhost or a trusted tailnet.
 - This extension architecture has since been replaced by the standalone server.
 
+[0.5.1]: https://github.com/grigoryshulga/genie/releases/tag/v0.5.1
 [0.5.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.5.0
 [0.4.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.4.0
 [0.3.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.3.0
