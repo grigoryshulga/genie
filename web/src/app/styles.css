@@ -20,6 +20,9 @@
   --accent-2: #7c84f0;
   --accent-text: #9ca3f5;
   --accent-soft: #1a1c2b;
+  --scroll-track: #111217;
+  --scroll-thumb: #343746;
+  --scroll-thumb-hover: #626bd2;
   --amber: #f0a04b;
   --amber-bg: #17130e;
   --amber-line: #4a3620;
@@ -38,6 +41,12 @@
 }
 
 * { box-sizing: border-box; }
+* { scrollbar-color: var(--scroll-thumb) var(--scroll-track); scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: var(--scroll-track); border-radius: 999px; }
+*::-webkit-scrollbar-thumb { min-width: 28px; min-height: 28px; border: 2px solid var(--scroll-track); border-radius: 999px; background: var(--scroll-thumb); }
+*::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+*::-webkit-scrollbar-corner { background: var(--scroll-track); }
 html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
 button, input, textarea, select { font: inherit; color: inherit; }
