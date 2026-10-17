@@ -35,6 +35,7 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 ### Changed
 
 - Releases now flow from protected `dev` to protected `main` through pull requests. Main release PRs validate aligned Cargo/npm versions and changelog entries; merges publish a GitHub Release and tag. Docker images publish only from pushes to `main`.
+- Feature branches merged into `dev` are automatically deleted after the merge.
 
 ## [0.4.0] — 2026-10-04
 

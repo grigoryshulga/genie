@@ -33,8 +33,7 @@ jobs:
           filters: |
             docker:
               - "docker/**"
-              - ".github/workflows/docker.yml"
-              - ".github/workflows/ci.yml"
+              - ".github/workflows/**"
             rust:
               - "crates/**"
               - "Cargo.*"
@@ -45,7 +44,7 @@ jobs:
               - "package.json"
               - "package-lock.json"
               - "web/src/shared/api/generated/**"
-              - ".github/workflows/ci.yml"
+              - ".github/workflows/**"
             web:
               - "web/**"
               - "test/**"
@@ -55,7 +54,7 @@ jobs:
               - "package-lock.json"
               - "tsconfig.json"
               - "steiger.config.ts"
-              - ".github/workflows/ci.yml"
+              - ".github/workflows/**"
 
   lint:
     name: Rust format and lint
