@@ -22,6 +22,12 @@ Built-ins ship with the binary. A role file with a built-in ID overrides its fie
 
 Valid changes are picked up without restarting the server. Invalid edits leave the last valid configuration active and appear in `genie agents check`. Web edits have history and conflict detection.
 
+## Project and task managers
+
+`project-manager` owns project context, intake, and dispatch. `orchestrator` is the manager of one task, including its separate mandatory retrospective. Both use the existing orchestrator process class and default to reading files. See [management lifecycle](project-and-task-managers.md) for scope, clarification routing, and migration.
+
+Until explicitly configured, `project-manager` inherits the configured `orchestrator` model. Existing orchestrator settings apply to task managers. The legacy `planner` role remains the project manager conversation mode, preserving its model and plan format while using shared project memory.
+
 ## Role file
 
 ```markdown

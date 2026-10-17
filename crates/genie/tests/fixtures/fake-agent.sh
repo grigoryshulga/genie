@@ -24,11 +24,22 @@ case "$GENIE_AGENT_ROLE" in
       id=$(grep -o 'New task [A-Z]*-[0-9]*' <<<"$msg" | head -1 | awk '{print $3}')
       g task update --task "$id" -d "Export orders as CSV" -a "file downloads" --merge-strategy "merge by orchestrator"
       g task status ready --task "$id" --note "refined"
-      g team spawn "$id" --template pair --note "small change"
+      g manager dispatch "$id"
+    fi
+    if [[ "$GENIE_AGENT_NAME" == task-manager:* ]] && grep -q "You own this task" <<<"$msg"; then
+      g team spawn "$GENIE_TASK" --template pair --note "small change"
     fi
     if grep -q "verdict" <<<"$msg"; then
       id=$(g task list --status approved | awk 'NR==1{print $1}')
       [ -n "$id" ] && g task status done --task "$id" --note "accepted"
+    fi
+    if [[ "$GENIE_AGENT_NAME" == task-manager:* ]] && grep -q "The task result is closed" <<<"$msg"; then
+      reviewed=()
+      while IFS= read -r source; do
+        g manager source "$source" >/dev/null
+        reviewed+=(--reviewed "$source")
+      done < <(g --json manager sources | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>JSON.parse(s).sources.forEach(x=>console.log(x.id)))')
+      g manager retrospective --text "Reviewed every recorded task run. Delegation and review completed. Proposal: preserve the explicit handoff; verify it on the next task." "${reviewed[@]}"
     fi
     ;;
   executor)

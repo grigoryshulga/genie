@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -90,6 +90,56 @@ CREATE TABLE IF NOT EXISTS history (
   note TEXT
 );
 CREATE INDEX IF NOT EXISTS history_task ON history(task);
+CREATE TABLE IF NOT EXISTS task_managers (
+  task TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+  state TEXT NOT NULL DEFAULT 'active' CHECK(state IN ('active', 'retrospective', 'completed')),
+  brief_version INTEGER NOT NULL DEFAULT 1,
+  created TEXT NOT NULL,
+  finished TEXT,
+  report INTEGER
+);
+CREATE TABLE IF NOT EXISTS task_briefs (
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  author TEXT NOT NULL,
+  created TEXT NOT NULL,
+  PRIMARY KEY(task, version)
+);
+CREATE TABLE IF NOT EXISTS clarifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  brief_version INTEGER NOT NULL,
+  question TEXT NOT NULL,
+  blocking INTEGER NOT NULL DEFAULT 1,
+  state TEXT NOT NULL DEFAULT 'project' CHECK(state IN ('project', 'owner', 'answered', 'obsolete')),
+  answer TEXT,
+  source TEXT,
+  created TEXT NOT NULL,
+  answered TEXT
+);
+CREATE INDEX IF NOT EXISTS clarifications_task ON clarifications(task, state);
+CREATE TABLE IF NOT EXISTS execution_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  agent TEXT NOT NULL,
+  at TEXT NOT NULL,
+  content TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS execution_events_task ON execution_events(task, agent, id);
+CREATE TABLE IF NOT EXISTS task_team_history (
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  team TEXT NOT NULL,
+  PRIMARY KEY(task, team)
+);
+CREATE TABLE IF NOT EXISTS project_memory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  text TEXT NOT NULL,
+  source TEXT NOT NULL,
+  author TEXT NOT NULL,
+  created TEXT NOT NULL,
+  superseded_by INTEGER REFERENCES project_memory(id)
+);
 CREATE TABLE IF NOT EXISTS teams (
   id TEXT PRIMARY KEY,
   task TEXT NOT NULL,

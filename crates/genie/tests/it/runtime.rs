@@ -228,6 +228,10 @@ async fn inbox_to_done_through_the_orchestrator_and_a_team() {
     })
     .await;
     assert_eq!(team.template.as_deref(), Some("pair"));
+    wait_for(&l.app, "mandatory retrospective completed", Duration::from_secs(20), |app| {
+        app.with_tracker("shop", |t| Ok(t.management().manager("G-1")?.is_some_and(|m| m.state == "completed"))).unwrap()
+    })
+    .await;
     // The orchestrator's last turn (the one that accepted the task) may still be finishing.
     wait_for(&l.app, "the last turns to finish", Duration::from_secs(20), |app| {
         app.with_server(|db| db.turns("shop", None, 100)).unwrap().iter().all(|t| t.status != "running")

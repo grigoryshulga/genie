@@ -2,7 +2,7 @@
   <img src="docs/assets/hero.svg" alt="genie: tasks, knowledge and teams of AI agents on one self-hosted server" width="100%">
 </p>
 
-**Genie** is a self-hosted workspace where people and AI agent teams share tasks and knowledge. An orchestrator clarifies requests, assembles a team, and brings decisions back to the responsible person. Each role has its own model, skills, and tool access.
+**Genie** is a self-hosted workspace where people and AI agent teams share tasks and knowledge. A project manager shapes requirements and dispatches ready work within project autonomy. Each task has a manager (orchestrator) that delegates execution, routes clarifications, and publishes a mandatory retrospective after result acceptance. Each role has its own model, skills, and tool access.
 
 [Documentation](https://grigoryshulga.github.io/genie/) · [Quick start](docs/platform/getting-started.md) · [Changelog](CHANGELOG.md)
 
@@ -45,6 +45,7 @@ The web build is embedded in the binary. Follow the [quick start](docs/platform/
 | Need | Read |
 | --- | --- |
 | Understand the workflow | [Tasks and epics](docs/guide/tasks.md) |
+| Understand project and task managers | [Management lifecycle](docs/platform/project-and-task-managers.md) |
 | Configure agents | [Roles and teams](docs/platform/agent-roles-and-teams.md) |
 | Connect a coding agent or terminal | [CLI and MCP](docs/reference/cli.md) |
 | Operate the server | [Operations](docs/platform/operations.md) |

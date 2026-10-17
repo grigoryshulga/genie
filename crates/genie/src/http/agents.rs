@@ -41,7 +41,7 @@ fn own_mailbox(access: &Access) -> ApiResult<(Option<String>, String)> {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only agents have a session inbox"));
     }
     if access.actor.role == Role::Orchestrator {
-        return Ok((None, ORCHESTRATOR.to_string()));
+        return Ok((None, access.actor.name.clone()));
     }
     match &access.agent_team {
         Some(t) => Ok((Some(t.clone()), access.actor.name.clone())),
@@ -62,7 +62,7 @@ struct LeaseBody {
 async fn lease(State(app): State<Arc<App>>, ctx: Ctx, headers: HeaderMap, Json(b): Json<LeaseBody>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     let (team, recipient) = own_mailbox(&access)?;
-    if team.is_none() {
+    if team.is_none() && recipient == ORCHESTRATOR {
         super::console::may_take_orchestrator_mail(&app, &access.project, &headers).await?;
     }
     let slug = access.project.clone();
@@ -125,6 +125,9 @@ async fn mail(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>) -> Api
             app.with_tracker(&slug, |t| t.bus().mail(id).map_err(|_| genie_core::GenieError::not_found(format!("message {id} not found"))))
         })
         .await?;
+    if let Some(task) = &m.task {
+        crate::management::authorize_task(&app, &access.project, &access.actor, task)?;
+    }
     if access.agent && access.actor.role != Role::Orchestrator {
         let me = &access.actor.name;
         if (&m.to != me && &m.from != me) || m.team != access.agent_team {
@@ -153,9 +156,13 @@ async fn ask(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<AskBody>) -> A
     if access.actor.role != Role::Orchestrator && access.agent_team.as_deref() != Some(team.as_str()) {
         return Err(ApiError::new(StatusCode::FORBIDDEN, format!("team {team} is not your team")));
     }
+    if genie_core::management::managed_task(&access.actor.name).is_some() {
+        let task = app.with_tracker(&access.project, |t| Ok(t.bus().get(&team)?.task))?;
+        crate::management::authorize_task(&app, &access.project, &access.actor, &task)?;
+    }
     access.can(if b.to == ORCHESTRATOR { Capability::MailOrchestrator } else { Capability::MailTeam })?;
     let (slug, role) = (access.project.clone(), access.actor.role);
-    let me = if role == Role::Orchestrator { ORCHESTRATOR.to_string() } else { access.actor.name.clone() };
+    let me = access.actor.name.clone();
     let (to, text, t2, me2) = (b.to.clone(), b.text.clone(), team.clone(), me.clone());
     let member = role != Role::Orchestrator;
     let asked = app
@@ -209,7 +216,7 @@ async fn reply(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<ReplyBody>) 
     let access = ctx.access(&app, None).await?;
     access.write()?;
     let (slug, role) = (access.project.clone(), access.actor.role);
-    let me = if role == Role::Orchestrator { ORCHESTRATOR.to_string() } else { access.actor.name.clone() };
+    let me = access.actor.name.clone();
     let sent = app.blocking(move |app| app.with_tracker(&slug, |t| t.bus().reply(&me, role.as_str(), b.id, &b.text))).await?;
     wake(&app);
     Ok(Json(json!(sent)))
@@ -239,10 +246,16 @@ async fn board(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> 
     let live = |key: AgentKey| app.sessions.get(&key).map(|s| json!(s.live()));
     let mut agents = vec![json!({
         "agent": ORCHESTRATOR,
-        "role": "orchestrator",
+        "role": "project-manager",
         "pending": orch_pending,
         "session": live(AgentKey::Orchestrator { project: slug.clone() }),
     })];
+    for m in app.with_tracker(&slug, |t| t.management().managers())? {
+        let name = genie_core::management::manager_name(&m.task);
+        let pending = app.with_tracker(&slug, |t| Ok(t.bus().pending(None, &name)?.len()))?;
+        agents.push(json!({ "agent": name, "name": name, "role": "orchestrator", "task": m.task,
+            "state": m.state, "pending": pending, "session": live(AgentKey::mailbox(&slug, &name)) }));
+    }
     for (team, members) in teams {
         for (m, pending) in members {
             agents.push(json!({
@@ -292,7 +305,9 @@ struct PeekQuery {
 }
 
 fn key_of(project: &str, team: &str, member: &str) -> AgentKey {
-    if member == ORCHESTRATOR || team == ORCHESTRATOR {
+    if genie_core::management::managed_task(member).is_some() {
+        AgentKey::mailbox(project, member)
+    } else if member == ORCHESTRATOR || team == ORCHESTRATOR {
         AgentKey::Orchestrator { project: project.to_string() }
     } else {
         AgentKey::Member { project: project.to_string(), team: team.to_string(), member: member.to_string() }
@@ -323,7 +338,7 @@ async fn usage(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<UsageBody>) 
     app.blocking(move |app| {
         let slug = &access.project;
         let (agent, task) = if access.actor.role == Role::Orchestrator {
-            (ORCHESTRATOR.to_string(), None)
+            (access.actor.name.clone(), genie_core::management::managed_task(&access.actor.name).map(str::to_string))
         } else if let Some(team) = &access.agent_team {
             let task = app.with_tracker(slug, |t| t.bus().get(team)).ok().map(|t| t.task);
             (format!("{team}/{}", access.actor.name), task)
@@ -371,6 +386,10 @@ async fn peek(
     let access = ctx.access(&app, None).await?;
     if access.agent && access.actor.role != Role::Orchestrator && access.agent_team.as_deref() != Some(team.as_str()) {
         return Err(ApiError::new(StatusCode::FORBIDDEN, format!("team {team} is not your team")));
+    }
+    if genie_core::management::managed_task(&access.actor.name).is_some() {
+        let task = app.with_tracker(&access.project, |t| Ok(t.bus().get(&team)?.task))?;
+        crate::management::authorize_task(&app, &access.project, &access.actor, &task)?;
     }
     access.can(Capability::TeamPeek)?;
     let key = key_of(&access.project, &team, &member);
@@ -443,6 +462,11 @@ fn brief(m: &Value) -> Value {
 async fn set_paused(app: Arc<App>, ctx: Ctx, team: String, member: String, paused: bool) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
+    if genie_core::management::managed_task(&access.actor.name).is_some() {
+        let task = app.with_tracker(&access.project, |t| Ok(t.bus().get(&team)?.task))?;
+        crate::management::authorize_task(&app, &access.project, &access.actor, &task)?;
+    }
+
     if access.agent && access.actor.role != Role::Orchestrator {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) pauses an agent"));
     }

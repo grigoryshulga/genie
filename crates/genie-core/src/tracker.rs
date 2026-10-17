@@ -852,7 +852,8 @@ impl Tracker {
             }
             self.history(&r.id, actor, &format!("updated {}", unique.join(", ")), None, None, None)?;
             self.touch(&r.id)?;
-            self.event(events::TASK_UPDATED, &r.id, actor, json!({ "fields": unique }))
+            self.event(events::TASK_UPDATED, &r.id, actor, json!({ "fields": unique }))?;
+            self.management().sync_brief(actor, &r.id)
         })?;
         self.get(&r.id)
     }
@@ -971,6 +972,7 @@ impl Tracker {
                 json!({ "from": from, "to": to, "note": opts.note, "force": opts.force, "action": action.as_ref().map(OwnerAction::kind) }),
             )?;
             let suffix = opts.note.as_deref().filter(|n| !n.is_empty()).map(|n| format!(": {n}")).unwrap_or_default();
+            self.management().on_status(actor, &task.id, to)?;
             self.tell_orchestrator(actor, &task.id, &format!("The owner moved {} from {from} to {to}{suffix}", task.id))
         })?;
         if let Some(parent) = &task.parent {

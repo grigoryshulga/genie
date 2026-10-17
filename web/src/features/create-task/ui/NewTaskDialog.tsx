@@ -16,7 +16,7 @@ const TYPES: [TaskType, string][] = [
 export interface NewTaskPreset {
   type?: TaskType;
   epic?: string;
-  /** Open in the «Обсудить с агентом» mode. */
+  /** Open in the «Обсудить с менеджером» mode. */
   idea?: boolean;
 }
 
@@ -88,7 +88,7 @@ export function NewTaskDialog({
   };
 
   return (
-    <Modal label={talk ? "Разобрать идею с агентом" : isEpic ? "Новый эпик" : "Новая задача"} onClose={onClose}>
+    <Modal label={talk ? "Обсудить с менеджером проекта" : isEpic ? "Новый эпик" : "Новая задача"} onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -100,7 +100,7 @@ export function NewTaskDialog({
         <div className="mh">
           <span className="pill">{meta?.project ?? "genie"}</span>
           <Icon.chevron size={12} />
-          {talk ? "Разобрать идею с агентом" : isEpic ? "Новый эпик во входящие" : "Новая задача во входящие"}
+          {talk ? "Обсудить с менеджером проекта" : isEpic ? "Новый эпик во входящие" : "Новая задача во входящие"}
           <span className="grow" />
           {canTalk && (
             <div role="radiogroup" aria-label="Как завести" className="nt-mode">
@@ -111,7 +111,7 @@ export function NewTaskDialog({
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M2.5 4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H7l-3 2.5v-2.5a2 2 0 0 1-1.5-2z" />
                 </svg>
-                Обсудить с агентом
+                Обсудить с менеджером
               </button>
             </div>
           )}
@@ -195,10 +195,10 @@ export function NewTaskDialog({
         <div className="mf">
           <StatusIcon status={talk ? "refining" : "inbox"} />
           {talk
-            ? "Оркестратор не тронет идею, пока вы не заведёте план"
+            ? "Менеджер проекта поможет подготовить план до запуска задач"
             : isEpic
-              ? "Оркестратор уточнит цель и разобьёт эпик на задачи"
-              : "Оркестратор получит уведомление и уточнит детали в чате"}
+              ? "Менеджер проекта уточнит цель и выделит задачи эпика"
+              : "Менеджер проекта получит задачу и уточнит детали"}
           <span className="grow" />
           <button type="button" className="btn ghost" onClick={onClose}>
             Отмена
