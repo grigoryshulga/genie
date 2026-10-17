@@ -25,7 +25,7 @@ import {
   writeFilter,
 } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
-import { isTyping, plural } from "@/shared/lib";
+import { isTyping } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 import { ContextSearch, MobileNav, TeamsSummary } from "@/widgets/sidebar";
 import { TaskList } from "@/widgets/task-list";
@@ -92,17 +92,10 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main" aria-label="Задачи">
-      <header className="topbar page-toolbar">
-        <span className="muted d-only" style={{ fontSize: 12 }}>
-          {shown.length} {plural(shown.length, "задача", "задачи", "задач")}
-        </span>
-        <span className="grow" />
-        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
-      </header>
-
       <MobileNav />
 
-      <div className="filters" role="toolbar" aria-label="Фильтры и вид">
+      <div className="filters page-toolbar" role="toolbar" aria-label="Фильтры и вид">
+        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
         <FilterMenu label="Статус" value={statusValue} active={preset?.id !== "open"}>
           {STATUS_ORDER.map((s) => (
             <FilterOption key={s} kind="checkbox" checked={f.statuses.includes(s)} onChange={() => set({ statuses: toggle(f.statuses, s) })} hint={countOf([s]) || ""}>
