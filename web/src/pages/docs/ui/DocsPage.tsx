@@ -2,7 +2,7 @@
 // column layout (tree | page | aside, search, editor, empty state), the mobile
 // drawer and the docs change signal.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   BookIcon,
@@ -17,6 +17,7 @@ import {
   useDocsVersion,
   useSaveDoc,
 } from "@/entities/doc";
+import { ContextSearch } from "@/widgets/sidebar";
 import { useToast, Icon } from "@/shared/ui";
 import { DocEditor } from "./DocEditor.tsx";
 import { DocSearchList } from "./DocSearchList.tsx";
@@ -47,7 +48,6 @@ export function DocsPage() {
 
   const [drawer, setDrawer] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState("");
-  const filterRef = useRef<HTMLInputElement>(null);
 
   const setParam = (patch: Record<string, string | null>, replace = false) => {
     const next = new URLSearchParams(sp);
@@ -61,20 +61,6 @@ export function DocsPage() {
   const openPage = (path: string) => setParam({ page: path, new: null });
   const openEditor = (path: string) => navigate(`/docs/edit?page=${encodeURIComponent(path)}`);
   const closeEditor = (path: string) => navigate(`/docs?page=${encodeURIComponent(path)}`);
-
-  // `/` focuses the docs filter/search (the shell's handler only knows the task search).
-  useEffect(() => {
-    if (mode === "edit") return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-      const tag = (event.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      event.preventDefault();
-      filterRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode]);
 
   const markVerified = async () => {
     const page = pageQ.data;
@@ -112,6 +98,7 @@ export function DocsPage() {
 
   return (
     <main className="main docs-main">
+      <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className={`docs-grid ${grid}`}>
         {!empty && (
           <div className="docs-tree-col">
@@ -128,38 +115,6 @@ export function DocsPage() {
               </button>
             </header>
 
-            <label className="docs-filter">
-              <Icon.search size={13} />
-              <input
-                ref={filterRef}
-                value={q}
-                aria-label="Фильтр и поиск по тексту"
-                placeholder={searchMode ? "Поиск по документации" : "Фильтр и поиск по тексту"}
-                onChange={(event) => setParam({ q: event.target.value }, true)}
-                onKeyDown={(event) => {
-                  if (!searchMode) return;
-                  const index = results.findIndex((r) => r.path === activePath);
-                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                    event.preventDefault();
-                    const next = Math.max(0, Math.min(results.length - 1, (index < 0 ? -1 : index) + (event.key === "ArrowDown" ? 1 : -1)));
-                    if (results[next]) setParam({ page: results[next].path }, true);
-                  } else if (event.key === "Enter" && results[index]) {
-                    event.preventDefault();
-                    openPage(results[index].path);
-                  } else if (event.key === "Escape") {
-                    event.preventDefault();
-                    setParam({ q: null });
-                  }
-                }}
-              />
-              {q ? (
-                <button type="button" className="icon-btn" onClick={() => setParam({ q: null })} aria-label="Очистить поиск">
-                  <Icon.close size={12} />
-                </button>
-              ) : (
-                <kbd>/</kbd>
-              )}
-            </label>
 
             {loading ? (
               <div className="doc-tree-empty muted">Загрузка…</div>

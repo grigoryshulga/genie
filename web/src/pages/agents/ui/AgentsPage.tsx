@@ -6,6 +6,8 @@
 import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
+import { matchesSearch } from "@/shared/lib";
+import { ContextSearch } from "@/widgets/sidebar";
 import { Icon } from "@/shared/ui";
 import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
 import "@/shared/ui/agents.css";
@@ -24,15 +26,27 @@ export function AgentsPage() {
   const isAdmin = !!useSession().data?.user.isAdmin;
   const tab = (TABS.some((t) => t.id === sp.get("tab")) ? sp.get("tab") : "roles") as Tab;
   const selected = sp.get("id") ?? undefined;
-  const select = (id: string) => setSp({ tab, id });
-  const c = cfg.data;
+  const update = (nextTab: Tab, id?: string) => setSp((previous) => {
+    const next = new URLSearchParams(previous);
+    next.set("tab", nextTab);
+    if (id) next.set("id", id); else next.delete("id");
+    return next;
+  });
+  const select = (id: string) => update(tab, id);
+  const query = sp.get("q") ?? "";
+  const c = cfg.data ? { ...cfg.data,
+    roles: tab === "roles" ? cfg.data.roles.filter((r) => matchesSearch(query, r.id, r.title, r.description)) : cfg.data.roles,
+    teams: tab === "templates" ? cfg.data.teams.filter((t) => matchesSearch(query, t.id, t.title, t.description)) : cfg.data.teams,
+    skills: tab === "skills" ? cfg.data.skills.filter((s) => matchesSearch(query, s.name, s.description)) : cfg.data.skills,
+    mcp: tab === "mcp" ? cfg.data.mcp.filter((m) => matchesSearch(query, m.id, m.description, ...m.tools?.map((t) => `${t.name} ${t.description ?? ""}`) ?? [])) : cfg.data.mcp,
+  } : undefined;
   return (
     <main className="main agents">
       <header className="topbar">
         <h1>Агенты</h1>
         <div className="seg" role="tablist" aria-label="Разделы">
           {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setSp({ tab: t.id })}>
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => update(t.id)}>
               {t.title}
             </button>
           ))}
@@ -45,6 +59,7 @@ export function AgentsPage() {
           </Link>
         )}
       </header>
+      <ContextSearch className="mobile-context-search mobile-search-bar" />
       {!c ? (
         <div className="pane-empty">{cfg.error ? cfg.error.message : "Загрузка…"}</div>
       ) : tab === "roles" ? (

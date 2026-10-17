@@ -9,6 +9,8 @@ status: current
 
 Open `/settings`, use the sidebar gear, or press `G` then `S` for personal settings only: account, password, Telegram subscription, provider keys, and CLI/MCP tokens.
 
+The working sidebar places contextual search above the accent-colored New task action. Search filters the current board, task list, epics, documentation, proposals, agent catalog tab, automations, notifications, or statistics projects. Queries use `?q=` and preserve other filters and selections. On detail pages, search opens the task list. `/` focuses search; Escape clears it. The compact sidebar expands when its search icon is selected. Mobile layouts retain a search field in the page toolbar.
+
 The working sidebar has a separate **Management** group:
 
 - **Project management** (`/manage/project/general`): project and server administrators only. Its sidebar contains General settings, Repositories and environment, Tools, Access and roles, Communication channels, and Knowledge base.

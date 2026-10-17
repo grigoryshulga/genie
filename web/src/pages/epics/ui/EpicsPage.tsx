@@ -1,19 +1,21 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { EpicIcon, EpicProgress, PRIORITY_NAME, PriorityIcon, STATUS_NAME, StatusIcon, type TaskSummary, useTask, useTasks } from "@/entities/task";
 import { type Team, useTeamMap } from "@/entities/team";
 import type { NewTaskPreset } from "@/features/create-task";
 import { plural, timeAgo, useTick } from "@/shared/lib";
+import { ContextSearch } from "@/widgets/sidebar";
 import { Icon } from "@/shared/ui";
 
 const closed = (t: TaskSummary) => t.status === "done" || t.status === "cancelled";
 
-export function EpicsPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }) {
+export function EpicsPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset) => void; searchRef: React.RefObject<HTMLInputElement | null> }) {
   useTick();
   const tasksQ = useTasks();
   const teams = useTeamMap();
   const [tab, setTab] = useState<"open" | "closed">("open");
-  const [query, setQuery] = useState("");
+  const [params] = useSearchParams();
+  const query = params.get("q") ?? "";
   const all = tasksQ.data ?? [];
   const epics = all.filter((t) => t.type === "epic");
   const open = epics.filter((e) => !closed(e));
@@ -33,10 +35,7 @@ export function EpicsPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }
           </button>
         </div>
         <span className="grow" />
-        <label className="search">
-          <Icon.search />
-          <input type="search" placeholder="Поиск эпиков" aria-label="Поиск эпиков" value={query} onChange={(e) => setQuery(e.target.value)} />
-        </label>
+        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
       </header>
 
       <div className="scroll">

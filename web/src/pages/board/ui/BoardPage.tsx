@@ -6,12 +6,12 @@ import { useTeamMap } from "@/entities/team";
 import { plural, readPref, writePref } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 import { Board } from "@/widgets/board";
-import { MobileNav, TeamsSummary } from "@/widgets/sidebar";
+import { ContextSearch, MobileNav, TeamsSummary } from "@/widgets/sidebar";
 
 /** «Доска»: the project's Kanban board, narrowed by filters («Мои задачи», an epic). */
 export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
-  const [query, setQuery] = useState("");
+  const query = sp.get("q") ?? "";
   const [showDone, setShowDone] = useState(() => readPref<string>("genie.showDone", "0") === "1");
   const [mineOnly, setMineOnly] = useState(() => readPref<string>("genie.board.mine", "0") === "1");
   const tasksQ = useTasks();
@@ -72,11 +72,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
           {openCount} {plural(openCount, "задача", "задачи", "задач")}
         </span>
         <span className="grow" />
-        <label className="search">
-          <Icon.search />
-          <input ref={searchRef} type="search" placeholder="Поиск на доске" aria-label="Поиск на доске" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())} />
-          <kbd className="d-only">/</kbd>
-        </label>
+        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
       </div>
 
       {tasksQ.isPending ? (

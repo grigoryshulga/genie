@@ -62,6 +62,16 @@ function Shell() {
     writePref("sidebar-compact", String(next));
   }, [sidebarCompact]);
   const searchRef = useRef<HTMLInputElement>(null);
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
+  const focusSearch = useCallback(() => {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      (mobileSearchRef.current ?? document.querySelector<HTMLInputElement>(".mobile-context-search input"))?.focus();
+      return;
+    }
+    setSidebarCompact(false);
+    writePref("sidebar-compact", "false");
+    requestAnimationFrame(() => searchRef.current?.focus());
+  }, []);
   const teams = useTeamMap();
   const tasks = useTasks().data;
   const teamRoute = location.pathname.startsWith("/team/");
@@ -141,20 +151,20 @@ function Shell() {
         newTask();
       } else if (e.key === "/") {
         e.preventDefault();
-        searchRef.current?.focus();
+        focusSearch();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dialog, openTaskId, closeTask, actions, navigate, newTask]);
+  }, [dialog, openTaskId, closeTask, actions, navigate, newTask, focusSearch]);
 
   const agentRoute = /^\/team\/[^/]+\/[^/]+/.test(location.pathname);
   const cls = `${agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app"}${sidebarCompact ? " sidebar-compact" : ""}`;
   return (
     <div className={cls}>
-      <Sidebar onNew={() => newTask()} online={online} compact={sidebarCompact} onToggleCompact={toggleSidebar} />
+      <Sidebar onNew={() => newTask()} online={online} compact={sidebarCompact} onToggleCompact={toggleSidebar} searchRef={searchRef} onOpenSearch={focusSearch} />
       <Suspense fallback={<PageFallback />}>
-        <Outlet context={{ onNew: newTask, searchRef }} />
+        <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
       </Suspense>
       {openTaskId && (
         <Suspense fallback={null}>
@@ -221,7 +231,8 @@ function LegacyView() {
 }
 
 function EpicsRoute() {
-  return <EpicsPage onNew={useOutletContext<ShellContext>().onNew} />;
+  const { onNew, searchRef } = useOutletContext<ShellContext>();
+  return <EpicsPage onNew={onNew} searchRef={searchRef} />;
 }
 
 function EpicRoute() {

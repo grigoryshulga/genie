@@ -1,3 +1,4 @@
+import { ContextSearch } from "./ContextSearch.tsx";
 import { NavLink, useLocation } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { BookIcon, useDocsTree } from "@/entities/doc";
@@ -9,7 +10,7 @@ import { useTeams } from "@/entities/team";
 import { canManageProject, timeAgo, useTick } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 
-export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: () => void; online: boolean; compact: boolean; onToggleCompact: () => void }) {
+export function Sidebar({ onNew, online, compact, onToggleCompact, searchRef, onOpenSearch }: { onNew: () => void; online: boolean; compact: boolean; onToggleCompact: () => void; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void }) {
   useTick();
   const meta = useMeta().data;
   const session = useSession().data;
@@ -69,6 +70,8 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
           </>
         )}
       </div>
+
+      <ContextSearch inputRef={searchRef} compact={compact} onExpand={onOpenSearch} />
 
       <button type="button" className="new-task" onClick={onNew} title="Новая задача">
         <Icon.plus size={14} />

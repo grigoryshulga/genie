@@ -6,7 +6,7 @@ import { ProvidersAdminSection } from "./ProvidersAdmin.tsx";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useState } from "react";
-import { Link, Navigate, useParams } from "react-router";
+import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import {
   AUTONOMY,
   DOCTOR_AREA,
@@ -32,7 +32,8 @@ import {
   useVaultSync,
 } from "@/entities/project";
 import { useSession } from "@/entities/session";
-import { settingsTabHref } from "@/shared/lib";
+import { ContextSearch } from "@/widgets/sidebar";
+import { matchesSearch, settingsTabHref } from "@/shared/lib";
 import { request } from "@/shared/api";
 import { BarChart, ConfirmDialog, Icon, Menu, useAct, useToast } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
@@ -83,6 +84,7 @@ export function ServerStatisticsPage() {
       <header className="topbar">
         <h1>Статистика</h1>
       </header>
+      <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="scroll">
         <Statistics />
       </div>
@@ -201,7 +203,8 @@ function Statistics() {
   const [only, setOnly] = useState("");
   const [view, setView] = useState<"work" | "cost">("work");
   const stats = useStats(days);
-  const all = stats.data?.projects ?? [];
+  const [params] = useSearchParams();
+  const all = (stats.data?.projects ?? []).filter((p) => matchesSearch(params.get("q") ?? "", p.project, p.name));
   const list = only ? all.filter((p) => p.project === only) : all;
   const t = statsTotals(list);
   const series = sumDays(list);

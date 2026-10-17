@@ -27,7 +27,7 @@ import {
 import { useTeamMap } from "@/entities/team";
 import { isTyping, plural } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
-import { MobileNav, TeamsSummary } from "@/widgets/sidebar";
+import { ContextSearch, MobileNav, TeamsSummary } from "@/widgets/sidebar";
 import { TaskList } from "@/widgets/task-list";
 import { FilterMenu, FilterOption } from "./FilterMenu.tsx";
 
@@ -97,19 +97,7 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
           {shown.length} {plural(shown.length, "задача", "задачи", "задач")}
         </span>
         <span className="grow" />
-        <label className="search wide">
-          <Icon.search />
-          <input
-            ref={searchRef}
-            type="search"
-            placeholder="Название, номер, метка или вопрос"
-            aria-label="Поиск задач"
-            value={f.q}
-            onChange={(e) => set({ q: e.target.value })}
-            onKeyDown={(e) => e.key === "Escape" && (set({ q: "" }), e.currentTarget.blur())}
-          />
-          <kbd className="d-only">/</kbd>
-        </label>
+        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
       </header>
 
       <MobileNav />

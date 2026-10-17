@@ -1112,3 +1112,15 @@ body:has(.auth-page) { overflow: auto; }
   .tp-tabs a { min-height: 40px; }
   .tp-rail .epic-box .goal { display: none; }
 }
+
+/* One contextual search above the sidebar's primary action. */
+.sidebar .context-search { width: 100%; box-sizing: border-box; flex: none; }
+.sidebar .context-search input { width: 0; }
+.sidebar .new-task { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.sidebar .new-task:hover { filter: brightness(1.08); }
+.sidebar .new-task kbd { color: inherit; }
+.sidebar-search-toggle { flex: none; }
+.mobile-context-search { display: none; }
+@media (max-width: 900px) { .mobile-context-search { display: flex; } }
+
+@media (max-width: 900px) { .mobile-search-bar { width: auto; flex: none; margin: 8px 16px; } }
