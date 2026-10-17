@@ -36,8 +36,20 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
   return (
     <nav className={`sidebar${compact ? " compact" : ""}`} aria-label="Навигация">
       <div className={`project${many ? " switch" : ""}`} title={project ? `${project.name} · ${project.hasRepo ? "проект с репозиторием кода" : "проект без кода"}` : "genie"}>
-        <span className="logo-mark">
-          <Icon.mark size={15} />
+        <span className="sidebar-brand">
+          <span className="logo-mark" aria-hidden="true">
+            <Icon.mark size={15} />
+          </span>
+          <button
+            type="button"
+            className="icon-btn sidebar-toggle"
+            aria-label={compact ? "Развернуть меню" : "Свернуть меню"}
+            aria-pressed={compact}
+            title={compact ? "Развернуть меню" : "Свернуть меню"}
+            onClick={onToggleCompact}
+          >
+            <Icon.chevron size={14} />
+          </button>
         </span>
         <span className="txt">
           <span className="name">{project?.name ?? meta?.project ?? "genie"}</span>
@@ -180,9 +192,6 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
             <Icon.logout size={14} />
           </button>
         )}
-        <button type="button" className="icon-btn sidebar-toggle" aria-label={compact ? "Развернуть меню" : "Свернуть меню"} title={compact ? "Развернуть меню" : "Свернуть меню"} onClick={onToggleCompact}>
-          <Icon.chevron size={14} />
-        </button>
       </div>
     </nav>
   );
