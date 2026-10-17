@@ -26,6 +26,7 @@ mod mcp_server;
 mod model_prices;
 mod ops;
 mod outcome;
+mod project_tools;
 mod providers;
 mod repos;
 mod runtime;

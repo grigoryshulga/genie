@@ -7,8 +7,9 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAutomations, useNotifications, useProposal, useProposals } from "@/entities/platform";
 import { request } from "@/shared/api";
-import { timeAgo, useTick } from "@/shared/lib";
+import { matchesSearch, timeAgo, useTick } from "@/shared/lib";
 import { Icon, Markdown, Modal, useRefreshingAct, useToast } from "@/shared/ui";
+import { ContextSearch } from "@/widgets/sidebar";
 import { Runs } from "@/widgets/runs";
 
 // ------------------------------------------------------------------ answer page (public)
@@ -118,7 +119,8 @@ export function NotificationsPage() {
   const q = useNotifications();
   const act = useRefreshingAct();
   const navigate = useNavigate();
-  const items = q.data?.items ?? [];
+  const [search] = useSearchParams();
+  const items = (q.data?.items ?? []).filter((n) => matchesSearch(search.get("q") ?? "", n.title, n.body));
   const days: { day: string; items: Notification[] }[] = [];
   for (const n of items) {
     const day = dayName(n.created);
@@ -137,8 +139,9 @@ export function NotificationsPage() {
           </button>
         )}
       </header>
+      <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="scroll">
-        {!items.length && <div className="empty">{q.isPending ? "Загрузка…" : "Уведомлений нет"}</div>}
+        {!items.length && <div className="empty">{q.isPending ? "Загрузка…" : search.get("q") ? "Ничего не найдено" : "Уведомлений нет"}</div>}
         {items.length > 0 && (
           <div className="notifs">
             {days.map((d) => (
@@ -191,7 +194,13 @@ export function AutomationsPage() {
   const [sp, setSp] = useSearchParams();
   const act = useRefreshingAct();
   const selected = Number(sp.get("rule") ?? "") || undefined;
-  const current = rules.data?.find((r) => r.id === selected);
+  const filtered = rules.data?.filter((r) => matchesSearch(sp.get("q") ?? "", r.name, describeTrigger(r.spec, r.enabled, r.dryRun)));
+  const current = filtered?.find((r) => r.id === selected);
+  const selectRule = (id?: number) => setSp((previous) => {
+    const next = new URLSearchParams(previous);
+    if (id) next.set("rule", String(id)); else next.delete("rule");
+    return next;
+  });
   const runNow = (rule: Automation) => void act(() => request("POST", `/api/automations/${rule.id}/run`, {}), "Запущено");
   return (
     <main className="main">
@@ -206,10 +215,11 @@ export function AutomationsPage() {
           </button>
         )}
       </header>
+      <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="split">
         <section className="split-list" aria-label="Правила">
           {rules.data?.length ? (
-            <button type="button" className={`pick${current ? "" : " on"}`} onClick={() => setSp({})}>
+            <button type="button" className={`pick${current ? "" : " on"}`} onClick={() => selectRule()}>
               <span className="t">
                 <Icon.list size={13} />
                 <span>Все правила · общий журнал</span>
@@ -217,8 +227,8 @@ export function AutomationsPage() {
               <span className="s">запуски всех правил подряд, с отменой</span>
             </button>
           ) : null}
-          {rules.data?.map((r) => (
-            <button type="button" key={r.id} className={`pick${r.id === current?.id ? " on" : ""}`} onClick={() => setSp({ rule: String(r.id) })}>
+          {filtered?.map((r) => (
+            <button type="button" key={r.id} className={`pick${r.id === current?.id ? " on" : ""}`} onClick={() => selectRule(r.id)}>
               <span className="t">
                 <span className={`state-dot ${r.enabled ? "ok" : "off"}`} />
                 <span>{r.name}</span>
@@ -229,6 +239,7 @@ export function AutomationsPage() {
               </span>
             </button>
           ))}
+          {rules.isSuccess && rules.data.length > 0 && !filtered?.length && <p className="muted" style={{ padding: "4px 14px" }}>Ничего не найдено</p>}
           {rules.isSuccess && !rules.data.length && (
             <p className="muted" style={{ margin: 0, padding: "4px 14px 8px" }}>
               Правил пока нет — их добавляют в настройках проекта, на разделе «Автоматизации».
@@ -273,7 +284,8 @@ export function ProposalsPage() {
   useTick();
   const [sp, setSp] = useSearchParams();
   const list = useProposals();
-  const selected = Number(sp.get("proposal") ?? "") || list.data?.[0]?.id;
+  const filtered = list.data?.filter((p) => matchesSearch(sp.get("q") ?? "", p.path, p.author, p.task));
+  const selected = Number(sp.get("proposal") ?? "") || filtered?.[0]?.id;
   const one = useProposal(selected);
   const act = useRefreshingAct();
   const decide = (verb: "approve" | "reject", force = false) =>
@@ -292,11 +304,13 @@ export function ProposalsPage() {
           К документации
         </Link>
       </header>
+      <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="split narrow">
         <section className="split-list" aria-label="Открытые предложения">
           {list.isSuccess && !list.data.length && <p className="muted" style={{ margin: 0, padding: "4px 14px" }}>Открытых предложений нет.</p>}
-          {list.data?.map((x) => (
-            <button type="button" key={x.id} className={`pick plain${selected === x.id ? " on" : ""}`} onClick={() => setSp({ proposal: String(x.id) })}>
+          {list.isSuccess && list.data.length > 0 && !filtered?.length && <p className="muted" style={{ padding: "4px 14px" }}>Ничего не найдено</p>}
+          {filtered?.map((x) => (
+            <button type="button" key={x.id} className={`pick plain${selected === x.id ? " on" : ""}`} onClick={() => setSp((previous) => { const next = new URLSearchParams(previous); next.set("proposal", String(x.id)); return next; })}>
               <span className="t">
                 <span>{pageTitle(x.path)}</span>
               </span>

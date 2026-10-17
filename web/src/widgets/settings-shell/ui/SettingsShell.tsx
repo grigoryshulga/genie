@@ -1,6 +1,4 @@
-// The settings mode (PD21): its own layout — a section menu by the session's
-// rights, the same project switcher as the work sidebar, and a way back to the
-// last work route.
+// Profile and administration use separate menus and share the project switcher.
 
 import { Suspense } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
@@ -15,19 +13,30 @@ export function SettingsShell() {
   const { pathname } = useLocation();
   const project = session?.projects.find((p) => p.slug === session.project);
   const many = (session?.projects.length ?? 0) > 1;
-  // The agents editor lives under /settings/server too — the menu keeps the two apart.
-  const agentsRoute = /^\/settings\/server\/(roles|templates|skills|history)/.test(pathname);
-  const managementRoute = pathname.startsWith("/settings/server") && !agentsRoute;
-  const projectRoute = pathname.startsWith("/settings/project") && !pathname.startsWith("/settings/project/automations");
+  const projectMode = pathname.startsWith("/manage/project");
+  const serverMode = pathname.startsWith("/manage/server");
+  const title = projectMode ? "Управление проектом" : serverMode ? "Глобальные настройки" : "Настройки";
+  const items = projectMode ? [
+    ["general", "Общие настройки"], ["repos", "Репозитории и окружение"],
+    ["tools", "Инструменты"], ["people", "Доступ и роли"],
+    ["channels", "Каналы связи"], ["knowledge", "База знаний"],
+  ] : serverMode ? [
+    ["projects", "Проекты"], ["accounts", "Учётные записи"],
+    ["providers", "Провайдеры"], ["tools", "Инструменты"],
+  ] : [
+    ["account", "Аккаунт"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
+    ["keys", "Провайдеры и ключи"], ["tokens", "Токены CLI и MCP"],
+  ];
+  const base = projectMode ? "/manage/project" : serverMode ? "/manage/server" : "/settings/me";
   return (
     <div className="app settings-mode">
-      <nav className="sidebar" aria-label="Настройки">
+      <nav className="sidebar" aria-label={title}>
         <div className={`project${many ? " switch" : ""}`} title={project ? (project.hasRepo ? "Проект с репозиторием кода" : "Проект без кода") : undefined}>
           <span className="logo-mark">
             <Icon.mark size={15} />
           </span>
           <span className="txt">
-            <span className="name">Настройки</span>
+            <span className="name">{title}</span>
             <span className="sub">{project?.name ?? "genie"}</span>
           </span>
           {many && session && (
@@ -53,48 +62,13 @@ export function SettingsShell() {
         </div>
 
         <div className="nav-group">
-          <span className="nav-label">Настройки</span>
-          <NavLink to="/settings/me/account" className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/settings/me") ? " on" : ""}`}>
-            <Icon.user size={15} />
-            <span className="grow">Личное</span>
-          </NavLink>
+          <span className="nav-label">{title}</span>
+          {items.map(([id, label]) => (
+            <NavLink key={id} to={`${base}/${id}`} className={({ isActive }) => `nav-item${isActive || (id === "tools" && /\/(roles|templates|skills|history|automations|decisions|health|vault)$/.test(pathname)) ? " on" : ""}`}>
+              <span className="grow">{label}</span>
+            </NavLink>
+          ))}
         </div>
-
-        {(project || session?.user.isAdmin) && (
-          <div className="nav-group">
-            <span className="nav-label">Администрирование</span>
-            {project && (
-              <NavLink to="/settings/project/general" className={({ isActive }) => `nav-item${isActive || projectRoute ? " on" : ""}`}>
-                <Icon.folder size={15} />
-                <span className="grow">Настройки проекта</span>
-              </NavLink>
-            )}
-            {project && (
-              <NavLink to="/settings/project/automations" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
-                <Icon.bolt size={15} />
-                <span className="grow">Автоматизации</span>
-              </NavLink>
-            )}
-            {session?.user.isAdmin && (
-              <NavLink to="/settings/server/health" className={({ isActive }) => `nav-item${isActive || managementRoute ? " on" : ""}`}>
-                <Icon.server size={15} />
-                <span className="grow">Управление</span>
-              </NavLink>
-            )}
-            {session?.user.isAdmin && (
-              <NavLink to="/settings/stats" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
-                <Icon.chart size={15} />
-                <span className="grow">Статистика</span>
-              </NavLink>
-            )}
-            {session?.user.isAdmin && (
-              <NavLink to="/settings/server/roles" className={({ isActive }) => `nav-item${isActive || agentsRoute ? " on" : ""}`}>
-                <Icon.userPlus size={15} />
-                <span className="grow">Агенты</span>
-              </NavLink>
-            )}
-          </div>
-        )}
 
         <span className="grow" />
       </nav>

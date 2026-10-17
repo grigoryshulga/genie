@@ -1046,8 +1046,15 @@ pub(crate) fn policy(agents: &AgentConfig, project: &str, role: &RoleDef, files:
 
 /// The kit of an agent working in `cwd`.
 pub(crate) fn kit(app: &App, agents: &AgentConfig, project: &str, role: &RoleDef, files: FileAccess, cwd: &Path) -> Kit {
-    let mut skills: Vec<String> =
-        role.skills.iter().flatten().filter_map(|name| agents.skills.get(name)).map(|s| s.dir.to_string_lossy().into_owned()).collect();
+    let selected = agents.project_tools.get(project).and_then(|t| t.skills.as_ref());
+    let names = role.skills.as_ref().or(selected);
+    let mut skills: Vec<String> = names
+        .iter()
+        .flat_map(|v| v.iter())
+        .filter(|name| selected.is_none_or(|ids| ids.contains(name)))
+        .filter_map(|name| agents.skills.get(name))
+        .map(|s| s.dir.to_string_lossy().into_owned())
+        .collect();
     skills.extend(repo_skill_dirs(cwd).into_iter().map(|d| d.to_string_lossy().into_owned()));
     let mut codemode = false;
     // A direct connection's `${env:…}` resolves with the values the server keeps.
@@ -1083,7 +1090,7 @@ pub(crate) fn kit(app: &App, agents: &AgentConfig, project: &str, role: &RoleDef
     // switch it on for every role otherwise.
     Kit {
         skills,
-        limit_skills: role.skills.is_some(),
+        limit_skills: role.skills.is_some() || selected.is_some(),
         mcp: json!({ "mcpServers": servers, "autoEnableCodemode": codemode }),
         policy: policy(agents, project, role, files),
     }
@@ -2738,6 +2745,38 @@ pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppRes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_skills_intersect_role_grants_and_preserve_repository_skills() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+        cfg.runtime.enabled = false;
+        let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+        let mut agents = (*app.agents()).clone();
+        for name in ["review", "deploy"] {
+            agents.skills.insert(
+                name.into(),
+                crate::agent_config::SkillDef { name: name.into(), description: String::new(), dir: dir.path().join(name) },
+            );
+        }
+        let mut role = agents.roles["executor"].clone();
+        role.skills = Some(vec!["review".into()]);
+        agents
+            .project_tools
+            .insert("shop".into(), crate::agent_config::ProjectTools { skills: Some(vec!["deploy".into()]), mcp: Some(Vec::new()) });
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(repo.join(".pi/skills")).unwrap();
+        let result = kit(&app, &agents, "shop", &role, role.files, &repo);
+        assert!(result.limit_skills);
+        assert!(!result.skills.contains(&dir.path().join("deploy").to_string_lossy().into_owned()));
+        assert!(!result.skills.contains(&dir.path().join("review").to_string_lossy().into_owned()));
+        assert!(result.skills.contains(&repo.join(".pi/skills").to_string_lossy().into_owned()));
+        role.skills = None;
+        let result = kit(&app, &agents, "shop", &role, role.files, &repo);
+        assert!(result.skills.contains(&dir.path().join("deploy").to_string_lossy().into_owned()));
+        agents.project_tools.get_mut("shop").unwrap().skills = Some(Vec::new());
+        assert_eq!(kit(&app, &agents, "shop", &role, role.files, &repo).skills.len(), 1);
+    }
 
     #[test]
     fn the_heap_cap_joins_node_options_without_replacing_them() {

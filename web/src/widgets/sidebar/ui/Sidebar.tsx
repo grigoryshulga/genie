@@ -1,3 +1,4 @@
+import { ContextSearch } from "./ContextSearch.tsx";
 import { NavLink, useLocation } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { BookIcon, useDocsTree } from "@/entities/doc";
@@ -6,10 +7,10 @@ import { useLogout, useSession, useSwitchProject } from "@/entities/session";
 import { useNotifications, useProposals } from "@/entities/platform";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
-import { timeAgo, useTick } from "@/shared/lib";
+import { canManageProject, timeAgo, useTick } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 
-export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: () => void; online: boolean; compact: boolean; onToggleCompact: () => void }) {
+export function Sidebar({ onNew, online, compact, onToggleCompact, searchRef, onOpenSearch }: { onNew: () => void; online: boolean; compact: boolean; onToggleCompact: () => void; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void }) {
   useTick();
   const meta = useMeta().data;
   const session = useSession().data;
@@ -36,8 +37,20 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
   return (
     <nav className={`sidebar${compact ? " compact" : ""}`} aria-label="Навигация">
       <div className={`project${many ? " switch" : ""}`} title={project ? `${project.name} · ${project.hasRepo ? "проект с репозиторием кода" : "проект без кода"}` : "genie"}>
-        <span className="logo-mark">
-          <Icon.mark size={15} />
+        <span className="sidebar-brand">
+          <span className="logo-mark" aria-hidden="true">
+            <Icon.mark size={15} />
+          </span>
+          <button
+            type="button"
+            className="icon-btn sidebar-toggle"
+            aria-label={compact ? "Развернуть меню" : "Свернуть меню"}
+            aria-pressed={compact}
+            title={compact ? "Развернуть меню" : "Свернуть меню"}
+            onClick={onToggleCompact}
+          >
+            <Icon.chevron size={14} />
+          </button>
         </span>
         <span className="txt">
           <span className="name">{project?.name ?? meta?.project ?? "genie"}</span>
@@ -57,6 +70,8 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
           </>
         )}
       </div>
+
+      <ContextSearch inputRef={searchRef} compact={compact} onExpand={onOpenSearch} />
 
       <button type="button" className="new-task" onClick={onNew} title="Новая задача">
         <Icon.plus size={14} />
@@ -125,6 +140,17 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
         </NavLink>
       </div>
 
+      {canManageProject(!!session?.user.isAdmin, project?.role) && (
+        <div className="nav-group">
+          <span className="nav-label">Управление</span>
+          <NavLink to="/manage/project/general" className="nav-item"><Icon.folder size={15} /><span className="grow">Управление проектом</span></NavLink>
+          {session?.user.isAdmin && <>
+            <NavLink to="/manage/server/projects" className="nav-item"><Icon.server size={15} /><span className="grow">Глобальные настройки</span></NavLink>
+            <NavLink to="/statistics" className="nav-item"><Icon.chart size={15} /><span className="grow">Статистика</span></NavLink>
+          </>}
+        </div>
+      )}
+
       {teams.length > 0 && (
         <div className="nav-group">
           <span className="nav-label">Работают сейчас</span>
@@ -169,9 +195,6 @@ export function Sidebar({ onNew, online, compact, onToggleCompact }: { onNew: ()
             <Icon.logout size={14} />
           </button>
         )}
-        <button type="button" className="icon-btn sidebar-toggle" aria-label={compact ? "Развернуть меню" : "Свернуть меню"} title={compact ? "Развернуть меню" : "Свернуть меню"} onClick={onToggleCompact}>
-          <Icon.chevron size={14} />
-        </button>
       </div>
     </nav>
   );

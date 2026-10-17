@@ -25,15 +25,14 @@ import {
   writeFilter,
 } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
-import type { NewTaskPreset } from "@/features/create-task";
 import { isTyping, plural } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
-import { MobileNav, TeamsSummary } from "@/widgets/sidebar";
+import { ContextSearch, MobileNav, TeamsSummary } from "@/widgets/sidebar";
 import { TaskList } from "@/widgets/task-list";
 import { FilterMenu, FilterOption } from "./FilterMenu.tsx";
 
 /** «Задачи»: the project's tasks as a list, with search and filters by status, readiness, time and more. */
-export function TasksPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset) => void; searchRef: React.RefObject<HTMLInputElement | null> }) {
+export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
   const [focused, setFocused] = useState<string | undefined>();
   const tasksQ = useTasks();
@@ -56,7 +55,6 @@ export function TasksPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
     [shown, f.grouped],
   );
   const countOf = (statuses: Status[]) => rest.filter((t) => statuses.includes(t.status)).length;
-  const newTask = () => onNew(f.epic && f.epic !== "none" ? { epic: f.epic } : undefined);
 
   const open = (id: string) => {
     const next = new URLSearchParams(sp);
@@ -93,30 +91,13 @@ export function TasksPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
   const epicName = f.epic === "none" ? "без эпика" : f.epic ? f.epic : "любой";
 
   return (
-    <main className="main">
-      <header className="topbar">
-        <h1>Задачи</h1>
+    <main className="main" aria-label="Задачи">
+      <header className="topbar page-toolbar">
         <span className="muted d-only" style={{ fontSize: 12 }}>
           {shown.length} {plural(shown.length, "задача", "задачи", "задач")}
         </span>
         <span className="grow" />
-        <label className="search wide">
-          <Icon.search />
-          <input
-            ref={searchRef}
-            type="search"
-            placeholder="Название, номер, метка или вопрос"
-            aria-label="Поиск задач"
-            value={f.q}
-            onChange={(e) => set({ q: e.target.value })}
-            onKeyDown={(e) => e.key === "Escape" && (set({ q: "" }), e.currentTarget.blur())}
-          />
-          <kbd className="d-only">/</kbd>
-        </label>
-        <button type="button" className="btn primary" onClick={newTask}>
-          <Icon.plus size={13} />
-          <span className="d-only">Новая задача</span>
-        </button>
+        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
       </header>
 
       <MobileNav />

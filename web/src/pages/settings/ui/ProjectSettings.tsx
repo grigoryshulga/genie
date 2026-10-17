@@ -1,9 +1,7 @@
-// The project's settings, a tab each: general (name, where results live), how agents
-// work (the orchestrator, the default integration), repositories, people and invitations.
-// Admins of the project change them, the rest see them.
+// Project administration; its route guard admits project and server administrators.
 
 import { useState } from "react";
-import { Link, NavLink, useParams } from "react-router";
+import { Link, Navigate, useParams } from "react-router";
 import {
   AUTONOMY,
   type Membership,
@@ -23,11 +21,14 @@ import {
 } from "@/entities/project";
 import { useRepos } from "@/entities/repo";
 import { useSession } from "@/entities/session";
+import { settingsTabHref } from "@/shared/lib";
 import { request } from "@/shared/api";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 import { TelegramSettings } from "./TelegramSettings.tsx";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
-import { JevSettings } from "./JevSettings.tsx";
+import { SettingsTabs, useSettingsTab } from "./SettingsTabs.tsx";
+import { ProjectToolsSection } from "./ProjectTools.tsx";
+import { FeatureRequest } from "./FeatureRequest.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
 
@@ -37,49 +38,40 @@ export function ProjectSettingsPage() {
   const session = useSession().data;
   const projects = useProjects();
   const { section = "general" } = useParams();
+  const tab = useSettingsTab("project", section);
   const project = projects.data?.find((p) => p.slug === session?.project);
   const local = session?.mode === "local";
   const admin = !!project && (project.role === "admin" || project.role === "owner");
-  const repos = useRepos().data?.length ?? 0;
-  const members = useMembers(project && !local ? project.slug : "").data?.length ?? 0;
-  const tabs = [
-    { id: "general", title: "Общие" },
-    { id: "agents", title: "Работа агентов" },
-    { id: "decisions", title: "Решения с Jev" },
-    { id: "repos", title: "Репозитории", n: repos },
-    { id: "people", title: "Люди", n: members },
-    { id: "telegram", title: "Telegram" },
-  ];
+  if (section === "tools" && tab === "automations") return <Navigate to={settingsTabHref("project", "tools", tab)} replace />;
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Настройки проекта</h1>
+        <h1>Управление проектом</h1>
         {project && (
           <span className="sub">
             {project.name} · {PROJECT_ROLE_NAME[project.role]}
           </span>
         )}
-        <nav className="st-tabs" aria-label="Разделы настроек проекта">
-          {tabs.map((t) => (
-            <NavLink key={t.id} to={`/settings/project/${t.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
-              {t.title}
-              {!!t.n && <span className="n">{t.n}</span>}
-            </NavLink>
-          ))}
-        </nav>
       </header>
+        <SettingsTabs scope="project" section={section} />
       <div className="scroll">
         {!project ? (
           <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>
-        ) : section === "telegram" ? (
-          <TelegramSettings key={project.slug} project={project.slug} admin={admin} />
-        ) : section === "agents" ? (
-          <AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} />
-        ) : section === "decisions" ? (
-          <JevSettings key={project.slug} slug={project.slug} admin={admin} />
+        ) : section === "channels" ? (
+          <><div className="st-body"><div className="st-head"><h2>Каналы связи</h2><p>Подключения для уведомлений проекта. Сейчас доступен Telegram; Slack и Mattermost планируются.</p></div></div><TelegramSettings key={project.slug} project={project.slug} admin={admin} /></>
+        ) : section === "tools" ? (
+          <ProjectToolsSection key={project.slug} slug={project.slug} tab={tab} />
+        ) : section === "knowledge" ? (
+          <div className="st-body">
+            <div className="st-head"><h2>База знаний</h2><p>Документация проекта и её хранение.</p></div>
+            {tab === "pages" ? <section className="st-card"><div className="st-card-body"><p>Раздел проекта: <code>{project.space}/</code></p><Link to="/docs">Открыть базу знаний</Link></div></section> :
+              <FeatureRequest id="GNE-8" title={tab === "storage" ? "Удалённое хранение" : "Резервные копии"}>Создание бэкапов, настройка удалённого хранилища и восстановление базы знаний проекта появятся позже.</FeatureRequest>}
+          </div>
         ) : section === "repos" ? (
           <div className="st-body">
-            <RepositoriesSection admin={admin} />
+            {tab === "repositories" ? <RepositoriesSection admin={admin} /> : tab === "git" ?
+              <FeatureRequest id="GNE-5" title="Git-токены">Управление токенами доступа к Git-репозиториям проекта появится позже.</FeatureRequest> :
+              <FeatureRequest id="GNE-6" title="Окружение проекта">Настройка зависимостей, инструментов подготовки и песочницы появится позже.</FeatureRequest>}
           </div>
         ) : section === "people" ? (
           local ? (
@@ -87,10 +79,10 @@ export function ProjectSettingsPage() {
               <FirstAdmin />
             </div>
           ) : (
-            <div className={`st-body${admin ? " split" : ""}`}>
-              <div className="st-col">
+            <div className="st-body">
+              <div className="st-col" hidden={tab !== "members"}>
                 <div className="st-head">
-                  <h2>Люди</h2>
+                  <h2>Доступ и роли</h2>
                   <p>Администраторы сервера имеют права владельца во всех проектах.</p>
                 </div>
                 <People slug={project.slug} admin={admin} me={session?.user.login} />
@@ -106,11 +98,12 @@ export function ProjectSettingsPage() {
                   </dl>
                 </details>
               </div>
-              {admin && <Invite slug={project.slug} />}
+              {tab === "invites" && admin && <Invite slug={project.slug} />}
+              {tab === "activity" && <FeatureRequest id="GNE-7" title="Активность участников">История действий и активности каждого участника появится позже.</FeatureRequest>}
             </div>
           )
         ) : (
-          <General key={`${project.slug}:${project.name}`} project={project} admin={admin} />
+          <><div hidden={tab !== "project"}><General key={`${project.slug}:${project.name}`} project={project} admin={admin} /></div><div hidden={tab !== "agents"}><AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} /></div></>
         )}
       </div>
     </main>
@@ -127,7 +120,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
   return (
     <div className="st-body">
       <div className="st-head">
-        <h2>Общие</h2>
+        <h2>Общие настройки</h2>
         {!admin && <p>Изменять настройки могут администраторы и владельцы проекта.</p>}
       </div>
       <form
@@ -215,7 +208,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
             ) : (
               <span className="muted">{project.repo ? <span className="mono">{project.repo}</span> : "без кода: результат — артефакты задач и страницы документации"}</span>
             )}
-            <Link to="/settings/project/repos" style={{ fontSize: 12 }}>
+            <Link to="/manage/project/repos" style={{ fontSize: 12 }}>
               {admin ? "Настроить во вкладке «Репозитории»" : "Подробнее во вкладке «Репозитории»"}
             </Link>
           </div>
@@ -518,7 +511,7 @@ function Invite({ slug }: { slug: string }) {
 }
 
 /** Local mode: the server has no users yet and trusts this machine. The first account ends that. */
-function FirstAdmin() {
+export function FirstAdmin() {
   const act = useAct();
   const [form, setForm] = useState({ login: "", name: "", password: "" });
   return (
@@ -537,7 +530,7 @@ function FirstAdmin() {
           void act(async () => {
             await request("POST", "/api/users", { login: form.login.trim(), name: form.name.trim(), password: form.password, isAdmin: true });
             await request("POST", "/api/auth/login", { login: form.login.trim(), password: form.password });
-            window.location.assign("/settings/project/people");
+            window.location.assign("/manage/project/people");
           });
         }}
       >

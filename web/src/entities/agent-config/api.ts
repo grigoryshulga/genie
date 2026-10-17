@@ -184,3 +184,18 @@ export function useDeleteConfig() {
     return out;
   };
 }
+
+export function useProjectTools(slug: string) {
+  return useQuery({ queryKey: ["project-tools", slug], queryFn: () => request<import("@/shared/api/generated/ProjectToolsView.ts").ProjectToolsView>("GET", `/api/projects/${encodeURIComponent(slug)}/tools`) });
+}
+
+export function useSaveProjectTools(slug: string) {
+  const qc = useQueryClient();
+  return async (body: import("@/shared/api/generated/ProjectToolsWrite.ts").ProjectToolsWrite) => {
+    try {
+      await request("PUT", `/api/projects/${encodeURIComponent(slug)}/tools`, body);
+    } finally {
+      await Promise.all([qc.invalidateQueries({ queryKey: ["project-tools", slug] }), qc.invalidateQueries({ queryKey: agentKeys.all })]);
+    }
+  };
+}

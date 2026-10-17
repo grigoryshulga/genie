@@ -2,6 +2,7 @@
 // playbooks, enabling and deleting. Running a rule and watching its runs is the
 // work side (/automations); defining rules is here.
 
+import { SettingsTabs } from "./SettingsTabs.tsx";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
@@ -38,6 +39,7 @@ export function AutomationsSettingsPage() {
           <span className="d-only">Новое правило</span>
         </button>
       </header>
+        <SettingsTabs scope="project" section="tools" current="automations" />
       <div className="split">
         <section className="split-list" aria-label="Правила">
           {rules.data?.map((r) => (

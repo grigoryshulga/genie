@@ -4,7 +4,7 @@
 // personal tokens.
 
 import { useRef, useState } from "react";
-import { NavLink, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { PersonAvatar, PROJECT_ROLE_NAME, usePatchUser, useSetAvatar } from "@/entities/project";
 import { useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
@@ -16,14 +16,6 @@ import { TokensTab } from "./TokensTab.tsx";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
 import "@/shared/ui/settings.css";
 
-const SECTIONS = [
-  { id: "account", title: "Аккаунт" },
-  { id: "security", title: "Вход и пароль" },
-  { id: "telegram", title: "Telegram" },
-  { id: "keys", title: "Провайдеры и ключи" },
-  { id: "tokens", title: "Токены CLI и MCP" },
-] as const;
-
 export function MeSettingsPage() {
   const session = useSession().data;
   const { section = "account" } = useParams();
@@ -31,14 +23,7 @@ export function MeSettingsPage() {
   return (
     <main className="main">
       <header className="topbar">
-        <h1>Личное</h1>
-        <nav className="st-tabs" aria-label="Разделы личных настроек">
-          {SECTIONS.map((s) => (
-            <NavLink key={s.id} to={`/settings/me/${s.id}`} end className={({ isActive }) => (isActive ? "on" : undefined)}>
-              {s.title}
-            </NavLink>
-          ))}
-        </nav>
+        <h1>Настройки профиля</h1>
       </header>
       <div className="scroll">
         {!session ? null : local ? (
@@ -46,7 +31,7 @@ export function MeSettingsPage() {
             <div className="st-head">
               <h2>Локальный режим</h2>
               <p>
-                На сервере пока нет пользователей, и он открыт без входа только с этой машины. Создайте учётную запись администратора в настройках проекта («Настройки» → «Настройки проекта» → «Люди») или
+                На сервере пока нет пользователей, и он открыт без входа только с этой машины. Создайте <Link to="/manage/server/accounts">учётную запись администратора</Link> в глобальных настройках.
               </p>
             </div>
           </div>

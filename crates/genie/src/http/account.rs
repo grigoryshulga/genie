@@ -38,7 +38,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/llm-keys/{provider}", put(set_global_llm_key).delete(delete_global_llm_key))
         .route("/session/project", post(select_project))
         .route("/users", get(list_users).post(create_user))
-        .route("/users/{id}", patch(update_user))
+        .route("/users/{id}", patch(update_user).delete(delete_user))
         .route("/users/{id}/password", post(set_user_password))
         .route("/users/{id}/tokens", post(create_user_token))
         .route("/users/{id}/avatar", get(avatar).put(set_avatar).delete(clear_avatar))
@@ -494,6 +494,15 @@ async fn update_user(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>,
         })
         .await?;
     Ok(Json(json!(user)))
+}
+
+async fn delete_user(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    let me = ctx.server_admin()?;
+    if id == 0 || id == me.id {
+        return Err(ApiError::bad("cannot delete your own account"));
+    }
+    app.blocking(move |app| app.with_server(|db| db.delete_user(id))).await?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 /// Only the person themself, or a server admin, changes someone's photo.

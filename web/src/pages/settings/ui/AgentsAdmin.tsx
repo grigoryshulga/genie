@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
+import { SettingsTabs } from "./SettingsTabs.tsx";
 import { Icon } from "@/shared/ui";
 import { CreateDialog, History, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
 
@@ -24,7 +25,7 @@ export function AgentsAdminPage() {
   // The kit's cross-links switch tabs with ?tab=; here a tab is the path itself.
   useEffect(() => {
     if ((linked === "roles" || linked === "templates" || linked === "skills") && linked !== section)
-      navigate(`/settings/server/${linked}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`, { replace: true });
+      navigate(`/manage/server/${linked}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`, { replace: true });
   }, [linked, section, selected, navigate]);
   const select = (id: string) => setSp({ id });
   const c = cfg.data;
@@ -34,7 +35,7 @@ export function AgentsAdminPage() {
         <h1>Агенты</h1>
         <div className="seg" role="tablist" aria-label="Разделы">
           {SECTIONS.map((s) => (
-            <button key={s} type="button" role="tab" aria-selected={section === s} className={section === s ? "on" : ""} onClick={() => navigate(`/settings/server/${s}`)}>
+            <button key={s} type="button" role="tab" aria-selected={section === s} className={section === s ? "on" : ""} onClick={() => navigate(`/manage/server/${s}`)}>
               {TITLES[s]}
             </button>
           ))}
@@ -51,14 +52,15 @@ export function AgentsAdminPage() {
           <span className="d-only">Каталог</span>
         </Link>
       </header>
+        <SettingsTabs scope="server" section="tools" current="agents" />
       {!c ? (
         <div className="pane-empty">{cfg.error ? cfg.error.message : "Загрузка…"}</div>
       ) : section === "roles" ? (
-        <RolesTab cfg={c} selected={selected} onSelect={select} base="/settings/server" />
+        <RolesTab cfg={c} selected={selected} onSelect={select} base="/manage/server" />
       ) : section === "templates" ? (
-        <TemplatesTab cfg={c} selected={selected} onSelect={select} base="/settings/server" />
+        <TemplatesTab cfg={c} selected={selected} onSelect={select} base="/manage/server" />
       ) : section === "skills" ? (
-        <SkillsTab cfg={c} selected={selected} onSelect={select} base="/settings/server" />
+        <SkillsTab cfg={c} selected={selected} onSelect={select} base="/manage/server" />
       ) : (
         <div className="ag-page">
           <History admin />
@@ -71,7 +73,7 @@ export function AgentsAdminPage() {
           onClose={() => setCreating(undefined)}
           onCreated={(id) => {
             setCreating(undefined);
-            navigate(`/settings/server/${creating}?id=${encodeURIComponent(id)}`);
+            navigate(`/manage/server/${creating}?id=${encodeURIComponent(id)}`);
           }}
         />
       )}

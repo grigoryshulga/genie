@@ -3,16 +3,15 @@ import { useSearchParams } from "react-router";
 import { useSession } from "@/entities/session";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
-import type { NewTaskPreset } from "@/features/create-task";
 import { plural, readPref, writePref } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 import { Board } from "@/widgets/board";
-import { MobileNav, TeamsSummary } from "@/widgets/sidebar";
+import { ContextSearch, MobileNav, TeamsSummary } from "@/widgets/sidebar";
 
 /** «Доска»: the project's Kanban board, narrowed by filters («Мои задачи», an epic). */
-export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset) => void; searchRef: React.RefObject<HTMLInputElement | null> }) {
+export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
-  const [query, setQuery] = useState("");
+  const query = sp.get("q") ?? "";
   const [showDone, setShowDone] = useState(() => readPref<string>("genie.showDone", "0") === "1");
   const [mineOnly, setMineOnly] = useState(() => readPref<string>("genie.board.mine", "0") === "1");
   const tasksQ = useTasks();
@@ -46,27 +45,10 @@ export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
   };
 
   return (
-    <main className="main">
-      <header className="topbar">
-        <h1>Доска</h1>
-        <span className="muted d-only" style={{ fontSize: 12 }}>
-          {openCount} {plural(openCount, "задача", "задачи", "задач")}
-        </span>
-        <span className="grow" />
-        <label className="search">
-          <Icon.search />
-          <input ref={searchRef} type="search" placeholder="Поиск на доске" aria-label="Поиск на доске" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())} />
-          <kbd className="d-only">/</kbd>
-        </label>
-        <button type="button" className="btn primary" onClick={() => onNew(epicFilter ? { epic: epicFilter } : undefined)}>
-          <Icon.plus size={13} />
-          <span className="d-only">Новая задача</span>
-        </button>
-      </header>
-
+    <main className="main" aria-label="Доска">
       <MobileNav />
 
-      <div className="filters" role="toolbar" aria-label="Фильтры доски">
+      <div className="filters board-filters page-toolbar" role="toolbar" aria-label="Фильтры доски">
         {login && (
           <button type="button" className={`fbtn${mine ? " on" : ""}`} aria-pressed={mine} onClick={toggleMine}>
             <Icon.user size={13} />
@@ -86,21 +68,11 @@ export function BoardPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
             ))}
           </select>
         </label>
-        <span className="grow" />
         <span className="muted d-only" style={{ fontSize: 12 }}>
-          Перетащите карточку, чтобы сменить статус
+          {openCount} {plural(openCount, "задача", "задачи", "задач")}
         </span>
-        <button
-          type="button"
-          className="fbtn d-only"
-          aria-pressed={showDone}
-          onClick={() => {
-            writePref("genie.showDone", showDone ? "0" : "1");
-            setShowDone(!showDone);
-          }}
-        >
-          {showDone ? "Скрыть завершённые" : "Показать завершённые"}
-        </button>
+        <span className="grow" />
+        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
       </div>
 
       {tasksQ.isPending ? (

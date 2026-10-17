@@ -1,2 +1,3 @@
 export { Sidebar } from "./ui/Sidebar.tsx";
 export { MobileNav, TeamsSummary } from "./ui/MobileNav.tsx";
+export { ContextSearch } from "./ui/ContextSearch.tsx";

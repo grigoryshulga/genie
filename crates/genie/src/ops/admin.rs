@@ -12,6 +12,8 @@ pub fn register(all: &mut Vec<Entry>) {
     register!(
         all,
         ProjectList,
+        ProjectTools,
+        UserDelete,
         ProjectAdd,
         ProjectUpdate,
         ProjectMembers,
@@ -627,5 +629,68 @@ impl Op for ModelPrices {
             ));
         }
         Ok(Out::new(lines.join("\n"), v))
+    }
+}
+
+/// Inspect or restrict a project's installed skills and MCP connections (project administrators).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct ProjectTools {
+    pub project: Option<String>,
+    /// Comma-separated skill names; empty means none.
+    #[arg(long, conflicts_with = "all_skills")]
+    pub skills: Option<String>,
+    /// Comma-separated MCP server ids; empty means none.
+    #[arg(long, conflicts_with = "all_mcp")]
+    pub mcp: Option<String>,
+    /// Inherit all server skills, including future additions.
+    #[arg(long)]
+    #[serde(default)]
+    pub all_skills: bool,
+    /// Inherit all available server MCP connections.
+    #[arg(long)]
+    #[serde(default)]
+    pub all_mcp: bool,
+}
+
+impl Op for ProjectTools {
+    const GROUP: &'static str = "project";
+    const NAME: &'static str = "tools";
+    const NEED: Need = Need::Admin;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let slug = project(cx, self.project).await?;
+        let url = format!("/projects/{}/tools", enc(&slug));
+        let current = cx.call("GET", &url, None).await?;
+        let mut settings = current["settings"].clone();
+        let mut changed = false;
+        for (key, list, all) in [("skills", self.skills, self.all_skills), ("mcp", self.mcp, self.all_mcp)] {
+            if let Some(list) = list {
+                settings[key] = json!(list.split(',').map(str::trim).filter(|s| !s.is_empty()).collect::<Vec<_>>());
+                changed = true;
+            } else if all {
+                settings[key] = Value::Null;
+                changed = true;
+            }
+        }
+        if changed {
+            cx.call("PUT", &url, Some(json!({"settings": settings, "baseHash": current["hash"]}))).await?;
+        }
+        let result = cx.call("GET", &url, None).await?;
+        Ok(Out::new(format!("project {slug} tools: {}", result["settings"]), result))
+    }
+}
+
+/// Permanently delete an account and its access (server administrators; cannot delete yourself).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct UserDelete {
+    pub login: String,
+}
+impl Op for UserDelete {
+    const GROUP: &'static str = "user";
+    const NAME: &'static str = "delete";
+    const NEED: Need = Need::Admin;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let id = user_id(cx, &self.login).await?;
+        let v = cx.call("DELETE", &format!("/users/{id}"), None).await?;
+        Ok(Out::new(format!("account {} deleted", self.login), v))
     }
 }
