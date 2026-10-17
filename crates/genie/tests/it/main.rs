@@ -10,6 +10,7 @@ mod api;
 mod catalog;
 mod channels;
 mod console;
+mod decisions;
 mod delivery;
 mod docs;
 mod engine;

@@ -534,6 +534,7 @@ fn step_agent(app: &App, project: &str, run: &Run, step: &Value, input: &Value, 
 fn step_team(app: &App, project: &str, run: &Run, step: &Value, actor: &Actor, input: &Value) -> AppResult<Outcome> {
     let task = need_task(input, run)?;
     let req = SpawnRequest {
+        decision_override: None,
         task: task.clone(),
         template: input["template"].as_str().map(str::to_string),
         members: serde_json::from_value(input["members"].clone()).unwrap_or_default(),

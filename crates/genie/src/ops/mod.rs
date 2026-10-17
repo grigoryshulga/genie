@@ -25,6 +25,7 @@ mod admin;
 mod agents;
 pub mod api;
 mod automations;
+mod decisions;
 mod docs;
 mod mail;
 mod management;
@@ -338,6 +339,7 @@ impl Entry {
 
 /// The groups of operations, in the order people read them.
 pub const GROUPS: &[(&str, &str)] = &[
+    ("decision", "Jev judgements: evaluate alternatives, inspect uncertainty and read recorded decisions"),
     ("manager", "Project memory and task managers: dispatch, clarification, execution evidence and retrospectives"),
     ("task", "Tasks and epics: read, create, update, move through statuses, comment, attach artifacts"),
     ("team", "Teams of agents: assemble, look at, steer and stop them"),
@@ -361,6 +363,7 @@ pub fn catalog() -> &'static [Entry] {
         let mut all = Vec::new();
         tasks::register(&mut all);
         teams::register(&mut all);
+        decisions::register(&mut all);
         mail::register(&mut all);
         management::register(&mut all);
         docs::register(&mut all);
@@ -504,7 +507,12 @@ mod tests {
     fn command_tables_follow_the_role() {
         use genie_core::Role;
         let orch = command_table(AgentKind::Orchestrator, &|_| true);
-        assert!(orch.contains("| `genie_team` spawn | `genie team spawn <TASK> [--template …] [--member …]... [--note …]` |"), "{orch}");
+        assert!(
+            orch.contains(
+                "| `genie_team` spawn | `genie team spawn <TASK> [--decision-override …] [--template …] [--member …]... [--note …]` |"
+            ),
+            "{orch}"
+        );
         assert!(
             orch.contains("`genie task status <STATUS> [--task …] [--note …] [--force] [--action …] [--option …]... [--repo …]` (review and approved are the team's verdicts"),
             "{orch}"

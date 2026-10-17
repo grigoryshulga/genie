@@ -1550,6 +1550,19 @@ fn agent_prompt(
 ) -> String {
     let lang = &app.cfg.language;
     let mut out = role.full_prompt();
+    if app.cfg.decisions.enabled
+        && let Ok(p) = crate::decisions::policy(app, &project.slug)
+    {
+        if p.allow_external && p.tool_enabled && p.tool_roles.contains(&role.id) {
+            out.push_str("\n## Jev decision tool\n\nYou may call `genie decision evaluate --request '<JSON>'` (MCP `genie_decision`, action `evaluate`, request object) for a second judgement. Supply task, purpose, compact factual state, and typed questions with explicit alternatives (choice/score/bool). Include a need_evidence choice when facts may be insufficient. Inspect probabilities and uncertainty; the answer is not proof and does not execute an action. Keep calls within the project allowance.\n");
+        }
+        if p.allow_external
+            && reader == AgentKind::Orchestrator
+            && [p.team, p.model, p.thinking].iter().any(|m| !matches!(m, crate::decisions::Mode::Off | crate::decisions::Mode::Observe))
+        {
+            out.push_str(&format!("\n## Jev participation\n\nProject modes: team={:?}, model={:?}, thinking={:?}. Before starting a delivery team use `genie team recommend <task> --template <preset>` (or --member) to inspect the recommendation. It starts no agents. Compare it with the task requirements, then choose a template or explicit members/models. Joint disagreement blocks spawn until reconsidered or overridden using --decision-override with a specific justification. Unavailable or uncertain evaluations keep your proposal. A person's explicit team choice is pinned.\n",p.team,p.model,p.thinking));
+        }
+    }
     out.push_str(&tools_section(live, role, reader, app.cfg.runtime.ask_timeout_secs));
     out.push_str(&mcp_section(agents, &project.slug, role));
     out.push_str(&format!(
@@ -1732,7 +1745,9 @@ fn create_worktree(app: &App, repo: &Path, team: &str, task: &str) -> AppResult<
     Ok(TeamWorktree { path: dir_s, branch, base: Some(base) })
 }
 
+#[derive(Clone)]
 pub struct SpawnRequest {
+    pub decision_override: Option<String>,
     pub task: String,
     pub template: Option<String>,
     pub members: Vec<MemberSpec>,
@@ -1752,9 +1767,10 @@ fn pick_name(role: &RoleDef, taken: &mut std::collections::HashSet<String>) -> S
 
 /// What a spawn asks for: the template the roster came from (when it did) and
 /// the roster itself — members with their template keys, `None` when asked directly.
-struct Roster {
-    template: Option<TeamDef>,
-    asked: Vec<(Option<String>, MemberSpec)>,
+#[derive(Clone)]
+pub(crate) struct Roster {
+    pub(crate) template: Option<TeamDef>,
+    pub(crate) asked: Vec<(Option<String>, MemberSpec)>,
 }
 
 /// The task a team is asked for, refused when no team may take it: epics are
@@ -1774,7 +1790,7 @@ fn spawnable_task(app: &App, slug: &str, req: &SpawnRequest) -> AppResult<Task> 
 /// `standard` when neither template nor members are given, none when members
 /// are named) and the roster itself: the template's members — keeping their
 /// keys, so per-member model overrides find them — or the members asked for.
-fn asked_roster(agents: &AgentConfig, slug: &str, req: &SpawnRequest) -> AppResult<Roster> {
+pub(crate) fn asked_roster(agents: &AgentConfig, slug: &str, req: &SpawnRequest) -> AppResult<Roster> {
     let template = match (&req.template, req.members.is_empty()) {
         (Some(id), _) => Some(agents.team_for(slug, id)?.clone()),
         (None, true) => Some(agents.team_for(slug, "standard")?.clone()),
@@ -2038,7 +2054,18 @@ fn send_kickoffs(t: &genie_core::Tracker, team_id: &str, spec: &TeamSpec, k: &Ki
 
 /// Assemble a team for a task: roster and relations from the template (or from
 /// the roles asked for), a workspace, the snapshot of how the team works, kickoffs.
-pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_core::team::Team> {
+pub fn recommend_team(app: &App, slug: &str, mut req: SpawnRequest) -> AppResult<serde_json::Value> {
+    let agents = app.agents();
+    let task = spawnable_task(app, slug, &req)?;
+    let roster = asked_roster(&agents, slug, &req)?;
+    let prepared = crate::decisions::team::prepare(app, slug, &mut req, &task, &agents, roster, true)?;
+    Ok(crate::decisions::team::view(&prepared))
+}
+
+pub fn spawn_team(app: &App, slug: &str, mut req: SpawnRequest) -> AppResult<genie_core::team::Team> {
+    let task_id = app.with_tracker(slug, |t| Ok(t.get(&req.task)?.id))?;
+    let gate = app.decision_gates.task(slug, &task_id);
+    let _guard = gate.lock().map_err(|_| AppError::Internal("team decision lock poisoned".into()))?;
     let project = project_of(app, slug)?;
     let agents = app.agents();
     let task = spawnable_task(app, slug, &req)?;
@@ -2046,7 +2073,19 @@ pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_c
     let docs = crate::context::l1(app, slug, &task);
     let refinement = matches!(task.status, Status::Inbox | Status::Draft | Status::Refining);
     let ctx = SpawnContext { task: &task, project: &project, refinement };
-    let Roster { template, asked } = asked_roster(&agents, slug, &req)?;
+    let roster = asked_roster(&agents, slug, &req)?;
+    checked_roles(app, slug, &agents, &ctx, &roster.asked)?;
+    let prepared = crate::decisions::team::prepare(app, slug, &mut req, &task, &agents, roster, false)?;
+    if app.with_tracker(slug, |t| Ok(serde_json::to_value(t.get(&task.id)?)?))?
+        != serde_json::to_value(&task).map_err(genie_core::GenieError::from)?
+        || !Arc::ptr_eq(&agents, &app.agents())
+        || crate::decisions::policy(app, slug)? != prepared.policy
+    {
+        return Err(AppError::Conflict(
+            "task or agent/decision configuration changed during Jev evaluation; retry with current facts".into(),
+        ));
+    }
+    let Roster { template, asked } = prepared.roster;
     let roles = checked_roles(app, slug, &agents, &ctx, &asked)?;
     let team_id = app.with_tracker(slug, |t| t.bus().free_id(&task.id))?;
     let workspace = template.as_ref().map(|t| t.workspace).unwrap_or(Workspace::Worktree);
@@ -2089,6 +2128,23 @@ pub fn spawn_team(app: &App, slug: &str, req: SpawnRequest) -> AppResult<genie_c
         Ok(team)
     })?;
     app.wake_runtime.notify_one();
+    for record in &prepared.records {
+        app.with_server(|db| {
+            db.apply_decision(
+                slug,
+                record.id,
+                &json!({
+                    "state":"spawned","team":created.id,"members":created.members,
+                    "override":req.decision_override,"by":req.by.name
+                }),
+            )
+        })?;
+    }
+    if !prepared.notice.is_empty() {
+        app.with_tracker(slug, |t| {
+            t.bus().notify_orchestrator("jev", "orchestrator", "decision", &prepared.notice.join("\n"), Some(&task.id))
+        })?;
+    }
     Ok(created)
 }
 

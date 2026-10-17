@@ -9,6 +9,7 @@ pub mod channels;
 pub mod cli;
 pub mod config;
 pub mod context;
+pub mod decisions;
 pub mod doctor;
 pub mod engine;
 pub mod git;

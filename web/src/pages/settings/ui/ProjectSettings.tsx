@@ -27,6 +27,7 @@ import { request } from "@/shared/api";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 import { TelegramSettings } from "./TelegramSettings.tsx";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
+import { JevSettings } from "./JevSettings.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
 
@@ -44,6 +45,7 @@ export function ProjectSettingsPage() {
   const tabs = [
     { id: "general", title: "Общие" },
     { id: "agents", title: "Работа агентов" },
+    { id: "decisions", title: "Решения с Jev" },
     { id: "repos", title: "Репозитории", n: repos },
     { id: "people", title: "Люди", n: members },
     { id: "telegram", title: "Telegram" },
@@ -73,6 +75,8 @@ export function ProjectSettingsPage() {
           <TelegramSettings key={project.slug} project={project.slug} admin={admin} />
         ) : section === "agents" ? (
           <AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} />
+        ) : section === "decisions" ? (
+          <JevSettings key={project.slug} slug={project.slug} admin={admin} />
         ) : section === "repos" ? (
           <div className="st-body">
             <RepositoriesSection admin={admin} />

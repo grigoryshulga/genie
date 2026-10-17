@@ -347,6 +347,7 @@ pub struct Budgets {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
+    pub decisions: crate::decisions::Config,
     pub port: u16,
     pub bind: String,
     /// Base URL used in links sent by mail and Telegram.
@@ -369,6 +370,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            decisions: crate::decisions::Config::default(),
             port: 7420,
             bind: "127.0.0.1".into(),
             public_url: None,

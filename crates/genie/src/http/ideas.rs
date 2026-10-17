@@ -89,6 +89,7 @@ fn start_idea(app: &App, slug: &str, actor: Actor, title: String, text: String) 
         t.set_status(&Actor::new("genie", Role::Orchestrator), &task.id, Status::Refining, note)
     })?;
     let req = SpawnRequest {
+        decision_override: None,
         task: task.id.clone(),
         template: Some(IDEA_TEMPLATE.into()),
         members: Vec::new(),

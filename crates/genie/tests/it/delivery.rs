@@ -34,7 +34,10 @@ async fn rig(kind: &'static str, policy: Value) -> Rig {
 }
 
 async fn rig_with(kind: &'static str, policy: Value, cfg: impl FnOnce(&mut genie::config::Config)) -> Rig {
-    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    // Keep the port bound during setup; releasing a probe listener lets another
+    // parallel test claim it before this server starts.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
     let h = Harness::with_config(|c| {
         c.port = port;
         cfg(c);
@@ -49,7 +52,6 @@ async fn rig_with(kind: &'static str, policy: Value, cfg: impl FnOnce(&mut genie
     } } });
     std::fs::write(h.dir.path().join("git.json"), cfg.to_string()).unwrap();
     h.project("shop");
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap();
     tokio::spawn(genie::serve_on(h.app.clone(), listener, std::future::pending()));
     let orchestrator = h
         .app
@@ -104,6 +106,7 @@ async fn team(r: &Rig, title: &str) -> Team {
             &app,
             "shop",
             SpawnRequest {
+                decision_override: None,
                 task: t,
                 template: None,
                 members: vec![
