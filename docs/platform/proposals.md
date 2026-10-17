@@ -31,4 +31,8 @@ Build reusable workflows for logs, alerts, issue intake, knowledge cleanup, and 
 
 Evaluate reproducible project environments, reviewer-directed changes, documentation impact, additional content formats, wider provider integration, and per-person budgets using pilot evidence.
 
+## Observation plane
+
+The [observation plane proposal](observation-plane-proposal.md) adds a post-delivery feedback loop: outcome cases, contracts, evidence, guardrail incidents, and follow-up tasks, independent of the task lifecycle. Its [Phase 1 specification](observation-plane.md) and [implementation plan](../development/observation-plane-plan.md) are drafts.
+
 Further design questions include richer memory retrieval, project-wide planning interactions, scheduling overrides, and container-runner isolation guarantees.
