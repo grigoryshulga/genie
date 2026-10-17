@@ -94,7 +94,7 @@ impl Op for Read {
     }
 }
 
-/// Every page of the vault with its draft, stale and diagnostics markers.
+/// Every page in the selected project's documentation roots, with draft, stale and diagnostics markers.
 #[derive(clap::Args, Deserialize, JsonSchema)]
 pub struct Tree {}
 
@@ -352,7 +352,7 @@ fn space_line(name: &str, sp: &Value) -> String {
     )
 }
 
-/// Spaces of the vault (top-level folders): their project, owners and who publishes directly.
+/// Documentation roots of the selected project: their project, owners and who publishes directly.
 #[derive(clap::Args, Deserialize, JsonSchema)]
 pub struct Spaces {}
 

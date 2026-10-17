@@ -26,6 +26,7 @@ export default defineConfig({
           groups: [
             { name: "react", test: /node_modules[\\/](react|react-dom|react-router)[\\/]/ },
             { name: "react-query", test: /node_modules[\\/]@tanstack[\\/]/ },
+            { name: "prosemirror", test: /node_modules[\\/](prosemirror-[^\\/]+|orderedmap|rope-sequence|w3c-keyname)[\\/]/ },
             { name: "dnd-kit", test: /node_modules[\\/]@dnd-kit[\\/]/ },
           ],
         },
