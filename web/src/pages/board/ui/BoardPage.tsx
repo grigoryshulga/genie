@@ -43,6 +43,10 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
     writePref("genie.board.mine", mineOnly ? "0" : "1");
     setMineOnly(!mineOnly);
   };
+  const setDoneVisibility = (visible: boolean) => {
+    writePref("genie.showDone", visible ? "1" : "0");
+    setShowDone(visible);
+  };
 
   return (
     <main className="main" aria-label="Доска">
@@ -80,7 +84,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
       ) : tasksQ.isError ? (
         <div className="empty">Не удалось загрузить задачи: {tasksQ.error.message}</div>
       ) : (
-        <Board tasks={tasks} teams={teams} showDone={showDone} onShowDone={() => setShowDone(true)} onOpen={(id) => setParam("task", id)} />
+        <Board tasks={tasks} teams={teams} showDone={showDone} onDoneVisibilityChange={setDoneVisibility} onOpen={(id) => setParam("task", id)} />
       )}
 
       <footer className="hints">

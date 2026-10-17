@@ -16,7 +16,8 @@ import { Avatars } from "@/entities/member";
 import { PersonAvatar } from "@/entities/project";
 import { COLUMNS, type Column, EpicChip, EpicIcon, Labels, PriorityIcon, type Status, STATUS_NAME, StatusIcon, type TaskSummary, useMoveTask } from "@/entities/task";
 import type { Team } from "@/entities/team";
-import { Modal, useToast } from "@/shared/ui";
+import { plural } from "@/shared/lib";
+import { Icon, Modal, useToast } from "@/shared/ui";
 
 const columnOf = (status: Status): Column => COLUMNS.find((c) => c.statuses.includes(status)) ?? COLUMNS[0];
 
@@ -72,33 +73,36 @@ function Card({ t, team, selected, onSelect }: { t: TaskSummary; team?: Team; se
   );
 }
 
-function BoardColumn({ col, tasks, teams, selected, onSelect, collapsed, onExpand }: {
+function BoardColumn({ col, tasks, teams, selected, onSelect, collapsed, onToggle }: {
   col: Column;
   tasks: TaskSummary[];
   teams: Map<string, Team>;
   selected?: string;
   onSelect: (id: string) => void;
   collapsed: boolean;
-  onExpand: () => void;
+  onToggle: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const cls = ["col", col.id === "needs_owner" ? "owner" : "", isOver ? "over" : "", collapsed ? "collapsed" : ""].filter(Boolean).join(" ");
   return (
-    <section ref={setNodeRef} className={cls} aria-label={col.name}>
+    <section ref={setNodeRef} className={cls} data-column={col.id} aria-label={col.name}>
       {collapsed ? (
-        <button type="button" className="expand" onClick={onExpand} aria-label={`Показать колонку ${col.name}`}>
+        <button type="button" className="col-compact" onClick={onToggle} aria-expanded={false} aria-label={`Развернуть колонку ${col.name}, ${tasks.length} ${plural(tasks.length, "задача", "задачи", "задач")}`} title={`${col.name} · ${tasks.length}`}>
+          <span className="col-count">{tasks.length}</span>
           <StatusIcon status={col.target} size={13} />
           <span className="v">
-            {col.name} · {tasks.length}
+            {col.name}
           </span>
+          <Icon.chevron size={12} className="col-open" />
         </button>
       ) : (
         <>
-          <header>
+          <button type="button" className="col-head" onClick={onToggle} aria-expanded={true} aria-label={`Свернуть колонку ${col.name}, ${tasks.length} ${plural(tasks.length, "задача", "задачи", "задач")}`}>
             <StatusIcon status={col.target} size={13} />
-            {col.name}
+            <span className="col-name">{col.name}</span>
             <span className="n">{tasks.length}</span>
-          </header>
+            <Icon.chevron size={12} className="col-collapse" />
+          </button>
           <div className="cards">
             {tasks.map((t) => (
               <Card key={t.id} t={t} team={t.team ? teams.get(t.team) : undefined} selected={selected === t.id} onSelect={() => onSelect(t.id)} />
@@ -112,18 +116,19 @@ function BoardColumn({ col, tasks, teams, selected, onSelect, collapsed, onExpan
 }
 
 /** A card click opens the task's preview beside the board (`?task=`), like a row in the list. */
-export function Board({ tasks, teams, selected, showDone, onShowDone, onOpen }: {
+export function Board({ tasks, teams, selected, showDone, onDoneVisibilityChange, onOpen }: {
   tasks: TaskSummary[];
   teams: Map<string, Team>;
   selected?: string;
   showDone: boolean;
-  onShowDone: () => void;
+  onDoneVisibilityChange: (visible: boolean) => void;
   onOpen: (id: string) => void;
 }) {
   const move = useMoveTask();
   const toast = useToast();
   const [dragging, setDragging] = useState<string | undefined>();
   const [ask, setAsk] = useState<{ id: string; note: string } | undefined>();
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(showDone ? [] : ["done"]));
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
@@ -152,6 +157,17 @@ export function Board({ tasks, teams, selected, showDone, onShowDone, onOpen }: 
     else doMove(id, col.target);
   };
 
+  const toggleColumn = (id: string) => {
+    const wasCollapsed = collapsed.has(id);
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (id === "done") onDoneVisibilityChange(wasCollapsed);
+  };
+
   const draggingTask = tasks.find((t) => t.id === dragging);
 
   return (
@@ -165,8 +181,8 @@ export function Board({ tasks, teams, selected, showDone, onShowDone, onOpen }: 
             teams={teams}
             selected={selected}
             onSelect={onOpen}
-            collapsed={col.id === "done" && !showDone}
-            onExpand={onShowDone}
+            collapsed={collapsed.has(col.id)}
+            onToggle={() => toggleColumn(col.id)}
           />
         ))}
       </div>
