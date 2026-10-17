@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import { useProjectTools, useSaveProjectTools } from "@/entities/agent-config";
 import type { ProjectTools } from "@/shared/api/generated/ProjectTools.ts";
 import { useAct } from "@/shared/ui";
@@ -20,9 +19,6 @@ export function ProjectToolsSection({ slug, tab }: { slug: string; tab: string }
           ) : (
             <p role="status">{query.error?.message ?? "Загрузка…"}</p>
           )}
-          <Link className="btn" to="/manage/project/automations">
-            Настроить автоматизации
-          </Link>
         </div>
       </div>
       <div hidden={tab !== "jev"}>
