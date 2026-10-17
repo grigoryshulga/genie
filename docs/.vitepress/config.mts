@@ -53,6 +53,7 @@ export default defineConfig({
         { text: 'Design decisions', link: '/platform/decisions' },
         { text: 'Roadmap', link: '/platform/roadmap' },
         { text: 'Product proposals', link: '/platform/proposals' },
+        { text: 'Workspace environments design', link: '/platform/environment-design' },
         { text: 'Changelog', link: '/changelog' },
       ] },
     ],

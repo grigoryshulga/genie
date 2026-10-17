@@ -29,6 +29,6 @@ Build reusable workflows for logs, alerts, issue intake, knowledge cleanup, and 
 
 ## Phase 4: workspaces and richer interaction
 
-Evaluate reproducible project environments, reviewer-directed changes, documentation impact, additional content formats, wider provider integration, and per-person budgets using pilot evidence.
+Evaluate reproducible project environments ([design](environment-design.md)), reviewer-directed changes, documentation impact, additional content formats, wider provider integration, and per-person budgets using pilot evidence.
 
 Further design questions include richer memory retrieval, project-wide planning interactions, scheduling overrides, and container-runner isolation guarantees.
