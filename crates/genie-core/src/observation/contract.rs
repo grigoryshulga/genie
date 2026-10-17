@@ -226,14 +226,20 @@ impl Contract {
         let minimum_window = duration(&w.minimum_window).expect(INVALID_RESOLVE);
         let or_default =
             |value: &Option<String>, default: Duration| value.as_deref().map_or(default, |s| duration(s).expect(INVALID_RESOLVE));
+        let preferred_window = w.preferred_window.as_deref().map_or(minimum_window, |s| duration(s).expect(INVALID_RESOLVE));
         Resolved {
             baseline_window: or_default(&w.baseline_window, Duration::days(7)),
             minimum_window,
-            preferred_window: w.preferred_window.as_deref().map_or(minimum_window, |s| duration(s).expect(INVALID_RESOLVE)),
+            preferred_window,
             minimum_samples: w.minimum_samples,
             evaluation_interval: or_default(&w.evaluation_interval, Duration::hours(6)),
             guardrail_interval: or_default(&w.guardrail_interval, Duration::minutes(15)),
-            guardrail_window: or_default(&w.guardrail_window, Duration::hours(1)),
+            // The default 1h is clamped, so a short contract (minimumWindow 30m) watches 30m and
+            // the guardrail window never exceeds the preferred window.
+            guardrail_window: w
+                .guardrail_window
+                .as_deref()
+                .map_or(Duration::hours(1).min(preferred_window), |s| duration(s).expect(INVALID_RESOLVE)),
         }
     }
 
@@ -347,10 +353,21 @@ impl Contract {
         if let (Some(guardrail), Some(preferred)) = (optional_window(out, "guardrailWindow", &w.guardrail_window), preferred)
             && guardrail > preferred
         {
-            out.push("observation.guardrailWindow: must not exceed preferredWindow".into());
+            out.push(format!("observation.guardrailWindow: must not exceed {preferred_field}"));
         }
-        optional_window(out, "evaluationInterval", &w.evaluation_interval);
-        if let Some(interval) = optional_window(out, "guardrailInterval", &w.guardrail_interval)
+        // Explicit intervals are bounded by the preferred window: an unbounded interval would make
+        // `now + interval` overflow when the scheduler computes the next due time. The defaults
+        // (6h, 15m) are not compared, so a short contract stays valid.
+        let evaluation = optional_window(out, "evaluationInterval", &w.evaluation_interval);
+        let guardrail_interval = optional_window(out, "guardrailInterval", &w.guardrail_interval);
+        for (field, interval) in [("evaluationInterval", evaluation), ("guardrailInterval", guardrail_interval)] {
+            if let (Some(interval), Some(preferred)) = (interval, preferred)
+                && interval > preferred
+            {
+                out.push(format!("observation.{field}: must not exceed {preferred_field}"));
+            }
+        }
+        if let Some(interval) = guardrail_interval
             && interval < Duration::minutes(1)
         {
             out.push("observation.guardrailInterval: must be at least 1m".into());
@@ -786,6 +803,48 @@ mod tests {
             verify_problems(with_windows(json!({ "minimumWindow": "24h", "minimumSamples": 0 }))),
             ["observation.minimumSamples: must be at least 1"]
         );
+    }
+
+    #[test]
+    fn intervals_must_not_exceed_the_preferred_window() {
+        assert_eq!(
+            verify_problems(with_windows(json!({ "minimumWindow": "24h", "preferredWindow": "72h", "evaluationInterval": "73h" }))),
+            ["observation.evaluationInterval: must not exceed preferredWindow"]
+        );
+        assert_eq!(
+            verify_problems(with_windows(json!({ "minimumWindow": "24h", "guardrailInterval": "25h" }))),
+            ["observation.guardrailInterval: must not exceed minimumWindow"]
+        );
+        // A huge count is accepted by the digit guard but still bounded by the preferred window.
+        assert_eq!(
+            verify_problems(with_windows(json!({ "minimumWindow": "24h", "evaluationInterval": "999999999d" }))),
+            ["observation.evaluationInterval: must not exceed minimumWindow"]
+        );
+        assert!(
+            verify_problems(with_windows(
+                json!({ "minimumWindow": "24h", "preferredWindow": "72h", "evaluationInterval": "72h", "guardrailInterval": "1h" })
+            ))
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn explicit_guardrail_window_names_the_compared_window() {
+        assert_eq!(
+            verify_problems(with_windows(json!({ "minimumWindow": "24h", "guardrailWindow": "48h" }))),
+            ["observation.guardrailWindow: must not exceed minimumWindow"]
+        );
+    }
+
+    #[test]
+    fn a_short_contract_defaults_its_guardrail_window_to_the_preferred_window() {
+        let r = contract(with_windows(json!({ "minimumWindow": "30m" }))).resolved();
+        assert_eq!(r.preferred_window, Duration::minutes(30));
+        assert_eq!(r.guardrail_window, Duration::minutes(30));
+        assert!(r.guardrail_window <= r.preferred_window);
+        // A long contract keeps the 1h default.
+        let r = contract(valid_verify()).resolved();
+        assert_eq!(r.guardrail_window, Duration::hours(1));
     }
 
     #[test]
