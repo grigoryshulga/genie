@@ -192,7 +192,7 @@ type ShellContext = { onNew: (preset?: NewTaskPreset) => void; searchRef: React.
 
 function TasksRoute() {
   const ctx = useOutletContext<ShellContext>();
-  return <TasksPage onNew={ctx.onNew} searchRef={ctx.searchRef} />;
+  return <TasksPage searchRef={ctx.searchRef} />;
 }
 
 function BoardRoute() {

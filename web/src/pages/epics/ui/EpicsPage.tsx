@@ -38,10 +38,6 @@ export function EpicsPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }
           <Icon.search />
           <input type="search" placeholder="Поиск эпиков" aria-label="Поиск эпиков" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
-        <button type="button" className="btn primary" onClick={() => onNew({ type: "epic" })}>
-          <Icon.plus size={13} />
-          <span className="d-only">Новый эпик</span>
-        </button>
       </header>
 
       <div className="scroll">
