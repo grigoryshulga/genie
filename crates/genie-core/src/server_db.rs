@@ -644,6 +644,7 @@ pub struct ServerDb {
 pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
     let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
     db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
+    db.conn().execute_batch(crate::observation::sources::SCHEMA)?;
     db.conn().execute_batch(crate::decisions::SCHEMA)?;
     db.conn().execute_batch(crate::telegram::SCHEMA)?;
     db.add_columns(SERVER_COLUMN_MIGRATIONS)?;

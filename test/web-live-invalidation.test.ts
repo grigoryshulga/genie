@@ -1,7 +1,9 @@
 // Which queries a journal event makes stale: targeted, with a broad fallback for what is not known.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { observationKeys } from "../web/src/entities/observation/model.ts";
 import { type JournalEvent, keysFor, keysForAll, matchesAny, teamKeys, teamState } from "../web/src/shared/api/invalidation.ts";
 
 // The shapes of `keys` in shared/api/client.ts (not imported: it does not load without a bundler).
@@ -19,12 +21,21 @@ const stale = (events: JournalEvent[], key: readonly unknown[]) => {
   return prefixes === null || matchesAny(prefixes, key);
 };
 
+// The observation events (docs/platform/observation-plane.md §12): the constants of the block in events.rs.
+const EVENTS_RS = readFileSync(new URL("../crates/genie-core/src/events.rs", import.meta.url), "utf8");
+const OBSERVATION_BLOCK = EVENTS_RS.slice(
+  EVENTS_RS.indexOf("// Observation plane"),
+  EVENTS_RS.indexOf("#[derive", EVENTS_RS.indexOf("// Observation plane")),
+);
+const OBSERVATION_EVENTS = [...OBSERVATION_BLOCK.matchAll(/pub const \w+: &str = "([^"]+)";/g)].map((m) => m[1]);
+
 // Every event type the server appends (events.rs, team.rs, knowledge.rs). Adding one there should add it here.
 const KNOWN = [
   "task.created", "task.updated", "task.status_changed", "task.commented", "task.criterion_checked", "task.artifact_added",
   "task.blocked", "task.unblocked", "task.team_assigned", "task.deleted", "mail.sent", "mcp.called", "git.pushed", "git.denied",
   "cr.opened", "cr.merged", "cr.closed", "ci.failed", "ci.passed", "ci.stalled", "team.spawned", "team.started", "team.stopped",
   "doc.changed", "doc.proposal", "doc.proposal_decided", "release.published",
+  ...OBSERVATION_EVENTS,
 ];
 
 test("every known event type has a targeted mapping, an unknown one is broad", () => {
@@ -120,4 +131,48 @@ test("a prefix matches only whole key parts", () => {
   assert.ok(matchesAny([["task"]], ["task", "T-1"]));
   assert.ok(!matchesAny([["task"]], ["tasks"]));
   assert.ok(!matchesAny([["task", "T-1"]], ["task"]));
+});
+
+test("the §12 observation events are read from events.rs, all sixteen of them", () => {
+  assert.equal(OBSERVATION_EVENTS.length, 16);
+  assert.ok(OBSERVATION_EVENTS.includes("outcome.ready_for_evaluation"));
+  assert.ok(OBSERVATION_EVENTS.includes("followup_task.created"));
+});
+
+const CASE_KEYS = [
+  observationKeys.cases({ status: "observing" }),
+  observationKeys.case(7),
+  observationKeys.evidence(7, { limit: 5 }),
+  observationKeys.incidents("open"),
+  observationKeys.incidents(),
+  observationKeys.task("G-1"),
+];
+
+test("every observation event refetches every observation query", () => {
+  for (const type of OBSERVATION_EVENTS) {
+    const events = [ev(type, "observation:7", { case: 7, key: "O-7" })];
+    for (const key of CASE_KEYS) assert.ok(stale(events, key), `${type} refetches ${JSON.stringify(key)}`);
+  }
+});
+
+test("an observation event leaves tasks and sources alone, except a follow-up task", () => {
+  for (const type of OBSERVATION_EVENTS) {
+    const events = [ev(type, "observation:7")];
+    assert.ok(!stale(events, observationKeys.sources), `${type} does not refetch sources`);
+    if (type === "followup_task.created") continue;
+    assert.ok(!stale(events, keys.tasks), `${type} does not refetch the task list`);
+    assert.ok(!stale(events, keys.task("G-1")), `${type} does not refetch a task page`);
+  }
+});
+
+test("a follow-up task refetches the observation queries, the task lists and the task pages", () => {
+  const events = [ev("followup_task.created", "observation:7", { case: 7, key: "O-7", task: "G-9", incident: null })];
+  for (const key of [...CASE_KEYS, keys.tasks, keys.task("G-9"), ["task"]]) assert.ok(stale(events, key), JSON.stringify(key));
+  assert.ok(!stale(events, keys.teams), "teams are not part of it");
+});
+
+test("a non-observation event does not refetch observation queries", () => {
+  for (const type of ["task.created", "task.status_changed", "cr.merged", "mail.sent", "doc.changed"]) {
+    for (const key of CASE_KEYS) assert.ok(!stale([ev(type, "G-1")], key), `${type} leaves ${JSON.stringify(key)}`);
+  }
 });

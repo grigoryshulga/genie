@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -229,6 +229,111 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS usage_task ON usage(task);
 CREATE INDEX IF NOT EXISTS usage_agent ON usage(agent);
+CREATE TABLE IF NOT EXISTS observation_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  policy TEXT NOT NULL CHECK(policy IN ('guardrails', 'verify')),
+  status TEXT NOT NULL DEFAULT 'proposed'
+    CHECK(status IN ('proposed', 'waiting', 'observing', 'evaluating', 'concluded', 'cancelled')),
+  result TEXT CHECK(result IN ('confirmed', 'negative', 'inconclusive')),
+  confidence TEXT CHECK(confidence IN ('low', 'medium', 'high')),
+  conclusion TEXT NOT NULL DEFAULT '',
+  contract_version INTEGER NOT NULL DEFAULT 0,
+  author TEXT NOT NULL,
+  created TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  armed_at TEXT,
+  observation_started_at TEXT,
+  observation_completed_at TEXT,
+  next_evaluation_at TEXT,
+  next_guardrail_at TEXT,
+  evaluation_requested TEXT CHECK(evaluation_requested IN ('manual', 'final')),
+  failures INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS observation_cases_status ON observation_cases(status);
+CREATE TABLE IF NOT EXISTS observation_case_tasks (
+  case_id INTEGER NOT NULL REFERENCES observation_cases(id) ON DELETE CASCADE,
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  PRIMARY KEY (case_id, task)
+);
+CREATE INDEX IF NOT EXISTS observation_case_tasks_task ON observation_case_tasks(task);
+CREATE TABLE IF NOT EXISTS observation_contracts (
+  case_id INTEGER NOT NULL REFERENCES observation_cases(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  author TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created TEXT NOT NULL,
+  PRIMARY KEY (case_id, version)
+);
+CREATE TABLE IF NOT EXISTS observation_deployments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES observation_cases(id) ON DELETE CASCADE,
+  ref TEXT NOT NULL,
+  environment TEXT NOT NULL DEFAULT '',
+  at TEXT NOT NULL,
+  recorded_by TEXT NOT NULL,
+  created TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS observation_evidence (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES observation_cases(id) ON DELETE CASCADE,
+  contract_version INTEGER NOT NULL,
+  criterion TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('hypothesis', 'guardrail')),
+  phase TEXT NOT NULL CHECK(phase IN ('baseline', 'observed')),
+  source TEXT NOT NULL,
+  query TEXT NOT NULL DEFAULT '',
+  at TEXT NOT NULL,
+  window_start TEXT NOT NULL,
+  window_end TEXT NOT NULL,
+  value REAL,
+  baseline REAL,
+  delta_abs REAL,
+  delta_rel REAL,
+  samples INTEGER,
+  provenance TEXT NOT NULL DEFAULT '{}',
+  trust TEXT NOT NULL CHECK(trust IN ('measured', 'reported', 'agent')),
+  error TEXT,
+  note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS observation_evidence_case ON observation_evidence(case_id, contract_version, criterion, id);
+CREATE TABLE IF NOT EXISTS observation_evaluations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES observation_cases(id) ON DELETE CASCADE,
+  contract_version INTEGER NOT NULL,
+  at TEXT NOT NULL,
+  trigger TEXT NOT NULL CHECK(trigger IN ('window', 'manual', 'final')),
+  verdict TEXT NOT NULL CHECK(verdict IN ('confirmed', 'negative', 'inconclusive', 'insufficient')),
+  confidence TEXT CHECK(confidence IN ('low', 'medium', 'high')),
+  summary TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '[]',
+  actor TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS observation_evaluations_case ON observation_evaluations(case_id, id);
+CREATE TABLE IF NOT EXISTS observation_incidents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES observation_cases(id) ON DELETE CASCADE,
+  guardrail TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'resolved', 'dismissed')),
+  summary TEXT NOT NULL,
+  evidence INTEGER REFERENCES observation_evidence(id) ON DELETE SET NULL,
+  created TEXT NOT NULL,
+  closed TEXT,
+  closed_by TEXT,
+  note TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS observation_incidents_open ON observation_incidents(case_id, guardrail) WHERE status = 'open';
+CREATE TABLE IF NOT EXISTS observation_followups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES observation_cases(id) ON DELETE CASCADE,
+  incident INTEGER REFERENCES observation_incidents(id) ON DELETE SET NULL,
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  actor TEXT NOT NULL,
+  created TEXT NOT NULL,
+  UNIQUE (case_id, task)
+);
 "#;
 
 /// Columns added after the first release; applied to existing databases on open.

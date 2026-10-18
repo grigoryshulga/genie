@@ -97,6 +97,12 @@ pub struct App {
     pub wake_engine: Arc<Notify>,
     /// Wakes the delivery dispatcher (new outbox rows).
     pub wake_outbox: Arc<Notify>,
+    /// Wakes the observation scheduler: every journal event, and the service's changes to a case
+    /// (armed, started, evaluation requested, reported evidence). See `observation::scheduler`.
+    pub wake_observation: Arc<Notify>,
+    /// Cases whose last scheduler pass failed, with the time they may be tried again, keyed by
+    /// project and case ID (`observation::scheduler`). Kept in memory: a restart tries them at once.
+    pub observation_retry: Mutex<HashMap<(String, i64), DateTime<Utc>>>,
     /// Wakes the delivery poller (a task's delivery started to be watched).
     pub wake_poller: Notify,
     /// Path of the running `genie` binary, given to agents so they can call back.
@@ -152,6 +158,8 @@ impl App {
             wake_runtime: Default::default(),
             wake_engine: Default::default(),
             wake_outbox: Default::default(),
+            wake_observation: Default::default(),
+            observation_retry: Default::default(),
             wake_poller: Notify::new(),
             exe,
             sessions: Default::default(),
@@ -238,8 +246,10 @@ impl App {
         // Every journal event is work for the engine (rules, notifications, team flow), and mail and
         // team changes are work for the scheduler: nothing has to poll for them.
         let (engine, runtime) = (self.wake_engine.clone(), self.wake_runtime.clone());
+        let observation = self.wake_observation.clone();
         tracker.on_event(Arc::new(move |kind| {
             engine.notify_one();
+            observation.notify_one();
             if kind == events::MAIL_SENT || kind.starts_with("team.") {
                 runtime.notify_one();
             }

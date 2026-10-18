@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useManageTask, useTaskManagement, type Task } from "@/entities/task";
-import { useSession } from "@/entities/session";
+import { canWriteProject, useSession } from "@/entities/session";
 import { Markdown, useToast } from "@/shared/ui";
 import "./task-manager.css";
 
@@ -14,11 +14,9 @@ const STATES: Record<string, string> = {
 export function TaskManager({ task }: { task: Task }) {
   const query = useTaskManagement(task.id);
   const action = useManageTask();
-  const session = useSession().data;
   const toast = useToast();
   const [answers, setAnswers] = useState<Record<number, string>>({});
-  const role = session?.projects.find((p) => p.slug === session.project)?.role;
-  const writable = session?.mode === "local" || (role !== undefined && role !== "viewer");
+  const writable = canWriteProject(useSession().data);
   if (query.isPending) return null;
   if (query.isError) return <section className="sec"><h3>Менеджер задачи</h3><p role="alert">{query.error.message}</p></section>;
   const manager = query.data.manager;

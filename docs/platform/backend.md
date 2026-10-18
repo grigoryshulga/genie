@@ -15,6 +15,8 @@ status: current
 | --- | --- | --- |
 | Domain core | `crates/genie-core/src/` | Task state machine, tracker, teams/mail, vault index, automations, server data. |
 | Server and CLI | `crates/genie/src/` | API, authentication, runtime, channels, operator commands. |
+| Observation domain | `crates/genie-core/src/observation/` | Outcome cases, contracts and change grammar, the pure evaluator, tracker and source persistence. |
+| Observation runtime | `crates/genie/src/observation/` | Application service and permissions, Prometheus- and Sentry-compatible adapters, the scheduler. |
 | Operation catalog | `crates/genie/src/ops/` | Typed operation arguments, permissions, handlers, CLI and MCP exposure. |
 | HTTP | `crates/genie/src/http/` | REST, SSE, MCP server, and web asset serving. |
 | Live sessions | `crates/genie/src/sessions.rs` | pi subprocess lifecycle, RPC, supervision, and recovery. |
