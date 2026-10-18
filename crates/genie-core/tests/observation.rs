@@ -1034,9 +1034,14 @@ fn failed_record(criterion: &str, kind: CriterionKind, error: &str) -> NewEviden
     NewEvidence { value: None, error: Some(error.into()), ..observed(criterion, kind, 0.0, None, TrustLevel::Measured) }
 }
 
-/// A scheduler pass at `now` with these records and no schedule change.
+/// A scheduler pass at `now` on contract version 1 with these records and no schedule change.
 fn pass(records: Vec<NewEvidence>) -> CollectionInput {
-    CollectionInput { records, now: now(), next_guardrail_at: None, failed: None }
+    CollectionInput { records, contract_version: 1, now: now(), next_guardrail_at: None, failed: None, pass: true }
+}
+
+/// A manual report (§7.5) at `now` on contract version 1: it has no failure and no schedule change.
+fn report(records: Vec<NewEvidence>) -> CollectionInput {
+    CollectionInput { pass: false, ..pass(records) }
 }
 
 fn apply(t: &Tracker, id: i64, input: CollectionInput) -> genie_core::Result<Option<Applied>> {
@@ -1149,8 +1154,8 @@ fn malformed_records_are_rejected_with_the_reason_before_anything_is_stored() {
     expect_err(apply(&t, case.id, pass(vec![NewEvidence { samples: Some(-1), ..hypothesis() }])), "samples must be zero or more");
     let at = now();
     expect_err(
-        apply(&t, case.id, pass(vec![NewEvidence { window_start: at, window_end: at, ..hypothesis() }])),
-        "the window must start before it ends",
+        apply(&t, case.id, pass(vec![NewEvidence { window_start: at + Duration::minutes(1), window_end: at, ..hypothesis() }])),
+        "the window must not end before it starts",
     );
     assert!(o.evidence(case.id, &EvidenceFilter::default()).unwrap().is_empty());
     match o.evidence(9, &EvidenceFilter::default()) {
@@ -1220,6 +1225,10 @@ fn a_violating_guardrail_record_opens_one_incident_and_a_repeat_opens_none() {
     assert_eq!(incident.status, IncidentStatus::Open);
     assert_eq!(incident.summary, "change +0.5pp exceeds +0.1pp");
     assert_eq!(incident.evidence, Some(first.evidence[0].id));
+    // A scheduler pass stamps the incident with the pass time, not the wall clock.
+    assert_eq!(incident.created, ts(now()));
+    let violated_first = events_of(&t, case.id, "guardrail.violated");
+    assert_eq!(violated_first[0].payload["evidence"], first.evidence[0].id);
 
     // The same violation again: the open incident is kept and the record is still stored.
     let second = apply(&t, case.id, pass(vec![observed("error_rate", CriterionKind::Guardrail, 1.2, Some(0.5), TrustLevel::Measured)]))
@@ -1285,9 +1294,11 @@ fn failed_passes_count_up_and_a_clean_pass_resets_them() {
     let o = t.observation();
     let failing = |message: &str| CollectionInput {
         records: vec![failed_record("error_rate", CriterionKind::Guardrail, message)],
+        contract_version: 1,
         now: now(),
         next_guardrail_at: None,
         failed: Some(message.into()),
+        pass: true,
     };
     let first = apply(&t, case.id, failing("prometheus: timeout")).unwrap().unwrap();
     assert_eq!(first.failures, 1);
@@ -1324,9 +1335,11 @@ fn each_pass_writes_one_evidence_collected_event_and_moves_the_schedule_only_whe
                 failed_record("error_rate", CriterionKind::Guardrail, "timeout"),
                 observed("checkout_errors", CriterionKind::Guardrail, 10.0, None, TrustLevel::Measured),
             ],
+            contract_version: 1,
             now: now(),
             next_guardrail_at: Some(next),
             failed: Some("timeout".into()),
+            pass: true,
         },
     )
     .unwrap()
@@ -1362,17 +1375,20 @@ fn an_insufficient_evaluation_reschedules_to_the_earlier_of_one_interval_and_the
         details: vec![],
     };
 
+    // A request made before the pass is cleared by the insufficient verdict as well.
+    o.request_evaluation(&me(), case.id, false).unwrap();
     assert!(o.begin_evaluation(case.id).unwrap());
     let at = now() + Duration::hours(25);
     let after =
-        o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, at).unwrap().expect("the case was evaluating");
+        o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 1, at).unwrap().expect("the case was evaluating");
     assert_eq!(after.status, CaseStatus::Observing);
+    assert_eq!(after.evaluation_requested, None);
     assert_eq!(after.next_evaluation_at.as_deref(), Some(ts(at + Duration::hours(6)).as_str()), "one interval after the pass");
 
     // Close to the preferred window (72h after the anchor), the window is the earlier one.
     assert!(o.begin_evaluation(case.id).unwrap());
     let late = now() + Duration::hours(70);
-    let after = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Manual, late).unwrap().unwrap();
+    let after = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Manual, 1, late).unwrap().unwrap();
     assert_eq!(after.next_evaluation_at.as_deref(), Some(ts(now() + Duration::hours(72)).as_str()));
 
     let evaluations = o.evaluations(case.id, None).unwrap();
@@ -1406,7 +1422,7 @@ fn a_confirmed_evaluation_concludes_the_case_clears_its_schedule_and_writes_its_
         details: vec![],
     };
     let at = now() + Duration::hours(72);
-    let concluded = o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, at).unwrap().unwrap();
+    let concluded = o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, at).unwrap().unwrap();
     assert_eq!(concluded.status, CaseStatus::Concluded);
     assert_eq!(concluded.result, Some(CaseResult::Confirmed));
     assert_eq!(concluded.confidence, Some(Confidence::High));
@@ -1429,7 +1445,7 @@ fn a_confirmed_evaluation_concludes_the_case_clears_its_schedule_and_writes_its_
 
     // A concluded case is neither evaluated nor due.
     assert!(!o.begin_evaluation(case.id).unwrap());
-    assert!(o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, at).unwrap().is_none());
+    assert!(o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, at).unwrap().is_none());
     assert!(o.due(at + Duration::days(30)).unwrap().is_empty());
 }
 
@@ -1446,7 +1462,8 @@ fn each_conclusion_maps_to_its_result_confidence_and_event() {
         let case = observing_mixed(&t, &task);
         assert!(o.begin_evaluation(case.id).unwrap());
         let outcome = EvalOutcome { verdict, confidence: Some(confidence), summary: format!("{verdict}: test"), details: vec![] };
-        let done = o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, now() + Duration::hours(72)).unwrap().unwrap();
+        let done =
+            o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, now() + Duration::hours(72)).unwrap().unwrap();
         assert_eq!((done.status, done.result, done.confidence), (CaseStatus::Concluded, Some(result), Some(confidence)));
         assert_eq!(events_of(&t, case.id, kind).len(), 1, "{kind} is written once");
     }
@@ -1460,13 +1477,13 @@ fn a_finished_evaluation_after_a_cancel_or_without_a_begin_writes_nothing() {
     let cancelled = observing_mixed(&t, &task);
     assert!(o.begin_evaluation(cancelled.id).unwrap());
     o.cancel(&me(), cancelled.id, "the change was reverted", now()).unwrap();
-    assert!(o.finish_evaluation(&scheduler(), cancelled.id, &confirmed(), EvalTrigger::Final, now()).unwrap().is_none());
+    assert!(o.finish_evaluation(&scheduler(), cancelled.id, &confirmed(), EvalTrigger::Final, 1, now()).unwrap().is_none());
     assert!(o.evaluations(cancelled.id, None).unwrap().is_empty());
     assert!(events_of(&t, cancelled.id, "outcome.confirmed").is_empty());
 
     // Without a begin the case is still observing, so there is nothing to finish.
     let observing = observing_mixed(&t, &task);
-    assert!(o.finish_evaluation(&scheduler(), observing.id, &confirmed(), EvalTrigger::Final, now()).unwrap().is_none());
+    assert!(o.finish_evaluation(&scheduler(), observing.id, &confirmed(), EvalTrigger::Final, 1, now()).unwrap().is_none());
     assert!(o.evaluations(observing.id, None).unwrap().is_empty());
     assert_eq!(o.get(observing.id).unwrap().status, CaseStatus::Observing);
 }
@@ -1488,7 +1505,7 @@ fn begin_evaluation_is_true_only_for_observing_and_evaluating_cases() {
     o.cancel(&me(), cancelled.id, "dropped", now()).unwrap();
     let concluded = observing_mixed(&t, &new_task(&t, "Done"));
     assert!(o.begin_evaluation(concluded.id).unwrap());
-    o.finish_evaluation(&scheduler(), concluded.id, &confirmed(), EvalTrigger::Final, now() + Duration::hours(72)).unwrap();
+    o.finish_evaluation(&scheduler(), concluded.id, &confirmed(), EvalTrigger::Final, 1, now() + Duration::hours(72)).unwrap();
 
     assert!(!o.begin_evaluation(proposed.id).unwrap());
     assert!(!o.begin_evaluation(waiting.id).unwrap());
@@ -1635,7 +1652,14 @@ fn due_lists_the_cases_with_a_check_an_evaluation_or_a_request_due_and_next_due_
         apply(
             &t,
             case.id,
-            CollectionInput { records: vec![], now: now(), next_guardrail_at: Some(anchor + Duration::hours(30)), failed: None },
+            CollectionInput {
+                records: vec![],
+                contract_version: 1,
+                now: now(),
+                next_guardrail_at: Some(anchor + Duration::hours(30)),
+                failed: None,
+                pass: true,
+            },
         )
         .unwrap();
     }
@@ -1656,7 +1680,14 @@ fn due_lists_the_cases_with_a_check_an_evaluation_or_a_request_due_and_next_due_
     apply(
         &t,
         x.id,
-        CollectionInput { records: vec![], now: anchor, next_guardrail_at: Some(anchor + Duration::minutes(15)), failed: None },
+        CollectionInput {
+            records: vec![],
+            contract_version: 1,
+            now: anchor,
+            next_guardrail_at: Some(anchor + Duration::minutes(15)),
+            failed: None,
+            pass: true,
+        },
     )
     .unwrap();
     assert_eq!(o.next_due().unwrap().as_deref(), Some(ts(anchor + Duration::minutes(15)).as_str()));
@@ -1704,7 +1735,11 @@ fn evidence_is_filtered_and_paged_and_the_current_queries_see_only_the_current_c
     assert_eq!(listed(EvidenceFilter { after: Some(2), limit: Some(2), ..Default::default() }), [3, 4]);
     assert_eq!(listed(EvidenceFilter { newest_first: true, limit: Some(2), ..Default::default() }), [5, 4]);
     assert_eq!(listed(EvidenceFilter { newest_first: true, after: Some(4), ..Default::default() }), [3, 2, 1]);
-    expect_err(o.evidence(case.id, &EvidenceFilter { limit: Some(0), ..Default::default() }), "limit must be between 1 and 200");
+    // Evidence pages go up to 500 (§15); the other listings stay at 200.
+    expect_err(o.evidence(case.id, &EvidenceFilter { limit: Some(0), ..Default::default() }), "limit must be between 1 and 500");
+    expect_err(o.evidence(case.id, &EvidenceFilter { limit: Some(501), ..Default::default() }), "limit must be between 1 and 500");
+    assert_eq!(listed(EvidenceFilter { limit: Some(500), ..Default::default() }), [1, 2, 3, 4, 5]);
+    expect_err(o.evaluations(case.id, Some(201)), "limit must be between 1 and 200");
 
     // The newest usable baseline: the failed record (3) is skipped.
     assert_eq!(o.latest_baseline(case.id, "error_rate").unwrap().map(|e| e.id), Some(2));
@@ -1740,8 +1775,147 @@ fn evidence_is_filtered_and_paged_and_the_current_queries_see_only_the_current_c
     assert_eq!(listed(EvidenceFilter::default()), [1, 2, 3, 4, 5, 6, 7], "history keeps every version");
     assert_eq!(o.evidence(case.id, &EvidenceFilter::default()).unwrap()[3].contract_version, 1);
 
-    apply(&t, case.id, pass(vec![observed("p95", CriterionKind::Hypothesis, 85.0, Some(100.0), TrustLevel::Measured)])).unwrap();
+    let under_v2 = CollectionInput {
+        contract_version: 2,
+        ..pass(vec![observed("p95", CriterionKind::Hypothesis, 85.0, Some(100.0), TrustLevel::Measured)])
+    };
+    apply(&t, case.id, under_v2).unwrap();
     let current = o.current_evidence(case.id).unwrap();
     assert_eq!(current.iter().map(|e| e.id).collect::<Vec<_>>(), [8]);
     assert_eq!(current[0].contract_version, 2);
+}
+
+#[test]
+fn a_zero_length_window_is_valid_for_the_first_pass() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    // The first pass after the start measures [anchor, now] with anchor == now.
+    let first = NewEvidence {
+        window_start: now(),
+        window_end: now(),
+        ..observed("p95", CriterionKind::Hypothesis, 100.0, None, TrustLevel::Measured)
+    };
+    let applied = apply(&t, case.id, pass(vec![first])).unwrap().unwrap();
+    assert_eq!(applied.evidence.len(), 1);
+    assert_eq!(applied.evidence[0].window_start, applied.evidence[0].window_end);
+    assert_eq!(o.current_evidence(case.id).unwrap().len(), 1);
+}
+
+#[test]
+fn a_pass_or_an_evaluation_under_a_superseded_contract_writes_nothing() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    assert!(o.begin_evaluation(case.id).unwrap());
+    // A person revises the contract while the scheduler is measuring under version 1 (D8).
+    let mut revised = mixed_contract();
+    revised.guardrails[0].max_change = Some("+0.2pp".into());
+    o.set_contract(&me(), case.id, &revised, "loosen error_rate").unwrap();
+    let before = serde_json::to_value(o.get(case.id).unwrap()).unwrap();
+    let journal_before = journal(&t, case.id).len();
+
+    // A pass snapshotted under version 1 writes no record, no failure, no schedule and no event.
+    let stale = CollectionInput {
+        records: vec![observed("error_rate", CriterionKind::Guardrail, 1.0, Some(0.5), TrustLevel::Measured)],
+        contract_version: 1,
+        now: now(),
+        next_guardrail_at: Some(now() + Duration::minutes(15)),
+        failed: Some("timeout".into()),
+        pass: true,
+    };
+    assert!(apply(&t, case.id, stale).unwrap().is_none());
+    // The verdict computed under version 1 is refused the same way.
+    let insufficient =
+        EvalOutcome { verdict: Verdict::Insufficient, confidence: None, summary: "insufficient: test".into(), details: vec![] };
+    assert!(
+        o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 1, now() + Duration::hours(25)).unwrap().is_none()
+    );
+
+    assert!(o.evidence(case.id, &EvidenceFilter::default()).unwrap().is_empty());
+    assert!(o.evaluations(case.id, None).unwrap().is_empty());
+    assert!(o.incidents(None).unwrap().is_empty());
+    assert_eq!(serde_json::to_value(o.get(case.id).unwrap()).unwrap(), before, "the case is unchanged");
+    assert_eq!(journal(&t, case.id).len(), journal_before, "no event was written");
+    assert_eq!(o.get(case.id).unwrap().status, CaseStatus::Evaluating);
+
+    // The current version is accepted, and the evaluation still finishes under it.
+    let current = CollectionInput {
+        contract_version: 2,
+        ..pass(vec![observed("p95", CriterionKind::Hypothesis, 80.0, Some(100.0), TrustLevel::Measured)])
+    };
+    assert_eq!(apply(&t, case.id, current).unwrap().unwrap().evidence.len(), 1);
+    let at = now() + Duration::hours(25);
+    let finished = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 2, at).unwrap().unwrap();
+    assert_eq!(finished.status, CaseStatus::Observing);
+}
+
+#[test]
+fn a_manual_report_leaves_the_failure_streak_alone() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let failing = |message: &str| CollectionInput {
+        records: vec![failed_record("error_rate", CriterionKind::Guardrail, message)],
+        contract_version: 1,
+        now: now(),
+        next_guardrail_at: None,
+        failed: Some(message.into()),
+        pass: true,
+    };
+    apply(&t, case.id, failing("prometheus: timeout")).unwrap();
+    apply(&t, case.id, failing("prometheus: timeout")).unwrap();
+    assert_eq!(o.get(case.id).unwrap().failures, 2);
+
+    let manual = apply(&t, case.id, report(vec![observed("checkout_errors", CriterionKind::Guardrail, 10.0, None, TrustLevel::Reported)]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(manual.failures, 2);
+    assert_eq!(manual.evidence.len(), 1);
+    assert_eq!(manual.evidence[0].trust, TrustLevel::Reported);
+    let stored = o.get(case.id).unwrap();
+    assert_eq!((stored.failures, stored.last_error.as_deref()), (2, Some("prometheus: timeout")));
+
+    // A manual report cannot carry a collection failure.
+    expect_err(
+        apply(&t, case.id, CollectionInput { failed: Some("boom".into()), ..report(vec![]) }),
+        "a manual report cannot carry a collection failure",
+    );
+    // The next scheduler pass continues the streak.
+    assert_eq!(apply(&t, case.id, failing("prometheus: timeout")).unwrap().unwrap().failures, 3);
+}
+
+#[test]
+fn a_public_incident_must_name_a_guardrail_and_evidence_of_its_case() {
+    let (_dir, t) = fresh();
+    let case = observing_mixed(&t, &new_task(&t, "Ship"));
+    let other = observing_mixed(&t, &new_task(&t, "Other"));
+    let o = t.observation();
+    let foreign = apply(&t, other.id, pass(vec![observed("checkout_errors", CriterionKind::Guardrail, 10.0, None, TrustLevel::Measured)]))
+        .unwrap()
+        .unwrap()
+        .evidence[0]
+        .id;
+
+    expect_err(o.open_incident(&pm(), case.id, "p95", None, "x"), "criterion p95 is not a guardrail of the current contract of O-1");
+    expect_err(o.open_incident(&pm(), case.id, "nope", None, "x"), "criterion nope is not a guardrail of the current contract of O-1");
+    expect_err(
+        o.open_incident(&pm(), case.id, "checkout_errors", Some(foreign), "x"),
+        &format!("evidence {foreign} does not belong to O-1"),
+    );
+    expect_err(o.open_incident(&pm(), case.id, "checkout_errors", Some(99), "x"), "evidence 99 does not belong to O-1");
+    assert!(o.incidents(None).unwrap().is_empty());
+
+    // Evidence of the case itself is accepted.
+    let own = apply(&t, case.id, pass(vec![observed("checkout_errors", CriterionKind::Guardrail, 10.0, None, TrustLevel::Measured)]))
+        .unwrap()
+        .unwrap()
+        .evidence[0]
+        .id;
+    let (incident, created) = o.open_incident(&pm(), case.id, "checkout_errors", Some(own), "61 errors").unwrap();
+    assert!(created);
+    assert_eq!(incident.evidence, Some(own));
 }

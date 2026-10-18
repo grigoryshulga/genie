@@ -1,7 +1,5 @@
 //! Persistence of cases, contracts, evidence, evaluations and incidents in the project tracker (§13).
 //!
-//! Persistence of cases, contracts, evidence, evaluations and incidents in the project tracker (§13).
-//!
 //! The case lifecycle up to the start of observation (§6) is first: creation, updates, contract
 //! versions, arming, starting, deployments, evaluation requests and cancellation. After the start
 //! come the collection of evidence (§7, §11.3), the guardrail check and incidents (§8, §10.1),
@@ -41,6 +39,8 @@ const MAX_DEPLOYMENT_AGE_DAYS: i64 = 30;
 /// Default and maximum page of [`Observation::list`].
 const DEFAULT_LIMIT: i64 = 100;
 const MAX_LIMIT: i64 = 200;
+/// Largest page of [`Observation::evidence`] (§15).
+const EVIDENCE_MAX_LIMIT: i64 = 500;
 
 /// Input of [`Observation::create`] (§6.2).
 #[derive(Debug, Clone)]
@@ -111,13 +111,20 @@ pub struct NewEvidence {
 #[derive(Debug, Clone)]
 pub struct CollectionInput {
     pub records: Vec<NewEvidence>,
-    /// The pass time: the `at` of the records and the `updated` stamp of the case.
+    /// The contract version the scheduler snapshotted before measuring (D8). When the case has
+    /// moved to another version since, nothing is written and the call returns `None`.
+    pub contract_version: i64,
+    /// The pass time: the `at` of the records, the stamp of any incident opened, and the `updated`
+    /// stamp of the case.
     pub now: DateTime<Utc>,
     /// The next guardrail check, when the pass schedules one. `None` leaves the schedule unchanged.
     pub next_guardrail_at: Option<DateTime<Utc>>,
     /// The first collection error of the pass, when a measurement failed. `None` means every
-    /// measurement succeeded and resets the failure count.
+    /// measurement succeeded and resets the failure count. A manual report has no failure.
     pub failed: Option<String>,
+    /// `true` for a scheduler pass (§11.3), which updates `failures` and `lastError` as `failed`
+    /// says. `false` for a manual report (§7.5), which leaves both untouched.
+    pub pass: bool,
 }
 
 /// What [`Observation::apply_collection`] stored.
@@ -194,7 +201,7 @@ impl Observation<'_> {
 
     /// Cases matching `filter`, newest first.
     pub fn list(&self, filter: &CaseFilter) -> Result<Vec<ObservationCase>> {
-        let limit = page_limit(filter.limit)?;
+        let limit = page_limit(filter.limit, MAX_LIMIT)?;
         let task = filter.task.as_deref().map(|t| self.0.normalize_id(t)).transpose()?;
         let status = filter.status.map(CaseStatus::as_str);
         let mut stmt = self.0.conn().prepare_cached(
@@ -681,20 +688,25 @@ impl Observation<'_> {
     /// usable guardrail record that crosses its limit opens an incident (§8). `failed` counts
     /// consecutive failed passes; a clean pass resets the count and the last error.
     pub fn apply_collection(&self, actor: &Actor, id: i64, input: CollectionInput) -> Result<Option<Applied>> {
+        if !input.pass && input.failed.is_some() {
+            return Err(GenieError::invalid("a manual report cannot carry a collection failure"));
+        }
         self.0.tx(|| {
             let case = self.get(id)?;
-            if !is_collecting(case.status) {
+            // A pass measured under an older contract, or a case that stopped observing, writes nothing (§11.3, D8).
+            if !is_collecting(case.status) || case.contract_version != input.contract_version {
                 return Ok(None);
             }
             let contract = self.current_contract(&case)?.ok_or_else(|| GenieError::invalid("no contract yet"))?;
             for record in &input.records {
                 check_record(&contract, id, record)?;
             }
+            let stamp = ts(input.now);
             let mut evidence = Vec::with_capacity(input.records.len());
             let mut new_incidents = Vec::new();
             for record in input.records {
                 let stored = self.insert_evidence(id, case.contract_version, record, input.now)?;
-                if let Some(incident) = self.check_new_record(actor, &contract, &stored)? {
+                if let Some(incident) = self.check_new_record(actor, &contract, &stored, &stamp)? {
                     new_incidents.push(incident);
                 }
                 evidence.push(stored);
@@ -702,11 +714,16 @@ impl Observation<'_> {
             if let Some(next) = input.next_guardrail_at {
                 self.0.conn().execute("UPDATE observation_cases SET next_guardrail_at = ?1 WHERE id = ?2", params![ts(next), id])?;
             }
-            let failures = if input.failed.is_some() { case.failures + 1 } else { 0 };
-            self.0.conn().execute(
-                "UPDATE observation_cases SET failures = ?1, last_error = ?2, updated = ?3 WHERE id = ?4",
-                params![failures, input.failed, ts(input.now), id],
-            )?;
+            // Only a scheduler pass counts as a collection attempt; a manual report leaves the streak alone.
+            let failures = if input.pass { if input.failed.is_some() { case.failures + 1 } else { 0 } } else { case.failures };
+            if input.pass {
+                self.0.conn().execute(
+                    "UPDATE observation_cases SET failures = ?1, last_error = ?2, updated = ?3 WHERE id = ?4",
+                    params![failures, input.failed, stamp, id],
+                )?;
+            } else {
+                self.0.conn().execute("UPDATE observation_cases SET updated = ?1 WHERE id = ?2", params![stamp, id])?;
+            }
             if !evidence.is_empty() {
                 let errors = evidence.iter().filter(|e| e.error.is_some()).count();
                 self.emit(actor, id, events::EVIDENCE_COLLECTED, &[("records", json!(evidence.len())), ("errors", json!(errors))])?;
@@ -716,8 +733,9 @@ impl Observation<'_> {
     }
 
     /// The guardrail check of one stored record (§8). A usable observed guardrail record that
-    /// crosses a limit opens its incident; the incident is returned only when this call opened it.
-    fn check_new_record(&self, actor: &Actor, contract: &Contract, record: &Evidence) -> Result<Option<Incident>> {
+    /// crosses a limit opens its incident, stamped with `stamp`; the incident is returned only when
+    /// this call opened it.
+    fn check_new_record(&self, actor: &Actor, contract: &Contract, record: &Evidence, stamp: &str) -> Result<Option<Incident>> {
         if record.kind != CriterionKind::Guardrail || record.phase != EvidencePhase::Observed || !evaluate::is_usable(record) {
             return Ok(None);
         }
@@ -727,14 +745,14 @@ impl Observation<'_> {
         let Some(message) = evaluate::check_guardrail(guardrail, record) else {
             return Ok(None);
         };
-        let (incident, created) = self.open_incident(actor, record.case_id, &guardrail.id, Some(record.id), &message)?;
+        let (incident, created) = self.open_incident_at(actor, record.case_id, &guardrail.id, Some(record.id), &message, stamp)?;
         Ok(created.then_some(incident))
     }
 
     /// The records of a case, filtered and paged (§7). Records of every contract version are listed.
     pub fn evidence(&self, id: i64, filter: &EvidenceFilter) -> Result<Vec<Evidence>> {
         self.ensure_case(id)?;
-        let limit = page_limit(filter.limit)?;
+        let limit = page_limit(filter.limit, EVIDENCE_MAX_LIMIT)?;
         // The keywords are fixed here; every value still goes through a bound parameter.
         let (order, cmp) = if filter.newest_first { ("DESC", "<") } else { ("ASC", ">") };
         let sql = format!(
@@ -796,18 +814,22 @@ impl Observation<'_> {
     /// nothing, unless the case is still `evaluating` (for instance cancelled meanwhile). The
     /// evaluation is stored and the request cleared. `insufficient` keeps the case observing and
     /// schedules the next evaluation at the earlier of one interval later and the preferred window;
-    /// any other verdict concludes the case with its result, confidence and summary.
+    /// any other verdict concludes the case with its result, confidence and summary. `contract_version`
+    /// is the version the verdict was computed under: when the case has moved to another version
+    /// since, the outcome is stale and nothing is written.
     pub fn finish_evaluation(
         &self,
         actor: &Actor,
         id: i64,
         outcome: &EvalOutcome,
         trigger: EvalTrigger,
+        contract_version: i64,
         now: DateTime<Utc>,
     ) -> Result<Option<ObservationCase>> {
         self.0.tx(|| {
             let case = self.get(id)?;
-            if case.status != CaseStatus::Evaluating {
+            // The outcome was computed under `contract_version`; a revision since then makes it stale (D8).
+            if case.status != CaseStatus::Evaluating || case.contract_version != contract_version {
                 return Ok(None);
             }
             let contract = self.current_contract(&case)?.ok_or_else(|| GenieError::invalid("no contract yet"))?;
@@ -873,17 +895,52 @@ impl Observation<'_> {
     /// The evaluations of a case, newest first, at most `limit` (default 100, at most 200).
     pub fn evaluations(&self, id: i64, limit: Option<i64>) -> Result<Vec<Evaluation>> {
         self.ensure_case(id)?;
-        let limit = page_limit(limit)?;
+        let limit = page_limit(limit, MAX_LIMIT)?;
         let mut stmt =
             self.0.conn().prepare_cached("SELECT * FROM observation_evaluations WHERE case_id = ?1 ORDER BY id DESC LIMIT ?2")?;
         let rows = stmt.query_map(params![id, limit], evaluation_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
 
-    /// Opens an incident for a guardrail violation (§10.1). At most one incident is open per case
-    /// and guardrail: when one is open, it is returned with `false` and nothing is written. Otherwise
-    /// the incident is created with `guardrail.violated` and `incident.created`, and returned with `true`.
+    /// Opens an incident for a guardrail violation (§10.1). `guardrail` must be a guardrail of the
+    /// current contract, and `evidence`, when given, a record of this case. At most one incident is
+    /// open per case and guardrail: when one is open, it is returned with `false` and nothing is
+    /// written. Otherwise the incident is created with `guardrail.violated` and `incident.created`,
+    /// and returned with `true`.
     pub fn open_incident(&self, actor: &Actor, id: i64, guardrail: &str, evidence: Option<i64>, summary: &str) -> Result<(Incident, bool)> {
+        self.0.tx(|| {
+            let case = self.get(id)?;
+            let contract = self.current_contract(&case)?;
+            let known = contract.as_ref().and_then(|c| c.criterion(guardrail));
+            if !matches!(known, Some(CriterionRef::Guardrail(_))) {
+                return Err(GenieError::invalid(format!(
+                    "criterion {guardrail} is not a guardrail of the current contract of {}",
+                    case_key(id)
+                )));
+            }
+            if let Some(record) = evidence {
+                let owner: Option<i64> =
+                    self.0.conn().query_row("SELECT case_id FROM observation_evidence WHERE id = ?1", [record], |r| r.get(0)).optional()?;
+                if owner != Some(id) {
+                    return Err(GenieError::invalid(format!("evidence {record} does not belong to {}", case_key(id))));
+                }
+            }
+            self.open_incident_at(actor, id, guardrail, evidence, summary, &clock())
+        })
+    }
+
+    /// [`Observation::open_incident`] with the stamp of the incident given by the caller, so a
+    /// scheduler pass stamps the incidents it opens with its own time. The caller has checked the
+    /// guardrail and the evidence.
+    fn open_incident_at(
+        &self,
+        actor: &Actor,
+        id: i64,
+        guardrail: &str,
+        evidence: Option<i64>,
+        summary: &str,
+        stamp: &str,
+    ) -> Result<(Incident, bool)> {
         self.0.tx(|| {
             self.ensure_case(id)?;
             let open: Option<i64> = self
@@ -901,7 +958,7 @@ impl Observation<'_> {
             self.0.conn().execute(
                 "INSERT INTO observation_incidents(case_id, guardrail, status, summary, evidence, created)
                  VALUES (?1, ?2, 'open', ?3, ?4, ?5)",
-                params![id, guardrail, summary, evidence, clock()],
+                params![id, guardrail, summary, evidence, stamp],
             )?;
             let incident = self.0.conn().last_insert_rowid();
             self.emit(
@@ -1187,8 +1244,9 @@ fn check_record(contract: &Contract, case: i64, record: &NewEvidence) -> Result<
     if record.samples.is_some_and(|n| n < 0) {
         return Err(GenieError::invalid("samples must be zero or more"));
     }
-    if record.window_start >= record.window_end {
-        return Err(GenieError::invalid("the window must start before it ends"));
+    // A zero-length window is valid: the first pass measures [anchor, now] with anchor == now.
+    if record.window_start > record.window_end {
+        return Err(GenieError::invalid("the window must not end before it starts"));
     }
     Ok(())
 }
@@ -1218,11 +1276,11 @@ fn next_evaluation(case: &ObservationCase, contract: &Contract, now: DateTime<Ut
     Ok((now + resolved.evaluation_interval).min(preferred_end))
 }
 
-/// The page size of a listing: the default when none is given, otherwise 1 to 200.
-fn page_limit(limit: Option<i64>) -> Result<i64> {
+/// The page size of a listing: the default when none is given, otherwise 1 to `max`.
+fn page_limit(limit: Option<i64>, max: i64) -> Result<i64> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
-    if !(1..=MAX_LIMIT).contains(&limit) {
-        return Err(GenieError::invalid(format!("limit must be between 1 and {MAX_LIMIT}")));
+    if !(1..=max).contains(&limit) {
+        return Err(GenieError::invalid(format!("limit must be between 1 and {max}")));
     }
     Ok(limit)
 }
