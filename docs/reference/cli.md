@@ -35,7 +35,28 @@ genie task --help
 genie task create --help
 ```
 
-Operation groups include `task`, `team`, `mail`, `docs`, `job`, `automation`, `agents`, `project`, `user`, `me`, and `server`. Repository and delivery commands are under `repos` and `pr`. Operator commands include `serve`, `doctor`, `backup`, `restore`, and `migrate`.
+Operation groups include `task`, `team`, `mail`, `docs`, `job`, `automation`, `agents`, `project`, `observe`, `user`, `me`, and `server`. Repository and delivery commands are under `repos` and `pr`. Operator commands include `serve`, `doctor`, `backup`, `restore`, and `migrate`.
+
+## Observe
+
+`genie observe` manages outcome cases after delivery and the sources they measure. Its `--json` output is the API response. Ids accept `O-1` or `1` for cases and `I-1` or `1` for incidents. Who may run each command is in [observation](../platform/observation.md#who-can-do-what).
+
+| Command | Purpose | Run by |
+| --- | --- | --- |
+| `list`, `show`, `evidence`, `incidents` | Read cases, evidence and incidents. | Anyone with project access |
+| `create`, `update`, `contract`, `arm`, `start`, `cancel` | Create a case, set its contract, arm, start or cancel it. | People and the project manager |
+| `evaluate`, `deploy`, `report` | Request an evaluation, record a deployment, report a measurement. | People and the project manager; `evaluate --final` is people only |
+| `resolve`, `followup` | Resolve an incident; create a follow-up task. | People and the project manager |
+| `dismiss` | Dismiss an incident as a false positive. | People only |
+| `sources`, `source-add`, `source-update`, `source-remove`, `source-secret`, `source-test` | Manage metrics and error sources and their secrets. | Project administrators (people only) |
+
+```bash
+genie observe create --title "Checkout latency" --policy verify --task G-7 --contract-file checkout.json
+genie observe arm O-1
+genie observe incidents --status open
+```
+
+The [observation guide](../platform/observation.md) explains contracts, sources and the evaluation rules. Operations are also exposed as the `genie_observe` MCP tool.
 
 ## MCP connection
 

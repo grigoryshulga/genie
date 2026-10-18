@@ -23,6 +23,8 @@ Terms and Russian UI labels of the [observation plane](docs/platform/observation
 | **Hypothesis** | An expected result that a `verify` case checks. Russian: гипотеза. |
 | **Guardrail** | A limit that must not be crossed after delivery. Russian: ограничитель. |
 | **Evidence record** | One structured measurement with provenance and trust level. Russian: измерение. |
+| **Anchor** | The moment observation started; windows are measured from it. Russian: начало наблюдения. |
+| **Trust level** | How an evidence record was produced: `measured` by a source, `reported` by a person, or `agent` by an agent. Russian: доверие. |
 | **Incident** | An open guardrail violation of a case, key `I-<n>`. Russian: инцидент. |
 | **Follow-up task** | A delivery task created from an incident or a conclusion. Russian: задача по итогам наблюдения. |
 | **Observation source** | A project's configured Prometheus- or Sentry-compatible server that cases read measurements from; its secret stays on the server. Russian: источник наблюдения. |

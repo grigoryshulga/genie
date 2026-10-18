@@ -47,7 +47,9 @@ Notify the author when a task closes:
 | Manual | `{"manual":true}` | `inputs`, `task` |
 | Webhook | `{"webhook":{"secret":"at-least-16-characters"}}` | `payload` |
 
-Events cover task changes, teams, mail, documents, proposals, releases, and repository/CI activity. `where` supports dotted paths, equality, a list of alternatives, and operators `not`, `exists`, `contains`, `not_contains`, `gt`, `lt`, and `prefix`.
+Events cover task changes, teams, mail, documents, proposals, releases, repository/CI activity, and [observation](observation.md). `where` supports dotted paths, equality, a list of alternatives, and operators `not`, `exists`, `contains`, `not_contains`, `gt`, `lt`, and `prefix`.
+
+Observation events are `outcome.created`, `outcome.updated`, `observation.started`, `deployment.completed`, `evidence.collected`, `guardrail.violated`, `incident.created`, `incident.resolved`, `incident.dismissed`, `outcome.ready_for_evaluation`, `outcome.evaluated`, `outcome.confirmed`, `outcome.negative`, `outcome.inconclusive`, `outcome.cancelled`, and `followup_task.created`. Their subject is a case (`observation:<id>`), not a task, so templates have no `task` context; use the payload fields instead.
 
 Cron accepts five fields, or six with seconds. Run a manual rule with `genie automation run <id> --task G-7 --input key=value`. Webhooks use `POST /api/hooks/<id>?token=<secret>`.
 

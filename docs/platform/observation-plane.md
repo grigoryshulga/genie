@@ -2,7 +2,7 @@
 title: "Observation plane: Phase 1 specification"
 summary: Implementation design for outcome cases, contracts, evidence, guardrail incidents, and evaluation after delivery.
 type: note
-status: draft
+status: current
 ---
 
 # Observation plane: Phase 1 specification
@@ -793,7 +793,7 @@ All Russian labels (statuses, results, policies, incident states, navigation, bu
 
 - `agents/project-manager.md` gains an "Observation" section: propose a case during planning for risky or measurable changes, write the contract before delivery, never conclude or dismiss, react to incident and conclusion mail with follow-ups or escalation. English, like the existing prompt.
 - Notification kinds: `observation.incident`, `observation.concluded` and `observation.failing` (§11.3), link `/observation/<id>`, dedupe keys `observation-incident:<project>:<incident id>` and `observation-concluded:<project>:<case id>`.
-- Documentation (OBS-17): user reference `docs/platform/observation.md`, a decisions row (PD25: "Observation is a separate plane with its own lifecycle; it consumes delivery events and creates work only through task services"), the architecture code map, the CLI reference, the automations event list, `CHANGELOG.md` (Unreleased), the VitePress sidebar, and the roadmap. This specification's status becomes `current` once Phase 1 ships.
+- Documentation (OBS-17): user reference `docs/platform/observation.md`, a decisions row (PD26: "Observation is a separate plane with its own lifecycle; it consumes delivery events and creates work only through task services"), the architecture code map, the CLI reference, the automations event list, `CHANGELOG.md` (Unreleased), the VitePress sidebar, and the roadmap. This specification's status becomes `current` once Phase 1 ships.
 
 ## 19. Risks and limits
 

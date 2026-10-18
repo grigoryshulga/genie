@@ -33,6 +33,6 @@ Evaluate reproducible project environments, reviewer-directed changes, documenta
 
 ## Observation plane
 
-The [observation plane proposal](observation-plane-proposal.md) adds a post-delivery feedback loop: outcome cases, contracts, evidence, guardrail incidents, and follow-up tasks, independent of the task lifecycle. Its [Phase 1 specification](observation-plane.md) and [implementation plan](../development/observation-plane-plan.md) are drafts.
+The [observation plane proposal](observation-plane-proposal.md) adds a post-delivery feedback loop: outcome cases, contracts, evidence, guardrail incidents, and follow-up tasks, independent of the task lifecycle. Phase 1 is implemented; see the [user reference](observation.md). Its [Phase 1 specification](observation-plane.md) and [implementation plan](../development/observation-plane-plan.md) remain the design record.
 
 Further design questions include richer memory retrieval, project-wide planning interactions, scheduling overrides, and container-runner isolation guarantees.
