@@ -6,3 +6,4 @@ export * from "./images.ts";
 export * from "./workRoute.ts";
 export * from "./management.ts";
 export * from "./contextSearch.ts";
+export * from "./popover.ts";
