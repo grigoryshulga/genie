@@ -19,12 +19,18 @@ import type { SourceTestBody } from "@/shared/api/generated/SourceTestBody.ts";
 import type { SourceTestView } from "@/shared/api/generated/SourceTestView.ts";
 import type { SourceView } from "@/shared/api/generated/SourceView.ts";
 import type { UpdateCaseBody } from "@/shared/api/generated/UpdateCaseBody.ts";
-import { type CaseListFilter, type EvidenceListFilter, caseListQuery, evidenceListQuery, listQuery, observationKeys } from "./model.ts";
+import {
+  type CaseListFilter,
+  type EvidenceListFilter,
+  SOURCE_STALE,
+  caseListQuery,
+  evidenceListQuery,
+  listQuery,
+  observationKeys,
+} from "./model.ts";
 
 /** Every observation query: the journal mapping refetches the same root (shared/api/invalidation.ts). */
 const OBSERVATIONS: KeyPrefix[] = [observationKeys.root];
-/** Sources change only through their settings forms. */
-const SOURCES: KeyPrefix[] = [observationKeys.sources];
 
 const casePath = (id: number, rest = "") => `/api/observation/cases/${id}${rest}`;
 const sourcePath = (name: string, rest = "") => `/api/observation/sources/${encodeURIComponent(name)}${rest}`;
@@ -69,9 +75,12 @@ export const useTaskObservations = (task: string | undefined) =>
     enabled: !!task,
   });
 
-/** Observation sources of the project. Admins only: the server answers others with 403. */
-export const useObservationSources = () =>
-  useQuery({ queryKey: observationKeys.sources, queryFn: () => request<SourceView[]>("GET", "/api/observation/sources") });
+/**
+ * Observation sources of the project. Admins only: the server answers others with 403, so a page
+ * that is not for admins passes `enabled = false` (as `useUsers` does).
+ */
+export const useObservationSources = (enabled = true) =>
+  useQuery({ queryKey: observationKeys.sources, queryFn: () => request<SourceView[]>("GET", "/api/observation/sources"), enabled });
 
 // --- case mutations -------------------------------------------------------------------------------
 
@@ -128,21 +137,21 @@ export const useDismissIncident = () =>
 // --- source mutations (project admins, §14, §15) ----------------------------------------------------
 
 export const useAddSource = () =>
-  useInvalidating((body: SourceBody) => request<SourceView>("POST", "/api/observation/sources", body), SOURCES);
+  useInvalidating((body: SourceBody) => request<SourceView>("POST", "/api/observation/sources", body), SOURCE_STALE);
 
 /** The path name is the body's name: the server refuses a body that names another source. */
 export const useUpdateSource = () =>
-  useInvalidating((body: SourceBody) => request<SourceView>("PUT", sourcePath(body.name), body), SOURCES);
+  useInvalidating((body: SourceBody) => request<SourceView>("PUT", sourcePath(body.name), body), SOURCE_STALE);
 
 export const useRemoveSource = () =>
-  useInvalidating((name: string) => request<{ ok: boolean }>("DELETE", sourcePath(name)), SOURCES);
+  useInvalidating((name: string) => request<{ ok: boolean }>("DELETE", sourcePath(name)), SOURCE_STALE);
 
 /** Stores the secret; the answer carries only its hint. A blank value removes it. */
 export const useSetSourceSecret = () =>
-  useInvalidating(({ name, ...body }: { name: string } & SecretBody) => request<SourceView>("PUT", sourcePath(name, "/secret"), body), SOURCES);
+  useInvalidating(({ name, ...body }: { name: string } & SecretBody) => request<SourceView>("PUT", sourcePath(name, "/secret"), body), SOURCE_STALE);
 
 export const useClearSourceSecret = () =>
-  useInvalidating((name: string) => request<SourceView>("DELETE", sourcePath(name, "/secret")), SOURCES);
+  useInvalidating((name: string) => request<SourceView>("DELETE", sourcePath(name, "/secret")), SOURCE_STALE);
 
 /** A test query changes no stored state, so it refetches nothing. */
 export const useTestSource = () =>

@@ -7,6 +7,7 @@ import type { CaseResult } from "../../shared/api/generated/CaseResult.ts";
 import type { CaseStatus } from "../../shared/api/generated/CaseStatus.ts";
 import type { Contract } from "../../shared/api/generated/Contract.ts";
 import type { Evidence } from "../../shared/api/generated/Evidence.ts";
+import type { Incident } from "../../shared/api/generated/Incident.ts";
 import type { IncidentStatus } from "../../shared/api/generated/IncidentStatus.ts";
 import type { ObservationCase } from "../../shared/api/generated/ObservationCase.ts";
 import type { ObservationPolicy } from "../../shared/api/generated/ObservationPolicy.ts";
@@ -40,6 +41,19 @@ export const INCIDENT_LABEL: Record<IncidentStatus, string> = {
   resolved: "Разрешён",
   dismissed: "Отклонён",
 };
+
+/** The labels of the task card section and the sidebar item, as GLOSSARY.md names them. */
+export const OBSERVATION_TEXT = {
+  nav: "Наблюдения",
+  section: "Наблюдение",
+  empty: "Наблюдение не настроено",
+  create: "Создать наблюдение",
+} as const;
+
+/** The default title of a case created from a task (`newTitle` in GLOSSARY.md). */
+export function newCaseTitle(taskTitle: string): string {
+  return `${taskTitle} — наблюдение`;
+}
 
 // --- status and permissions (§6.1, §14) --------------------------------------------------------------
 
@@ -111,14 +125,56 @@ export function caseActions(c: Pick<ObservationCase, "status">, rights: CaseRigh
   return CASE_ACTIONS.filter((action) => allowed[action]);
 }
 
+/**
+ * The actions on one incident (§10.1, §10.2, §14). `resolve` needs an open incident; `dismiss` is a
+ * person's call and refuses a dismissed one; `followup` files a task for the incident in any status.
+ */
+export const INCIDENT_ACTIONS = ["resolve", "dismiss", "followup"] as const;
+export type IncidentAction = (typeof INCIDENT_ACTIONS)[number];
+
+export function incidentActions(i: Pick<Incident, "status">, rights: CaseRights): IncidentAction[] {
+  const { writable, human } = rights;
+  const allowed: Record<IncidentAction, boolean> = {
+    resolve: writable && i.status === "open",
+    dismiss: writable && human && i.status !== "dismissed",
+    followup: writable,
+  };
+  return INCIDENT_ACTIONS.filter((action) => allowed[action]);
+}
+
 // --- evidence --------------------------------------------------------------------------------------
 
 /**
- * A change for display. The relative change (percent, one decimal) is shown when the record has
- * one; otherwise the absolute change (two decimals). A missing change is an em dash.
- * Examples: `-23.1%`, `+0.05`, `0.0%`.
+ * The change threshold a criterion is judged against (§8): a hypothesis's `expect.change`, else a
+ * guardrail's `maxChange`, else its `minChange`. Undefined for a bound-only criterion or an unknown id.
  */
-export function formatDelta(e: Pick<Evidence, "deltaAbs" | "deltaRel">): string {
+export function criterionChange(contract: Contract, id: string): string | undefined {
+  const hypothesis = contract.hypotheses.find((h) => h.id === id);
+  if (hypothesis) return hypothesis.expect.change;
+  const guardrail = contract.guardrails.find((g) => g.id === id);
+  return guardrail?.maxChange ?? guardrail?.minChange;
+}
+
+/**
+ * The unit of a change threshold (§5.2): `%` relative, `pp` absolute, `""` absolute without a unit;
+ * undefined when the text is not a change.
+ */
+function changeUnit(change: string): "%" | "pp" | "" | undefined {
+  const match = change.match(/^\s*[+-]\d+(?:\.\d+)?(%|pp)?\s*$/);
+  return match ? (match[1] as "%" | "pp" | undefined) ?? "" : undefined;
+}
+
+/**
+ * A change for display, in the unit of the threshold it is judged against: `%` shows the relative
+ * change (`-23.1%`), `pp` the absolute change with its unit (`+0.12pp`), no unit the absolute change
+ * (`+0.05`). A missing value is an em dash. Without a threshold, or with one that is not a change,
+ * the relative change is shown when the record has one, else the absolute one. `0.0%` has no sign.
+ */
+export function formatDelta(e: Pick<Evidence, "deltaAbs" | "deltaRel">, change?: string): string {
+  const unit = change === undefined ? undefined : changeUnit(change);
+  if (unit === "%") return isFiniteNumber(e.deltaRel) ? `${signed(e.deltaRel, 1)}%` : "—";
+  if (unit === "pp") return isFiniteNumber(e.deltaAbs) ? `${signed(e.deltaAbs, 2)}pp` : "—";
+  if (unit === "") return isFiniteNumber(e.deltaAbs) ? signed(e.deltaAbs, 2) : "—";
   if (isFiniteNumber(e.deltaRel)) return `${signed(e.deltaRel, 1)}%`;
   if (isFiniteNumber(e.deltaAbs)) return signed(e.deltaAbs, 2);
   return "—";
@@ -209,9 +265,17 @@ export const evidenceListQuery = (f: EvidenceListFilter) => listQuery({ after: f
 export const observationKeys = {
   root: ["observations"] as const,
   cases: (filter: CaseListFilter = {}) => ["observations", "cases", filter] as const,
+  /** Every case view: a case's key prefix, which covers all of its queries. */
+  caseRoot: ["observations", "case"] as const,
   case: (id: number | undefined) => ["observations", "case", id] as const,
   evidence: (id: number | undefined, filter: EvidenceListFilter = {}) => ["observations", "evidence", id, filter] as const,
   incidents: (status?: IncidentStatus) => ["observations", "incidents", status ?? "all"] as const,
   task: (task: string) => ["observations", "task", task] as const,
   sources: ["observation-sources"] as const,
 };
+
+/**
+ * What a change to a source makes stale: the source list and every case view, because a case's
+ * arm problems depend on the project's sources (§6.2).
+ */
+export const SOURCE_STALE: readonly (readonly string[])[] = [observationKeys.sources, observationKeys.caseRoot];

@@ -6,29 +6,57 @@ import { test } from "node:test";
 import {
   type CaseAction,
   type CaseRights,
+  type IncidentAction,
   INCIDENT_LABEL,
+  OBSERVATION_TEXT,
   POLICY_LABEL,
   RESULT_LABEL,
+  SOURCE_STALE,
   STATUS_LABEL,
   caseActions,
   caseListQuery,
   contractTemplate,
+  criterionChange,
   evidenceListQuery,
   formatDelta,
+  incidentActions,
   isActive,
+  newCaseTitle,
   observationKeys,
 } from "../web/src/entities/observation/model.ts";
 import type { CaseStatus } from "../web/src/shared/api/generated/CaseStatus.ts";
+import type { Contract } from "../web/src/shared/api/generated/Contract.ts";
+import type { IncidentStatus } from "../web/src/shared/api/generated/IncidentStatus.ts";
+import { matchesAny } from "../web/src/shared/api/invalidation.ts";
 
-/** The value rows of one UI key in the observation table of GLOSSARY.md: `| \`status\` | \`proposed\` | Черновик |`. */
-function glossary(uiKey: string): Record<string, string> {
+/** The rows of the "Observation plane" section of GLOSSARY.md: key, the middle cell, and the label. */
+function glossaryRows(): { key: string; middle: string; label: string }[] {
   const text = readFileSync(new URL("../GLOSSARY.md", import.meta.url), "utf8");
+  const start = text.indexOf("\n## Observation plane");
+  assert.ok(start >= 0, "GLOSSARY.md has the observation section");
+  const next = text.indexOf("\n## ", start + 1);
+  const section = text.slice(start, next < 0 ? undefined : next);
+  return section
+    .split("\n")
+    .filter((line) => line.startsWith("| `"))
+    .map((line) => {
+      const [key, middle, label] = line.split("|").slice(1, -1).map((cell) => cell.trim());
+      return { key: key.replace(/^`|`$/g, ""), middle, label };
+    });
+}
+
+/** The labels of a UI key whose rows name a value in code, such as `status` → `proposed`. */
+function glossary(uiKey: string): Record<string, string> {
   const rows: Record<string, string> = {};
-  for (const line of text.split("\n")) {
-    const row = line.match(/^\| `(\w+)` \| `(\w+)` \| (.+?) \|$/);
-    if (row && row[1] === uiKey) rows[row[2]] = row[3];
-  }
+  for (const row of glossaryRows()) if (row.key === uiKey && row.middle.startsWith("`")) rows[row.middle.replace(/^`|`$/g, "")] = row.label;
   return rows;
+}
+
+/** The text of a UI key whose row has no code value, such as `nav` or `newTitle`. */
+function glossaryText(uiKey: string): string {
+  const row = glossaryRows().find((r) => r.key === uiKey && !r.middle.startsWith("`"));
+  assert.ok(row, `GLOSSARY.md has a ${uiKey} row`);
+  return row.label;
 }
 
 /** The members of a generated string union, as ts-rs writes them (`export type CaseStatus = "a" | "b";`). */
@@ -58,6 +86,20 @@ test("the labels cover every generated enum value, and no other", () => {
   for (const label of [...Object.values(STATUS_LABEL), ...Object.values(RESULT_LABEL), ...Object.values(POLICY_LABEL), ...Object.values(INCIDENT_LABEL)]) {
     assert.notEqual(label.trim(), "", "no empty label");
   }
+});
+
+test("the task card and navigation texts are the glossary's words", () => {
+  assert.equal(OBSERVATION_TEXT.nav, glossaryText("nav"));
+  assert.equal(OBSERVATION_TEXT.section, glossaryText("section"));
+  assert.equal(OBSERVATION_TEXT.empty, glossaryText("empty"));
+  assert.equal(OBSERVATION_TEXT.create, glossaryText("create"));
+});
+
+test("a case created from a task takes the glossary's default title", () => {
+  const template = glossaryText("newTitle");
+  assert.equal(template, "`<task title>` — наблюдение");
+  assert.equal(newCaseTitle("Оплата заказа"), template.replace("`<task title>`", "Оплата заказа"));
+  assert.equal(newCaseTitle("Оплата заказа"), "Оплата заказа — наблюдение");
 });
 
 // --- status and case actions -----------------------------------------------------------------------
@@ -112,6 +154,23 @@ test("a viewer and a task manager, member or job get no case actions", () => {
   }
 });
 
+test("incident actions follow the incident's status and the rights (§10.1, §10.2, §14)", () => {
+  const table: [IncidentStatus, CaseRights, IncidentAction[]][] = [
+    ["open", MANAGER, ["resolve", "dismiss", "followup"]],
+    ["open", AGENT, ["resolve", "followup"]], // the project manager cannot dismiss
+    ["open", VIEWER, []],
+    ["resolved", MANAGER, ["dismiss", "followup"]], // a resolved violation is still dismissable
+    ["resolved", AGENT, ["followup"]],
+    ["resolved", VIEWER, []],
+    ["dismissed", MANAGER, ["followup"]],
+    ["dismissed", AGENT, ["followup"]],
+    ["dismissed", TASK_AGENT, []],
+  ];
+  for (const [status, rights, expected] of table) {
+    assert.deepEqual(incidentActions({ status }, rights), expected, `${status}, writable ${rights.writable}, human ${rights.human}`);
+  }
+});
+
 // --- deltas ----------------------------------------------------------------------------------------
 
 test("a relative change reads as a signed percentage with one decimal", () => {
@@ -133,6 +192,54 @@ test("a missing change reads as an em dash, including a JSON null", () => {
   assert.equal(formatDelta({ deltaRel: undefined, deltaAbs: undefined }), "—");
   assert.equal(formatDelta({ deltaRel: Number.NaN }), "—");
   assert.equal(formatDelta({ deltaAbs: null as unknown as number }), "—");
+});
+
+test("the change threshold picks the delta in its own unit", () => {
+  const both = { deltaRel: -23.1234, deltaAbs: 0.1234 };
+  assert.equal(formatDelta(both, "-20%"), "-23.1%", "% shows the relative change");
+  assert.equal(formatDelta(both, "+0.1pp"), "+0.12pp", "pp shows the absolute change with its unit");
+  assert.equal(formatDelta(both, "+5"), "+0.12", "no unit shows the absolute change, without a unit");
+  assert.equal(formatDelta({ deltaRel: -10, deltaAbs: -0.04 }, "+0.1pp"), "-0.04pp");
+  assert.equal(formatDelta({ deltaAbs: 0.5 }, "-20%"), "—", "a % threshold never shows the absolute change");
+  assert.equal(formatDelta({ deltaRel: -10 }, "+0.1pp"), "—", "a pp threshold never shows the relative change");
+  assert.equal(formatDelta({ deltaRel: -10 }, "+0"), "—", "no absolute change for a no-unit threshold");
+});
+
+test("without a threshold, or with text that is not one, the delta reads as before", () => {
+  const both = { deltaRel: -23.1234, deltaAbs: 0.1234 };
+  assert.equal(formatDelta(both), "-23.1%");
+  assert.equal(formatDelta(both, undefined), "-23.1%");
+  assert.equal(formatDelta(both, "twenty"), "-23.1%");
+});
+
+const CONTRACT: Contract = {
+  hypotheses: [
+    { id: "latency", source: "prom", query: "q", expect: { change: "-20%" } },
+    { id: "floor", source: "prom", query: "q", expect: { min: 5 } },
+  ],
+  guardrails: [
+    { id: "errors", source: "prom", query: "q", maxChange: "+0.1pp", minChange: "-0.2pp" },
+    { id: "drop", source: "prom", query: "q", minChange: "-0.4%" },
+    { id: "cap", source: "prom", query: "q", max: 50 },
+  ],
+  observation: { start: "tasks_done", minimumWindow: "24h" },
+  followup: "manual",
+};
+
+test("a criterion's threshold is its expected change, else maxChange, else minChange (§8)", () => {
+  assert.equal(criterionChange(CONTRACT, "latency"), "-20%");
+  assert.equal(criterionChange(CONTRACT, "errors"), "+0.1pp", "maxChange before minChange");
+  assert.equal(criterionChange(CONTRACT, "drop"), "-0.4%", "minChange when there is no maxChange");
+  assert.equal(criterionChange(CONTRACT, "floor"), undefined, "a bound has no change");
+  assert.equal(criterionChange(CONTRACT, "cap"), undefined);
+  assert.equal(criterionChange(CONTRACT, "missing"), undefined);
+});
+
+test("a source change refetches the source list and every case view, not the other observation queries", () => {
+  assert.ok(matchesAny(SOURCE_STALE, observationKeys.sources));
+  assert.ok(matchesAny(SOURCE_STALE, observationKeys.case(7)), "arm problems depend on sources");
+  assert.ok(!matchesAny(SOURCE_STALE, observationKeys.incidents()));
+  assert.ok(!matchesAny(SOURCE_STALE, observationKeys.cases({})));
 });
 
 // --- contract templates ----------------------------------------------------------------------------
