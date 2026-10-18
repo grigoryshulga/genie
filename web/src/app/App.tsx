@@ -9,7 +9,7 @@ import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
 import { canManageProject, managementDestination, isTyping, readPref, rememberWorkRoute, writePref } from "@/shared/lib";
-import { Sidebar } from "@/widgets/sidebar";
+import { MobileHeader, Sidebar } from "@/widgets/sidebar";
 import { lazyPage } from "./lazyPage.ts";
 
 // Only the entry screen is eager: the gate (its login page and the shell) and the board,
@@ -163,6 +163,7 @@ function Shell() {
   return (
     <div className={cls}>
       <Sidebar onNew={() => newTask()} online={online} compact={sidebarCompact} onToggleCompact={toggleSidebar} searchRef={searchRef} onOpenSearch={focusSearch} />
+      <MobileHeader onNew={() => newTask()} online={online} compact={false} onToggleCompact={toggleSidebar} searchRef={searchRef} onOpenSearch={focusSearch} />
       <Suspense fallback={<PageFallback />}>
         <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
       </Suspense>

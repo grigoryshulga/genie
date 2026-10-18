@@ -563,6 +563,14 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--text-2); }
   .app.with-detail .main { display: none; }
   .m-only { display: flex; }
   .d-only { display: none !important; }
+  .mobile-header { position: sticky; top: 0; z-index: 25; grid-column: 1 / -1; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--bg-side); }
+  .mobile-header-title { font-size: 14px; font-weight: 600; }
+  .mobile-drawer-layer { position: fixed; inset: 0; z-index: 50; }
+  .mobile-drawer-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: rgb(0 0 0 / 45%); }
+  .mobile-drawer-panel { position: absolute; inset: 0 auto 0 0; display: flex; flex-direction: column; width: min(320px, 86vw); background: var(--bg-side); box-shadow: var(--shadow); }
+  .mobile-drawer-heading { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 12px 0 18px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 600; }
+  .mobile-drawer-nav { min-height: 0; flex: 1; overflow: hidden; }
+  .mobile-drawer-nav .sidebar { display: flex; height: 100%; overflow-y: auto; border: 0; }
   .main { border-right: 0; }
   .topbar { height: auto; padding: 14px 16px 10px; flex-wrap: wrap; }
   .m-nav { gap: 8px; padding: 0 16px 12px; overflow-x: auto; }
