@@ -10,5 +10,27 @@
   "worktrees": {
     "dir": "{mainRoot}/../{repo}.worktrees/{team}",
     "branch": "genie/{team}"
+  },
+  "environments": {
+    "root": null,
+    "runner": "auto",
+    "podman": {
+      "binary": "podman",
+      "network": "slirp4netns:allow_host_loopback=true",
+      "hostAddress": "10.0.2.2"
+    },
+    "policy": {
+      "network": ["none", "full"],
+      "requireLimits": true,
+      "defaults": { "memory": "8GiB", "cpus": 4, "pids": 4096, "disk": "50GiB" },
+      "max": { "memory": "32GiB", "cpus": 16, "pids": 16384, "disk": "200GiB" },
+      "capabilities": []
+    },
+    "storage": {
+      "snapshotsMax": "100GiB",
+      "cachesMax": "50GiB"
+    },
+    "prepareTimeoutSecs": 1800,
+    "readyTimeoutSecs": 300
   }
 }

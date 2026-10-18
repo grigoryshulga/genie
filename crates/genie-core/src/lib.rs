@@ -6,6 +6,7 @@
 pub mod automation;
 pub mod db;
 pub mod decisions;
+pub mod env;
 pub mod error;
 pub mod events;
 pub mod inbox;

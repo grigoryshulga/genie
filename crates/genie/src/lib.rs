@@ -12,6 +12,7 @@ pub mod context;
 pub mod decisions;
 pub mod doctor;
 pub mod engine;
+pub mod env;
 pub mod git;
 pub mod http;
 pub mod knowledge;

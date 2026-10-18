@@ -110,7 +110,8 @@ mod tests {
     #[test]
     fn any_field_change_changes_the_key() {
         let original = key(&base());
-        let changes: Vec<(&str, Box<dyn Fn(&mut KeyInput)>)> = vec![
+        type Change = Box<dyn Fn(&mut KeyInput)>;
+        let changes: Vec<(&str, Change)> = vec![
             ("schema", Box::new(|i| i.schema += 1)),
             ("scope", Box::new(|i| i.scope = "project:other".into())),
             ("recipe", Box::new(|i| i.recipe = "rust-cargo".into())),
@@ -120,26 +121,41 @@ mod tests {
             ("run", Box::new(|i| i.run = "npm ci --omit=dev".into())),
             ("cwd", Box::new(|i| i.cwd = "front".into())),
             ("outputs", Box::new(|i| i.outputs.push("dist".into()))),
-            ("env value", Box::new(|i| {
-                i.env.insert("NODE_ENV".into(), "test".into());
-            })),
-            ("env name", Box::new(|i| {
-                i.env.insert("CI".into(), "1".into());
-            })),
+            (
+                "env value",
+                Box::new(|i| {
+                    i.env.insert("NODE_ENV".into(), "test".into());
+                }),
+            ),
+            (
+                "env name",
+                Box::new(|i| {
+                    i.env.insert("CI".into(), "1".into());
+                }),
+            ),
             ("secrets", Box::new(|i| i.secrets.clear())),
             ("base", Box::new(|i| i.base = "sha256:other".into())),
             ("os", Box::new(|i| i.os = "darwin".into())),
             ("arch", Box::new(|i| i.arch = "aarch64".into())),
             ("layout", Box::new(|i| i.layout = "/home/me/ws".into())),
-            ("tools", Box::new(|i| {
-                i.tools.insert("node".into(), "22.5.0".into());
-            })),
-            ("inputs blob", Box::new(|i| {
-                i.inputs.insert("package-lock.json".into(), "blob2".into());
-            })),
-            ("inputs path", Box::new(|i| {
-                i.inputs.insert("package.json".into(), "blob1".into());
-            })),
+            (
+                "tools",
+                Box::new(|i| {
+                    i.tools.insert("node".into(), "22.5.0".into());
+                }),
+            ),
+            (
+                "inputs blob",
+                Box::new(|i| {
+                    i.inputs.insert("package-lock.json".into(), "blob2".into());
+                }),
+            ),
+            (
+                "inputs path",
+                Box::new(|i| {
+                    i.inputs.insert("package.json".into(), "blob1".into());
+                }),
+            ),
             ("depends", Box::new(|i| i.depends.clear())),
         ];
         for (field, change) in changes {

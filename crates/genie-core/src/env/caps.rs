@@ -130,7 +130,10 @@ pub fn check(r: &Resolved, policy: &Policy, caps: &Capabilities, secrets_defined
         gaps.push(gap("os", format!("the environment needs {os}, the {runner} runner runs on {}", caps.os)));
     }
     if !r.requires.arch.is_empty() && !r.requires.arch.contains(&caps.arch) {
-        gaps.push(gap("arch", format!("the environment needs one of [{}], the {runner} runner is {}", r.requires.arch.join(", "), caps.arch)));
+        gaps.push(gap(
+            "arch",
+            format!("the environment needs one of [{}], the {runner} runner is {}", r.requires.arch.join(", "), caps.arch),
+        ));
     }
 
     let base_set = r.base.image.is_some() || r.base.containerfile.is_some() || !r.base.packages.is_empty();
@@ -204,15 +207,13 @@ fn check_resources(r: &Resolved, policy: &Policy, gaps: &mut Vec<Gap>) {
     let sized = |item: &str, text: &Option<String>, max: u64, gaps: &mut Vec<Gap>| {
         let Some(text) = text else { return };
         match parse_size(text) {
-            Ok(bytes) if bytes > max => {
-                gaps.push(gap(item, format!("the environment asks for {}, server policy allows at most {}", size_text(bytes), size_text(max))))
-            }
+            Ok(bytes) if bytes > max => gaps
+                .push(gap(item, format!("the environment asks for {}, server policy allows at most {}", size_text(bytes), size_text(max)))),
             Ok(_) => {}
             Err(e) => gaps.push(gap(item, e)),
         }
     };
     sized("memory", &r.requires.memory, policy.max.memory, gaps);
-    sized("disk", &r.requires.disk, policy.max.disk, gaps);
     if let Some(cpus) = r.requires.cpus
         && cpus > policy.max.cpus
     {
@@ -223,6 +224,7 @@ fn check_resources(r: &Resolved, policy: &Policy, gaps: &mut Vec<Gap>) {
     {
         gaps.push(gap("pids", format!("the environment asks for {pids}, server policy allows at most {}", policy.max.pids)));
     }
+    sized("disk", &r.requires.disk, policy.max.disk, gaps);
 }
 
 /// The limits a workspace runs with: what the profile asks for, else the policy default, never above the maximum.
@@ -246,9 +248,9 @@ pub fn view_mode(caps: &Capabilities) -> Option<ViewMode> {
 fn size_text(bytes: u64) -> String {
     const GIB: u64 = 1 << 30;
     const MIB: u64 = 1 << 20;
-    if bytes % GIB == 0 {
+    if bytes.is_multiple_of(GIB) {
         format!("{}GiB", bytes / GIB)
-    } else if bytes % MIB == 0 {
+    } else if bytes.is_multiple_of(MIB) {
         format!("{}MiB", bytes / MIB)
     } else {
         format!("{bytes} bytes")
@@ -411,14 +413,17 @@ mod tests {
     #[test]
     fn services_need_a_runner_that_runs_them() {
         let mut r = resolved(NetworkMode::Full, &[]);
-        r.services.insert("db".into(), Service {
-            image: "postgres:16".into(),
-            env: BTreeMap::new(),
-            command: vec![],
-            ready: None,
-            data: DataPolicy::Workspace,
-            volume: None,
-        });
+        r.services.insert(
+            "db".into(),
+            Service {
+                image: "postgres:16".into(),
+                env: BTreeMap::new(),
+                command: vec![],
+                ready: None,
+                data: DataPolicy::Workspace,
+                volume: None,
+            },
+        );
         assert_eq!(items(&check_with(&r, &lenient(), &host(), false)), ["services"]);
         assert!(check_with(&r, &policy(), &podman(), false).is_empty());
     }
@@ -471,7 +476,13 @@ mod tests {
         assert_eq!(gaps[1].reason, "the environment asks for 32, server policy allows at most 16");
 
         // Exactly the maximum is allowed.
-        r.requires = Requirements { memory: Some("32GiB".into()), cpus: Some(16.0), pids: Some(16384), disk: Some("200GiB".into()), ..Default::default() };
+        r.requires = Requirements {
+            memory: Some("32GiB".into()),
+            cpus: Some(16.0),
+            pids: Some(16384),
+            disk: Some("200GiB".into()),
+            ..Default::default()
+        };
         assert!(check_with(&r, &policy(), &podman(), false).is_empty());
 
         r.requires.memory = Some("lots".into());
@@ -573,10 +584,22 @@ mod tests {
         let mut r = resolved(NetworkMode::Full, &[]);
         assert_eq!(limits(&r, &policy()), limits_of(8 * GIB, 4.0, 4096, 50 * GIB), "defaults when nothing is asked");
 
-        r.requires = Requirements { memory: Some("12GiB".into()), cpus: Some(2.0), pids: Some(100), disk: Some("80GiB".into()), ..Default::default() };
+        r.requires = Requirements {
+            memory: Some("12GiB".into()),
+            cpus: Some(2.0),
+            pids: Some(100),
+            disk: Some("80GiB".into()),
+            ..Default::default()
+        };
         assert_eq!(limits(&r, &policy()), limits_of(12 * GIB, 2.0, 100, 80 * GIB));
 
-        r.requires = Requirements { memory: Some("64GiB".into()), cpus: Some(64.0), pids: Some(100000), disk: Some("900GiB".into()), ..Default::default() };
+        r.requires = Requirements {
+            memory: Some("64GiB".into()),
+            cpus: Some(64.0),
+            pids: Some(100000),
+            disk: Some("900GiB".into()),
+            ..Default::default()
+        };
         assert_eq!(limits(&r, &policy()), limits_of(32 * GIB, 16.0, 16384, 200 * GIB), "clamped to the maximum; check reports the gap");
 
         r.requires.memory = Some("junk".into());

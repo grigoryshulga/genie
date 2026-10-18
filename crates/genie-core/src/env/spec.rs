@@ -444,7 +444,7 @@ pub fn resolve(
             step.secrets = profile
                 .secrets
                 .iter()
-                .filter(|(_, g)| g.steps.iter().any(|s| *s == step.qualified))
+                .filter(|(_, g)| g.steps.contains(&step.qualified))
                 .map(|(name, g)| (name.clone(), g.file.clone()))
                 .collect();
         }
@@ -902,9 +902,9 @@ pub fn valid_env_name(s: &str) -> bool {
     s.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// A secret's name: letters, digits, underscores and dashes, not starting with a dash, at most 64 characters.
+/// A secret's name: letters, digits, underscores and dashes, not starting with a dash, 1 to 64 characters.
 pub fn valid_secret_name(s: &str) -> bool {
-    s.len() <= 64 && !s.starts_with('-') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    !s.is_empty() && s.len() <= 64 && !s.starts_with('-') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// A path relative to the repository (or to a directory in the home): no leading `/`, no `..`.
@@ -1002,13 +1002,7 @@ mod tests {
     }
 
     fn component(repo: &str, recipe: &str) -> Component {
-        Component {
-            repo: repo.into(),
-            recipe: recipe.into(),
-            params: BTreeMap::new(),
-            prepare: Vec::new(),
-            commands: BTreeMap::new(),
-        }
+        Component { repo: repo.into(), recipe: recipe.into(), params: BTreeMap::new(), prepare: Vec::new(), commands: BTreeMap::new() }
     }
 
     fn repos() -> Vec<RepoInfo> {
@@ -1067,14 +1061,21 @@ mod tests {
         assert_eq!(profile.network, NetworkPolicy { prepare: NetworkMode::Full, work: NetworkMode::Full });
         assert_eq!(profile.components[0].recipe, "custom");
         let partial: Profile = serde_json::from_str(r#"{"network": {"work": "none"}}"#).unwrap();
-        assert_eq!(partial.network, NetworkPolicy { prepare: NetworkMode::Full, work: NetworkMode::None }, "a partial policy keeps the other defaults");
+        assert_eq!(
+            partial.network,
+            NetworkPolicy { prepare: NetworkMode::Full, work: NetworkMode::None },
+            "a partial policy keeps the other defaults"
+        );
     }
 
     #[test]
     fn unknown_keys_are_rejected_at_every_level() {
         assert!(serde_json::from_str::<Recipe>(r#"{"id": "x", "revision": 1, "stpes": []}"#).is_err());
         assert!(serde_json::from_str::<Profile>(r#"{"comonents": []}"#).is_err());
-        assert!(serde_json::from_str::<Step>(r#"{"id": "a", "run": "x", "scope": "project"}"#).is_err(), "caches have a scope, steps do not");
+        assert!(
+            serde_json::from_str::<Step>(r#"{"id": "a", "run": "x", "scope": "project"}"#).is_err(),
+            "caches have a scope, steps do not"
+        );
         assert!(serde_json::from_str::<Probe>(r#"{"htp": "http://x"}"#).is_err());
         assert!(serde_json::from_str::<Requirements>(r#"{"memroy": "1GiB"}"#).is_err());
         assert!(serde_json::from_str::<NetworkPolicy>(r#"{"prepare": "full", "mode": "x"}"#).is_err());
@@ -1291,14 +1292,17 @@ mod tests {
         profile.components.push(Component { prepare: vec![bad_step, step("dup", "x"), step("dup", "y")], ..component("web", "custom") });
         profile.components.push(component("web", "custom"));
         profile.env.insert("bad-name".into(), "x".into());
-        profile.services.insert("Db".into(), Service {
-            image: " ".into(),
-            env: BTreeMap::new(),
-            command: vec![],
-            ready: Some(Probe { command: Some("a".into()), http: Some("b".into()), tcp: None, timeout_secs: None }),
-            data: DataPolicy::Workspace,
-            volume: Some("Bad Vol".into()),
-        });
+        profile.services.insert(
+            "Db".into(),
+            Service {
+                image: " ".into(),
+                env: BTreeMap::new(),
+                command: vec![],
+                ready: Some(Probe { command: Some("a".into()), http: Some("b".into()), tcp: None, timeout_secs: None }),
+                data: DataPolicy::Workspace,
+                volume: Some("Bad Vol".into()),
+            },
+        );
         let p = problems(&profile, vec![recipe("custom")]);
         for needle in [
             "no repository named nope",
@@ -1330,7 +1334,8 @@ mod tests {
 
     #[test]
     fn base_containerfile_must_name_a_project_repository_and_one_base_source() {
-        let mut profile = Profile { base: Base { containerfile: Some("api:docker/Containerfile".into()), ..Default::default() }, ..Default::default() };
+        let mut profile =
+            Profile { base: Base { containerfile: Some("api:docker/Containerfile".into()), ..Default::default() }, ..Default::default() };
         assert!(resolve_with(&profile, vec![]).is_ok());
         profile.base.containerfile = Some("ghost:Containerfile".into());
         assert!(has(&problems(&profile, vec![]), "must be <repository>:<path>"));
@@ -1346,20 +1351,26 @@ mod tests {
     fn services_and_processes_are_checked_and_ordered_without_cycles() {
         let probe = |http: &str| Probe { command: None, http: Some(http.into()), tcp: None, timeout_secs: Some(5) };
         let mut profile = Profile::default();
-        profile.services.insert("db".into(), Service {
-            image: "postgres:16".into(),
-            env: BTreeMap::new(),
-            command: vec![],
-            ready: Some(Probe { command: Some("pg_isready".into()), http: None, tcp: None, timeout_secs: None }),
-            data: DataPolicy::Persistent,
-            volume: Some("pgdata".into()),
-        });
-        profile.processes.insert("api".into(), Process {
-            repo: Some("api".into()),
-            command: "cargo run".into(),
-            after: vec!["db".into(), "web".into()],
-            ready: Some(probe("http://127.0.0.1:8080/health")),
-        });
+        profile.services.insert(
+            "db".into(),
+            Service {
+                image: "postgres:16".into(),
+                env: BTreeMap::new(),
+                command: vec![],
+                ready: Some(Probe { command: Some("pg_isready".into()), http: None, tcp: None, timeout_secs: None }),
+                data: DataPolicy::Persistent,
+                volume: Some("pgdata".into()),
+            },
+        );
+        profile.processes.insert(
+            "api".into(),
+            Process {
+                repo: Some("api".into()),
+                command: "cargo run".into(),
+                after: vec!["db".into(), "web".into()],
+                ready: Some(probe("http://127.0.0.1:8080/health")),
+            },
+        );
         profile.processes.insert("web".into(), Process { repo: None, command: "npm start".into(), after: vec!["api".into()], ready: None });
         let p = problems(&profile, vec![]);
         assert!(has(&p, "processes wait for each other: api -> web -> api"), "{p:?}");
@@ -1376,20 +1387,26 @@ mod tests {
         assert!(has(&problems(&profile, vec![]), "processes wait for each other: api -> api"));
 
         let mut ok = Profile::default();
-        ok.services.insert("db".into(), Service {
-            image: "postgres:16".into(),
-            env: BTreeMap::new(),
-            command: vec![],
-            ready: None,
-            data: DataPolicy::default(),
-            volume: None,
-        });
+        ok.services.insert(
+            "db".into(),
+            Service {
+                image: "postgres:16".into(),
+                env: BTreeMap::new(),
+                command: vec![],
+                ready: None,
+                data: DataPolicy::default(),
+                volume: None,
+            },
+        );
         ok.processes.insert("api".into(), Process { repo: None, command: "run".into(), after: vec!["db".into()], ready: None });
         resolve_with(&ok, vec![]).unwrap();
         assert_eq!(DataPolicy::default(), DataPolicy::Workspace);
 
         let mut same = Profile::default();
-        same.services.insert("api".into(), Service { image: "x".into(), env: BTreeMap::new(), command: vec![], ready: None, data: DataPolicy::Ephemeral, volume: None });
+        same.services.insert(
+            "api".into(),
+            Service { image: "x".into(), env: BTreeMap::new(), command: vec![], ready: None, data: DataPolicy::Ephemeral, volume: None },
+        );
         same.processes.insert("api".into(), Process { repo: None, command: "run".into(), after: vec![], ready: None });
         assert!(has(&problems(&same, vec![]), "a service has the same name"));
     }
@@ -1413,7 +1430,8 @@ mod tests {
     #[test]
     fn requirement_conflicts_and_bad_sizes_are_reported() {
         let mut rec = recipe("bad");
-        rec.requires = Requirements { os: Some("windows".into()), memory: Some("8GB".into()), cpus: Some(0.0), pids: Some(0), ..Default::default() };
+        rec.requires =
+            Requirements { os: Some("windows".into()), memory: Some("8GB".into()), cpus: Some(0.0), pids: Some(0), ..Default::default() };
         let mut profile = one_component_profile("bad");
         profile.requires.os = Some("linux".into());
         profile.requires.arch = vec!["x86_64".into()];
@@ -1439,7 +1457,9 @@ mod tests {
         let mut profile = one_component_profile("custom");
         profile.components[0].prepare.push(step("install", "make"));
         profile.secrets.insert("bad name".into(), SecretGrant { steps: vec![], file: "/x".into() });
-        profile.secrets.insert("token".into(), SecretGrant { steps: vec!["api/install".into(), "api/ghost".into()], file: "relative".into() });
+        profile
+            .secrets
+            .insert("token".into(), SecretGrant { steps: vec!["api/install".into(), "api/ghost".into()], file: "relative".into() });
         let p = problems(&profile, vec![recipe("custom")]);
         assert!(has(&p, "secret \"bad name\""), "{p:?}");
         assert!(has(&p, "file \"relative\" must be an absolute path"), "{p:?}");
@@ -1488,9 +1508,24 @@ mod tests {
     #[test]
     fn names_follow_their_rules() {
         assert!(valid_name("default") && valid_name("rust-cargo") && valid_name("a1") && valid_name("1a"));
-        assert!(!valid_name("") && !valid_name("-a") && !valid_name("A") && !valid_name("a_b") && !valid_name("a/b") && !valid_name(&"a".repeat(64)));
-        assert!(valid_env_name("NODE_ENV") && valid_env_name("_x") && !valid_env_name("1X") && !valid_env_name("a-b") && !valid_env_name(""));
-        assert!(valid_secret_name("npm_token") && valid_secret_name("DEPLOY-KEY") && !valid_secret_name("-x") && !valid_secret_name("a b") && !valid_secret_name(""));
+        assert!(
+            !valid_name("")
+                && !valid_name("-a")
+                && !valid_name("A")
+                && !valid_name("a_b")
+                && !valid_name("a/b")
+                && !valid_name(&"a".repeat(64))
+        );
+        assert!(
+            valid_env_name("NODE_ENV") && valid_env_name("_x") && !valid_env_name("1X") && !valid_env_name("a-b") && !valid_env_name("")
+        );
+        assert!(
+            valid_secret_name("npm_token")
+                && valid_secret_name("DEPLOY-KEY")
+                && !valid_secret_name("-x")
+                && !valid_secret_name("a b")
+                && !valid_secret_name("")
+        );
         assert!(!valid_secret_name(&"a".repeat(65)));
     }
 
@@ -1508,7 +1543,13 @@ mod tests {
         assert!(relative_ok("a/b") && relative_ok("./a") && relative_ok("a..b"));
         assert!(!relative_ok("") && !relative_ok("/a") && !relative_ok("a/../b") && !relative_ok(".."));
         assert!(repo_path_ok("a") && !repo_path_ok("~/a"));
-        assert!(cache_path_ok("~/.cargo/registry") && cache_path_ok("/var/cache/x") && !cache_path_ok("/") && !cache_path_ok("~/../x") && !cache_path_ok("rel"));
+        assert!(
+            cache_path_ok("~/.cargo/registry")
+                && cache_path_ok("/var/cache/x")
+                && !cache_path_ok("/")
+                && !cache_path_ok("~/../x")
+                && !cache_path_ok("rel")
+        );
     }
 
     #[test]
