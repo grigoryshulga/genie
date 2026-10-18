@@ -754,8 +754,9 @@ impl Op for SourceSecret {
                 if value == "-" && !cx.local {
                     return Err("`-` reads stdin on the command line only; pass the secret itself".into());
                 }
-                let value = cx.text(Some(value), None)?.unwrap_or_default();
-                if value.trim().is_empty() {
+                // A piped secret ends with a newline; trim it as repository tokens are.
+                let value = cx.text(Some(value), None)?.unwrap_or_default().trim().to_string();
+                if value.is_empty() {
                     return Err("stdin held no secret; pass --clear to remove the stored one".into());
                 }
                 Ok(out(cx.send("PUT", &path, &SecretBody { value }).await?))
