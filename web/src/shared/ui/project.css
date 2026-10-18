@@ -108,12 +108,12 @@
 .rp-menu button.danger { color: var(--red); }
 .rp-menu hr { border: 0; height: 1px; background: var(--line-strong); margin: 4px 0; }
 
-.rp-add { border-color: #2e3354; }
+.rp-add { border-color: var(--accent-line); }
 .rp-add-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 12px 22px; border-bottom: 1px solid var(--line); }
 .rp-add-head h3 { margin: 0; font-size: 13px; font-weight: 600; flex: 1; }
 .rp-add .st-row { grid-template-columns: 200px minmax(0, 1fr); }
 .rp-add .st-input.rp-link { max-width: none; font-size: 13px; }
-.rp-add .st-input.rp-link.ok { border-color: #2e3354; }
+.rp-add .st-input.rp-link.ok { border-color: var(--accent-line); }
 .rp-add .st-input.rp-link.warn { border-color: var(--amber-line); }
 .rp-add .st-input.rp-short { max-width: 260px; }
 .rp-found { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
@@ -156,9 +156,9 @@
 .sv-verdict-text b { font-size: 15px; font-weight: 600; }
 .sv-verdict-text > span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .sv-mark { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; }
-.sv-mark.ok { background: #13271e; color: var(--green); }
+.sv-mark.ok { background: var(--green-bg); color: var(--green); }
 .sv-mark.warn { background: var(--amber-soft); color: var(--amber); }
-.sv-mark.fail { background: #2a1517; color: var(--red); }
+.sv-mark.fail { background: var(--red-bg); color: var(--red); }
 .sv-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); flex: none; }
 .sv-dot.ok { background: var(--green); }
 .sv-dot.fail { background: var(--red); }
@@ -269,7 +269,7 @@ details.st-card > .sv-two { padding: 0 22px 16px; }
 .sv-mtable .tr > span:nth-child(2) { font-size: 12px; }
 .sv-share { display: flex; align-items: center; gap: 8px; }
 .sv-share > i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); display: flex; overflow: hidden; }
-.sv-share > i > i { background: #7c84f0; border-radius: 3px; }
+.sv-share > i > i { background: var(--accent-2); border-radius: 3px; }
 .sv-share em { font-style: normal; font-size: 12px; color: var(--muted); width: 34px; text-align: right; }
 .sv-empty { display: flex; flex-direction: column; gap: 8px; padding-top: 18px; }
 

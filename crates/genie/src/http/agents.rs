@@ -471,7 +471,19 @@ async fn set_paused(app: Arc<App>, ctx: Ctx, team: String, member: String, pause
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) pauses an agent"));
     }
     let (slug, by, t2, m2) = (access.project.clone(), access.actor.name.clone(), team.clone(), member.clone());
-    app.blocking(move |app| app.with_tracker(&slug, |t| t.bus().set_paused(&t2, &m2, paused, &by))).await?;
+    app.blocking(move |app| {
+        let policy = crate::decisions::policy(app, &slug)?;
+        let agents = app.agents();
+        app.with_tracker(&slug, |t| {
+            t.tx(|| {
+                if !paused {
+                    crate::intelligence::validate_team_checks(t, &agents, &policy.intelligence, &t2)?;
+                }
+                t.bus().set_paused(&t2, &m2, paused, &by)
+            })
+        })
+    })
+    .await?;
     let key = key_of(&access.project, &team, &member);
     if paused {
         crate::sessions::reset(&app, &key);

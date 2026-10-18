@@ -22,6 +22,7 @@ mod git_hosts;
 mod git_proxy;
 mod harness;
 mod ideas;
+mod intelligence;
 mod llm_keys;
 mod management;
 mod mcp_gateway;

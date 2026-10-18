@@ -2,6 +2,7 @@
 
 import { Suspense } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { PROJECT_ROLE_NAME } from "@/entities/project";
 import { useSession, useSwitchProject } from "@/entities/session";
 import { lastWorkRoute } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
@@ -24,7 +25,7 @@ export function SettingsShell() {
     ["projects", "Проекты"], ["accounts", "Учётные записи"],
     ["providers", "Провайдеры"], ["tools", "Инструменты"],
   ] : [
-    ["account", "Аккаунт"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
+    ["account", "Аккаунт"], ["appearance", "Оформление"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
     ["keys", "Провайдеры и ключи"], ["tokens", "Токены CLI и MCP"],
   ];
   const base = projectMode ? "/manage/project" : serverMode ? "/manage/server" : "/settings/me";
@@ -33,11 +34,15 @@ export function SettingsShell() {
       <nav className="sidebar" aria-label={title}>
         <div className={`project${many ? " switch" : ""}`} title={project ? (project.hasRepo ? "Проект с репозиторием кода" : "Проект без кода") : undefined}>
           <span className="logo-mark">
-            <Icon.mark size={15} />
+            <Icon.mark size={22} />
           </span>
           <span className="txt">
             <span className="name">{title}</span>
-            <span className="sub">{project?.name ?? "genie"}</span>
+            {/* One place names the settings area: the sidebar. The pages used to repeat it
+                in a header band of their own, which only showed the project and the role. */}
+            <span className="sub">
+              {session?.mode === "local" ? "локальный режим" : project ? `${project.name} · ${PROJECT_ROLE_NAME[project.role]}` : "genie"}
+            </span>
           </span>
           {many && session && (
             <>

@@ -500,6 +500,8 @@ pub struct DocSearchResult {
 
 #[derive(Debug, Clone, Default)]
 pub struct SearchOptions {
+    /// Restrict results to roots owned by this project, excluding shared pages.
+    pub project: Option<String>,
     pub limit: usize,
     pub doc_type: Option<String>,
     pub status: Option<String>,
@@ -668,6 +670,38 @@ impl Vault {
     /// Spaces bound to a project.
     pub fn spaces_of(&self, project: &str) -> Vec<String> {
         self.config.spaces.iter().filter(|(_, s)| s.project.as_deref() == Some(project)).map(|(k, _)| k.clone()).collect()
+    }
+
+    /// Resolve a page inside a project's configured documentation roots.
+    /// Ownership comes from vault configuration, never page frontmatter.
+    pub fn resolve_for_project(&self, project: &str, path: &str) -> Result<(String, PathBuf)> {
+        let (rel, abs) = self.resolve(path)?;
+        if self.project_of(&rel).as_deref() != Some(project) {
+            return Err(GenieError::not_found("documentation page not found in this project"));
+        }
+        Ok((rel, abs))
+    }
+
+    pub fn project_signature(&self, project: &str) -> String {
+        let mut h = Sha256::new();
+        // Root bindings affect visibility even when no file changes.
+        for root in self.spaces_of(project) {
+            h.update(root.as_bytes());
+        }
+        for (rel, _, sig) in self.scan().into_iter().filter(|(rel, ..)| self.project_of(rel).as_deref() == Some(project)) {
+            h.update(rel.as_bytes());
+            h.update(sig.as_bytes());
+        }
+        hex::encode(h.finalize())
+    }
+
+    pub fn project_tree(&mut self, project: &str) -> Result<Vec<DocPage>> {
+        self.tree_scoped(Some(project))
+    }
+
+    pub fn project_read(&mut self, project: &str, path: &str, heading: Option<&str>, max_chars: Option<usize>) -> Result<DocRead> {
+        self.resolve_for_project(project, path)?;
+        self.read_scoped(path, heading, max_chars, Some(project))
     }
 
     fn scan(&self) -> Vec<(String, PathBuf, String)> {
@@ -844,10 +878,15 @@ impl Vault {
     }
 
     pub fn tree(&mut self) -> Result<Vec<DocPage>> {
+        self.tree_scoped(None)
+    }
+
+    fn tree_scoped(&mut self, project: Option<&str>) -> Result<Vec<DocPage>> {
         let mut pages = {
             let mut stmt = self.index.conn().prepare("SELECT * FROM pages ORDER BY path")?;
             stmt.query_map([], |r| self.page_row(r))?.collect::<rusqlite::Result<Vec<_>>>()?
         };
+        pages.retain(|p| project.is_none_or(|project| self.project_of(&p.path).as_deref() == Some(project)));
         for p in &mut pages {
             self.staleness(p);
         }
@@ -894,6 +933,10 @@ impl Vault {
 
     /// Read a page (or the section under `heading`), with links and backlinks.
     pub fn read(&mut self, path: &str, heading: Option<&str>, max_chars: Option<usize>) -> Result<DocRead> {
+        self.read_scoped(path, heading, max_chars, None)
+    }
+
+    fn read_scoped(&mut self, path: &str, heading: Option<&str>, max_chars: Option<usize>, project: Option<&str>) -> Result<DocRead> {
         let (rel, abs) = self.resolve(path)?;
         let mut page = self.page(&rel)?.ok_or_else(|| GenieError::not_found(format!("documentation page {rel} not found")))?;
         self.staleness(&mut page);
@@ -928,7 +971,11 @@ impl Vault {
             content = content.chars().take(max).collect();
             truncated = true;
         }
-        let all = self.all_link_targets()?;
+        let all: Vec<_> = self
+            .all_link_targets()?
+            .into_iter()
+            .filter(|(path, ..)| project.is_none_or(|project| self.project_of(path).as_deref() == Some(project)))
+            .collect();
         let own: Vec<String> =
             all.iter().find(|(p, ..)| *p == rel).map(|(_, l, _)| serde_json::from_str(l).unwrap_or_default()).unwrap_or_default();
         let links: Vec<DocLink> = own.iter().map(|t| Self::resolve_link(t, &all)).collect();
@@ -956,11 +1003,17 @@ impl Vault {
         }
         let fts = terms.join(" OR ");
         let limit = if opts.limit == 0 { 20 } else { opts.limit.min(100) };
+        let roots = opts.project.as_ref().map(|project| self.spaces_of(project));
+        let roots_json = serde_json::to_string(&roots.clone().unwrap_or_default())?;
         let mut stmt = self.index.conn().prepare(
             "SELECT p.*, bm25(pages_fts, 0.0, 8.0, 4.0, 3.0, 1.0, 5.0) AS score, snippet(pages_fts, 4, '[', ']', '…', 12) AS snip
-             FROM pages_fts JOIN pages p ON p.path = pages_fts.path WHERE pages_fts MATCH ?1 ORDER BY score LIMIT 400",
+             FROM pages_fts JOIN pages p ON p.path = pages_fts.path WHERE pages_fts MATCH ?1
+             AND (?2 = 0 OR substr(p.path, 1, instr(p.path, '/') - 1) IN (SELECT value FROM json_each(?3)))
+             ORDER BY score LIMIT 400",
         )?;
-        let rows = stmt.query_map([&fts], |r| Ok((self.page_row(r)?, r.get::<_, f64>("score")?, r.get::<_, String>("snip")?)))?;
+        let rows = stmt.query_map(params![&fts, roots.is_some(), roots_json], |r| {
+            Ok((self.page_row(r)?, r.get::<_, f64>("score")?, r.get::<_, String>("snip")?))
+        })?;
         let mut out = Vec::new();
         for row in rows {
             let (page, score, snippet) = row?;

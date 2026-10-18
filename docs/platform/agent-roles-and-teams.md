@@ -82,6 +82,15 @@ Server checks on tasks, knowledge, mail, and team operations use the agent's tok
 
 `files`, command restrictions, and skill selection rely on the harness. A role with shell access can write files through shell commands even when edit/write tools are disabled. Bubblewrap limits the directories it can reach; it does not turn `files: read` into a read-only worktree.
 
+## Solo delivery and mandatory reviewers
+
+The built-in `solo` delivery template has one executor. Project
+[Task Intelligence policy](task-intelligence.md#project-policy) can require independent
+reviewer roles for every task or for protected components; selecting `solo` does not
+bypass those checks. During execution, a material discovery can add a reviewer to the
+existing workspace. If capacity prevents a required addition, execution pauses for an
+owner decision. Removing the last required reviewer is refused.
+
 ## Team template
 
 ```json

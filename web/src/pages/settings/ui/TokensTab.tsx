@@ -6,11 +6,15 @@ import { type UserToken, useIssueToken, useRevokeToken, useTokens } from "@/enti
 import { timeAgo, useTick } from "@/shared/lib";
 import { ConfirmDialog, Icon, useRefreshingAct as useAct, useToast } from "@/shared/ui";
 
-type Client = "claude" | "codex" | "cli";
+type Client = "claude" | "codex" | "opencode" | "cursor" | "gemini" | "generic" | "cli";
 
 const CLIENTS: { id: Client; title: string }[] = [
   { id: "claude", title: "Claude Code" },
   { id: "codex", title: "Codex" },
+  { id: "opencode", title: "OpenCode" },
+  { id: "cursor", title: "Cursor" },
+  { id: "gemini", title: "Gemini CLI" },
+  { id: "generic", title: "Другой клиент" },
   { id: "cli", title: "CLI" },
 ];
 
@@ -27,6 +31,30 @@ function howTo(client: Client, origin: string, token: string): { step: string; s
         step: "Допишите сервер в ~/.codex/config.toml, а токен положите в переменную GENIE_TOKEN:",
         snippet: `[mcp_servers.genie]\nurl = "${origin}/mcp"\nbearer_token_env_var = "GENIE_TOKEN"`,
         check: "codex mcp list",
+      };
+    case "opencode":
+      return {
+        step: "Добавьте блок в ~/.config/opencode/opencode.json:",
+        snippet: JSON.stringify({ "$schema": "https://opencode.ai/config.json", mcp: { genie: { type: "remote", url: `${origin}/mcp`, headers: { Authorization: `Bearer ${token}` }, enabled: true } } }, null, 2),
+        check: "Откройте список MCP-серверов командой /mcp в OpenCode.",
+      };
+    case "cursor":
+      return {
+        step: "Добавьте MCP-сервер в .cursor/mcp.json в проекте:",
+        snippet: JSON.stringify({ mcpServers: { genie: { url: `${origin}/mcp`, headers: { Authorization: `Bearer ${token}` } } }, }, null, 2),
+        check: "Откройте Settings → Cursor Settings → Tools & MCP.",
+      };
+    case "gemini":
+      return {
+        step: "Добавьте блок в ~/.gemini/settings.json:",
+        snippet: JSON.stringify({ mcpServers: { genie: { httpUrl: `${origin}/mcp`, headers: { Authorization: `Bearer ${token}` } } }, }, null, 2),
+        check: "Запустите Gemini CLI и проверьте список MCP-серверов командой /mcp.",
+      };
+    case "generic":
+      return {
+        step: "Для MCP-клиента, который принимает заголовки HTTP, укажите URL и Bearer-токен:",
+        snippet: `URL: ${origin}/mcp\nAuthorization: Bearer ${token}`,
+        check: "Перезапустите клиент и убедитесь, что инструменты Genie появились в списке.",
       };
     case "cli":
       return {
@@ -50,6 +78,7 @@ export function TokensTab() {
   const toast = useToast();
   const [label, setLabel] = useState("");
   const [fresh, setFresh] = useState<{ label: string; token: string }>();
+  const [mode, setMode] = useState<"tokens" | "connect">("tokens");
   const [client, setClient] = useState<Client>("claude");
   const [revoking, setRevoking] = useState<UserToken>();
   const origin = window.location.origin;
@@ -61,8 +90,12 @@ export function TokensTab() {
       () => toast("Скопируйте вручную", "error"),
     );
   return (
-    <div className="st-body split">
-      <div className="st-col">
+    <div className="st-body tokens-page">
+      <div className="st-tabs" role="group" aria-label="Токены и подключение">
+        <button type="button" aria-pressed={mode === "tokens"} className={mode === "tokens" ? "on" : undefined} onClick={() => setMode("tokens")}>Токены</button>
+        <button type="button" aria-pressed={mode === "connect"} className={mode === "connect" ? "on" : undefined} onClick={() => setMode("connect")}>Как подключить</button>
+      </div>
+      {mode === "tokens" && <div className="st-col">
         <div className="st-head">
           <h2>Токены CLI и MCP</h2>
           <p>
@@ -141,14 +174,15 @@ export function TokensTab() {
           {!list.length && <div className="st-empty">{tokens.isPending ? "Загрузка…" : "Токенов нет."}</div>}
 
         </section>
-      </div>
+      </div>}
 
-      <aside className="st-card" aria-label="Как подключить">
+      {mode === "connect" && <aside className="st-card tokens-guide" aria-label="Как подключить">
         <div className="st-card-body">
           <h3 style={{ margin: 0, fontSize: 13 }}>Как подключить</h3>
-          <div className="st-switch" role="tablist" aria-label="Клиент">
+          <p className="muted tokens-guide-intro">Genie подключается к MCP-клиентам по HTTP: укажите адрес сервера и Bearer-токен. Создайте отдельный токен для каждого устройства или инструмента, чтобы его можно было отозвать отдельно.</p>
+          <div className="st-switch" role="group" aria-label="Клиент">
             {CLIENTS.map((c) => (
-              <button key={c.id} type="button" role="tab" aria-selected={client === c.id} className={client === c.id ? "on" : undefined} onClick={() => setClient(c.id)}>
+              <button key={c.id} type="button" aria-pressed={client === c.id} className={client === c.id ? "on" : undefined} onClick={() => setClient(c.id)}>
                 {c.title}
               </button>
             ))}
@@ -179,7 +213,7 @@ export function TokensTab() {
             Токен даёт те же права, что у вас в проектах. Не кладите его в репозиторий.
           </p>
         </div>
-      </aside>
+      </aside>}
 
       {revoking && (
         <ConfirmDialog

@@ -337,26 +337,49 @@ async fn remove_member(State(app): State<Arc<App>>, ctx: Ctx, Path((id, member))
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only the orchestrator (or a person) changes a team"));
     }
     let (slug, by) = (access.project.clone(), access.actor.name.clone());
+    let actor = access.actor.clone();
     app.blocking(move |app| {
+        let policy = crate::decisions::policy(app, &slug)?;
+        let agents = app.agents();
         app.with_tracker(&slug, |t| {
-            let team = t.bus().get(&id)?;
-            let role = team.members.iter().find(|m| m.name == member).map(|m| m.role.clone()).unwrap_or_default();
-            t.bus().remove_member(&id, &member)?;
-            let note = format!("{} — {role} left the team (removed by {by}).", team::display_name(&member));
-            for other in team.members.iter().filter(|x| x.name != member) {
-                t.bus().send(SendMail {
-                    team: &id,
-                    from: ORCHESTRATOR,
-                    from_role: "orchestrator",
-                    to: &other.name,
-                    text: &note,
-                    level: Some("low"),
-                    intent: Some("fyi"),
-                    kind: "system",
-                    ..Default::default()
-                })?;
-            }
-            Ok(())
+            t.tx(|| {
+                let team = t.bus().get(&id)?;
+                let role = team.members.iter().find(|m| m.name == member).map(|m| m.role.clone()).unwrap_or_default();
+                let history = t.intelligence_history(&team.task)?;
+                let paths = history.snapshots.last().map(|s| s.profile.affected_paths.as_slice()).unwrap_or(&[]);
+                if policy.intelligence.enabled
+                    && policy.intelligence.required(paths).iter().any(|c| policy.intelligence.checks.get(c) == Some(&role))
+                    && team.members.iter().filter(|m| m.role == role).count() == 1
+                {
+                    return Err(genie_core::GenieError::invalid(
+                        "cannot remove the last reviewer required by the task intelligence policy",
+                    ));
+                }
+                t.bus().remove_member(&id, &member)?;
+                let note = format!("{} — {role} left the team (removed by {by}).", team::display_name(&member));
+                for other in team.members.iter().filter(|x| x.name != member) {
+                    t.bus().send(SendMail {
+                        team: &id,
+                        from: ORCHESTRATOR,
+                        from_role: "orchestrator",
+                        to: &other.name,
+                        text: &note,
+                        level: Some("low"),
+                        intent: Some("fyi"),
+                        kind: "system",
+                        ..Default::default()
+                    })?;
+                }
+                crate::intelligence::record_live_plan(
+                    t,
+                    &agents,
+                    &policy,
+                    &actor,
+                    &id,
+                    genie_core::intelligence::DecisionKind::Reassessment,
+                    "manual_member_removed",
+                )
+            })
         })
     })
     .await?;
@@ -416,8 +439,26 @@ async fn set_model(
     }
     let (slug, by, t2, m2, model2, thinking2) =
         (access.project.clone(), access.actor.name.clone(), id.clone(), member.clone(), model.clone(), thinking.clone());
-    app.blocking(move |app| app.with_tracker(&slug, |t| t.bus().set_member_model(&t2, &m2, model2.as_deref(), thinking2.as_deref(), &by)))
-        .await?;
+    let actor = access.actor.clone();
+    app.blocking(move |app| {
+        let policy = crate::decisions::policy(app, &slug)?;
+        let agents = app.agents();
+        app.with_tracker(&slug, |t| {
+            t.tx(|| {
+                t.bus().set_member_model(&t2, &m2, model2.as_deref(), thinking2.as_deref(), &by)?;
+                crate::intelligence::record_live_plan(
+                    t,
+                    &agents,
+                    &policy,
+                    &actor,
+                    &t2,
+                    genie_core::intelligence::DecisionKind::RoleModelChange,
+                    "manual_model_change",
+                )
+            })
+        })
+    })
+    .await?;
     let key = runtime::AgentKey::Member { project: access.project.clone(), team: id, member };
     crate::sessions::reload(&app, &key);
     app.wake_runtime.notify_one();

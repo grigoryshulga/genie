@@ -379,8 +379,22 @@ impl ServerDb {
     }
 
     pub fn proposals(&self, status: Option<&str>, limit: i64) -> Result<Vec<Proposal>> {
-        let mut stmt = self.conn().prepare("SELECT * FROM proposals WHERE (?1 IS NULL OR status = ?1) ORDER BY id DESC LIMIT ?2")?;
-        Ok(stmt.query_map(params![status, limit], Proposal::from_row)?.collect::<rusqlite::Result<_>>()?)
+        self.proposals_scoped(status, None, limit)
+    }
+
+    /// Filter by configured roots before the result limit; persisted project metadata may be stale after root reconfiguration.
+    pub fn proposals_in_roots(&self, status: Option<&str>, roots: &[String], limit: i64) -> Result<Vec<Proposal>> {
+        self.proposals_scoped(status, Some(roots), limit)
+    }
+
+    fn proposals_scoped(&self, status: Option<&str>, roots: Option<&[String]>, limit: i64) -> Result<Vec<Proposal>> {
+        let roots_json = serde_json::to_string(roots.unwrap_or_default())?;
+        let mut stmt = self.conn().prepare(
+            "SELECT * FROM proposals WHERE (?1 IS NULL OR status = ?1)
+             AND (?3 = 0 OR substr(path, 1, instr(path, '/') - 1) IN (SELECT value FROM json_each(?4)))
+             ORDER BY id DESC LIMIT ?2",
+        )?;
+        Ok(stmt.query_map(params![status, limit, roots.is_some(), roots_json], Proposal::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Close an open proposal: `approved`, `rejected` or `superseded`.

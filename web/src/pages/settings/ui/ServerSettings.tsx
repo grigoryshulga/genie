@@ -1,3 +1,4 @@
+import { FactoryAnalytics } from "./FactoryAnalytics.tsx";
 // «Управление» — global server administration, a section each: health (the doctor
 // check, the week in numbers), projects, accounts, the provider keys shared with
 // everyone, MCP connections and the knowledge vault sync. Server
@@ -53,11 +54,7 @@ export function ServerSettingsPage() {
     return <Navigate to={settingsTabHref("server", "tools", tab)} replace />;
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Глобальные настройки</h1>
-        <span className="sub">{local ? "локальный режим" : "администрирование"}</span>
-      </header>
-        <SettingsTabs scope="server" section={section === "health" || section === "vault" ? "tools" : section} current={section === "health" || section === "vault" ? section : undefined} />
+      <SettingsTabs scope="server" section={section === "health" || section === "vault" ? "tools" : section} current={section === "health" || section === "vault" ? section : undefined} />
       <div className="scroll">
         {section === "projects" ? (
           <Projects current={session?.project} tab={tab} />
@@ -201,7 +198,7 @@ function Tile({ label, value, sub, bad }: { label: string; value: number | strin
 function Statistics() {
   const [days, setDays] = useState(7);
   const [only, setOnly] = useState("");
-  const [view, setView] = useState<"work" | "cost">("work");
+  const [view, setView] = useState<"work" | "cost" | "factory">("work");
   const stats = useStats(days);
   const [params] = useSearchParams();
   const all = (stats.data?.projects ?? []).filter((p) => matchesSearch(params.get("q") ?? "", p.project, p.name));
@@ -212,9 +209,9 @@ function Statistics() {
     <div className="st-body sv-stats">
       <div className="sv-top">
         <div className="seg" role="group" aria-label="Что показать">
-          {(["work", "cost"] as const).map((v) => (
+          {(["work", "cost", "factory"] as const).map((v) => (
             <button key={v} type="button" className={v === view ? "on" : ""} aria-pressed={v === view} onClick={() => setView(v)}>
-              {v === "work" ? "Работа" : "Расходы"}
+              {v === "work" ? "Работа" : v === "cost" ? "Расходы" : "Фабрика"}
             </button>
           ))}
         </div>
@@ -241,6 +238,8 @@ function Statistics() {
         <p className="muted">Загрузка…</p>
       ) : stats.isError ? (
         <p className="muted">{stats.error.message}</p>
+      ) : view === "factory" ? (
+        <FactoryAnalytics list={list} />
       ) : view === "cost" ? (
         <Costs list={list} days={days} />
       ) : (
@@ -478,7 +477,7 @@ export function FirstProjectPage() {
       <div className="auth-card pj-first">
         <div className="auth-head">
           <span className="logo-mark lg">
-            <Icon.mark size={22} />
+            <Icon.mark size={34} />
           </span>
           <h1>Первый проект</h1>
           <p className="auth-sub">Создайте первый проект.</p>
