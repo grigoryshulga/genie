@@ -90,7 +90,13 @@ const GenieLibrary = (() => {
       target[field] = [brightness === 1 ? figma.variables.setBoundVariableForPaint(base, "color", variables.get(key)) : base];
     }
     function dimension(target, field, key) {
-      target[field] = number(key);
+      if (field === "width" || field === "height") {
+        const primary = target.primaryAxisSizingMode;
+        const counter = target.counterAxisSizingMode;
+        target.resize(field === "width" ? number(key) : target.width, field === "height" ? number(key) : target.height);
+        target.primaryAxisSizingMode = primary;
+        target.counterAxisSizingMode = counter;
+      } else target[field] = number(key);
       target.setBoundVariable(field, variables.get(key));
     }
     function auto(target, direction, width) {

@@ -20,7 +20,7 @@ export function createFigmaPluginHost() {
       this.children = [];
       this.parent = null;
       this.x = this.y = 0;
-      this.width = this.height = 100;
+      this._width = this._height = 100;
       this.primaryAxisSizingMode = this.counterAxisSizingMode = "FIXED";
       this.fontName = { family: "Inter", style: "Regular" };
       this.fills = [];
@@ -38,7 +38,12 @@ export function createFigmaPluginHost() {
       child.parent = this;
       this.children.push(child);
     }
-    resize(width, height) { this.width = width; this.height = height; }
+    get width() { return this._width; }
+    get height() { return this._height; }
+    resize(width, height) {
+      this._width = width; this._height = height;
+      this.primaryAxisSizingMode = this.counterAxisSizingMode = "FIXED";
+    }
     setBoundVariable(field, variable) {
       if (!variable) throw new Error(`Missing variable for ${field}`);
       this.boundVariables[field] = { type: "VARIABLE_ALIAS", id: variable.id };
@@ -75,7 +80,8 @@ export function createFigmaPluginHost() {
       if (this.type !== "COMPONENT") throw new Error("Expected component");
       const clone = (source) => {
         const target = new Node(source.type === "COMPONENT" ? "INSTANCE" : source.type);
-        for (const key of ["width", "height", "fontName", "fontSize", "textStyleId", "name", "content", "fills", "boundVariables", "componentPropertyReferences"]) target[key] = structuredClone(source[key]);
+        target.resize(source.width, source.height);
+        for (const key of ["fontName", "fontSize", "textStyleId", "name", "content", "fills", "boundVariables", "componentPropertyReferences"]) target[key] = structuredClone(source[key]);
         for (const child of source.children) target.appendChild(clone(child));
         return target;
       };
