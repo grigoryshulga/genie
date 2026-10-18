@@ -469,7 +469,7 @@ A final evaluation never returns `insufficient`. Tests must assert this for ever
 - `open_incident(case, guardrail, evidence, summary)` is idempotent: at most one `open` incident per case and guardrail (partial unique index). A repeated violation returns the existing incident and appends nothing; the new evidence record still exists.
 - Creating an incident writes `guardrail.violated` and `incident.created`, notifies project admins and the case author (when the author is a person), and mails the project manager (`Management::notify(ORCHESTRATOR, "observation", text, first linked task)`).
 - `resolve` (`open` → `resolved`, manager, optional note) — the violation still counts for evaluation.
-- `dismiss` (`open`/`resolved` → `dismissed`, **person only**, note required) — the violation no longer counts (false positive).
+- `dismiss` (`open`/`resolved` → `dismissed`, **person only**, note required) — the violation no longer counts (false positive): the guardrail is judged `ok` when it has a usable observed record and no open or resolved incident, even if that record breached its limit. A new violating record opens a new incident.
 - An incident blocks nothing in the delivery plane.
 
 ### 10.2 Follow-up tasks
