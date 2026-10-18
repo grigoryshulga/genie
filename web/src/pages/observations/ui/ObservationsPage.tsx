@@ -44,7 +44,7 @@ export function ObservationsPage() {
     <main className="main">
       <header className="topbar obs-topbar">
         <h1>{OBSERVATION_TEXT.nav}</h1>
-        <span className="sub d-only">что дали поставленные задачи и как они работают после выпуска</span>
+        <span className="sub d-only">что дали выполненные задачи и как они работают после выпуска</span>
         <span className="grow" />
         <div className="seg" role="group" aria-label="Какие наблюдения показать">
           {FILTERS.map((f) => (
