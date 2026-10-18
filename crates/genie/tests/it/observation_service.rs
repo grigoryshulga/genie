@@ -10,12 +10,16 @@ use genie::observation::service::{
     SecretBody, SourceBody, SourceTestBody, UpdateCaseBody,
 };
 use genie::state::{AppError, AppResult};
+use genie_core::inbox::Notification;
 use genie_core::management::manager_name;
 use genie_core::observation::contract::Contract;
-use genie_core::observation::store::CaseFilter;
+use genie_core::observation::evaluate::EvalOutcome;
+use genie_core::observation::store::{CaseFilter, EvidenceFilter};
 use genie_core::observation::{
-    CaseStatus, EvalTrigger, EvidencePhase, IncidentStatus, ObservationPolicy, SourceAuth, SourceKind, TrustLevel, parse_ts, ts,
+    CaseStatus, Confidence, EvalTrigger, EvidencePhase, IncidentStatus, ObservationPolicy, SourceAuth, SourceKind, TrustLevel, Verdict,
+    parse_ts, ts,
 };
+use genie_core::team::ORCHESTRATOR;
 use genie_core::{Actor, CreateInput, GenieError, Role, TaskType};
 use serde_json::{Value, json};
 
@@ -525,14 +529,14 @@ fn reports_need_an_ordered_window_a_known_criterion_and_an_observing_case() {
     let mut same_bounds = manual("checkout_errors", 10.0);
     same_bounds.window_start = Some(NOW.into());
     same_bounds.window_end = Some(NOW.into());
-    bad(
+    invalid(
         service::report_evidence(&h.app, PROJECT, &person(), id, same_bounds, later()),
         "windowStart must be before windowEnd; got 2026-10-17T12:00:00.000Z and 2026-10-17T12:00:00.000Z",
     );
     let mut reversed = manual("checkout_errors", 10.0);
     reversed.window_start = Some(ts(later()));
     reversed.window_end = Some(NOW.into());
-    bad(
+    invalid(
         service::report_evidence(&h.app, PROJECT, &person(), id, reversed, later()),
         &format!("windowStart must be before windowEnd; got {} and {}", ts(later()), NOW),
     );
@@ -638,17 +642,17 @@ async fn a_failing_source_test_is_refused_with_the_adapter_message_before_any_se
 
     let missing =
         h.app.blocking(|app| service::test_source(app, PROJECT, &person(), "metrics", test_body("missing_metric", None), now())).await;
-    bad(missing, "the source answered HTTP 404: no scripted answer");
+    invalid(missing, "the source answered HTTP 404: no scripted answer");
 
     let mut bearer = prometheus_body("metrics", &fake.url);
     bearer.auth = Some(SourceAuth::Bearer);
     service::update_source(&h.app, PROJECT, &person(), "metrics", bearer).unwrap();
     let no_secret =
         h.app.blocking(|app| service::test_source(app, PROJECT, &person(), "metrics", test_body("api_calls", None), now())).await;
-    bad(no_secret, "source metrics needs a secret");
+    invalid(no_secret, "source metrics needs a secret");
     let bad_window =
         h.app.blocking(|app| service::test_source(app, PROJECT, &person(), "metrics", test_body("up", Some("soon")), now())).await;
-    bad(bad_window, "window soon must be a duration of 1 to 90 days, such as 30m, 1h or 2d");
+    bad(bad_window, "window soon must be a positive duration of at most 90 days, such as 30m, 1h or 2d");
     // Only the first test reached the source: the other two were refused before any request.
     assert_eq!(fake.state.lock().calls.len(), 1);
 }
@@ -676,4 +680,180 @@ fn sources_are_managed_by_people_and_their_secrets_stay_hidden() {
     );
     service::remove_source(&h.app, PROJECT, &person(), "metrics").unwrap();
     assert!(service::sources(&h.app, PROJECT, &person()).unwrap().is_empty());
+}
+
+/// Two people: `ann`, who authors the cases of these tests, and `root`, a server administrator
+/// (a project administrator for notifications: every server admin is one).
+fn people(h: &Harness) {
+    h.app
+        .with_server(|db| {
+            db.create_user("ann", "Ann", None, None, false)?;
+            db.create_user("root", "Root", None, None, true)?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// The web notifications of one kind for a login.
+fn notifications(h: &Harness, login: &str, kind: &str) -> Vec<Notification> {
+    h.app
+        .with_server(|db| {
+            let user = db.user_by_login(login)?.ok_or_else(|| GenieError::not_found(format!("user {login} not found")))?;
+            db.notifications(user.id, false, 100)
+        })
+        .unwrap()
+        .into_iter()
+        .filter(|n| n.kind == kind)
+        .collect()
+}
+
+/// The mail waiting in the orchestrator's mailbox, where the project manager reads it.
+fn orchestrator_mail(h: &Harness) -> Vec<genie_core::team::Mail> {
+    h.app.with_tracker(PROJECT, |t| t.bus().pending(None, ORCHESTRATOR)).unwrap()
+}
+
+#[test]
+fn a_reported_violation_notifies_the_admins_and_the_human_author_once() {
+    let (h, task) = project();
+    people(&h);
+    let case = observing(&h, &task, guard_contract());
+    let id = case.case.id;
+    report(&h, &person(), id, "checkout_errors", 61.0).unwrap();
+
+    for login in ["ann", "root"] {
+        let mine = notifications(&h, login, "observation.incident");
+        assert_eq!(mine.len(), 1, "{login}");
+        assert_eq!(mine[0].link.as_deref(), Some("/observation/1"));
+        assert_eq!(mine[0].body, "value 61 exceeds max 50");
+    }
+    // The same incident again: the dedupe key keeps every notification to one.
+    let incident = service::incidents(&h.app, PROJECT, None).unwrap().remove(0);
+    let current = service::show(&h.app, PROJECT, id).unwrap().case;
+    service::notify_incident(&h.app, PROJECT, &incident, &current).unwrap();
+    for login in ["ann", "root"] {
+        assert_eq!(notifications(&h, login, "observation.incident").len(), 1, "{login}");
+    }
+
+    // The project manager is mailed in English, with the command that answers the incident.
+    let mail = orchestrator_mail(&h);
+    let incident_mail = mail.iter().find(|m| m.text.contains("is violated")).expect("the incident mail");
+    assert_eq!(incident_mail.from, "observation");
+    assert_eq!(incident_mail.task.as_deref(), Some(task.as_str()));
+    assert!(incident_mail.text.contains("genie observe resolve I-1"), "{}", incident_mail.text);
+}
+
+#[test]
+fn a_case_of_the_project_manager_notifies_the_admins_and_no_author() {
+    let (h, task) = project();
+    people(&h);
+    let case = service::create(&h.app, PROJECT, &project_manager(), create_body(&task, Some(guard_contract()))).unwrap();
+    let id = case.case.id;
+    service::arm(&h.app, PROJECT, &project_manager(), id, now()).unwrap();
+    service::start(&h.app, PROJECT, &project_manager(), id, now()).unwrap();
+    report(&h, &person(), id, "checkout_errors", 61.0).unwrap();
+
+    assert_eq!(notifications(&h, "root", "observation.incident").len(), 1);
+    // The author is an agent, not a person: nobody is notified as the author.
+    assert!(notifications(&h, "ann", "observation.incident").is_empty());
+}
+
+#[test]
+fn a_concluded_case_notifies_once_and_mails_the_manager() {
+    let (h, task) = project();
+    people(&h);
+    let case = observing(&h, &task, guard_contract());
+    let id = case.case.id;
+    let contract_version = case.case.contract_version;
+    h.app
+        .with_tracker(PROJECT, |t| {
+            t.observation().begin_evaluation(id)?;
+            let outcome = EvalOutcome {
+                verdict: Verdict::Negative,
+                confidence: Some(Confidence::High),
+                summary: "negative: 0/1 ok, 1 violated; attribution: not assessed".into(),
+                details: Vec::new(),
+            };
+            t.observation().finish_evaluation(&person(), id, &outcome, EvalTrigger::Manual, contract_version, later())
+        })
+        .unwrap();
+    let concluded = service::show(&h.app, PROJECT, id).unwrap();
+    assert_eq!(concluded.case.status, CaseStatus::Concluded);
+
+    service::notify_concluded(&h.app, PROJECT, &concluded.case).unwrap();
+    service::notify_concluded(&h.app, PROJECT, &concluded.case).unwrap();
+    for login in ["ann", "root"] {
+        let mine = notifications(&h, login, "observation.concluded");
+        assert_eq!(mine.len(), 1, "{login}");
+        assert_eq!(mine[0].link.as_deref(), Some("/observation/1"));
+    }
+    let mail = orchestrator_mail(&h);
+    let done = mail.iter().find(|m| m.text.contains("concluded as negative")).expect("the conclusion mail");
+    assert_eq!(done.from, "observation");
+    assert!(done.text.contains("genie observe followup O-1"), "{}", done.text);
+}
+
+#[test]
+fn an_unreadable_secret_counts_as_missing_for_arming() {
+    let (h, task) = project();
+    let mut bearer = prometheus_body("metrics", "https://prom.example.com");
+    bearer.auth = Some(SourceAuth::Bearer);
+    service::add_source(&h.app, PROJECT, &person(), bearer).unwrap();
+    service::set_source_secret(&h.app, PROJECT, &person(), "metrics", SecretBody { value: "sk-test-0123456789".into() }).unwrap();
+    let metrics = contract(json!({
+        "guardrails": [{ "id": "errors", "source": "metrics", "query": "sum(rate(errors[$__range]))", "max": 50 }],
+        "observation": { "minimumWindow": "24h" }
+    }));
+    let case = service::create(&h.app, PROJECT, &person(), create_body(&task, Some(metrics))).unwrap();
+    let id = case.case.id;
+    assert!(service::show(&h.app, PROJECT, id).unwrap().arm_problems.is_empty());
+
+    // The server's key file is gone: the stored secret can no longer be read back.
+    std::fs::remove_file(h.dir.path().join("secrets.key")).unwrap();
+    assert_eq!(service::show(&h.app, PROJECT, id).unwrap().arm_problems, ["source metrics needs a secret"]);
+    conflict(service::arm(&h.app, PROJECT, &person(), id, now()), "source metrics needs a secret");
+}
+
+#[test]
+fn arming_a_case_that_is_not_proposed_gets_the_cores_refusal() {
+    let (h, task) = project();
+    let case = observing(&h, &task, guard_contract());
+    invalid(service::arm(&h.app, PROJECT, &person(), case.case.id, now()), "only a proposed case can be armed; O-1 is observing");
+}
+
+#[test]
+fn the_evidence_listing_pages_and_filters_in_store_order() {
+    let (h, task) = project();
+    let two = contract(json!({
+        "guardrails": [
+            { "id": "checkout_errors", "source": "manual", "max": 50 },
+            { "id": "error_rate", "source": "manual", "max": 5 }
+        ],
+        "observation": { "minimumWindow": "24h" }
+    }));
+    let id = observing(&h, &task, two).case.id;
+    report(&h, &person(), id, "checkout_errors", 10.0).unwrap();
+    report(&h, &person(), id, "error_rate", 1.0).unwrap();
+    report(&h, &person(), id, "checkout_errors", 12.0).unwrap();
+
+    let all = service::evidence(&h.app, PROJECT, id, &EvidenceFilter::default()).unwrap();
+    assert_eq!(all.iter().map(|e| e.value).collect::<Vec<_>>(), [Some(10.0), Some(1.0), Some(12.0)]);
+    let only = service::evidence(&h.app, PROJECT, id, &EvidenceFilter { criterion: Some("checkout_errors".into()), ..Default::default() })
+        .unwrap();
+    assert_eq!(only.len(), 2);
+    let after =
+        service::evidence(&h.app, PROJECT, id, &EvidenceFilter { after: Some(all[0].id), limit: Some(1), ..Default::default() }).unwrap();
+    assert_eq!(after.iter().map(|e| e.id).collect::<Vec<_>>(), [all[1].id]);
+    let newest =
+        service::evidence(&h.app, PROJECT, id, &EvidenceFilter { newest_first: true, limit: Some(1), ..Default::default() }).unwrap();
+    assert_eq!(newest[0].value, Some(12.0));
+    match failure(service::evidence(&h.app, PROJECT, 99, &EvidenceFilter::default())) {
+        AppError::Genie(GenieError::NotFound(m)) => assert_eq!(m, "observation O-99 not found"),
+        other => panic!("expected a missing case, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_secret_body_never_prints_its_value() {
+    let body = SecretBody { value: "sk-test-0123456789".into() };
+    assert_eq!(format!("{body:?}"), r#"SecretBody { value: "<redacted>" }"#);
 }

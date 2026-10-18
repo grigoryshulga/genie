@@ -4,6 +4,8 @@
 //! first, then runs the core inside `App::with_tracker` or `App::with_server`. No database lock is
 //! held while a source is measured (§11.3).
 
+use std::fmt;
+
 use chrono::{DateTime, Duration, Utc};
 use genie_core::automation::parse_duration;
 use genie_core::observation::contract::{Contract, CriterionRef};
@@ -12,7 +14,7 @@ use genie_core::observation::store::{CaseFilter, CasePatch, CollectionInput, Evi
 use genie_core::observation::{
     CaseResult, CaseStatus, ContractVersion, ContractVersionInfo, CriterionKind, Deployment, Evaluation, Evidence, EvidencePhase, Followup,
     FollowupMode, Incident, IncidentStatus, ObservationCase, ObservationPolicy, SecretHint, SourceAuth, SourceConfig, SourceKind, StartOn,
-    TrustLevel, parse_ts, ts,
+    TrustLevel, case_key, parse_ts, ts,
 };
 use genie_core::team::ORCHESTRATOR;
 use genie_core::{Actor, GenieError, Role, TaskType, Tracker};
@@ -185,11 +187,18 @@ impl From<SourceBody> for NewSource {
 }
 
 /// `PUT /observation/sources/{name}/secret`. A blank value removes the secret.
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[derive(Clone, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export, optional_fields)]
 pub struct SecretBody {
     pub value: String,
+}
+
+/// The value is never printed: a secret must not reach a log or an error message.
+impl fmt::Debug for SecretBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretBody").field("value", &"<redacted>").finish()
+    }
 }
 
 /// `POST /observation/sources/{name}/test`.
@@ -289,6 +298,12 @@ pub fn show(app: &App, project: &str, id: i64) -> AppResult<CaseView> {
     view(app, project, id)
 }
 
+/// The evidence records of a case, filtered and paged in store order: oldest first unless
+/// `newest_first` is set (§7, §15).
+pub fn evidence(app: &App, project: &str, id: i64, filter: &EvidenceFilter) -> AppResult<Vec<Evidence>> {
+    tracker(app, project, |t| t.observation().evidence(id, filter))
+}
+
 fn view(app: &App, project: &str, id: i64) -> AppResult<CaseView> {
     let (case, contract, contracts, deployments, evaluations, incidents, followups, evidence) = tracker(app, project, |t| {
         let obs = t.observation();
@@ -329,7 +344,8 @@ pub fn arm_problems(app: &App, project: &str, case: &ObservationCase) -> AppResu
             match app.with_server(|db| db.observation_source(project, &name))? {
                 None => problems.push(format!("unknown source {name}")),
                 Some(source) if matches!(source.auth, SourceAuth::Bearer | SourceAuth::Basic) => {
-                    if app.with_server(|db| db.observation_secret_info(project, &name))?.is_none() {
+                    // A stored secret that cannot be read back (the server's key changed) is no secret.
+                    if app.with_server(|db| db.observation_secret(project, &name))?.is_none() {
                         problems.push(format!("source {name} needs a secret"));
                     }
                 }
@@ -373,9 +389,12 @@ pub fn set_contract(app: &App, project: &str, actor: &Actor, id: i64, body: Cont
 pub fn arm(app: &App, project: &str, actor: &Actor, id: i64, now: DateTime<Utc>) -> AppResult<CaseView> {
     authorize_manage(actor)?;
     let case = tracker(app, project, |t| t.observation().get(id))?;
-    let problems = arm_problems(app, project, &case)?;
-    if !problems.is_empty() {
-        return Err(AppError::Conflict(problems.join("; ")));
+    // Only a proposed case can be armed: any other status gets the core's own refusal below.
+    if case.status == CaseStatus::Proposed {
+        let problems = arm_problems(app, project, &case)?;
+        if !problems.is_empty() {
+            return Err(AppError::Conflict(problems.join("; ")));
+        }
     }
     tracker(app, project, |t| t.observation().arm(actor, id, now))?;
     // OBS-09: wake the observation scheduler
@@ -444,7 +463,11 @@ pub fn report_evidence(app: &App, project: &str, actor: &Actor, id: i64, body: E
         None => now,
     };
     if window_start >= window_end {
-        return Err(AppError::Bad(format!("windowStart must be before windowEnd; got {} and {}", ts(window_start), ts(window_end))));
+        return Err(AppError::Genie(GenieError::invalid(format!(
+            "windowStart must be before windowEnd; got {} and {}",
+            ts(window_start),
+            ts(window_end)
+        ))));
     }
     let phase = phase.unwrap_or(EvidencePhase::Observed);
     let trust = if actor.role == Role::Human { TrustLevel::Reported } else { TrustLevel::Agent };
@@ -494,14 +517,32 @@ pub fn report_evidence(app: &App, project: &str, actor: &Actor, id: i64, body: E
         return Err(AppError::Conflict(format!("{} changed while the evidence was stored; report it again", case.key)));
     };
     // OBS-09: wake the observation scheduler
-    if !applied.new_incidents.is_empty() {
-        let case = tracker(app, project, |t| t.observation().get(id))?;
-        for incident in &applied.new_incidents {
-            notify_incident(app, project, incident, &case)?;
-        }
-        open_followups_for(app, project, &case, &applied.new_incidents)?;
-    }
+    announce_incidents(app, project, id, &applied.new_incidents);
     view(app, project, id)
+}
+
+/// The side effects of incidents opened by a committed write: notifications and automatic
+/// follow-ups (§10.1, §10.2). The write has happened, so a failure here is logged and the caller
+/// still succeeds.
+fn announce_incidents(app: &App, project: &str, id: i64, incidents: &[Incident]) {
+    if incidents.is_empty() {
+        return;
+    }
+    let case = match tracker(app, project, |t| t.observation().get(id)) {
+        Ok(case) => case,
+        Err(e) => {
+            eprintln!("genie observation: cannot read {} to announce its incidents: {e}", case_key(id));
+            return;
+        }
+    };
+    for incident in incidents {
+        if let Err(e) = notify_incident(app, project, incident, &case) {
+            eprintln!("genie observation: cannot notify about {} of {}: {e}", incident.key, case.key);
+        }
+    }
+    if let Err(e) = open_followups_for(app, project, &case, incidents) {
+        eprintln!("genie observation: cannot file automatic follow-ups for {}: {e}", case.key);
+    }
 }
 
 // --- incidents and follow-ups -----------------------------------------------------------------
@@ -680,7 +721,9 @@ pub fn test_source(
     })?;
     // The source may answer slowly or not at all: no database lock is held while it is asked (§11.3).
     let span = Span { start: now - window, end: now };
-    let measured = block_on(adapters::measure(&source, secret.as_deref(), query, None, span)).map_err(|e| AppError::Bad(e.to_string()))?;
+    // A source that refuses the query or cannot answer it is invalid input for the test (§15).
+    let measured = block_on(adapters::measure(&source, secret.as_deref(), query, None, span))
+        .map_err(|e| AppError::Genie(GenieError::invalid(e.to_string())))?;
     Ok(SourceTestView { value: measured.value, samples: measured.samples, query: measured.query, provenance: measured.provenance })
 }
 
@@ -696,13 +739,15 @@ fn source_view(app: &App, project: &str, source: SourceConfig) -> AppResult<Sour
     Ok(SourceView { source, secret })
 }
 
-/// A test window: a duration of 1 to 90 days.
+/// A test window: a positive duration of at most 90 days.
 fn parse_window(text: &str) -> AppResult<Duration> {
     let digits = text.trim().bytes().take_while(u8::is_ascii_digit).count();
     let window = if digits > MAX_WINDOW_DIGITS { None } else { parse_duration(text) };
     match window {
         Some(window) if window > Duration::zero() && window <= Duration::days(TEST_WINDOW_MAX_DAYS) => Ok(window),
-        _ => Err(AppError::Bad(format!("window {text} must be a duration of 1 to {TEST_WINDOW_MAX_DAYS} days, such as 30m, 1h or 2d"))),
+        _ => Err(AppError::Bad(format!(
+            "window {text} must be a positive duration of at most {TEST_WINDOW_MAX_DAYS} days, such as 30m, 1h or 2d"
+        ))),
     }
 }
 

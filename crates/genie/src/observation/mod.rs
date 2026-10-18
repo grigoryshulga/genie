@@ -4,3 +4,5 @@
 pub mod adapters;
 pub mod scheduler;
 pub mod service;
+
+pub use service::arm_problems;
