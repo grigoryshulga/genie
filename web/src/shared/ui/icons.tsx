@@ -206,4 +206,10 @@ export const Icon = {
       <circle cx="12.5" cy="8" r="1.3" />
     </svg>
   ),
+  pencil: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.5}>
+      <path d="M11 2.2a1.9 1.9 0 0 1 2.7 2.7l-8.2 8.2-3.4.7.7-3.4z" />
+      <path d="M10.2 3l2.7 2.7" />
+    </svg>
+  ),
 };
