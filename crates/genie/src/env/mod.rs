@@ -5,5 +5,8 @@
 //! catalog and the controller come in later modules; they build on `layout` and `runner` as they
 //! are here.
 
+pub mod host;
+pub mod inputs;
 pub mod layout;
 pub mod runner;
+pub mod store;
