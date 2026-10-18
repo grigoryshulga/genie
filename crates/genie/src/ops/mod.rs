@@ -342,6 +342,7 @@ impl Entry {
 pub const GROUPS: &[(&str, &str)] = &[
     ("decision", "Jev judgements: evaluate alternatives, inspect uncertainty and read recorded decisions"),
     ("manager", "Project memory and task managers: dispatch, clarification, execution evidence and retrospectives"),
+    ("observe", "Outcome cases after delivery: contracts, evidence, guardrail incidents and evaluation"),
     ("task", "Tasks and epics: read, create, update, move through statuses, comment, attach artifacts"),
     ("team", "Teams of agents: assemble, look at, steer and stop them"),
     ("mail", "Mail between the members of a team, the orchestrator and people"),
