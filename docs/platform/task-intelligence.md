@@ -21,7 +21,8 @@ attempts or risk classifications.
 
 ## Project policy
 
-In project Jev settings, enable Task Intelligence and define a version, independent
+Open **Project management → Tools → Jev → Task assessment and mandatory checks**.
+The policy is disabled by default. Enable Task Intelligence and define a version, independent
 checks, protected component path prefixes, a fallback template, optional semantic
 assessment and a reassessment cooldown. Only a human project administrator can save
 policy. A check names an available delivery reviewer role. Protected components must
@@ -78,14 +79,20 @@ decision. Runtime discoveries survive subsequent assessments. Use the task's
 resolution form or `genie intelligence resolve --task G-123 --request` with
 `{snapshotId, reason, evidenceRefs}` to record an explicit human resolution of the
 latest snapshot, then resume members through the existing team controls. Changing
-status, reassessing, or resuming cannot bypass an unresolved safety pause.
+status, reassessing, or resuming cannot bypass an unresolved safety pause. If a
+required reviewer cannot fit within the team member limit, the server records an
+abstained decision and pauses the team. Resolving the discovery does not waive
+current policy checks: add the required reviewers before resuming or completing.
 
 ## Statistics
 
 Open **Statistics → Factory**. Each project shows its time window, task cohort,
-observed denominators and missingness. Select a topology, model, role, initial signal,
-policy/router version, or reason cohort. Comparable routing cohorts include initial
-complexity, ambiguity, blast radius and verification. Open supporting tasks to inspect
+observed denominators and missingness. First choose a grouping dimension
+(starting/final team, model, role, or initial signal), then select a group. Technical version and reason dimensions are opt-in.
+Readable labels replace hashes in the choices; exact identifiers remain available
+in audit details. Metrics are organized into Results, Time, Cost, Team and people,
+and Attempt outcomes, with explanations and explicit data coverage. Comparable
+routing cohorts include initial complexity, ambiguity, blast radius and verification. Open supporting tasks to inspect
 attempts and the decision timeline. Server-wide statistics keep their existing
 server-administrator permission requirement.
 
@@ -117,6 +124,9 @@ genie intelligence shadow --task G-123 --request '{
 }'
 ```
 
+Shadow evaluation is launched through CLI/API; task detail displays its recorded
+result rather than a launch form. A candidate with intelligence disabled leaves
+its configured intelligence checks inactive, matching production behavior.
 Unspecified candidate fields use the shared policy defaults. Shadow evaluation freezes
 the existing snapshot, candidate, eligible templates, original versioned brief, and baseline references.
 Historical replay intersects candidate choices with frozen template definitions;
