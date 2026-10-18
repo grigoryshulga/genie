@@ -547,6 +547,18 @@ impl ServerDb {
         Ok(())
     }
 
+    /// Forget a ready snapshot whose directory has gone from the store: it becomes failed with that
+    /// reason, so the next `env_snapshot_acquire` prepares it again. `false` when it was not ready.
+    pub fn env_snapshot_mark_missing(&self, key: &str) -> Result<bool> {
+        let changed = self.conn().execute(
+            "UPDATE env_snapshots SET state = 'failed', error = 'its directory is missing from the store', lease_owner = NULL,
+                lease_until = NULL
+             WHERE key = ?1 AND state = 'ready'",
+            [key],
+        )?;
+        Ok(changed == 1)
+    }
+
     /// Record a use of a snapshot (its last use orders the garbage collection).
     pub fn env_snapshot_touch(&self, key: &str) -> Result<()> {
         let changed = self.conn().execute("UPDATE env_snapshots SET last_used = ?2 WHERE key = ?1", params![key, now()])?;
@@ -923,6 +935,17 @@ mod tests {
         assert_eq!((snap.state, snap.error.as_deref()), (SnapshotState::Failed, Some("step api/fetch exited 2")));
         assert_eq!(db.env_snapshot_acquire("k1", "project:shop", "api/fetch", "owner-b", 600).unwrap(), Acquire::Acquired { attempt: 2 });
         assert!(db.env_snapshot("k1").unwrap().unwrap().error.is_none(), "the new attempt clears the old error");
+    }
+
+    #[test]
+    fn a_ready_snapshot_whose_directory_vanished_is_prepared_again() {
+        let (_dir, db) = db();
+        db.env_snapshot_acquire("k1", "project:shop", "api/fetch", "owner-a", 600).unwrap();
+        db.env_snapshot_publish("k1", "owner-a", 10, 1).unwrap();
+        assert_eq!(db.env_snapshot_acquire("k1", "project:shop", "api/fetch", "owner-b", 600).unwrap(), Acquire::Ready);
+        assert!(db.env_snapshot_mark_missing("k1").unwrap());
+        assert!(!db.env_snapshot_mark_missing("k1").unwrap(), "only a ready snapshot can be forgotten");
+        assert_eq!(db.env_snapshot_acquire("k1", "project:shop", "api/fetch", "owner-b", 600).unwrap(), Acquire::Acquired { attempt: 2 });
     }
 
     #[test]

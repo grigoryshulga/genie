@@ -494,6 +494,18 @@ fn resolve_component(
             values.insert(name.clone(), value.clone());
         }
     }
+    // `dir` is pasted in front of paths (`{{dir}}node_modules`): it must be a whole directory of the repository.
+    if let Some(dir) = values.get("dir")
+        && !dir_param_ok(dir)
+    {
+        push(
+            problems,
+            format!(
+                "component {}: parameter dir {dir:?} must be empty, or a relative directory ending with /, without .. or a leading / or ~",
+                c.repo
+            ),
+        );
+    }
     let mut s = Subst { who: &c.repo, values, used: BTreeSet::new(), problems };
 
     let mut tools = BTreeMap::new();
@@ -925,6 +937,11 @@ fn repo_path_ok(path: &str) -> bool {
     relative_ok(path) && !path.starts_with('~')
 }
 
+/// The `dir` parameter of a recipe: nothing (the repository root), or a directory that ends with `/`.
+fn dir_param_ok(dir: &str) -> bool {
+    dir.is_empty() || (dir.ends_with('/') && repo_path_ok(dir.trim_end_matches('/')))
+}
+
 /// A cache lives in the home (`~/...`) or at an absolute path, with no `..`.
 fn cache_path_ok(path: &str) -> bool {
     match path.strip_prefix("~/") {
@@ -1118,6 +1135,26 @@ mod tests {
         assert_eq!(install.inputs, Inputs::Files(vec!["front/package.json".into()]));
         assert_eq!(comp.recipe_hash, "hash-node-npm");
         assert_eq!(comp.mount, "web");
+    }
+
+    #[test]
+    fn a_dir_parameter_is_a_relative_directory_ending_with_a_slash() {
+        let mut rec = recipe("node-npm");
+        rec.params.insert("dir".into(), Param { default: Some(String::new()), description: String::new() });
+        rec.prepare.push(Step { outputs: vec!["{{dir}}node_modules".into()], ..step("install", "npm ci") });
+        for good in ["", "front/", "apps/web/"] {
+            let mut c = component("web", "node-npm");
+            c.params.insert("dir".into(), good.into());
+            let profile = Profile { components: vec![c], ..Default::default() };
+            assert!(resolve_with(&profile, vec![rec.clone()]).is_ok(), "{good:?} is a valid dir");
+        }
+        for bad in ["front", "../front/", "/front/", "~/front/", "a/../b/", "/"] {
+            let mut c = component("web", "node-npm");
+            c.params.insert("dir".into(), bad.into());
+            let profile = Profile { components: vec![c], ..Default::default() };
+            let p = problems(&profile, vec![rec.clone()]);
+            assert!(has(&p, "parameter dir"), "{bad:?} must be refused: {p:?}");
+        }
     }
 
     #[test]
