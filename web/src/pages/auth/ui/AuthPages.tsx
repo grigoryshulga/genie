@@ -1,17 +1,36 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
+import { SocialAuth } from "@/features/social-auth";
 import { sessionKey } from "@/entities/session";
 import { request } from "@/shared/api";
 import { Icon } from "@/shared/ui";
+import { LoginBackdrop } from "./LoginBackdrop";
 
-function AuthCard({ title, sub, foot, children }: { title: string; sub?: string; foot?: ReactNode; children: ReactNode }) {
+function AuthCard({
+  title,
+  sub,
+  foot,
+  children,
+  pageClassName,
+  cardClassName,
+  backdrop,
+}: {
+  title: string;
+  sub?: string;
+  foot?: ReactNode;
+  children: ReactNode;
+  pageClassName?: string;
+  cardClassName?: string;
+  backdrop?: ReactNode;
+}) {
   return (
-    <div className="auth-page">
-      <div className="auth-card">
+    <div className={`auth-page${pageClassName ? ` ${pageClassName}` : ""}`}>
+      {backdrop}
+      <div className={`auth-card${cardClassName ? ` ${cardClassName}` : ""}`}>
         <div className="auth-head">
           <span className="logo-mark lg">
-            <Icon.mark size={22} />
+            <Icon.mark size={34} />
           </span>
           <h1>{title}</h1>
           {sub && <p className="auth-sub">{sub}</p>}
@@ -49,7 +68,14 @@ export function LoginPage({ note }: { note?: string }) {
   const [password, setPassword] = useState("");
   const { onSubmit, error, busy } = useSubmit(() => request("POST", "/api/auth/login", { login, password }));
   return (
-    <AuthCard title="Вход в genie" sub={note} foot="Нет аккаунта? Попросите у администратора ссылку-приглашение.">
+    <AuthCard
+      title="Вход в genie"
+      sub={note || "Ваша команда уже в потоке"}
+      foot="Нет аккаунта? Попросите у администратора ссылку-приглашение."
+      pageClassName="login-page"
+      cardClassName="login-card"
+      backdrop={<LoginBackdrop />}
+    >
       <form className="auth-form" onSubmit={onSubmit}>
         <label className="field">
           Логин
@@ -64,6 +90,7 @@ export function LoginPage({ note }: { note?: string }) {
           Войти
         </button>
       </form>
+      <SocialAuth />
     </AuthCard>
   );
 }

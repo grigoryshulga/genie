@@ -171,3 +171,131 @@ async fn agents_get_the_index_in_their_prompt_and_the_tasks_pages_in_their_kicko
     let mail = h.app.with_tracker("shop", |t| t.bus().pending(Some("G-1"), &member)).unwrap();
     assert!(mail.iter().any(|m| m.text.contains("### Export — shop/features/export.md")), "the kickoff carries the page");
 }
+
+#[tokio::test]
+async fn documentation_is_confined_to_the_selected_projects_roots() {
+    use genie_core::vault::{AuthorKind, Space};
+
+    let h = Harness::new();
+    h.project("shop");
+    h.project("other");
+    h.project("empty");
+    h.app
+        .with_vault(|v| {
+            v.config.spaces.insert("handbook".into(), Space { project: Some("shop".into()), ..Default::default() });
+            v.save_config()?;
+            for (path, content) in [
+                ("shop/guide.md", "---\ntitle: Orders\n---\n# Orders\n\nneedle [[guide]] [[other/private]]"),
+                ("handbook/intro.md", "# Handbook\n\nneedle"),
+                ("other/guide.md", "# Other\n\nneedle [[shop/guide]]"),
+                ("other/private.md", "# Private\n\nneedle"),
+                ("shared.md", "# Shared\n\nneedle [[shop/guide]]"),
+            ] {
+                v.write(path, content, AuthorKind::System, ("test", "test"), None, "fixture")?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let (_, tree, _) = call(&h.router, "GET", "/api/docs/tree?project=shop").send().await;
+    assert_eq!(tree["roots"], json!(["handbook", "shop"]));
+    assert!(
+        tree["pages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["path"].as_str().unwrap().starts_with("shop/") || p["path"].as_str().unwrap().starts_with("handbook/"))
+    );
+    for suffix in ["", "&mine=0", "&mine=1"] {
+        let (_, found, _) = call(&h.router, "GET", &format!("/api/docs/search?project=shop&q=needle{suffix}")).send().await;
+        let paths: Vec<_> = found["results"].as_array().unwrap().iter().map(|p| p["path"].as_str().unwrap()).collect();
+        assert_eq!(paths.len(), 2, "{found}");
+        assert!(paths.contains(&"shop/guide.md") && paths.contains(&"handbook/intro.md"));
+    }
+    let (_, read, _) = call(&h.router, "GET", "/api/docs/page?project=shop&path=shop/guide.md").send().await;
+    assert_eq!(read["links"][0]["targetPath"], "shop/guide.md", "a foreign basename cannot make the local link ambiguous");
+    assert_eq!(read["links"][1]["resolution"], "unresolved");
+    assert_eq!(read["links"][1]["matches"], json!([]));
+    assert_eq!(read["backlinks"], json!([]), "foreign backlinks do not disclose page paths");
+    for path in ["other/private.md", "/other/private", "other\\private.md", "shared.md", "other/new.md"] {
+        let (s, _, _) = call(&h.router, "GET", &format!("/api/docs/page?project=shop&path={}", path.replace('\\', "%5C"))).send().await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "{path}");
+        let (s, _, _) =
+            call(&h.router, "POST", "/api/docs/page?project=shop").json(json!({ "path": path, "content": "# Replacement" })).send().await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "cannot write outside the roots: {path}");
+    }
+    let (_, spaces, _) = call(&h.router, "GET", "/api/docs/spaces?project=shop").send().await;
+    assert_eq!(spaces["spaces"].as_object().unwrap().len(), 2);
+    let (_, before, _) = call(&h.router, "GET", "/api/docs/version?project=shop").send().await;
+    h.app
+        .with_vault(|v| v.write("other/private.md", "# Changed foreign page", AuthorKind::System, ("test", "test"), None, "fixture"))
+        .unwrap();
+    let (_, after, _) = call(&h.router, "GET", "/api/docs/version?project=shop").send().await;
+    assert_eq!(before, after, "other projects do not invalidate this project's documentation");
+    h.app
+        .with_vault(|v| {
+            v.config.spaces.remove("empty");
+            v.save_config()
+        })
+        .unwrap();
+    let (_, found, _) = call(&h.router, "GET", "/api/docs/search?project=empty&q=needle").send().await;
+    assert_eq!(found["results"], json!([]), "a project without roots cannot fall back to the whole vault");
+    let (s, _, _) = call(&h.router, "POST", "/api/docs/note?project=empty").json(json!({ "title": "Note" })).send().await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "notes cannot fall back to a shared inbox");
+}
+
+#[tokio::test]
+async fn documentation_proposals_do_not_cross_project_boundaries() {
+    let h = Harness::new();
+    h.project("shop");
+    h.project("other");
+    let agent =
+        h.app.with_server(|db| db.create_agent_token("other", Role::Documenter, "writer", None, None, chrono::Duration::hours(1))).unwrap();
+    let (_, proposed, _) = call(&h.remote, "POST", "/api/docs/page")
+        .bearer(&agent)
+        .no_csrf()
+        .json(json!({ "path": "other/proposal.md", "content": "# Proposal" }))
+        .send()
+        .await;
+    let id = proposed["proposal"].as_i64().unwrap();
+    let (_, list, _) = call(&h.router, "GET", "/api/docs/proposals?project=shop").send().await;
+    assert_eq!(list, json!([]));
+    h.app
+        .with_server(|db| {
+            db.create_proposal("shop/local.md", None, "# Local", "writer", "agent", Some("shop"), None, "fixture")?;
+            for _ in 0..205 {
+                db.create_proposal("other/new.md", None, "# Foreign", "writer", "agent", Some("other"), None, "fixture")?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let (_, list, _) = call(&h.router, "GET", "/api/docs/proposals?project=shop").send().await;
+    assert_eq!(list.as_array().unwrap().len(), 1, "foreign proposals cannot crowd out the project's proposals");
+    assert_eq!(list[0]["path"], "shop/local.md");
+    for (method, suffix) in [("GET", ""), ("POST", "/approve"), ("POST", "/reject")] {
+        let (s, _, _) = call(&h.router, method, &format!("/api/docs/proposals/{id}{suffix}?project=shop")).send().await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+}
+
+#[tokio::test]
+async fn foreign_search_candidates_cannot_crowd_out_project_results() {
+    let h = Harness::new();
+    h.project("shop");
+    h.project("other");
+    h.app
+        .with_vault(|v| {
+            for n in 0..405 {
+                let (_, path) = v.resolve(&format!("other/noise-{n}.md"))?;
+                std::fs::write(path, "# Uniqueterm\n\nUniqueterm")?;
+            }
+            let (_, path) = v.resolve("shop/match.md")?;
+            std::fs::write(path, "# Local\n\nUniqueterm appears here among other words.")?;
+            v.refresh()?;
+            Ok(())
+        })
+        .unwrap();
+    let (s, found, _) = call(&h.router, "GET", "/api/docs/search?project=shop&q=Uniqueterm&limit=1").send().await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(found["results"].as_array().unwrap().len(), 1);
+    assert_eq!(found["results"][0]["path"], "shop/match.md");
+}

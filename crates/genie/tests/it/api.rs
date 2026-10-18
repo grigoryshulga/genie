@@ -868,3 +868,56 @@ async fn the_runtime_view_shows_the_scheduler_queue() {
     assert_eq!(v["membersWaiting"], json!(0));
     assert_eq!(v["jobsWaiting"], json!(0));
 }
+
+#[tokio::test]
+async fn social_auth_is_opt_in_and_start_is_csrf_protected() {
+    let empty = Harness::new();
+    let (_, providers, _) = call(&empty.remote, "GET", "/api/auth/social").send().await;
+    assert_eq!(providers, json!([]));
+    let h = Harness::with_config(|cfg| {
+        cfg.public_url = Some("https://genie.example.com".into());
+        cfg.social_auth.github = Some(genie::config::SocialClient {
+            client_id: "test-client".into(),
+            // The value is used only to check configuration availability; this test sends no network requests.
+            client_secret_env: "PATH".into(),
+        });
+    });
+    let (status, providers, _) = call(&h.remote, "GET", "/api/auth/social").send().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(providers, json!([{"id":"github", "title":"GitHub", "connected":false, "registration":false}]));
+    let (status, _, _) = call(&h.remote, "POST", "/api/auth/social/github/start").no_csrf().json(json!({})).send().await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, _) = call(&h.remote, "POST", "/api/auth/social/github/start").json(json!({"link":true})).send().await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, headers, bytes) = call(&h.remote, "POST", "/api/auth/social/github/start").json(json!({})).send_raw().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["cache-control"], "no-store");
+    let cookie = headers["set-cookie"].to_str().unwrap();
+    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax") && cookie.contains("Secure"));
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let url = reqwest::Url::parse(body["url"].as_str().unwrap()).unwrap();
+    let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
+    assert_eq!(params["redirect_uri"], "https://genie.example.com/api/auth/social/github/callback");
+    assert_eq!(params["code_challenge_method"], "S256");
+    assert_eq!(params["code_challenge"].len(), 43);
+    assert!(params["state"].len() >= 32);
+    assert!(!params.contains_key("client_secret") && !params.contains_key("code_verifier"));
+    let callback = format!("/api/auth/social/github/callback?state={}&error=access_denied", params["state"]);
+    let (_, response, _) = call(&h.remote, "GET", &callback).send_raw().await;
+    assert_eq!(response["location"], "/?socialError=1", "no flow cookie means no login");
+    let (_, response, _) = call(&h.remote, "GET", &callback).cookie(cookie.split(';').next().unwrap()).send_raw().await;
+    assert_eq!(response["location"], "/?socialError=1", "provider cancellation is safe");
+    assert!(response.get_all("set-cookie").iter().all(|h| !h.to_str().unwrap().starts_with("genie_session=")));
+}
+
+#[tokio::test]
+async fn social_auth_refuses_remote_plain_http_configuration() {
+    let h = Harness::with_config(|cfg| {
+        cfg.public_url = Some("http://genie.example.com".into());
+        cfg.social_auth.github = Some(genie::config::SocialClient { client_id: "test".into(), client_secret_env: "PATH".into() });
+    });
+    let (_, providers, _) = call(&h.remote, "GET", "/api/auth/social").send().await;
+    assert_eq!(providers, json!([]));
+    let (status, _, _) = call(&h.remote, "POST", "/api/auth/social/github/start").json(json!({})).send().await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

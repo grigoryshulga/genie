@@ -5,6 +5,7 @@
 
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { SocialAuth } from "@/features/social-auth";
 import { PersonAvatar, PROJECT_ROLE_NAME, usePatchUser, useSetAvatar } from "@/entities/project";
 import { useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
@@ -14,6 +15,7 @@ import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
 import { PersonalTelegram } from "./TelegramSettings.tsx";
 import { TokensTab } from "./TokensTab.tsx";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
+import { AppearanceSettings } from "./AppearanceSettings.tsx";
 import "@/shared/ui/settings.css";
 
 export function MeSettingsPage() {
@@ -22,11 +24,10 @@ export function MeSettingsPage() {
   const local = session?.mode === "local";
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Настройки профиля</h1>
-      </header>
       <div className="scroll">
-        {!session ? null : local ? (
+        {!session ? null : section === "appearance" ? (
+          <AppearanceSettings />
+        ) : local ? (
           <div className="st-body">
             <div className="st-head">
               <h2>Локальный режим</h2>
@@ -253,6 +254,7 @@ function SecurityTab() {
         <h2>Вход и пароль</h2>
         <p>После смены пароля все сессии закрываются, в том числе эта: войдите снова с новым паролем. Токены CLI и MCP продолжают работать.</p>
       </div>
+      <SocialAuth link />
       <form
         className="st-card"
         onSubmit={(e) => {
@@ -319,18 +321,9 @@ function KeysTab() {
     const login = oauth[p.id];
     const value = values[p.id] ?? "";
     return (
-      <div className="st-card" key={p.id}>
+      <div className="st-card provider-card" key={p.id}>
         <div className="st-row">
-          <div className="lbl">
-            <b>{p.title}</b>
-            <span>
-              {p.strict
-                ? "Прокси этого сервера. Агенты на моделях litellm/… без него не запускаются; ждущие агенты стартуют сразу после сохранения."
-                : p.apiKey ? `Провайдер pi: агент на модели ${p.id}/… получает личный ключ поверх ключа сервера.${
-                    server ? " Без вашего ключа он работает на ключе сервера." : " Без вашего ключа он работает на серверном."
-                  }` : `Вход pi по OAuth для моделей ${p.id}/….`}
-            </span>
-          </div>
+          <div className="lbl"><b>{p.title}</b></div>
         </div>
         {key ? (
           <div className="st-row">
@@ -340,11 +333,9 @@ function KeysTab() {
             </div>
             <div className="ctl" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
               {key.unreadable ? (
-                <span className="pj-bad">Ключ сохранён, но сервер не может его прочитать (сменился ключ шифрования). Укажите его заново.</span>
+                <span className="pj-bad">Ключ сервера сохранён, но сервер не может его прочитать (сменился ключ шифрования). Укажите его заново.</span>
               ) : (
-                <span>
-                  Ваш ключ задан{key.hint ? ` (${key.hint})` : ""}, обновлён {timeAgo(key.updated)}.
-                </span>
+                <span>Личный ключ задан{key.hint ? ` (${key.hint})` : ""}, обновлён {timeAgo(key.updated)}.</span>
               )}
               <button
                 type="button"
@@ -356,23 +347,12 @@ function KeysTab() {
             </div>
           </div>
         ) : server ? (
-          <div className="st-row">
-            <div className="lbl">
-              <b>Сейчас</b>
-              <span>
-                Администратор поделился ключом со всеми: агенты на моделях {p.id}/… работают на нём
-                {p.strict ? "" : ", если у вас нет своего"}. Ваш ключ, если появится, перекроет его.
-              </span>
-            </div>
-            <div className="ctl" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
-              {server.unreadable ? (
-                <span className="pj-bad">Ключ сервера сохранён, но сервер не может его прочитать (сменился ключ шифрования).</span>
-              ) : (
-                <span>
-                  Ключ сервера задан{server.hint ? ` (${server.hint})` : ""}, обновлён {timeAgo(server.updated)}.
-                </span>
-              )}
-            </div>
+          <div className="st-row provider-admin-status">
+            {server.unreadable ? (
+              <span className="pj-bad provider-admin-unreadable">Ключ сервера сохранён, но сервер не может его прочитать (сменился ключ шифрования).</span>
+            ) : (
+              <span className="provider-admin-connected"><Icon.check size={15} />Провайдер подключен администратором</span>
+            )}
           </div>
         ) : null}
         {login && (
@@ -391,7 +371,7 @@ function KeysTab() {
             <div className="st-row">
               <label className="lbl" htmlFor={`pf-key-${p.id}`}>
                 <b>{key ? "Новый ключ" : server ? "Свой ключ (необязательный)" : "Личный ключ"}</b>
-                <span>Агенты на моделях {p.id}/…, которые работают от вашего имени, ходят к провайдеру с ним.</span>
+                <span>Для ваших агентов на моделях {p.id}/….</span>
               </label>
               <div className="ctl">
                 <input
@@ -422,7 +402,7 @@ function KeysTab() {
       <div className="st-head">
         <div className="provider-headline">
           <h2>Провайдеры и ключи</h2>
-          {providers.length > 0 && <button type="button" className="btn provider-add" aria-label="Подключить провайдера" title="Подключить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
+          {providers.length > 0 && <button type="button" className="btn primary provider-add" aria-label="Подключить провайдера" title="Подключить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
         </div>
         <p>Подключите провайдера через OAuth или сохраните API-ключ. Личные ключи имеют приоритет над ключами сервера.</p>
       </div>

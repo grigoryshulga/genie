@@ -41,6 +41,9 @@ const delivery = (e: JournalEvent): KeyPrefix[] => [["task-repos"], e.subject ? 
 
 const DOCS: KeyPrefix[] = [["docs"], ["proposals"], ["proposal"], ["task"] /* the docs-impact hint of a task */];
 
+/** Observation queries: every key of `entities/observation` starts with `observations` (a test pins it). */
+const OBSERVATIONS: KeyPrefix[] = [["observations"]];
+
 /**
  * The queries one journal event can have made stale, by event type. `null`: the
  * type is unknown (a new one on the server), so anything may be stale.
@@ -48,6 +51,17 @@ const DOCS: KeyPrefix[] = [["docs"], ["proposals"], ["proposal"], ["task"] /* th
  */
 export function keysFor(e: JournalEvent): KeyPrefix[] | null {
   switch (e.type) {
+    case "task.signals_resolved":
+    case "task.safety_paused":
+    case "task.routing_input_changed":
+    case "task.brief_changed":
+    case "task.signals_assessed":
+    case "task.routing_decided":
+    case "task.execution_started":
+    case "task.execution_assessed":
+    case "task.policy_evaluated":
+    case "task.material_discovery":
+      return [["intelligence"], ["stats"], ...teamState()];
     case "task.created":
     case "task.deleted":
     case "task.updated":
@@ -83,6 +97,26 @@ export function keysFor(e: JournalEvent): KeyPrefix[] | null {
     case "doc.proposal_decided":
     case "release.published": // the changelog is a page
       return DOCS;
+    // Observation plane (§12): cases, their evidence, incidents and their state changes.
+    case "outcome.created":
+    case "outcome.updated":
+    case "observation.started":
+    case "deployment.completed":
+    case "evidence.collected":
+    case "guardrail.violated":
+    case "incident.created":
+    case "incident.resolved":
+    case "incident.dismissed":
+    case "outcome.ready_for_evaluation":
+    case "outcome.evaluated":
+    case "outcome.confirmed":
+    case "outcome.negative":
+    case "outcome.inconclusive":
+    case "outcome.cancelled":
+      return OBSERVATIONS;
+    case "followup_task.created":
+      // The follow-up is a new task: its lists and the task pages change as well.
+      return [...OBSERVATIONS, ...TASK_LISTS, ["task"]];
     default:
       return null;
   }
