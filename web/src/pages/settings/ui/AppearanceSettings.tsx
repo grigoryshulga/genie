@@ -23,10 +23,10 @@ export function AppearanceSettings() {
         <div className="st-row">
           <div className="lbl">
             <b>Тема</b>
-            <span>Выберите светлое или тёмное оформление интерфейса.</span>
+            <span>Выберите светлое, тёмное оформление или следование настройкам системы.</span>
           </div>
           <div className="appearance-themes" role="group" aria-label="Тема интерфейса">
-            {(["light", "dark"] as const).map((theme) => (
+            {(["light", "dark", "system"] as const).map((theme) => (
               <ThemeChoice key={theme} theme={theme} selected={preferences.theme === theme} onSelect={() => update({ theme })} />
             ))}
           </div>
@@ -56,7 +56,7 @@ export function AppearanceSettings() {
 }
 
 function ThemeChoice({ theme, selected, onSelect }: { theme: AppearanceTheme; selected: boolean; onSelect: () => void }) {
-  const label = theme === "light" ? "Светлая" : "Тёмная";
+  const label = theme === "light" ? "Светлая" : theme === "dark" ? "Тёмная" : "Системная";
   return (
     <button type="button" className="appearance-theme" aria-pressed={selected} onClick={onSelect}>
       <span className={`appearance-theme-preview ${theme}`} aria-hidden="true">

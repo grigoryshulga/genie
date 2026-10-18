@@ -27,13 +27,65 @@ test("appearance preferences default safely and persist changes", () => {
     saveAppearancePreferences(preferences);
 
     assert.deepEqual(readAppearancePreferences(), preferences);
-    assert.deepEqual(document.documentElement.dataset, { theme: "light", accent: "teal" });
+    assert.deepEqual(document.documentElement.dataset, { theme: "light", themePreference: "light", accent: "teal" });
     assert.equal(themeColor.content, "#f0f1f4");
   } finally {
     if (previousStorage) Object.defineProperty(globalThis, "localStorage", previousStorage);
     else Reflect.deleteProperty(globalThis, "localStorage");
     if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
     else Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
+test("system appearance follows operating system color scheme changes", () => {
+  const values = new Map<string, string>();
+  const themeColor = { content: "#0e0f11" };
+  const document = {
+    documentElement: { dataset: {} as Record<string, string> },
+    querySelector: () => themeColor,
+  };
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const previousMatchMedia = Object.getOwnPropertyDescriptor(globalThis, "matchMedia");
+  let onChange: ((event: { matches: boolean }) => void) | undefined;
+  const mediaQuery = {
+    matches: true,
+    addEventListener: (_type: "change", listener: (event: { matches: boolean }) => void) => { onChange = listener; },
+    removeEventListener: () => { onChange = undefined; },
+  };
+
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    },
+  });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: document });
+  Object.defineProperty(globalThis, "matchMedia", { configurable: true, value: () => mediaQuery });
+
+  try {
+    const preferences = { theme: "system", accent: "rose" } as const;
+    saveAppearancePreferences(preferences);
+
+    assert.deepEqual(readAppearancePreferences(), preferences);
+    assert.equal(document.documentElement.dataset.themePreference, "system");
+    assert.equal(document.documentElement.dataset.theme, "dark");
+    assert.equal(themeColor.content, "#0e0f11");
+
+    onChange?.({ matches: false });
+
+    assert.equal(document.documentElement.dataset.theme, "light");
+    assert.equal(themeColor.content, "#f0f1f4");
+  } finally {
+    // Remove the test's media-query listener while the mocked document is still active.
+    saveAppearancePreferences({ theme: "dark", accent: "violet" });
+    if (previousStorage) Object.defineProperty(globalThis, "localStorage", previousStorage);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+    if (previousMatchMedia) Object.defineProperty(globalThis, "matchMedia", previousMatchMedia);
+    else Reflect.deleteProperty(globalThis, "matchMedia");
   }
 });
 

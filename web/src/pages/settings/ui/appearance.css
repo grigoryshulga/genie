@@ -14,6 +14,10 @@
 .appearance-theme-preview.dark::before { background: #0a0b0d; }
 .appearance-theme-preview.dark > span:first-child { background: linear-gradient(#17181d 35%, #111215 35%); }
 .appearance-theme-preview.dark > span:last-child { background: #0a0b0d; }
+.appearance-theme-preview.system { border-color: #8b92a0; background: linear-gradient(90deg, #fff 50%, #111215 50%); color: #8b92a0; }
+.appearance-theme-preview.system::before { background: linear-gradient(#f0f1f4 50%, #0a0b0d 50%); }
+.appearance-theme-preview.system > span:first-child { background: linear-gradient(90deg, #f4f5f7 50%, #17181d 50%); }
+.appearance-theme-preview.system > span:last-child { background: linear-gradient(#f0f1f4 50%, #0a0b0d 50%); }
 .appearance-accents { display: flex; flex-wrap: wrap; gap: 6px; }
 .appearance-accent { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 17px; background: var(--bg); color: var(--text-2); font-size: 12px; }
 .appearance-accent:hover { border-color: var(--accent); color: var(--text); }
