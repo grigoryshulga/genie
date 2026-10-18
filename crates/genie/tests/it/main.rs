@@ -14,6 +14,7 @@ mod decisions;
 mod delivery;
 mod docs;
 mod engine;
+mod env_controller;
 mod env_host;
 mod env_podman;
 mod git_flow;

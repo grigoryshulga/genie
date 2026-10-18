@@ -123,6 +123,8 @@ pub struct App {
     pub git: crate::git::Git,
     /// The journal pollers behind the live streams of the web UI.
     pub live: crate::http::live::Hub,
+    /// Workspace environments: the runner selected for this process, and the workspace turns in progress.
+    pub envs: crate::env::controller::Envs,
 }
 
 impl App {
@@ -163,6 +165,7 @@ impl App {
             mcp: Default::default(),
             git: Default::default(),
             live: Default::default(),
+            envs: Default::default(),
         }))
     }
 
