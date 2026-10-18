@@ -64,7 +64,7 @@ A recipe declares:
 | --- | --- |
 | `id`, `revision` | Identity. The revision and a hash of the file enter every key that uses it. |
 | `params` | Typed parameters with defaults, such as the Node version or a subdirectory. |
-| `tools` | Tool versions, resolved to exact versions in the lock. Provided by the base or installed by a step. |
+| `tools` | Required tools with a version constraint and a probe command. The base provides them; Genie probes each one and records the exact version in the lock. A recipe does not install tools. |
 | `caches` | Download caches: path inside the environment, scope, and whether the package manager verifies content integrity. |
 | `prepare` | Steps producing prepared dependencies: command, output paths, inputs, environment variables, network and secret needs, and a verification command. |
 | `commands` | Named commands such as `build`, `test`, `lint`, and `run`. |
@@ -162,7 +162,7 @@ VM and remote runners implement the same operations over RPC. Snapshot and cache
 
 ### Where the agent runs
 
-Today the agent harness runs on the host inside bubblewrap. With an environment runner, the agent's commands must run inside the environment. Recommendation: run the harness process inside the workspace environment, with Genie's harness runtime mounted read-only, and allow network only to the Genie API and model endpoints in addition to the profile's work policy. File edits and commands then share one isolation boundary. Bridging only shell commands into the container would leave file tools and commands with different views.
+Today the agent harness runs on the host inside bubblewrap. With an environment runner, the agent's commands must run inside the environment. Recommendation: run the harness process inside the workspace environment, with Genie's harness runtime mounted read-only, and allow network only to the Genie API and model endpoints in addition to the profile's work policy. Until the egress proxy for allowlists exists, an environment that hosts an agent needs the `full` work network, because the harness must reach the Genie API and the model endpoints. File edits and commands then share one isolation boundary. Bridging only shell commands into the container would leave file tools and commands with different views.
 
 ## Storage and reuse
 
@@ -296,7 +296,7 @@ An integration check creates a workspace from the ChangeSet's head SHAs using th
 | Host builds outside an environment | Keep only the `host` runner with its reduced capabilities for projects without system requirements. No separate unmanaged mode. |
 | Agent placement | Run the harness inside the environment. |
 | First release | See below. |
-| Network, secrets, quotas | Defaults: prepare `full`, work `none` unless granted; no secrets unless named; per-workspace memory 8 GiB, 4 CPUs, 4096 processes, 50 GiB disk, all adjustable by policy. |
+| Network, secrets, quotas | Defaults: prepare `full`; work `full` while agents run inside the environment, `none` once allowlists exist; no secrets unless named; per-workspace memory 8 GiB, 4 CPUs, 4096 processes, 50 GiB disk, all adjustable by policy. |
 
 ## First release
 
