@@ -12,12 +12,12 @@
 }
 .tg-pair {
   display: flex;
-  gap: 28px;
+  gap: var(--space-14);
   align-items: center;
   flex-wrap: wrap;
 }
 .tg-qr {
-  padding: 8px;
+  padding: var(--space-4);
   background: #fff;
   border-radius: 18px;
   border: 1px solid var(--line);
@@ -30,7 +30,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-6);
   flex: 1;
   min-width: 210px;
 }
@@ -41,14 +41,14 @@
   padding: 0 40px;
   max-width: var(--content);
   display: flex;
-  gap: 8px;
+  gap: var(--space-4);
   align-items: center;
 }
-.tg-project label { color: var(--muted); font-size: 12px; }
+.tg-project label { color: var(--muted); font-size: var(--font-size-small); }
 .tg-project .st-input {
   width: min(240px, 60vw);
   height: 32px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .tg-connected { width: 100%; flex-wrap: wrap; }

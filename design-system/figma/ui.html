@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<style>
+  body { margin: 20px; color: var(--figma-color-text); background: var(--figma-color-bg); font: 12px/1.5 system-ui; }
+  label { display: block; margin: 12px 0; }
+  input, select, button { display: block; margin-top: 5px; max-width: 100%; font: inherit; }
+  select, button { padding: 6px 10px; }
+  #status { white-space: pre-wrap; }
+</style>
+<strong>Genie foundations</strong>
+<label>Generated tokens.json <input id="file" type="file" accept=".json,application/json"></label>
+<label>Theme and accent <select id="mode" disabled></select></label>
+<button id="import" disabled>Import variables and shadow</button>
+<p id="status" role="status">Choose design-system/tokens.json. Each pair uses one collection with one mode. Reimport updates it in place.</p>
+<script>
+  let data;
+  const file = document.getElementById("file");
+  const mode = document.getElementById("mode");
+  const button = document.getElementById("import");
+  const status = document.getElementById("status");
+  file.onchange = async () => {
+    button.disabled = true;
+    mode.disabled = true;
+    mode.replaceChildren();
+    try {
+      data = JSON.parse(await file.files[0].text());
+      for (const name of Object.keys(data).filter((key) => /^(dark|light)-(violet|blue|teal|green|orange|rose)$/.test(key))) {
+        mode.add(new Option(name, name));
+      }
+      if (!mode.options.length) throw new Error("No Genie theme groups found");
+      mode.disabled = false;
+      button.disabled = false;
+      status.textContent = "Ready. Import updates only the named Genie collection and shadow style; existing layers are preserved.";
+    } catch (error) { status.textContent = String(error); }
+  };
+  button.onclick = () => {
+    button.disabled = true;
+    status.textContent = "Importing…";
+    parent.postMessage({ pluginMessage: { type: "import", mode: mode.value, tokens: data[mode.value] } }, "*");
+  };
+  window.onmessage = (event) => {
+    const message = event.data.pluginMessage;
+    if (!message) return;
+    status.textContent = message.text;
+    button.disabled = false;
+  };
+</script>
+</html>

@@ -4,12 +4,12 @@ export type AppearanceTheme = "dark" | "light" | "system";
 type ResolvedAppearanceTheme = Exclude<AppearanceTheme, "system">;
 
 export const ACCENT_OPTIONS = [
-  { id: "violet", label: "Фиолетовый", color: "#5e6ad2" },
-  { id: "blue", label: "Синий", color: "#246fd2" },
-  { id: "teal", label: "Бирюзовый", color: "#087d75" },
-  { id: "green", label: "Зелёный", color: "#2d7d45" },
-  { id: "orange", label: "Оранжевый", color: "#b85c10" },
-  { id: "rose", label: "Розовый", color: "#bf3f58" },
+  { id: "violet", label: "Фиолетовый", color: "var(--accent-choice-violet)" },
+  { id: "blue", label: "Синий", color: "var(--accent-choice-blue)" },
+  { id: "teal", label: "Бирюзовый", color: "var(--accent-choice-teal)" },
+  { id: "green", label: "Зелёный", color: "var(--accent-choice-green)" },
+  { id: "orange", label: "Оранжевый", color: "var(--accent-choice-orange)" },
+  { id: "rose", label: "Розовый", color: "var(--accent-choice-rose)" },
 ] as const;
 
 export type AccentColor = (typeof ACCENT_OPTIONS)[number]["id"];

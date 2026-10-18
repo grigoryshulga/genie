@@ -213,12 +213,12 @@ export function inTaskViews(t: TaskSummary): boolean {
 export type Progress = "closed" | "owner" | "review" | "working" | "ready" | "early";
 
 export const PROGRESS: { id: Progress; name: string; color: string }[] = [
-  { id: "closed", name: "Закрыто", color: "#7c84f0" },
-  { id: "owner", name: "Ждёт вашего решения", color: "#f0a04b" },
-  { id: "review", name: "На ревью", color: "#4cb782" },
-  { id: "working", name: "В работе", color: "#f2c94c" },
-  { id: "ready", name: "Готово к работе", color: "#4a4d55" },
-  { id: "early", name: "Черновик", color: "#2e3138" },
+  { id: "closed", name: "Закрыто", color: "var(--status-done)" },
+  { id: "owner", name: "Ждёт вашего решения", color: "var(--status-needs-owner)" },
+  { id: "review", name: "На ревью", color: "var(--status-review)" },
+  { id: "working", name: "В работе", color: "var(--status-in-progress)" },
+  { id: "ready", name: "Готово к работе", color: "var(--status-ready)" },
+  { id: "early", name: "Черновик", color: "var(--status-draft)" },
 ];
 
 export function progressOf(status: Status): Progress {
