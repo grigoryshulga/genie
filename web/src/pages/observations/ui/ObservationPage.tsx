@@ -5,20 +5,34 @@
 import { type FormEvent, type ReactNode, useState } from "react";
 import { Link, useParams } from "react-router";
 import {
+  ACTION_LABEL,
   type CaseAction,
   type CaseRights,
+  CONFIDENCE_LABEL,
   type Contract,
-  type ObservationCase,
-  type ObservationPolicy,
+  CRITERION_STATE_LABEL,
+  FIELD_LABEL,
+  HEADING_LABEL,
+  INCIDENT_ACTION_LABEL,
+  INCIDENT_LABEL,
+  OBSERVATION_TEXT,
   caseActions,
   contractTemplate,
   criterionChange,
   formatDelta,
-  INCIDENT_LABEL,
   incidentActions,
+  parseContract,
+  PHASE_LABEL,
   POLICY_LABEL,
   RESULT_LABEL,
+  START_LABEL,
+  STATUS_DOT,
   STATUS_LABEL,
+  TRIGGER_LABEL,
+  TRUST_LABEL,
+  VERDICT_LABEL,
+  type ObservationCase,
+  type ObservationPolicy,
   useArmCase,
   useCancelCase,
   useDismissIncident,
@@ -32,38 +46,16 @@ import {
   useStartCase,
   useUpdateCase,
 } from "@/entities/observation";
-import { useSession } from "@/entities/session";
+import { canWriteProject, useSession } from "@/entities/session";
 import type { CaseView } from "@/shared/api/generated/CaseView.ts";
-import type { Confidence } from "@/shared/api/generated/Confidence.ts";
-import type { CriterionState } from "@/shared/api/generated/CriterionState.ts";
-import type { EvalTrigger } from "@/shared/api/generated/EvalTrigger.ts";
 import type { EvidencePhase } from "@/shared/api/generated/EvidencePhase.ts";
 import type { Incident } from "@/shared/api/generated/Incident.ts";
-import type { TrustLevel } from "@/shared/api/generated/TrustLevel.ts";
 import type { UpdateCaseBody } from "@/shared/api/generated/UpdateCaseBody.ts";
-import type { Verdict } from "@/shared/api/generated/Verdict.ts";
+import "@/shared/ui/agents.css";
 import { ConfirmDialog, Icon, Modal, useToast } from "@/shared/ui";
-import { STATUS_DOT, TaskLinks, when } from "./ObservationsPage.tsx";
-import "../observations.css";
+import { TaskLinks, when } from "./parts.tsx";
+import "./observations.css";
 
-// Labels the glossary does not name yet: the same Russian register as the glossary's rows.
-const VERDICT_LABEL: Record<Verdict, string> = {
-  confirmed: RESULT_LABEL.confirmed,
-  negative: RESULT_LABEL.negative,
-  inconclusive: RESULT_LABEL.inconclusive,
-  insufficient: "Недостаточно данных",
-};
-const TRIGGER_LABEL: Record<EvalTrigger, string> = { window: "по расписанию", manual: "по запросу", final: "итоговая" };
-const CONFIDENCE_LABEL: Record<Confidence, string> = { low: "низкая", medium: "средняя", high: "высокая" };
-const CRITERION_LABEL: Record<CriterionState, string> = {
-  met: "достигнуто",
-  not_met: "не достигнуто",
-  ok: "в норме",
-  violated: "нарушено",
-  insufficient: "недостаточно данных",
-};
-const PHASE_LABEL: Record<EvidencePhase, string> = { baseline: "база", observed: "наблюдение" };
-const TRUST_LABEL: Record<TrustLevel, string> = { measured: "измерено", reported: "сообщено", agent: "агентом" };
 const POLICIES: ObservationPolicy[] = ["guardrails", "verify"];
 const PHASES: EvidencePhase[] = ["observed", "baseline"];
 
@@ -78,12 +70,7 @@ function parseCaseId(raw: string | undefined): number | undefined {
  * local server. Viewers may read; everyone else with a project role may write.
  */
 function useCaseRights(): CaseRights {
-  const session = useSession().data;
-  const role = session?.projects.find((p) => p.slug === session.project)?.role;
-  return {
-    writable: session?.mode === "local" || (role !== undefined && role !== "viewer"),
-    human: true,
-  };
+  return { writable: canWriteProject(useSession().data), human: true };
 }
 
 export function ObservationPage() {
@@ -108,7 +95,7 @@ function Frame({ actions, children }: { actions?: ReactNode; children?: ReactNod
     <main className="main">
       <header className="topbar obs-topbar">
         <Link className="btn ghost sm" to="/observations">
-          ← Наблюдения
+          ← {OBSERVATION_TEXT.nav}
         </Link>
         <span className="grow" />
         {actions}
@@ -140,7 +127,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
     <>
       {(can("edit") || can("rename")) && (
         <button type="button" className="btn" onClick={() => setDialog("edit")}>
-          Изменить
+          {ACTION_LABEL.edit}
         </button>
       )}
       {can("arm") && (
@@ -151,12 +138,12 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
           title={armBlocked ? "Сначала устраните причины ниже" : undefined}
           onClick={() => arm.mutate(c.id, { onError: fail, onSuccess: () => toast("Наблюдение ждёт поставки") })}
         >
-          Ждать поставки
+          {ACTION_LABEL.arm}
         </button>
       )}
       {can("start") && (
         <button type="button" className="btn primary" disabled={start.isPending} onClick={() => start.mutate(c.id, { onError: fail, onSuccess: () => toast("Наблюдение начато") })}>
-          Начать наблюдение
+          {ACTION_LABEL.start}
         </button>
       )}
       {can("evaluate") && (
@@ -166,17 +153,17 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
           disabled={evaluate.isPending}
           onClick={() => evaluate.mutate({ id: c.id, final: false }, { onError: fail, onSuccess: () => toast("Оценка запрошена") })}
         >
-          Запросить оценку
+          {ACTION_LABEL.evaluate}
         </button>
       )}
       {can("evaluateFinal") && (
         <button type="button" className="btn" onClick={() => setDialog("final")}>
-          Итоговая оценка
+          {ACTION_LABEL.evaluateFinal}
         </button>
       )}
       {can("cancel") && (
         <button type="button" className="btn ghost" onClick={() => setDialog("cancel")}>
-          Отменить наблюдение
+          {ACTION_LABEL.cancel}
         </button>
       )}
     </>
@@ -191,7 +178,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
         </div>
         <dl className="obs-facts">
           <div>
-            <dt>Статус</dt>
+            <dt>{FIELD_LABEL.status}</dt>
             <dd>
               <span className="obs-status">
                 <span className={`state-dot ${STATUS_DOT[c.status]}`} aria-hidden="true" />
@@ -201,44 +188,50 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
             </dd>
           </div>
           <div>
-            <dt>Политика</dt>
+            <dt>{FIELD_LABEL.policy}</dt>
             <dd>{POLICY_LABEL[c.policy]}</dd>
           </div>
           <div>
-            <dt>Задачи</dt>
+            <dt>{FIELD_LABEL.tasks}</dt>
             <dd>
               <TaskLinks ids={c.tasks} />
             </dd>
           </div>
+          {view.contract && (
+            <div>
+              <dt>{FIELD_LABEL.startOn}</dt>
+              <dd>{START_LABEL[view.contract.contract.observation.start]}</dd>
+            </div>
+          )}
           <div>
-            <dt>Начало наблюдения</dt>
+            <dt>{FIELD_LABEL.observationStart}</dt>
             <dd>{when(c.observationStartedAt)}</dd>
           </div>
           <div>
-            <dt>Следующая оценка</dt>
+            <dt>{FIELD_LABEL.nextEvaluation}</dt>
             <dd>{when(c.nextEvaluationAt)}</dd>
           </div>
           {c.nextGuardrailAt && (
             <div>
-              <dt>Следующая проверка ограничителей</dt>
+              <dt>{FIELD_LABEL.nextGuardrail}</dt>
               <dd>{when(c.nextGuardrailAt)}</dd>
             </div>
           )}
           {c.evaluationRequested && (
             <div>
-              <dt>Оценка запрошена</dt>
+              <dt>{FIELD_LABEL.evaluationRequested}</dt>
               <dd>{TRIGGER_LABEL[c.evaluationRequested]}</dd>
             </div>
           )}
           {c.confidence && (
             <div>
-              <dt>Уверенность</dt>
+              <dt>{FIELD_LABEL.confidence}</dt>
               <dd>{CONFIDENCE_LABEL[c.confidence]}</dd>
             </div>
           )}
           {c.conclusion && (
             <div className="wide">
-              <dt>{c.status === "cancelled" ? "Причина отмены" : "Вывод"}</dt>
+              <dt>{c.status === "cancelled" ? FIELD_LABEL.cancelReason : FIELD_LABEL.conclusion}</dt>
               <dd>{c.conclusion}</dd>
             </div>
           )}
@@ -246,8 +239,10 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
       </section>
 
       {c.lastError && (
-        <section className="obs-warn" role="alert">
-          <b>Сбор данных не удаётся: подряд ошибок {c.failures}</b>
+        <section className="obs-warn" role="status">
+          <b>
+            Не удаётся собрать данные: ошибок подряд — {c.failures}
+          </b>
           <span className="mono">{c.lastError}</span>
         </section>
       )}
@@ -266,7 +261,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
       <DeploymentsSection caseId={c.id} view={view} canRecord={can("deploy")} />
       <EvaluationsSection view={view} />
       <EvidenceSection caseId={c.id} view={view} canReport={can("evidence")} />
-      <CaseSection title="Инциденты" note={openIncidents ? `открытых: ${openIncidents}` : undefined}>
+      <CaseSection title={HEADING_LABEL.incidents} note={openIncidents ? `открытых: ${openIncidents}` : undefined}>
         {view.incidents.length ? (
           <ul className="obs-list">
             {view.incidents.map((i) => (
@@ -285,8 +280,14 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
         )}
       </CaseSection>
       <CaseSection
-        title="Задачи по итогам"
-        aside={can("followup") && <button type="button" className="btn sm" onClick={() => setFollowup({})}>Создать задачу</button>}
+        title={HEADING_LABEL.followups}
+        aside={
+          can("followup") && (
+            <button type="button" className="btn sm" onClick={() => setFollowup({})}>
+              {ACTION_LABEL.followup}
+            </button>
+          )
+        }
       >
         {view.followups.length ? (
           <ul className="obs-list">
@@ -305,7 +306,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
       {dialog === "cancel" && <CancelDialog caseId={c.id} onClose={() => setDialog(undefined)} />}
       {dialog === "final" && (
         <ConfirmDialog
-          title="Итоговая оценка"
+          title={ACTION_LABEL.evaluateFinal}
           confirmLabel="Оценить и завершить"
           busy={evaluate.isPending}
           onConfirm={() =>
@@ -322,7 +323,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
           }
           onClose={() => setDialog(undefined)}
         >
-          Итоговая оценка пройдёт по имеющимся измерениям и завершит наблюдение итогом. Если данных мало, итог будет «Нет вывода».
+          Итоговая оценка пройдёт по имеющимся измерениям и завершит наблюдение итогом. Если данных мало, итог будет «{VERDICT_LABEL.inconclusive}».
         </ConfirmDialog>
       )}
       {followup && <FollowupDialog caseId={c.id} incident={followup.incident} onClose={() => setFollowup(undefined)} />}
@@ -353,13 +354,13 @@ function ContractSection({ c, view, actions }: { c: ObservationCase; view: CaseV
   const started = c.status === "observing" || c.status === "evaluating";
   return (
     <CaseSection
-      title="Контракт"
+      title={HEADING_LABEL.contract}
       note={contract ? `версия ${contract.version} · ${contract.author}` : "не задан"}
       aside={
         canEdit &&
         !editing && (
           <button type="button" className="btn sm" onClick={() => setEditing(true)}>
-            {contract ? "Изменить контракт" : "Задать контракт"}
+            {contract ? ACTION_LABEL.reviseContract : ACTION_LABEL.contract}
           </button>
         )
       }
@@ -368,7 +369,7 @@ function ContractSection({ c, view, actions }: { c: ObservationCase; view: CaseV
         <ContractEditor c={c} contract={contract?.contract} started={started} onClose={() => setEditing(false)} />
       ) : contract ? (
         <details>
-          <summary>JSON контракта</summary>
+          <summary>{FIELD_LABEL.contractJson}</summary>
           <pre className="obs-code">{JSON.stringify(contract.contract, null, 2)}</pre>
         </details>
       ) : (
@@ -393,76 +394,92 @@ function ContractSection({ c, view, actions }: { c: ObservationCase; view: CaseV
 
 /** The contract as JSON, with a template for the case's policy. The server checks it and its answer is shown here. */
 function ContractEditor({ c, contract, started, onClose }: { c: ObservationCase; contract?: Contract; started: boolean; onClose: () => void }) {
-  const [text, setText] = useState(() => (contract ? JSON.stringify(contract, null, 2) : contractTemplate(c.policy)));
+  const [initial] = useState(() => (contract ? JSON.stringify(contract, null, 2) : contractTemplate(c.policy)));
+  const [text, setText] = useState(initial);
   const [reason, setReason] = useState("");
   const [syntax, setSyntax] = useState<string>();
+  const [confirmTemplate, setConfirmTemplate] = useState(false);
   const save = useSetContract();
+  const applyTemplate = () => {
+    setText(contractTemplate(c.policy));
+    setSyntax(undefined);
+  };
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    // JSON.parse yields `any`; the server validates the shape against the policy (§5.3) and answers with the first problem.
-    let body: Contract;
-    try {
-      body = JSON.parse(text);
-    } catch (err) {
-      setSyntax(`Контракт должен быть корректным JSON: ${err instanceof Error ? err.message : String(err)}`);
+    const parsed = parseContract(text);
+    if ("error" in parsed) {
+      setSyntax(parsed.error);
       return;
     }
     setSyntax(undefined);
-    save.mutate({ id: c.id, contract: body, reason: reason.trim() || undefined }, { onSuccess: onClose });
+    save.mutate({ id: c.id, contract: parsed.contract, reason: reason.trim() || undefined }, { onSuccess: onClose });
   };
   const message = syntax ?? save.error?.message;
   return (
-    <form className="obs-form" aria-label="Контракт наблюдения" onSubmit={submit}>
-      <label className="field wide">
-        <span>Контракт (JSON)</span>
-        <textarea className="obs-mono" rows={16} spellCheck={false} required value={text} onChange={(e) => setText(e.target.value)} />
-      </label>
-      {started && (
+    <>
+      <form className="obs-form" aria-label={HEADING_LABEL.contract} onSubmit={submit}>
         <label className="field wide">
-          <span>Причина изменения</span>
-          <textarea rows={2} required value={reason} onChange={(e) => setReason(e.target.value)} />
+          <span>{FIELD_LABEL.contractJson}</span>
+          <textarea className="obs-mono" rows={16} spellCheck={false} required autoFocus value={text} onChange={(e) => setText(e.target.value)} />
         </label>
-      )}
-      {message && (
-        <p className="obs-error wide" role="alert">
-          {message}
-        </p>
-      )}
-      <div className="obs-form-actions">
-        <button
-          type="button"
-          className="btn"
-          onClick={() => {
-            setText(contractTemplate(c.policy));
-            setSyntax(undefined);
+        {started && (
+          <label className="field wide">
+            <span>{FIELD_LABEL.reason}</span>
+            <textarea rows={2} required value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+        )}
+        {message && (
+          <p className="obs-error wide" role="alert">
+            {message}
+          </p>
+        )}
+        <div className="obs-form-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => (text === initial ? applyTemplate() : setConfirmTemplate(true))}
+          >
+            Шаблон для «{POLICY_LABEL[c.policy]}»
+          </button>
+          <span className="grow" />
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="submit" className="btn primary" disabled={save.isPending || !text.trim() || (started && !reason.trim())}>
+            Сохранить контракт
+          </button>
+        </div>
+      </form>
+      {confirmTemplate && (
+        <ConfirmDialog
+          title="Заменить текст шаблоном?"
+          confirmLabel="Заменить"
+          danger
+          onConfirm={() => {
+            applyTemplate();
+            setConfirmTemplate(false);
           }}
+          onClose={() => setConfirmTemplate(false)}
         >
-          Шаблон для «{POLICY_LABEL[c.policy]}»
-        </button>
-        <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button type="submit" className="btn primary" disabled={save.isPending}>
-          Сохранить контракт
-        </button>
-      </div>
-    </form>
+          Изменения в тексте контракта будут потеряны.
+        </ConfirmDialog>
+      )}
+    </>
   );
 }
 
 function DeploymentsSection({ caseId, view, canRecord }: { caseId: number; view: CaseView; canRecord: boolean }) {
   return (
-    <CaseSection title="Развёртывания" note={view.deployments.length ? `записано: ${view.deployments.length}` : undefined}>
+    <CaseSection title={HEADING_LABEL.deployments} note={view.deployments.length ? `записано: ${view.deployments.length}` : undefined}>
       {view.deployments.length ? (
-        <div className="obs-table-wrap">
-          <table className="obs-table" aria-label="Развёртывания">
+        <div className="ag-table-wrap">
+          <table className="ag-table" aria-label={HEADING_LABEL.deployments}>
             <thead>
               <tr>
-                <th scope="col">Ссылка</th>
-                <th scope="col">Окружение</th>
-                <th scope="col">Время</th>
-                <th scope="col">Записал</th>
+                <th scope="col">{FIELD_LABEL.ref}</th>
+                <th scope="col">{FIELD_LABEL.environment}</th>
+                <th scope="col">{FIELD_LABEL.at}</th>
+                <th scope="col">{FIELD_LABEL.recordedBy}</th>
               </tr>
             </thead>
             <tbody>
@@ -494,7 +511,7 @@ function DeploymentForm({ caseId }: { caseId: number }) {
   return (
     <form
       className="obs-form"
-      aria-label="Записать развёртывание"
+      aria-label={ACTION_LABEL.deploy}
       onSubmit={(e) => {
         e.preventDefault();
         record.mutate(
@@ -511,15 +528,15 @@ function DeploymentForm({ caseId }: { caseId: number }) {
       }}
     >
       <label className="field">
-        <span>Коммит, тег или релиз</span>
+        <span>{FIELD_LABEL.ref}</span>
         <input required maxLength={200} value={ref} onChange={(e) => setRef(e.target.value)} />
       </label>
       <label className="field">
-        <span>Окружение</span>
+        <span>{FIELD_LABEL.environment}</span>
         <input value={environment} onChange={(e) => setEnvironment(e.target.value)} />
       </label>
       <label className="field">
-        <span>Время (по умолчанию сейчас)</span>
+        <span>{FIELD_LABEL.at} (по умолчанию сейчас)</span>
         <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
       </label>
       <div className="obs-form-actions">
@@ -529,8 +546,8 @@ function DeploymentForm({ caseId }: { caseId: number }) {
             {record.error.message}
           </p>
         )}
-        <button type="submit" className="btn" disabled={record.isPending}>
-          Записать развёртывание
+        <button type="submit" className="btn" disabled={record.isPending || !ref.trim()}>
+          {ACTION_LABEL.deploy}
         </button>
       </div>
     </form>
@@ -539,7 +556,7 @@ function DeploymentForm({ caseId }: { caseId: number }) {
 
 function EvaluationsSection({ view }: { view: CaseView }) {
   return (
-    <CaseSection title="Оценки">
+    <CaseSection title={HEADING_LABEL.evaluations}>
       {view.evaluations.length ? (
         <ol className="obs-list">
           {view.evaluations.map((e) => (
@@ -547,7 +564,7 @@ function EvaluationsSection({ view }: { view: CaseView }) {
               <div className="obs-eval-head">
                 <b>{VERDICT_LABEL[e.verdict]}</b>
                 <span className="muted">{TRIGGER_LABEL[e.trigger]}</span>
-                {e.confidence && <span className="muted">уверенность: {CONFIDENCE_LABEL[e.confidence]}</span>}
+                {e.confidence && <span className="muted">{FIELD_LABEL.confidence}: {CONFIDENCE_LABEL[e.confidence]}</span>}
                 <span className="muted">{when(e.at)}</span>
               </div>
               {e.summary && <p>{e.summary}</p>}
@@ -555,7 +572,7 @@ function EvaluationsSection({ view }: { view: CaseView }) {
                 <ul className="obs-criteria">
                   {e.details.map((d, i) => (
                     <li key={`${d.criterion}-${i}`}>
-                      <span className="mono">{d.criterion}</span>: {CRITERION_LABEL[d.state]}
+                      <span className="mono">{d.criterion}</span>: {CRITERION_STATE_LABEL[d.state]}
                       {d.reason && <span className="muted"> — {d.reason}</span>}
                     </li>
                   ))}
@@ -572,43 +589,47 @@ function EvaluationsSection({ view }: { view: CaseView }) {
 }
 
 function EvidenceSection({ caseId, view, canReport }: { caseId: number; view: CaseView; canReport: boolean }) {
-  const contract = view.contract?.contract;
-  // The change thresholds come from the current contract; the evidence rows do not carry theirs.
-  const criteria = contract ? [...contract.hypotheses.map((h) => h.id), ...contract.guardrails.map((g) => g.id)] : [];
+  const contract = view.contract;
+  // The criteria of the current contract: the form picks from them, and a row's change threshold
+  // comes from it only when the row was measured under that same version (§7, §9).
+  const criteria = contract ? [...contract.contract.hypotheses.map((h) => h.id), ...contract.contract.guardrails.map((g) => g.id)] : [];
   return (
-    <CaseSection title="Измерения" note={view.evidence.length >= 100 ? "последние 100" : undefined}>
+    <CaseSection title={HEADING_LABEL.evidence} note={view.evidence.length >= 100 ? "последние 100" : undefined}>
       {view.evidence.length ? (
-        <div className="obs-table-wrap">
-          <table className="obs-table" aria-label="Измерения">
+        <div className="ag-table-wrap">
+          <table className="ag-table" aria-label={HEADING_LABEL.evidence}>
             <thead>
               <tr>
-                <th scope="col">Время</th>
-                <th scope="col">Критерий</th>
-                <th scope="col">Фаза</th>
-                <th scope="col">Значение</th>
-                <th scope="col">База</th>
-                <th scope="col">Изменение</th>
-                <th scope="col">Выборка</th>
-                <th scope="col">Источник</th>
-                <th scope="col">Доверие</th>
-                <th scope="col">Примечание</th>
+                <th scope="col">{FIELD_LABEL.at}</th>
+                <th scope="col">{FIELD_LABEL.criterion}</th>
+                <th scope="col">{FIELD_LABEL.phase}</th>
+                <th scope="col">{FIELD_LABEL.value}</th>
+                <th scope="col">{FIELD_LABEL.baseline}</th>
+                <th scope="col">{FIELD_LABEL.change}</th>
+                <th scope="col">{FIELD_LABEL.samples}</th>
+                <th scope="col">{FIELD_LABEL.source}</th>
+                <th scope="col">{FIELD_LABEL.trust}</th>
+                <th scope="col">{FIELD_LABEL.note}</th>
               </tr>
             </thead>
             <tbody>
-              {view.evidence.map((e) => (
-                <tr key={e.id}>
-                  <td>{when(e.at)}</td>
-                  <td className="mono">{e.criterion}</td>
-                  <td>{PHASE_LABEL[e.phase]}</td>
-                  <td>{e.value ?? "—"}</td>
-                  <td>{e.baseline ?? "—"}</td>
-                  <td>{formatDelta(e, contract ? criterionChange(contract, e.criterion) : undefined)}</td>
-                  <td>{e.samples ?? "—"}</td>
-                  <td className="mono">{e.source}</td>
-                  <td>{TRUST_LABEL[e.trust]}</td>
-                  <td>{e.error ? <span className="obs-error">{e.error}</span> : e.note || "—"}</td>
-                </tr>
-              ))}
+              {view.evidence.map((e) => {
+                const threshold = contract && e.contractVersion === contract.version ? criterionChange(contract.contract, e.criterion) : undefined;
+                return (
+                  <tr key={e.id}>
+                    <td>{when(e.at)}</td>
+                    <td className="mono">{e.criterion}</td>
+                    <td>{PHASE_LABEL[e.phase]}</td>
+                    <td>{e.value ?? "—"}</td>
+                    <td>{e.baseline ?? "—"}</td>
+                    <td>{formatDelta(e, threshold)}</td>
+                    <td>{e.samples ?? "—"}</td>
+                    <td className="mono">{e.source}</td>
+                    <td>{TRUST_LABEL[e.trust]}</td>
+                    <td>{e.error ? <span className="obs-error">{e.error}</span> : e.note || "—"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -632,7 +653,7 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
   return (
     <form
       className="obs-form"
-      aria-label="Добавить измерение"
+      aria-label={ACTION_LABEL.evidence}
       onSubmit={(e) => {
         e.preventDefault();
         report.mutate(
@@ -656,7 +677,7 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
       }}
     >
       <label className="field">
-        <span>Критерий</span>
+        <span>{FIELD_LABEL.criterion}</span>
         <select value={chosen} onChange={(e) => setCriterion(e.target.value)}>
           {criteria.map((id) => (
             <option key={id} value={id}>
@@ -666,7 +687,7 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
         </select>
       </label>
       <label className="field">
-        <span>Фаза</span>
+        <span>{FIELD_LABEL.phase}</span>
         <select
           value={phase}
           onChange={(e) => {
@@ -682,15 +703,15 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
         </select>
       </label>
       <label className="field">
-        <span>Значение</span>
+        <span>{FIELD_LABEL.value}</span>
         <input type="number" step="any" required value={value} onChange={(e) => setValue(e.target.value)} />
       </label>
       <label className="field">
-        <span>База (необязательно)</span>
+        <span>{FIELD_LABEL.baseline} (необязательно)</span>
         <input type="number" step="any" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
       </label>
       <label className="field wide">
-        <span>Примечание</span>
+        <span>{FIELD_LABEL.note}</span>
         <input value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
       <div className="obs-form-actions">
@@ -700,8 +721,8 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
             {report.error.message}
           </p>
         )}
-        <button type="submit" className="btn" disabled={report.isPending}>
-          Записать измерение
+        <button type="submit" className="btn" disabled={report.isPending || !value.trim()}>
+          {ACTION_LABEL.evidence}
         </button>
       </div>
     </form>
@@ -731,37 +752,39 @@ function IncidentItem({
         <span className="muted">{when(i.created)}</span>
       </div>
       {i.summary && <p>{i.summary}</p>}
-      {i.note && <p className="muted">Примечание: {i.note}</p>}
+      {i.note && <p className="muted">{FIELD_LABEL.note}: {i.note}</p>}
       {i.followups.length > 0 && (
         <p className="muted">
-          Задачи: <TaskLinks ids={i.followups} />
+          {HEADING_LABEL.followups}: <TaskLinks ids={i.followups} />
         </p>
       )}
       {actions.length > 0 && (
         <div className="obs-actions">
           {actions.includes("resolve") && (
             <button type="button" className="btn sm" onClick={() => onNote({ id: i.id, action: "resolve" })}>
-              Разрешить
+              {INCIDENT_ACTION_LABEL.resolve}
             </button>
           )}
           {actions.includes("dismiss") && (
             <button type="button" className="btn sm" onClick={() => onNote({ id: i.id, action: "dismiss" })}>
-              Отклонить
+              {INCIDENT_ACTION_LABEL.dismiss}
             </button>
           )}
           {actions.includes("followup") && (
             <button type="button" className="btn sm" onClick={() => onFollowup(i.id)}>
-              Создать задачу
+              {INCIDENT_ACTION_LABEL.followup}
             </button>
           )}
         </div>
       )}
-      {note?.id === i.id && <IncidentNoteForm incident={i} action={note.action} onDone={() => onNote(undefined)} />}
+      {note?.id === i.id && (
+        <IncidentNoteForm key={`${i.id}-${note.action}`} incident={i} action={note.action} onDone={() => onNote(undefined)} />
+      )}
     </li>
   );
 }
 
-/** Resolving takes an optional note; dismissing a person's note, which says why it was no incident (§10.1). */
+/** Resolving takes an optional note; dismissing takes a required one, which says why it was no incident (§10.1). */
 function IncidentNoteForm({ incident, action, onDone }: { incident: Incident; action: "resolve" | "dismiss"; onDone: () => void }) {
   const [note, setNote] = useState("");
   const resolve = useResolveIncident();
@@ -777,15 +800,15 @@ function IncidentNoteForm({ incident, action, onDone }: { incident: Incident; ac
   return (
     <form
       className="obs-form obs-incident-form"
-      aria-label={dismissing ? `Отклонить ${incident.key}` : `Разрешить ${incident.key}`}
+      aria-label={`${INCIDENT_ACTION_LABEL[action]} ${incident.key}`}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
     >
       <label className="field wide">
-        <span>{dismissing ? "Почему это не инцидент" : "Примечание (необязательно)"}</span>
-        <textarea rows={2} required={dismissing} value={note} onChange={(e) => setNote(e.target.value)} />
+        <span>{dismissing ? "Почему это не инцидент" : `${FIELD_LABEL.note} (необязательно)`}</span>
+        <textarea autoFocus rows={2} required={dismissing} value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
       {error && (
         <p className="obs-error wide" role="alert">
@@ -797,8 +820,8 @@ function IncidentNoteForm({ incident, action, onDone }: { incident: Incident; ac
         <button type="button" className="btn ghost" onClick={onDone}>
           Отмена
         </button>
-        <button type="submit" className={`btn ${dismissing ? "danger" : "primary"}`} disabled={pending}>
-          {dismissing ? "Отклонить инцидент" : "Разрешить инцидент"}
+        <button type="submit" className={`btn ${dismissing ? "danger" : "primary"}`} disabled={pending || (dismissing && !note.trim())}>
+          {INCIDENT_ACTION_LABEL[action]}
         </button>
       </div>
     </form>
@@ -812,6 +835,7 @@ function FormDialog({
   submitLabel,
   danger,
   busy,
+  canSubmit = true,
   error,
   onSubmit,
   onClose,
@@ -821,6 +845,8 @@ function FormDialog({
   submitLabel: string;
   danger?: boolean;
   busy?: boolean;
+  /** False while a required field is blank: the submit button stays disabled. */
+  canSubmit?: boolean;
   error?: string;
   onSubmit: () => void;
   onClose: () => void;
@@ -849,7 +875,7 @@ function FormDialog({
           <button type="button" className="btn ghost" onClick={onClose}>
             Отмена
           </button>
-          <button type="submit" className={`btn ${danger ? "danger" : "primary"}`} disabled={busy}>
+          <button type="submit" className={`btn ${danger ? "danger" : "primary"}`} disabled={busy || !canSubmit}>
             {submitLabel}
           </button>
         </div>
@@ -887,17 +913,25 @@ function EditDialog({ c, canRename, canEdit, onClose }: { c: ObservationCase; ca
     update.mutate({ id: c.id, ...body }, { onSuccess: onClose });
   };
   return (
-    <FormDialog title="Изменить наблюдение" submitLabel="Сохранить" busy={update.isPending} error={update.error?.message} onSubmit={submit} onClose={onClose}>
+    <FormDialog
+      title={ACTION_LABEL.edit}
+      submitLabel="Сохранить"
+      busy={update.isPending}
+      canSubmit={!canRename || title.trim() !== ""}
+      error={update.error?.message}
+      onSubmit={submit}
+      onClose={onClose}
+    >
       {canRename && (
         <label className="field">
-          <span>Название</span>
+          <span>{FIELD_LABEL.title}</span>
           <input required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
       )}
       {canEdit && (
         <>
           <label className="field">
-            <span>Политика</span>
+            <span>{FIELD_LABEL.policy}</span>
             <select
               value={policy}
               onChange={(e) => {
@@ -913,7 +947,7 @@ function EditDialog({ c, canRename, canEdit, onClose }: { c: ObservationCase; ca
             </select>
           </label>
           <fieldset className="obs-tasks-field">
-            <legend>Задачи</legend>
+            <legend>{FIELD_LABEL.tasks}</legend>
             {tasks.length ? (
               <ul className="obs-chips">
                 {tasks.map((t) => (
@@ -957,16 +991,17 @@ function CancelDialog({ caseId, onClose }: { caseId: number; onClose: () => void
   const cancel = useCancelCase();
   return (
     <FormDialog
-      title="Отменить наблюдение"
-      submitLabel="Отменить наблюдение"
+      title={ACTION_LABEL.cancel}
+      submitLabel={ACTION_LABEL.cancel}
       danger
       busy={cancel.isPending}
+      canSubmit={reason.trim() !== ""}
       error={cancel.error?.message}
       onSubmit={() => cancel.mutate({ id: caseId, reason: reason.trim() }, { onSuccess: onClose })}
       onClose={onClose}
     >
       <label className="field">
-        <span>Причина</span>
+        <span>{FIELD_LABEL.reason}</span>
         <textarea required autoFocus rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
       </label>
     </FormDialog>
@@ -980,8 +1015,8 @@ function FollowupDialog({ caseId, incident, onClose }: { caseId: number; inciden
   const toast = useToast();
   return (
     <FormDialog
-      title={incident ? `Задача по инциденту I-${incident}` : "Задача по итогам"}
-      submitLabel="Создать задачу"
+      title={incident ? `${HEADING_LABEL.followups}: инцидент I-${incident}` : HEADING_LABEL.followups}
+      submitLabel={ACTION_LABEL.followup}
       busy={followup.isPending}
       error={followup.error?.message}
       onSubmit={() =>
@@ -999,11 +1034,11 @@ function FollowupDialog({ caseId, incident, onClose }: { caseId: number; inciden
     >
       <p className="muted">Название и описание можно не заполнять: сервер подберёт их по инциденту или итогам.</p>
       <label className="field">
-        <span>Название</span>
+        <span>{FIELD_LABEL.title}</span>
         <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label className="field">
-        <span>Описание</span>
+        <span>{FIELD_LABEL.description}</span>
         <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
     </FormDialog>

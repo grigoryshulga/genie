@@ -11,7 +11,7 @@ import {
   useCreateCase,
   useTaskObservations,
 } from "@/entities/observation";
-import { useSession } from "@/entities/session";
+import { canWriteProject, useSession } from "@/entities/session";
 import type { Task } from "@/entities/task";
 import { useToast } from "@/shared/ui";
 
@@ -34,10 +34,8 @@ export function TaskObservation({ task }: { task: Task }) {
   const toast = useToast();
   const query = useTaskObservations(task.id);
   const create = useCreateCase();
-  // The same writer rule as TaskManager: a member, an admin or an owner, or a local session.
-  const session = useSession().data;
-  const role = session?.projects.find((p) => p.slug === session.project)?.role;
-  const writable = session?.mode === "local" || (role !== undefined && role !== "viewer");
+  // The same writer rule as TaskManager (canWriteProject): a member, an admin or an owner, or a local session.
+  const writable = canWriteProject(useSession().data);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [policy, setPolicy] = useState<ObservationPolicy>(DEFAULT_POLICY);

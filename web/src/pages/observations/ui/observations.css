@@ -1,26 +1,19 @@
-/* Observation pages (docs/platform/observation-plane.md §17): the list and one case.
-   Colours and radii come from the global tokens in app/styles.css; the classes are prefixed `obs-`. */
+/* Observation pages (docs/platform/observation-plane.md §17): the case list and one case.
+   Tables use the shared `ag-table`; colours come from the global tokens in app/styles.css.
+   The classes here are prefixed `obs-`. */
 
 .obs-topbar { height: auto; min-height: 56px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
 .obs-body { display: flex; flex-direction: column; gap: 24px; padding: 24px 40px 48px; box-sizing: border-box; min-height: 0; }
 .obs-body .empty { padding: 48px 20px; }
 .obs-error { margin: 0; color: var(--red); font-size: 12.5px; line-height: 1.5; }
-.obs-mono { font: 12px/1.5 var(--mono); }
+.obs-note { margin: 0; font-size: 12px; color: var(--muted); }
 .obs-status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .obs-tasks { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }
 .obs-tasks a { font: 12px var(--mono); color: var(--text-2); text-decoration: none; }
 .obs-tasks a:hover { color: var(--text); text-decoration: underline; }
+.obs-table-cell-link { color: var(--text); text-decoration: none; }
+.obs-table-cell-link:hover { text-decoration: underline; }
 .obs-open { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--amber-bg); border: 1px solid var(--amber-line); color: var(--amber); font-variant-numeric: tabular-nums; }
-
-/* Table of cases and measurements */
-.obs-table-wrap { border: 1px solid var(--line); border-radius: var(--radius-lg); overflow-x: auto; }
-.obs-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.obs-table th { text-align: left; font-weight: 500; color: var(--muted); padding: 8px 12px; background: var(--bg-sunken); border-bottom: 1px solid var(--line); white-space: nowrap; }
-.obs-table td { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; color: var(--text-body); }
-.obs-table tr:last-child td { border-bottom: 0; }
-.obs-table td > a { color: var(--text); text-decoration: none; }
-.obs-table td > a:hover { text-decoration: underline; }
-.obs-table td .obs-error { font-size: 12px; }
 
 /* Header of a case */
 .obs-head { display: flex; flex-direction: column; gap: 16px; }
@@ -32,9 +25,9 @@
 .obs-facts dt { font-size: 12px; color: var(--muted); }
 .obs-facts dd { margin: 0; color: var(--text-2); line-height: 1.5; overflow-wrap: anywhere; }
 
-/* Warnings: a stuck collection and the reasons arming is refused */
+/* Warnings: a collection that keeps failing, and the reasons arming is refused */
 .obs-warn { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--amber-line); border-radius: var(--radius-lg); background: var(--amber-bg); color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
-.obs-warn b { font-weight: 600; color: #f5b670; }
+.obs-warn b { font-weight: 600; color: var(--amber); }
 .obs-warn ul { margin: 0; padding-left: 18px; }
 .obs-warn .mono { overflow-wrap: anywhere; color: var(--amber-text); }
 
@@ -48,6 +41,7 @@
 .obs-section summary { cursor: pointer; color: var(--muted); padding: 2px 0; }
 .obs-section summary:hover { color: var(--text); }
 .obs-code { margin: 8px 0 0; padding: 12px 14px; max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-panel); color: var(--text-2); font: 12px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ag-table td .obs-error { font-size: 12px; }
 
 /* Lists: contract history, follow-ups, incidents, evaluations */
 .obs-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: var(--text-body); }
@@ -68,11 +62,10 @@
 .obs-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 16px; align-items: end; min-width: 0; }
 .obs-form .wide { grid-column: 1 / -1; }
 .obs-form textarea { min-height: 60px; }
-.obs-form textarea.obs-mono { min-height: 240px; }
+.obs-form textarea.obs-mono { min-height: 240px; font: 12px/1.5 var(--mono); }
 .obs-form-actions { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .obs-form-actions .obs-error { flex-basis: 100%; }
-.obs-incident-form { padding-top: 4px; }
-.obs-form .field > span, .obs-tasks-field legend { font-size: 12px; color: var(--muted); }
+.obs-form .field > span { font-size: 12px; color: var(--muted); }
 .obs-form .field textarea { height: auto; padding: 9px 12px; resize: vertical; line-height: 1.5; }
 
 /* Dialogs: the form is the modal's only child, so it lays out the header, body and footer */
@@ -80,7 +73,7 @@
 .obs-dialog .mb { min-height: 0; }
 .obs-dialog .muted { margin: 0; line-height: 1.5; }
 .obs-tasks-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.obs-tasks-field legend { padding: 0; margin-bottom: 2px; }
+.obs-tasks-field legend { padding: 0; margin-bottom: 2px; font-size: 12px; color: var(--muted); }
 .obs-tasks-field .muted { margin: 0; font-size: 12.5px; }
 .obs-chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
 .obs-chips li { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 10px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12px; color: var(--text-2); }

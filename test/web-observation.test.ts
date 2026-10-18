@@ -4,11 +4,27 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+  ACTION_LABEL,
+  CASE_ACTIONS,
+  CONFIDENCE_LABEL,
+  CONTRACT_SHAPE_ERROR,
+  CRITERION_STATE_LABEL,
   type CaseAction,
   type CaseRights,
+  FIELD_LABEL,
+  FILTER_LABEL,
+  HEADING_LABEL,
+  INCIDENT_ACTION_LABEL,
+  INCIDENT_ACTIONS,
   type IncidentAction,
   INCIDENT_LABEL,
   OBSERVATION_TEXT,
+  PHASE_LABEL,
+  START_LABEL,
+  TRIGGER_LABEL,
+  TRUST_LABEL,
+  VERDICT_LABEL,
+  parseContract,
   POLICY_LABEL,
   RESULT_LABEL,
   SOURCE_AUTH_LABEL,
@@ -109,6 +125,42 @@ test("a case created from a task takes the glossary's default title", () => {
   assert.equal(template, "`<task title>` — наблюдение");
   assert.equal(newCaseTitle("Оплата заказа"), template.replace("`<task title>`", "Оплата заказа"));
   assert.equal(newCaseTitle("Оплата заказа"), "Оплата заказа — наблюдение");
+});
+
+test("the page labels are the glossary's words, and cover every generated value", () => {
+  assert.deepEqual(FILTER_LABEL, glossary("filter"));
+  assert.deepEqual(Object.keys(FILTER_LABEL).sort(), ["active", "all", "concluded"]);
+  assert.deepEqual(VERDICT_LABEL, glossary("verdict"));
+  assert.deepEqual(Object.keys(VERDICT_LABEL).sort(), generatedUnion("Verdict"));
+  assert.deepEqual(TRIGGER_LABEL, glossary("trigger"));
+  assert.deepEqual(Object.keys(TRIGGER_LABEL).sort(), generatedUnion("EvalTrigger"));
+  assert.deepEqual(CONFIDENCE_LABEL, glossary("confidence"));
+  assert.deepEqual(Object.keys(CONFIDENCE_LABEL).sort(), generatedUnion("Confidence"));
+  assert.deepEqual(CRITERION_STATE_LABEL, glossary("criterion"));
+  assert.deepEqual(Object.keys(CRITERION_STATE_LABEL).sort(), generatedUnion("CriterionState"));
+  assert.deepEqual(PHASE_LABEL, glossary("phase"));
+  assert.deepEqual(Object.keys(PHASE_LABEL).sort(), generatedUnion("EvidencePhase"));
+  assert.deepEqual(TRUST_LABEL, glossary("trust"));
+  assert.deepEqual(Object.keys(TRUST_LABEL).sort(), generatedUnion("TrustLevel"));
+  assert.deepEqual(START_LABEL, glossary("start"));
+  assert.deepEqual(Object.keys(START_LABEL).sort(), generatedUnion("StartOn"));
+});
+
+test("the action, heading and field labels are the glossary's words, one per action", () => {
+  assert.deepEqual(ACTION_LABEL, glossary("action"));
+  assert.deepEqual(Object.keys(ACTION_LABEL).sort(), [...CASE_ACTIONS].sort());
+  assert.deepEqual(INCIDENT_ACTION_LABEL, glossary("incidentAction"));
+  assert.deepEqual(Object.keys(INCIDENT_ACTION_LABEL).sort(), [...INCIDENT_ACTIONS].sort());
+  assert.deepEqual(HEADING_LABEL, glossary("heading"));
+  assert.deepEqual(FIELD_LABEL, glossary("field"));
+});
+
+test("the evidence record is a measurement in Russian, as the glossary and the pages name it", () => {
+  const row = readFileSync(new URL("../GLOSSARY.md", import.meta.url), "utf8").split("\n").find((l) => l.startsWith("| **Evidence record**"));
+  assert.ok(row, "GLOSSARY.md names the evidence record");
+  assert.match(row, /Russian: измерение\.\s*\|$/);
+  assert.equal(HEADING_LABEL.evidence, "Измерения");
+  assert.equal(ACTION_LABEL.evidence, "Записать измерение");
 });
 
 // --- status and case actions -----------------------------------------------------------------------
@@ -282,6 +334,44 @@ test("a contract template passes the checks of §5.3 that do not need the server
     assert.ok(["manual", "auto"].includes(c.followup));
   }
   assert.ok(contractTemplate("verify").includes('\n  "hypotheses": ['), "pretty JSON with two-space indentation");
+});
+
+// --- contract text ----------------------------------------------------------------------------------
+
+test("the editor sends a contract whose shape is an object with the three parts (§5.1)", () => {
+  const text = contractTemplate("guardrails");
+  const parsed = parseContract(text);
+  assert.ok("contract" in parsed, "a template parses");
+  assert.deepEqual(parsed.contract, JSON.parse(text));
+  const minimal = '{"hypotheses":[],"guardrails":[],"observation":{"start":"manual","minimumWindow":"1h"}}';
+  assert.deepEqual(parseContract(minimal), { contract: JSON.parse(minimal) });
+});
+
+test("text that is not JSON is refused with the reason the parser gives", () => {
+  const parsed = parseContract('{"hypotheses": [');
+  assert.ok("error" in parsed);
+  assert.match(parsed.error, /^Контракт должен быть корректным JSON: /);
+  assert.ok(parsed.error.length > "Контракт должен быть корректным JSON: ".length, "the parser's reason follows");
+  const empty = parseContract("");
+  assert.ok("error" in empty, "empty text is not JSON");
+  assert.match(empty.error, /^Контракт должен быть корректным JSON: /);
+});
+
+test("JSON that is not an object with the three parts is refused with the shape message", () => {
+  const shapes = [
+    "null",
+    "42",
+    '"text"',
+    "[]",
+    "{}",
+    '{"hypotheses":[],"guardrails":[]}',
+    '{"hypotheses":{},"guardrails":[],"observation":{}}',
+    '{"hypotheses":[],"guardrails":null,"observation":{}}',
+    '{"hypotheses":[],"guardrails":[],"observation":[]}',
+    '{"hypotheses":[],"guardrails":[],"observation":null}',
+  ];
+  assert.equal(CONTRACT_SHAPE_ERROR, "Контракт должен быть JSON-объектом с полями hypotheses, guardrails и observation.");
+  for (const text of shapes) assert.deepEqual(parseContract(text), { error: CONTRACT_SHAPE_ERROR }, text);
 });
 
 // --- queries and keys ------------------------------------------------------------------------------

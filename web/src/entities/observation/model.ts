@@ -15,6 +15,13 @@ import type { SourceBody } from "../../shared/api/generated/SourceBody.ts";
 import type { SourceKind } from "../../shared/api/generated/SourceKind.ts";
 import type { SourceView } from "../../shared/api/generated/SourceView.ts";
 import type { ObservationPolicy } from "../../shared/api/generated/ObservationPolicy.ts";
+import type { Confidence } from "../../shared/api/generated/Confidence.ts";
+import type { CriterionState } from "../../shared/api/generated/CriterionState.ts";
+import type { EvalTrigger } from "../../shared/api/generated/EvalTrigger.ts";
+import type { EvidencePhase } from "../../shared/api/generated/EvidencePhase.ts";
+import type { StartOn } from "../../shared/api/generated/StartOn.ts";
+import type { TrustLevel } from "../../shared/api/generated/TrustLevel.ts";
+import type { Verdict } from "../../shared/api/generated/Verdict.ts";
 
 export type { CaseResult, CaseStatus, Contract, Evidence, IncidentStatus, ObservationCase, ObservationPolicy };
 
@@ -58,6 +65,110 @@ export const OBSERVATION_TEXT = {
 export function newCaseTitle(taskTitle: string): string {
   return `${taskTitle} — наблюдение`;
 }
+
+// --- labels of the pages (GLOSSARY.md, "Observation plane": each const has its rows there) -----------
+
+/** The filters of the case list. «Завершённые» is every case that is no longer active. */
+export const FILTER_LABEL = { active: "Активные", concluded: "Завершённые", all: "Все" } as const;
+export type ListFilter = keyof typeof FILTER_LABEL;
+
+export const VERDICT_LABEL: Record<Verdict, string> = {
+  confirmed: "Подтверждено",
+  negative: "Не подтверждено",
+  inconclusive: "Нет вывода",
+  insufficient: "Недостаточно данных",
+};
+
+/** What started an evaluation: the schedule, a person's or the manager's request, or the final request. */
+export const TRIGGER_LABEL: Record<EvalTrigger, string> = { window: "по расписанию", manual: "обычная", final: "итоговая" };
+
+export const CONFIDENCE_LABEL: Record<Confidence, string> = { low: "низкая", medium: "средняя", high: "высокая" };
+
+export const CRITERION_STATE_LABEL: Record<CriterionState, string> = {
+  met: "достигнуто",
+  not_met: "не достигнуто",
+  ok: "в норме",
+  violated: "нарушено",
+  insufficient: "недостаточно данных",
+};
+
+/** A measurement is taken before the delivery (the baseline) or after it (observed). */
+export const PHASE_LABEL: Record<EvidencePhase, string> = { baseline: "до поставки", observed: "после поставки" };
+
+export const TRUST_LABEL: Record<TrustLevel, string> = { measured: "измерено", reported: "сообщено", agent: "от агента" };
+
+/** When observation starts (§5.1): the contract's `observation.start`. */
+export const START_LABEL: Record<StartOn, string> = { tasks_done: "выполненные задачи", deployment: "развёртывание", manual: "вручную" };
+
+/** The button of each case action; `rename` and `edit` share the page's «Изменить» control. */
+export const ACTION_LABEL: Record<CaseAction, string> = {
+  rename: "Переименовать",
+  edit: "Изменить",
+  contract: "Задать контракт",
+  reviseContract: "Изменить контракт",
+  arm: "Ждать поставки",
+  start: "Начать наблюдение",
+  deploy: "Записать развёртывание",
+  evaluate: "Запросить оценку",
+  evaluateFinal: "Итоговая оценка",
+  evidence: "Записать измерение",
+  followup: "Создать задачу",
+  cancel: "Отменить наблюдение",
+};
+
+export const INCIDENT_ACTION_LABEL: Record<IncidentAction, string> = { resolve: "Разрешить", dismiss: "Отклонить", followup: "Создать задачу" };
+
+/** The headings of the case page's sections. */
+export const HEADING_LABEL = {
+  contract: "Контракт",
+  deployments: "Развёртывания",
+  evaluations: "Оценки",
+  evidence: "Измерения",
+  incidents: "Инциденты",
+  followups: "Задачи по итогам",
+} as const;
+
+/** The names of the fields the case page shows and its forms take. */
+export const FIELD_LABEL = {
+  title: "Название",
+  policy: "Политика",
+  tasks: "Задачи",
+  status: "Статус",
+  observationStart: "Начало наблюдения",
+  nextEvaluation: "Следующая оценка",
+  nextGuardrail: "Следующая проверка ограничителей",
+  evaluationRequested: "Оценка запрошена",
+  confidence: "Уверенность",
+  conclusion: "Вывод",
+  cancelReason: "Причина отмены",
+  ref: "Версия",
+  environment: "Окружение",
+  at: "Время",
+  recordedBy: "Записал",
+  criterion: "Критерий",
+  phase: "Фаза",
+  value: "Значение",
+  baseline: "База",
+  change: "Изменение",
+  samples: "Выборка",
+  source: "Источник",
+  trust: "Доверие",
+  note: "Примечание",
+  reason: "Причина",
+  description: "Описание",
+  contractJson: "Контракт (JSON)",
+  startOn: "Старт",
+} as const;
+
+/** The dot before a case status, by the colours the other lists use for the same meaning. */
+export const STATUS_DOT: Record<CaseStatus, string> = {
+  proposed: "",
+  waiting: "waiting",
+  observing: "running",
+  evaluating: "running",
+  concluded: "ok",
+  cancelled: "off",
+};
 
 // --- status and permissions (§6.1, §14) --------------------------------------------------------------
 
@@ -231,6 +342,30 @@ const TEMPLATES: Record<ObservationPolicy, Contract> = {
 /** An example contract for a policy, as pretty JSON to start from in the contract editor. */
 export function contractTemplate(policy: ObservationPolicy): string {
   return JSON.stringify(TEMPLATES[policy], null, 2);
+}
+
+export const CONTRACT_SHAPE_ERROR = "Контракт должен быть JSON-объектом с полями hypotheses, guardrails и observation.";
+
+/**
+ * The contract the editor sends (§5.1), or the Russian reason it cannot be sent. Only the shape
+ * is checked here: the arrays and the observation object. The server checks the rest (§5.3) and
+ * answers with the first problem, which the editor shows.
+ */
+export function parseContract(text: string): { contract: Contract } | { error: string } {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (err) {
+    return { error: `Контракт должен быть корректным JSON: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  if (!isRecord(value) || !Array.isArray(value.hypotheses) || !Array.isArray(value.guardrails) || !isRecord(value.observation)) {
+    return { error: CONTRACT_SHAPE_ERROR };
+  }
+  return { contract: value as Contract };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // --- list queries and keys ---------------------------------------------------------------------------
