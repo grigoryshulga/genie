@@ -1,0 +1,45 @@
+{
+  "id": "node-npm",
+  "revision": 1,
+  "description": "Node.js packages installed with npm ci. Set dir to a subdirectory with a trailing slash (web/) when the package is not at the repository root.",
+  "params": {
+    "node": {
+      "default": "",
+      "description": "Required Node.js version, such as 22. Empty accepts any version."
+    },
+    "dir": {
+      "default": "",
+      "description": "Subdirectory of the package with a trailing slash, such as web/. Empty is the repository root."
+    }
+  },
+  "tools": {
+    "node": {
+      "version": "{{node}}",
+      "probe": "node --version"
+    },
+    "npm": {
+      "probe": "npm --version"
+    }
+  },
+  "caches": [
+    { "name": "npm", "path": "~/.npm", "integrity": "verified" }
+  ],
+  "prepare": [
+    {
+      "id": "install",
+      "run": "npm ci",
+      "cwd": "{{dir}}",
+      "outputs": ["{{dir}}node_modules"],
+      "inputs": [
+        "{{dir}}package.json",
+        "{{dir}}package-lock.json",
+        "{{dir}}.npmrc"
+      ],
+      "verify": "npm ls --omit=dev --depth=0"
+    }
+  ],
+  "commands": {
+    "build": "cd {{dir}}. && npm run build --if-present",
+    "test": "cd {{dir}}. && npm test"
+  }
+}
