@@ -3,7 +3,7 @@
 //! and project-manager tests use tokens. Refusals and messages are asserted, not only statuses.
 
 use axum::http::StatusCode;
-use chrono::Duration;
+use chrono::{Duration, Utc};
 use genie_core::server_db::ProjectRole;
 use genie_core::{Actor, CreateInput, Role};
 use serde_json::{Value, json};
@@ -55,6 +55,18 @@ fn viewer(h: &Harness) -> String {
             let vic = db.create_user("vic", "Vic", None, None, false)?;
             db.set_membership(PROJECT, vic.id, ProjectRole::Viewer)?;
             db.create_user_token(vic.id, "viewer")
+        })
+        .unwrap()
+}
+
+/// A person who may read and write the project but is not its admin. Like `viewer`, creating the
+/// user ends the local operator's access.
+fn member(h: &Harness) -> String {
+    h.app
+        .with_server(|db| {
+            let mia = db.create_user("mia", "Mia", None, None, false)?;
+            db.set_membership(PROJECT, mia.id, ProjectRole::Member)?;
+            db.create_user_token(mia.id, "member")
         })
         .unwrap()
 }
@@ -417,6 +429,14 @@ async fn sources_are_managed_by_the_project_admin_and_their_secrets_never_leave_
     assert_eq!(added["kind"], "prometheus");
     assert!(added.get("secret").is_none(), "{added}");
 
+    // A secret that is not a string is refused without echoing it back (§13.2, §15).
+    let (s, v, _) = call(&h.router, "PUT", "/api/observation/sources/metrics/secret").json(json!({ "value": 123456789 })).send().await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert_eq!(v["error"], "value must be a string: the bearer token, or user:password");
+    assert!(!v.to_string().contains("123456789"), "{v}");
+    let (_, listed, _) = call(&h.router, "GET", "/api/observation/sources").send().await;
+    assert!(listed[0].get("secret").is_none(), "a refused secret is not stored: {listed}");
+
     let (s, with_secret, _) =
         call(&h.router, "PUT", "/api/observation/sources/metrics/secret").json(json!({ "value": "sk-test-0123456789" })).send().await;
     assert_eq!(s, StatusCode::OK, "{with_secret}");
@@ -498,4 +518,118 @@ async fn a_source_test_returns_the_value_the_fake_server_gave_and_refusals_carry
     let (s, v, _) = call(&h.router, "POST", "/api/observation/sources/nope/test").json(json!({ "query": "up" })).send().await;
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
     assert_eq!(v["error"], "source nope not found");
+}
+
+#[tokio::test]
+async fn removing_an_unknown_source_is_refused_as_not_found() {
+    let (h, _task) = project();
+    let (s, v, _) = call(&h.router, "DELETE", "/api/observation/sources/nope").send().await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["error"], "source nope not found");
+}
+
+#[tokio::test]
+async fn a_proposed_case_takes_a_new_title_through_patch() {
+    let (h, task) = project();
+    create_case(&h, &task).await;
+
+    let (s, v, _) = call(&h.router, "PATCH", "/api/observation/cases/O-1").json(json!({ "title": "Checkout latency, p95" })).send().await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["case"]["title"], "Checkout latency, p95");
+    let (_, shown, _) = call(&h.router, "GET", "/api/observation/cases/O-1").send().await;
+    assert_eq!(shown["case"]["title"], "Checkout latency, p95");
+}
+
+#[tokio::test]
+async fn deployments_are_recorded_by_a_person_and_refused_when_blank_or_older_than_thirty_days() {
+    let (h, task) = project();
+    create_case(&h, &task).await;
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/1/arm").json(json!({})).send().await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/O-1/deployments")
+        .json(json!({ "ref": "3f9c2ab", "environment": "production" }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["deployments"][0]["ref"], "3f9c2ab");
+    assert_eq!(v["deployments"][0]["environment"], "production");
+
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/O-1/deployments").json(json!({ "ref": "   " })).send().await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["error"], "a deployment needs a reference of 1 to 200 characters, such as a commit SHA or a tag");
+
+    let old = (Utc::now() - Duration::days(31)).to_rfc3339();
+    let (s, v, _) =
+        call(&h.router, "POST", "/api/observation/cases/O-1/deployments").json(json!({ "ref": "v1.2.0", "at": old })).send().await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["error"], "a deployment must be at most 30 days old");
+
+    // Only the first deployment was stored.
+    let (_, shown, _) = call(&h.router, "GET", "/api/observation/cases/O-1").send().await;
+    assert_eq!(shown["deployments"].as_array().unwrap().len(), 1, "{shown}");
+}
+
+#[tokio::test]
+async fn the_project_manager_cannot_revise_a_contract_after_start_even_with_a_reason() {
+    let (h, task) = project();
+    create_case(&h, &task).await;
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/1/arm").json(json!({})).send().await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/1/start").json(json!({})).send().await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let token = project_manager(&h);
+    let (s, v, _) = call(&h.router, "PUT", "/api/observation/cases/1/contract")
+        .bearer(&token)
+        .json(json!({ "contract": guard(40.0), "reason": "tighten after the spike" }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+    assert_eq!(v["error"], "only a person may revise the contract after observation starts");
+
+    // The refused revision left the contract as it was.
+    let (_, shown, _) = call(&h.router, "GET", "/api/observation/cases/O-1").send().await;
+    assert_eq!(shown["case"]["contractVersion"], 1);
+    assert_eq!(shown["contract"]["contract"]["guardrails"][0]["max"], 50.0);
+}
+
+#[tokio::test]
+async fn dismissing_an_incident_without_a_note_is_refused_and_leaves_it_open() {
+    let (h, task) = project();
+    create_case(&h, &task).await;
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/1/arm").json(json!({})).send().await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/1/start").json(json!({})).send().await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases/1/evidence")
+        .json(json!({ "criterion": "checkout_errors", "value": 61.0 }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["incidents"][0]["status"], "open");
+
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/incidents/I-1/dismiss").json(json!({})).send().await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["error"], "dismissing an incident needs a note that says why the violation is a false positive");
+
+    let (_, open, _) = call(&h.router, "GET", "/api/observation/incidents?status=open").send().await;
+    assert_eq!(open.as_array().unwrap().len(), 1, "{open}");
+}
+
+#[tokio::test]
+async fn a_member_with_write_access_but_no_admin_role_cannot_read_the_sources() {
+    let (h, task) = project();
+    let token = member(&h);
+
+    let (s, v, _) = call(&h.router, "POST", "/api/observation/cases")
+        .bearer(&token)
+        .json(json!({ "title": "Checkout latency", "policy": "guardrails", "tasks": [task], "contract": guard(50.0) }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "a member may create a case: {v}");
+
+    let (s, v, _) = call(&h.router, "GET", "/api/observation/sources").bearer(&token).send().await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{v}");
+    assert_eq!(v["error"], "project admin rights required");
 }

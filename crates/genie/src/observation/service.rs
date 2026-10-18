@@ -191,7 +191,20 @@ impl From<SourceBody> for NewSource {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export, optional_fields)]
 pub struct SecretBody {
+    #[serde(deserialize_with = "secret_string")]
     pub value: String,
+}
+
+/// Accepts only a JSON string. serde's own type error would print the rejected value (`invalid
+/// type: integer 123456789`), so anything else gets a fixed message that never echoes it.
+fn secret_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Value::deserialize(deserializer)? {
+        Value::String(text) => Ok(text),
+        _ => Err(serde::de::Error::custom("value must be a string: the bearer token, or user:password")),
+    }
 }
 
 /// The value is never printed: a secret must not reach a log or an error message.
