@@ -5,6 +5,7 @@
 //! controller come in later modules; they build on `layout`, `runner` and `podman` as they are here.
 
 pub mod catalog;
+pub mod harness;
 pub mod host;
 pub mod inputs;
 pub mod layout;
