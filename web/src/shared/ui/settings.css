@@ -64,12 +64,12 @@
 .st-foot { display: flex; align-items: center; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--line); }
 .st-foot .grow { flex: 1; font-size: 12px; color: var(--muted); }
 
-.st-note { display: flex; gap: 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--amber-bg); border: 1px solid var(--amber-line); color: #e8c9a0; font-size: 12px; line-height: 1.5; max-width: 420px; box-sizing: border-box; }
+.st-note { display: flex; gap: 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--amber-bg); border: 1px solid var(--amber-line); color: var(--amber-text); font-size: 12px; line-height: 1.5; max-width: 420px; box-sizing: border-box; }
 .st-note b { font-family: var(--mono); font-weight: 500; }
-.st-ok { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 10px; background: #0f1a15; border: 1px solid #1f4a36; color: #bfe8d2; }
+.st-ok { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 10px; background: var(--green-bg); border: 1px solid var(--green-line); color: var(--green-text); }
 .st-ok .line { display: flex; align-items: center; gap: 8px; }
 .st-secret { display: flex; gap: 8px; align-items: center; }
-.st-secret code { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--radius); background: var(--bg); border: 1px solid #1f4a36; font: 12px var(--mono); color: var(--text); word-break: break-all; }
+.st-secret code { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--radius); background: var(--bg); border: 1px solid var(--green-line); font: 12px var(--mono); color: var(--text); word-break: break-all; }
 
 .st-photo { display: flex; align-items: center; gap: 16px; }
 .st-photo .acts { display: flex; flex-direction: column; gap: 8px; }
@@ -87,7 +87,7 @@
 .st-steps pre { margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--bg); border: 1px solid var(--line); font: 11px/1.6 var(--mono); color: var(--text); white-space: pre-wrap; word-break: break-all; }
 .st-switch { display: flex; gap: 2px; padding: 2px; border-radius: var(--radius); background: var(--bg); border: 1px solid var(--line); }
 .st-switch button { flex: 1; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; }
-.st-switch button.on { background: #1c1e23; color: var(--text); }
+.st-switch button.on { background: var(--bg-active); color: var(--text); }
 
 .st-table { display: flex; flex-direction: column; }
 .st-table .tr { display: grid; grid-template-columns: minmax(0, 1fr) 130px 170px 100px; gap: 12px; align-items: center; min-height: 52px; padding: 0 18px; border-bottom: 1px solid var(--line); }
@@ -100,8 +100,8 @@
 .st-table .when.idle { color: var(--muted); }
 .st-table .end { display: flex; justify-content: flex-end; }
 .st-empty { padding: 18px; font-size: 12px; color: var(--muted); }
-.btn.revoke { height: 28px; padding: 0 10px; font-size: 12px; border-color: #3a2226; color: #f2a7ad; }
-.btn.revoke:hover { background: #1f1214; }
+.btn.revoke { height: 28px; padding: 0 10px; font-size: 12px; border-color: var(--red-line); color: var(--red); }
+.btn.revoke:hover { background: var(--red-bg); }
 
 .st-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 18px 22px; margin: 0; border: 0; }
 .st-mode { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }

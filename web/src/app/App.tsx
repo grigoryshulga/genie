@@ -292,7 +292,7 @@ function LegacyManagement({ scope, legacySection }: { scope: "project" | "server
 /** `/profile/…` — the personal settings before the settings mode (PD21); old notifications still carry these links. */
 function LegacyProfile() {
   const { tab } = useParams();
-  const section = tab === "security" || tab === "telegram" || tab === "keys" || tab === "tokens" ? tab : "account";
+  const section = tab === "appearance" || tab === "security" || tab === "telegram" || tab === "keys" || tab === "tokens" ? tab : "account";
   return <Navigate to={`/settings/me/${section}`} replace />;
 }
 

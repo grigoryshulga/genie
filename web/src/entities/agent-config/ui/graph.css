@@ -5,7 +5,7 @@
 .team-graph svg { display: block; width: 100%; height: auto; margin: 0 auto; }
 .team-graph .node { color: var(--muted); }
 .team-graph .node rect { fill: var(--bg-raised); stroke: var(--line-strong); stroke-width: 1; }
-.team-graph .node.orch rect { fill: #15172a; stroke: #2f3463; }
+.team-graph .node.orch rect { fill: var(--accent-soft); stroke: var(--accent-line); }
 .team-graph .node.flagged rect { stroke: var(--red); stroke-width: 1.5; }
 .team-graph .dot { fill: currentColor; }
 .team-graph .dl { fill: var(--bg); font-size: 10.5px; font-weight: 600; }
@@ -17,7 +17,7 @@
 .team-graph-legend i { width: 16px; height: 0; }
 
 /* a running team */
-.team-graph .node.live-working rect { fill: #15172a; stroke: #3a3f7a; }
+.team-graph .node.live-working rect { fill: var(--accent-soft); stroke: var(--accent-line); }
 .team-graph .node.live-working .ns { fill: var(--accent-text); }
 .team-graph .node.live-waiting rect { stroke: #6b4a22; stroke-dasharray: 5 3; }
 .team-graph .node.live-waiting .ns { fill: var(--amber); }

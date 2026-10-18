@@ -5,7 +5,10 @@ import { RouterProvider } from "react-router";
 import { router } from "./App.tsx";
 import { queryClient } from "@/shared/api";
 import { ToastProvider } from "@/shared/ui";
+import { applyAppearancePreferences, readAppearancePreferences } from "@/shared/lib";
 import "./styles.css";
+
+applyAppearancePreferences(readAppearancePreferences());
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

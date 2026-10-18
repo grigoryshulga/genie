@@ -14,6 +14,7 @@ import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
 import { PersonalTelegram } from "./TelegramSettings.tsx";
 import { TokensTab } from "./TokensTab.tsx";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
+import { AppearanceSettings } from "./AppearanceSettings.tsx";
 import "@/shared/ui/settings.css";
 
 export function MeSettingsPage() {
@@ -23,7 +24,9 @@ export function MeSettingsPage() {
   return (
     <main className="main">
       <div className="scroll">
-        {!session ? null : local ? (
+        {!session ? null : section === "appearance" ? (
+          <AppearanceSettings />
+        ) : local ? (
           <div className="st-body">
             <div className="st-head">
               <h2>Локальный режим</h2>

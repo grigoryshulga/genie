@@ -25,7 +25,7 @@ export function SettingsShell() {
     ["projects", "Проекты"], ["accounts", "Учётные записи"],
     ["providers", "Провайдеры"], ["tools", "Инструменты"],
   ] : [
-    ["account", "Аккаунт"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
+    ["account", "Аккаунт"], ["appearance", "Оформление"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
     ["keys", "Провайдеры и ключи"], ["tokens", "Токены CLI и MCP"],
   ];
   const base = projectMode ? "/manage/project" : serverMode ? "/manage/server" : "/settings/me";
