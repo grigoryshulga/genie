@@ -33,6 +33,8 @@ Keep decisions here; keep instructions in their topic pages. Older implementatio
 | PD20 | Separate MCP administration, secrets, and usage from the client tool catalog. | [MCP connections](agent-roles-and-teams.md#mcp-connections) |
 | PD21–23 | Separate work and Settings in the same SPA. Separate admin hosting and API namespaces remain deferred. | [Settings](settings.md) |
 | PD24 | Every runnable role names a model. Remove class defaults and `roleModels`. | [Role file](agent-roles-and-teams.md#role-file) |
+| PD25 | Keep task intelligence authoritative in project trackers; constrain Jev with server policy and evaluate changes without automatic policy updates. | [Task Intelligence](task-intelligence.md) |
+| PD26 | Observation is a separate plane with its own lifecycle; it consumes delivery events and creates work only through task services. | [Observation](observation.md) |
 
 ## Repository decisions
 

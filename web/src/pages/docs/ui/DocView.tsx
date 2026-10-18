@@ -3,14 +3,15 @@
 // `verified`, related/tag chips, banners, Markdown body and the aside with
 // backlinks, `paths`, diagnostics and the on-page table of contents.
 
+import { DocBreadcrumbs } from "./DocBreadcrumbs.tsx";
 import { useRef } from "react";
 import { Link } from "react-router";
-import type { DocPage, DocReadResult } from "@/entities/doc";
+import type { DocPage, DocReadResult, DocSection } from "@/entities/doc";
 import {
   bodyUnderTitle,
   diagnosticText,
   docAgo,
-  docCrumbs,
+  articleTitle,
   DocBody,
   DocDiagBadge,
   DocMarks,
@@ -25,6 +26,8 @@ import { Icon } from "@/shared/ui";
 
 export function DocView({
   page,
+  navigation,
+  onSection,
   pages,
   onOpen,
   onEdit,
@@ -33,6 +36,8 @@ export function DocView({
   hideAside,
 }: {
   page: DocReadResult;
+  navigation: DocSection;
+  onSection: (path: string) => void;
   pages: DocPage[];
   onOpen: (path: string) => void;
   onEdit: () => void;
@@ -41,7 +46,6 @@ export function DocView({
   hideAside?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const crumbs = docCrumbs(page.path);
   const byPath = new Map(pages.map((p) => [p.path, p]));
 
   const scrollToHeading = (heading: string) => {
@@ -71,14 +75,7 @@ export function DocView({
               <Icon.list size={15} />
             </button>
           )}
-          <nav className="doc-crumbs mono" aria-label="Путь страницы">
-            {crumbs.map((part, i) => (
-              <span key={`${part}-${i}`}>
-                {i > 0 && <span className="sep">/</span>}
-                {part}
-              </span>
-            ))}
-          </nav>
+          <DocBreadcrumbs root={navigation} path={page.path} title={articleTitle(page)} onSection={onSection} />
           <span className="grow" />
           <button type="button" className="btn" onClick={onEdit}>
             <Icon.file size={13} />
@@ -88,13 +85,13 @@ export function DocView({
 
         <div className="docs-view scroll" ref={scrollRef}>
           <div className="doc-head">
-            <h2 className="doc-title">
-              {page.title}
+            <div className="doc-article-badges" aria-label="Тип и состояние статьи">
               <DocTypeBadge type={page.type} long />
               {page.status && <DocStatusBadge status={page.status} />}
               {page.stale && <DocStaleBadge count={page.staleReasons.length} />}
               {page.diagnostics.length > 0 && <DocDiagBadge count={page.diagnostics.length} />}
-            </h2>
+            </div>
+            <h2 className="doc-title">{articleTitle(page)}</h2>
             <div className="doc-meta">
               <span>Обновлена {docAgo(page.updated)}</span>
               {page.verified ? (
@@ -116,11 +113,6 @@ export function DocView({
                   ))}
                 </span>
               )}
-              {page.tags.map((tag) => (
-                <span key={tag} className="doc-tag">
-                  {tag}
-                </span>
-              ))}
             </div>
           </div>
 
@@ -162,6 +154,10 @@ export function DocView({
           {summary && <div className="doc-summary">{summary}</div>}
 
           <DocBody text={body} links={page.links} onOpen={onOpen} empty="Страница пуста" />
+          {page.tags.length > 0 && <footer className="doc-article-footer" aria-label="Теги статьи">
+            <span className="muted">Теги</span>
+            {page.tags.map((tag) => <span key={tag} className="doc-tag">{tag}</span>)}
+          </footer>}
         </div>
       </div>
 
@@ -177,7 +173,6 @@ export function DocView({
                   <li key={path}>
                     <button type="button" onClick={() => onOpen(path)}>
                       <span className="nm">{byPath.get(path)?.title ?? path}</span>
-                      <span className="mono sub">{path}</span>
                     </button>
                   </li>
                 ))}

@@ -1,3 +1,4 @@
+import { TaskIntelligence } from "./TaskIntelligence.tsx";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
@@ -40,6 +41,7 @@ import { ConfirmDialog, Icon, Markdown, useToast } from "@/shared/ui";
 import { FollowTask } from "@/features/follow-task";
 import { TaskDelivery } from "./TaskDelivery.tsx";
 import { TaskManager } from "./TaskManager.tsx";
+import { TaskObservation } from "./TaskObservation.tsx";
 import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };
@@ -278,10 +280,10 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     <CollapsibleSection
       title={isEpic ? "Цель" : "Описание"}
       action={editDesc === undefined ? (
-          <button type="button" className="btn ghost" style={{ height: 24 }} onClick={() => setEditDesc(t.description)}>
-            Изменить
-          </button>
-        ) : null}
+        <button type="button" className="sec-edit" onClick={() => setEditDesc(t.description)} aria-label={isEpic ? "Изменить цель" : "Изменить описание"} title={isEpic ? "Изменить цель" : "Изменить описание"}>
+            <Icon.pencil size={13} />
+        </button>
+      ) : null}
     >
       {editDesc === undefined ? (
         <Markdown text={t.description} empty="Описания нет" />
@@ -420,6 +422,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           {criteria}
           {!isEpic && <TaskDelivery task={t.id} />}
           {!isEpic && <TaskManager key={t.id} task={t} />}
+          {!isEpic && <TaskObservation key={t.id} task={t} />}
+          {!isEpic && <TaskIntelligence task={t.id} />}
           <footer className="detail-more">
             {last && <span className="muted">Последнее: {last.kind === "event" ? `${last.h.actor} ${historyText(last.h, isEpic)}` : `${last.c.author}, ${KIND_NAME[last.c.kind] ?? last.c.kind}`} · {timeAgo(last.at)}</span>}
             <span className="grow" />
@@ -491,6 +495,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             {criteria}
             {!isEpic && <TaskDelivery task={t.id} />}
             {!isEpic && <TaskManager key={t.id} task={t} />}
+            {!isEpic && <TaskObservation key={t.id} task={t} />}
+            {!isEpic && <TaskIntelligence task={t.id} />}
             {t.plan.trim() && (
               <CollapsibleSection title={isEpic ? "Дорожная карта" : "План"}>
                 <Markdown text={t.plan} />
@@ -521,9 +527,10 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
                 a.kind === "event" ? (
                   <div key={`h${a.at}${a.h.event}`} className="ev">
                     <i />
-                    <span>
-                      <span style={{ color: "var(--text-2)" }}>{a.h.actor}</span> {historyText(a.h, isEpic)} · {timeAgo(a.at)}
+                    <span className="txt">
+                      <span style={{ color: "var(--text-2)" }}>{a.h.actor}</span> {historyText(a.h, isEpic)}
                     </span>
+                    <span className="when">{timeAgo(a.at)}</span>
                   </div>
                 ) : (
                   <div key={`c${a.c.id}`} className={`comment${a.c.role === "human" ? " mine" : ""}`}>

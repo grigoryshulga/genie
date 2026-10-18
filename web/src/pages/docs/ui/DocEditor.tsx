@@ -1,5 +1,4 @@
-// DocEditor — the page editor (mockup 6): frontmatter as a validated form,
-// Markdown textarea with a line gutter and a live preview side by side.
+// Article metadata and save/conflict handling; content editing lives in DocContentEditor.
 // `read().content` is the body without frontmatter, so the form is serialized
 // back into `---…---` + body on save.
 
@@ -9,12 +8,12 @@ import type { DocFields, DocReadResult, DocStatus, DocType } from "@/entities/do
 import {
   diagnosticText,
   DOC_STATUS_NAME,
+  DOC_TYPE_NAME,
   DOC_STATUSES,
   DOC_TYPES,
-  DocBody,
   DocRequestError,
   DocSaveError,
-  docCrumbs,
+  articleTitle,
   fieldsFromPage,
   isIsoDate,
   readDocPage,
@@ -23,6 +22,7 @@ import {
   useDocsVersion,
   useSaveDoc,
 } from "@/entities/doc";
+import { DocContentEditor } from "./DocContentEditor.tsx";
 import { DiagIcon, StaleIcon } from "@/entities/doc";
 import { plural } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
@@ -72,10 +72,6 @@ function Chips({ value, onChange, placeholder, mono }: { value: string[]; onChan
   );
 }
 
-function lineCount(text: string): number {
-  return text.replace(/\r/g, "").split("\n").length;
-}
-
 export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pages: { path: string; title: string }[]; onClose: () => void; onSaved: (path: string) => void }) {
   const pageQ = useDocPage(path);
   const save = useSaveDoc();
@@ -89,9 +85,6 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
    * `lost-update` = the file changed on disk since it was loaded.
    */
   const [conflict, setConflict] = useState<{ kind: "gone" | "exists" | "lost-update"; disk?: DocReadResult } | null>(null);
-  const [caret, setCaret] = useState({ line: 1, column: 1 });
-  const areaRef = useRef<HTMLTextAreaElement>(null);
-  const gutterRef = useRef<HTMLDivElement>(null);
   const loadedFor = useRef<string | undefined>(undefined);
 
   // Docs change signal: a moved version means the file on disk is ahead of the editor.
@@ -179,15 +172,6 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externallyChanged, conflict, save.isPending]);
 
-  const trackCaret = () => {
-    const area = areaRef.current;
-    if (!area) return;
-    const upto = body.slice(0, area.selectionStart);
-    const line = upto.split("\n").length;
-    const column = area.selectionStart - (upto.lastIndexOf("\n") + 1) + 1;
-    setCaret({ line, column });
-  };
-
   const submit = async (mode: "update" | "create" = "update", force = false) => {
     if (!fields || errors.length) return;
     if (!body.trim()) {
@@ -251,7 +235,6 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
   }
 
   const update = <K extends keyof DocFields>(key: K, value: DocFields[K]) => setFields({ ...fields, [key]: value });
-  const lines = lineCount(body);
 
   return (
     <div className="docs-editor" onKeyDown={onKeyDown}>
@@ -259,14 +242,7 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Вернуться к странице">
           <Icon.back size={15} />
         </button>
-        <nav className="doc-crumbs mono" aria-label="Путь страницы">
-          {docCrumbs(path).map((part, i) => (
-            <span key={`${part}-${i}`}>
-              {i > 0 && <span className="sep">/</span>}
-              {part}
-            </span>
-          ))}
-        </nav>
+        <nav className="doc-crumbs" aria-label="Навигация по документации"><Link to="/docs">Документация</Link><span className="sep">›</span>{articleTitle({ path, title })}</nav>
         {dirty ? (
           <span className="doc-chip-state" title="Изменения не сохранены">
             <i className="dot" />
@@ -360,23 +336,23 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
 
       <div className="doc-form">
         <label className="doc-field span6">
-          <span>title</span>
+          <span>Название статьи</span>
           <input className={errorFor("title") ? "bad" : ""} value={fields.title} onChange={(e) => update("title", e.target.value)} />
           {errorFor("title") && <em className="err">{errorFor("title")}</em>}
         </label>
         <label className="doc-field span2">
-          <span>type</span>
+          <span>Тип</span>
           <select value={fields.type} onChange={(e) => update("type", e.target.value as DocType | "")}>
             <option value="">не указан</option>
             {DOC_TYPES.map((type) => (
               <option key={type} value={type}>
-                {type}
+                {DOC_TYPE_NAME[type]}
               </option>
             ))}
           </select>
         </label>
         <label className="doc-field span2">
-          <span>status</span>
+          <span>Статус</span>
           <select value={fields.status} onChange={(e) => update("status", e.target.value as DocStatus | "")}>
             <option value="">не указан</option>
             {DOC_STATUSES.map((status) => (
@@ -387,7 +363,7 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
           </select>
         </label>
         <label className="doc-field span2">
-          <span>verified</span>
+          <span>Проверена</span>
           <input
             className={errorFor("verified") ? "bad" : ""}
             placeholder="ГГГГ-ММ-ДД"
@@ -398,62 +374,20 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
         </label>
 
         <div className="doc-field span6">
-          <span>tags</span>
+          <span>Теги</span>
           <Chips value={fields.tags} onChange={(next) => update("tags", next)} placeholder="+ тег" />
         </div>
         <div className="doc-field span4">
-          <span>paths — код, который описывает страница</span>
+          <span>Код, который описывает статья</span>
           <Chips mono value={fields.paths} onChange={(next) => update("paths", next)} placeholder="+ glob" />
         </div>
         <div className="doc-field span2">
-          <span>related</span>
+          <span>Связанные задачи</span>
           <Chips mono value={fields.related} onChange={(next) => update("related", next)} placeholder="+ id" />
         </div>
       </div>
 
-      <div className="doc-split">
-        <section className="doc-pane">
-          <header className="doc-pane-head">
-            <span>MARKDOWN</span>
-            <span className="mono muted">
-              стр. {caret.line}, стлб. {caret.column}
-            </span>
-          </header>
-          <div className="doc-edit-area">
-            <div className="doc-gutter" ref={gutterRef} aria-hidden>
-              {Array.from({ length: lines }, (_, i) => (
-                <span key={i}>{i + 1}</span>
-              ))}
-            </div>
-            <textarea
-              ref={areaRef}
-              className="doc-textarea"
-              aria-label="Markdown страницы"
-              spellCheck={false}
-              value={body}
-              onChange={(e) => {
-                setBody(e.target.value);
-                requestAnimationFrame(trackCaret);
-              }}
-              onKeyUp={trackCaret}
-              onClick={trackCaret}
-              onSelect={trackCaret}
-              onScroll={() => {
-                if (gutterRef.current && areaRef.current) gutterRef.current.scrollTop = areaRef.current.scrollTop;
-              }}
-            />
-          </div>
-        </section>
-        <section className="doc-pane">
-          <header className="doc-pane-head">
-            <span>ПРЕДПРОСМОТР</span>
-            <span className="muted mono">{title}</span>
-          </header>
-          <div className="doc-preview scroll">
-            <DocBody text={body} empty="Пусто" />
-          </div>
-        </section>
-      </div>
+      <DocContentEditor value={body} onChange={setBody} title={fields.title || title} />
     </div>
   );
 }

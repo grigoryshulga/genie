@@ -1,14 +1,16 @@
 # Repository workflow
 
+For browser-to-Figma capture, offline plugin work or native import validation, use the separate private [genie-figma-tools repository](https://github.com/grigoryshulga/genie-figma-tools) and its [agent workflow](https://github.com/grigoryshulga/genie-figma-tools/blob/main/docs/agent-workflow.md). This repository owns the application's tokens and exporter; the toolkit owns capture/import code and tests.
+
 Follow this sequence for every repository task. Read [CODING_STANDARDS.md](CODING_STANDARDS.md) before changing code, and [the genie CLI guide](docs/development/genie-cli.md) before tracking work.
 
 For tasks that need a Compose-managed service started or updated, follow the [Compose service lifecycle](docs/agents/compose-service-lifecycle.md).
 
 ## 1. Isolate the task
 
-- Run `git status --short --branch`, `git worktree list`, and `git fetch origin main`.
-- Work in a dedicated worktree and task branch created from the fetched `origin/main`. Reuse an existing worktree only after confirming that it belongs to this task and has no unrelated changes. A feature branch in the main checkout is insufficient isolation.
-- In T3 Code, use its worktree status and handoff tools so the conversation follows the checkout. Otherwise create a worktree with `git worktree add -b <task-branch> <separate-path> origin/main` and run subsequent commands there.
+- Run `git status --short --branch`, `git worktree list`, and `git fetch origin dev`.
+- Work in a dedicated worktree and task branch created from the fetched `origin/dev`. `dev` is the integration branch: all feature and fix work lands there. `main` receives only release PRs opened from `dev`, so never branch from `main` for task work. Reuse an existing worktree only after confirming that it belongs to this task and has no unrelated changes. A feature branch in the main checkout is insufficient isolation.
+- In T3 Code, use its worktree status and handoff tools so the conversation follows the checkout. Otherwise create a worktree with `git worktree add -b <task-branch> <separate-path> origin/dev` and run subsequent commands there.
 - Preserve other tasks' worktrees and uncommitted changes. Record the branch, worktree path, and starting commit in the task.
 
 ## 2. Track work in genie
@@ -26,7 +28,8 @@ For tasks that need a Compose-managed service started or updated, follow the [Co
 
 ## 4. Publish a pull request
 
-- Load and use the global `pr` skill to prepare the PR description, then publish the task branch and open a PR against `main`. If the skill is unavailable, report it and obtain access before publishing.
+- Load and use the global `pr` skill to prepare the PR description, then publish the task branch and open a PR against `dev`. If the skill is unavailable, report it and obtain access before publishing.
+- Treat `main` as release-only. The `main` branch is protected and accepts PRs exclusively from `dev` that also bump the shared version in `Cargo.toml`, `package.json`, `Cargo.lock`, `package-lock.json` and add a dated `CHANGELOG.md` section, as enforced by `.github/scripts/release_gate.py`. Opening, merging, or cutting a release is a separate authorized task; do not target `main` for ordinary work and do not add release metadata to a feature PR.
 - Write the PR title, description, and agent-authored PR comments strictly in English. Keep explanations in English even when the conversation and genie task are in Russian.
 - Include the genie task ID, scope, validation evidence, and material limitations. Record the PR URL in genie. In T3 Code, register the PR with the thread's pull-request linking tool.
 - Move the task to `review` when its workflow requirements are met. Publication alone does not complete the task.

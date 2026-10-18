@@ -18,6 +18,7 @@ The 1.0 goal is a team using Genie every day without routinely repairing it. Rel
 - GitHub/GitLab repositories, credential proxy, PR/MR policies, CI observation, and merge gates.
 - Knowledge vault, search, backlinks, publication review, Git sync, and agent context.
 - Durable automations, Telegram/SMTP notifications, usage accounting, budgets, and concurrency limits.
+- Observation after delivery: outcome cases with guardrails or hypothesis checks, metrics and error sources, guardrail incidents, and follow-up tasks. See [observation](observation.md).
 - Docker/systemd deployment, backups and restore, migration checks, health reports, and recovery drills.
 
 See [release notes](../changelog.md) for changes by version.
@@ -30,6 +31,7 @@ See [release notes](../changelog.md) for changes by version.
 | Manager pilot | Validate shared memory, task dispatch, clarifications, and separate retrospectives on real work. | Source coverage, recovery results, and owner effort. |
 | Project planning | Extend task-manager coordination across epics and queue ordering. | Task ordering and concurrent-epic needs from the pilot. |
 | Routines | Reusable monitoring, cleanup, and digest workflows. | Concrete recurring jobs and their inputs. |
+| Observation analysis | Deployment provider adapters, an analyst role for incidents, default policies, and evidence retention. | Pilot cases: incident accuracy, false positives, and source load. |
 | Richer workspaces and knowledge | Reproducible tools, optional containers, documentation impact, and richer attachments. | Project environment requirements and navigation failures. |
 
 [Product proposals](proposals.md) records the intended sequencing. [Project environments](environment.md) distinguishes current support from proposed provisioning.

@@ -303,7 +303,7 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
               onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
             />
             <button type="submit" className="send" aria-label="Отправить" title="Отправить (⌘↵)" disabled={!draft.trim() || send.isPending}>
-              <Icon.send size={15} style={{ color: "#fff" }} />
+              <Icon.send size={15} style={{ color: "var(--on-accent)" }} />
             </button>
           </form>
         )}

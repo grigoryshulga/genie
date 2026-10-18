@@ -52,6 +52,9 @@ Use `[[architecture/auth]]` for a Genie wiki-link. A target may include a headin
 
 ## Search and reads
 
+All `/api/docs` browsing and publication operations use the selected project's configured vault roots. Root ownership comes from `vault.json`, never frontmatter. Tree responses include `roots`, even for empty roots, so clients can create the first article. Search excludes shared and foreign pages before applying its candidate/result limits; the legacy `mine` query parameter cannot widen visibility. Page paths are normalized and checked on the server for both reads and writes. Wiki-link resolution and backlinks consider only pages within these roots. A basename that exists in another project does not make a local link ambiguous. Foreign canonical targets remain unresolved, and projectless roots are not implicitly shared through this API. Operator vault import/sync/reindex remain server-wide maintenance operations.
+
+
 Search indexes title, summary, headings, body, tags, and aliases using SQLite FTS5. The tokenizer normalizes diacritics and treats the two Russian letter variants for "e" symmetrically. Heading reads return that heading's subtree and mark truncated content explicitly.
 
 Pages with `status: deprecated` are excluded from search results by default. They are returned only when explicitly requested: an explicit `status` filter (`genie docs search --status deprecated`), a page whose `related` list contains a requested task/epic id, or a page chosen for a task's context because it names the task ([L1 agent context](../platform/knowledge-vault.md#agent-context)). The exclusion is applied before the result limit, so a default search never drops a non-deprecated match to make room for a deprecated one. Tree entries and page reads still list deprecated pages with their `deprecated` marker; backlinks are plain source paths with no marker.

@@ -30,6 +30,17 @@ export interface Session {
 
 export class Unauthorized extends Error {}
 
+/**
+ * Whether the signed-in person may write in the current project: a member, an admin or an owner,
+ * or anyone on a local server, which trusts this machine. Viewers read only.
+ */
+export function canWriteProject(session: Session | null | undefined): boolean {
+  if (!session) return false;
+  if (session.mode === "local") return true;
+  const role = session.projects.find((p) => p.slug === session.project)?.role;
+  return role !== undefined && role !== "viewer";
+}
+
 export const sessionKey = ["session"] as const;
 
 export function useSession() {

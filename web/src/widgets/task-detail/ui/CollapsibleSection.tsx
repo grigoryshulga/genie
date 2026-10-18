@@ -2,21 +2,29 @@ import { useId, useState, type ReactNode } from "react";
 import { Icon } from "@/shared/ui";
 
 /** A task detail section that keeps its heading visible while its contents collapse. */
-export function CollapsibleSection({ title, badge, action, children, className = "" }: {
+export function CollapsibleSection({ title, badge, action, children, className = "", open, onOpenChange }: {
   title: string;
   badge?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const contentId = useId();
-  const [open, setOpen] = useState(true);
+  const [internalOpen, setInternalOpen] = useState(true);
+  const isOpen = open ?? internalOpen;
+  const toggle = () => {
+    const next = !isOpen;
+    if (open === undefined) setInternalOpen(next);
+    onOpenChange?.(next);
+  };
 
   return (
     <section className={`sec ${className}`.trim()}>
       <div className="sec-head">
         <h3>
-          <button type="button" className="sec-toggle" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen((value) => !value)}>
+          <button type="button" className="sec-toggle" aria-expanded={isOpen} aria-controls={contentId} onClick={toggle}>
             <Icon.chevron size={12} />
             <span>{title}</span>
             {badge}
@@ -24,7 +32,7 @@ export function CollapsibleSection({ title, badge, action, children, className =
         </h3>
         {action}
       </div>
-      <div id={contentId} className="sec-content" hidden={!open}>
+      <div id={contentId} className="sec-content" hidden={!isOpen}>
         {children}
       </div>
     </section>

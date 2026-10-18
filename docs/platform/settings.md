@@ -9,13 +9,15 @@ status: current
 
 Open `/settings`, use the sidebar gear, or press `G` then `S` for personal settings only: account, password, Telegram subscription, provider keys, and CLI/MCP tokens.
 
+Personal settings also include **Appearance** (`/settings/me/appearance`). Choose a light or dark theme, follow the system appearance, and select one of six accent colors. Appearance preferences are stored in this browser and do not change other browsers or users.
+
 The working sidebar places contextual search above the accent-colored New task action. Search filters the current board, task list, epics, documentation, proposals, agent catalog tab, automations, notifications, or statistics projects. Queries use `?q=` and preserve other filters and selections. On detail pages, search opens the task list. `/` focuses search; Escape clears it. The compact sidebar expands when its search icon is selected. Mobile layouts retain a search field in the page toolbar.
 
 The working sidebar has a separate **Management** group:
 
 - **Project management** (`/manage/project/general`): project and server administrators only. Its sidebar contains General settings, Repositories and environment, Tools, Access and roles, Communication channels, and Knowledge base.
 - **Global settings** (`/manage/server/projects`): server administrators only. Its sidebar contains Projects, Accounts, Providers, and Tools.
-- **Statistics** (`/statistics`): server-wide activity and costs, available to server administrators.
+- **Statistics** (`/statistics`): server-wide activity, costs and [Factory Analytics](task-intelligence.md#statistics), available to server administrators.
 
 Most sections have URL-backed tabs (`?tab=`), including project general settings, repositories, tools, access, knowledge storage, server projects, and accounts. Project Tools has Skills, MCP, Jev, and Automations tabs; global Tools has MCP, Jev, Agents, Health, and Knowledge tabs. General settings, tool selections, and account creation retain drafts when switching tabs on the same page.
 
@@ -45,6 +47,20 @@ genie user delete former-user                   # server administrator; irrevers
 ```
 
 Configuration not exposed in the UI remains in `<data>/config.json`. Restart the server after changing that file. Role and team files reload separately without a restart.
+
+## Task intelligence policy
+
+Open **Project management → Tools → Jev → Task assessment and mandatory checks**.
+The policy is disabled by default. A human project administrator can enable it,
+map independent checks to delivery reviewer roles, protect repository path prefixes,
+and choose a safe fallback team. Optional semantic assessment uses the existing Jev
+connection, external-context grant and provider allowance; it is separate from the
+mandatory project rules.
+
+Unknown affected paths retain checks for all protected components. Explicit human
+team choices and subsequent resume/completion actions must satisfy mandatory roles.
+Policy changes do not rewrite previous routing evidence. See the
+[setup and workflow guide](task-intelligence.md#project-policy) before enabling it.
 
 ## Accounts and project roles
 
@@ -86,7 +102,7 @@ The model selector loads the catalogue using the signed-in user's provider crede
 
 ## Usage and budgets
 
-Genie records model token usage by day, model, agent, task, epic, and project. View it in **Settings → Statistics**, task and epic details, agent chats, or `genie stats`.
+Genie records model token usage by day, model, agent, task, epic, and project. View it in **Statistics**, task and epic details, agent chats, or `genie stats`.
 
 Prices are in dollars per million tokens. Configure overrides in `config.json`:
 
