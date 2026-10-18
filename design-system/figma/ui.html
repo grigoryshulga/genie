@@ -8,10 +8,13 @@
   select, button { padding: 6px 10px; }
   #status { white-space: pre-wrap; }
 </style>
-<strong>Genie foundations</strong>
+<strong>Genie design system</strong>
 <label>Generated tokens.json <input id="file" type="file" accept=".json,application/json"></label>
 <label>Theme and accent <select id="mode" disabled></select></label>
-<button id="import" disabled>Import variables and shadow</button>
+<label><input id="library" type="checkbox" checked> Build text styles, components and task screen</label>
+<label><input id="fallback" type="checkbox"> Allow Inter when Geist is unavailable</label>
+<p>Generated component content and sample-screen labels are updated on reimport. Duplicate the screen before making an independent design. Unrelated layers are preserved.</p>
+<button id="import" disabled>Import / update design system</button>
 <p id="status" role="status">Choose design-system/tokens.json. Each pair uses one collection with one mode. Reimport updates it in place.</p>
 <script>
   let data;
@@ -31,13 +34,13 @@
       if (!mode.options.length) throw new Error("No Genie theme groups found");
       mode.disabled = false;
       button.disabled = false;
-      status.textContent = "Ready. Import updates only the named Genie collection and shadow style; existing layers are preserved.";
+      status.textContent = "Ready. The full build uses the current page. Components and sample screen are placed beside existing content.";
     } catch (error) { status.textContent = String(error); }
   };
   button.onclick = () => {
     button.disabled = true;
     status.textContent = "Importing…";
-    parent.postMessage({ pluginMessage: { type: "import", mode: mode.value, tokens: data[mode.value] } }, "*");
+    parent.postMessage({ pluginMessage: { type: "import", mode: mode.value, tokens: data[mode.value], buildLibrary: document.getElementById("library").checked, allowFallback: document.getElementById("fallback").checked } }, "*");
   };
   window.onmessage = (event) => {
     const message = event.data.pluginMessage;

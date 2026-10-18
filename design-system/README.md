@@ -7,13 +7,15 @@ The current application is the reference. This package extracts its foundations 
 - `web/src/shared/ui/tokens.css` is the token source used by the application.
 - `tokens.json` is a generated [DTCG 2025.10](https://www.designtokens.org/tr/2025.10/format/) document. Its twelve groups cover dark/light × violet/blue/teal/green/orange/rose. Colors use explicit sRGB components and alpha; dimensions use CSS pixels; shadow is a composite token. CSS names and original expressions live under `$extensions.com.genie`.
 - `web/design-system.html` is a live specimen page using application styles and the actual React status/priority icons. Run `npm run dev:web -- --port 5178` and open `http://localhost:5178/design-system.html`. It requires no tracker login. Switch both appearance controls and inspect focus/disabled states.
-- `figma/` is an offline development plugin that imports the generated foundations. No third-party plugin or network request is needed.
+- `figma/` is an offline development plugin that imports foundations and optionally builds reusable text styles, components and a representative task screen. No third-party plugin, paid importer, network request or additional variable modes are needed.
 
 After editing tokens, run:
 
 ```sh
 node scripts/design-system/export.mjs
 node scripts/design-system/export.mjs --check
+node scripts/design-system/build-plugin.mjs
+node scripts/design-system/build-plugin.mjs --check
 npm test
 ```
 
@@ -21,11 +23,11 @@ The test suite rejects stale generated output, missing/circular references, inco
 
 ## Transfer to Figma
 
-1. In Figma Desktop, create a new development plugin with a UI using the [official setup](https://developers.figma.com/docs/plugins/plugin-quickstart-guide/). Figma assigns its unique plugin ID. Copy `figma/code.js` and `figma/ui.html` to that plugin directory; use `figma/manifest.template.json` as `manifest.json`, replacing `REPLACE_WITH_YOUR_FIGMA_PLUGIN_ID` with that assigned ID. Run **Genie design tokens** in the destination Design file. This is a local development plugin, not a published Community plugin.
+1. In Figma Desktop, create a new development plugin with a UI using the [official setup](https://developers.figma.com/docs/plugins/plugin-quickstart-guide/). Figma assigns its unique plugin ID. Copy `figma/code.js` and `figma/ui.html` to that plugin directory; use `figma/manifest.template.json` as `manifest.json`, replacing `REPLACE_WITH_YOUR_FIGMA_PLUGIN_ID` with that assigned ID. Run **Genie design system** in the destination Design file. This is a local development plugin, not a published Community plugin.
 2. Select `design-system/tokens.json` in its file picker, choose an appearance, then import.
 3. The plugin creates or updates `Genie / <theme>-<accent>` with one mode. Import another pair into its own collection when needed. This avoids requiring twelve modes in a single collection. It preserves matching variable IDs and unrelated document content; it never deletes obsolete variables.
 4. Variables have property scopes and WEB code syntax such as `var(--bg-panel)`. Direct CSS references become native variable aliases. Derived color mixes are stored as resolved colors. The overlay shadow becomes an effect style. The plugin follows Figma's [variables API](https://developers.figma.com/docs/plugins/working-with-variables/).
-5. Install **Geist** and **Geist Mono** to reproduce the web typography, then create the text styles and component families below. The importer creates foundation variables and the shadow style; it does not create component sets, text styles, auto-layout screens, or publish a library. Actual Figma import/visual inspection remains a separate validation step; repository tests exercise an API mock.
+5. Install **Geist** and **Geist Mono** to reproduce the web typography. Leave **Build text styles, components and task screen** enabled to generate the library described below on the current page. Missing fonts stop the full build before creating assets. **Allow Inter when Geist is unavailable** is an explicit fallback and the result reports the actual fonts. Disable the full-build checkbox to import only variables and the shadow without requiring any fonts. The plugin does not publish a library. Actual Figma visual validation is distinct from repository tests, which exercise a strict API fake.
 
 The collection strategy is intentionally simple. Teams with a mode-based library can merge corresponding collections into modes using Figma while retaining the CSS naming contract. `--measure: 64ch` stays documented rather than exported as an inaccurate fixed dimension: `ch` depends on font metrics.
 
@@ -98,4 +100,21 @@ Literal values still allowed outside tokens:
 - Browser meta theme-color has fixed early-boot values for the two themes, independent of loaded CSS.
 - SVG icon geometry, graph coordinates, responsive breakpoints, proportional dimensions, layout widths, uncommon spacing and component-specific radii are local geometry rather than conflicting semantic values.
 
-This is an extracted foundation package and application reconciliation. It does not claim that every possible screen/state passed an accessibility audit or that an editable Figma component library has already been created.
+The full importer builds a bounded first library and a representative task screen; it does not convert arbitrary HTML or automatically reproduce all application screens. It does not claim that every possible screen/state passed an accessibility audit.
+
+## Full-build inventory and safe updates
+
+The optional full build adds two top-level frames on the **current page**:
+
+- `Genie / <theme>-<accent> / Library`: 14 reusable text styles and five component sets. Button/Default and Button/Small each contain 20 variants (five tones × Rest/Hover/Focus/Disabled). Field has three variants (Rest/Focus/Disabled), Badge four tones, and Task card two states. Each family stays below 30 variants. There are **49 component variants** total. The library includes typography specimens; construction assets stay separate from the final screen.
+- `Genie / <theme>-<accent> / Task screen`: a 1440 px desktop specimen with a 232 px sidebar, task title/tabs, description, acceptance criteria, related task and 320 px property rail. Its buttons, badge, fields and related task are native **instances** of the generated components. Text and hierarchy remain editable; no flattened screenshot is used.
+
+The screen is representative sample content, not a snapshot of live tracker data. Edit `figma/src/task-screen.js` to change the fixture, then rebuild. Current scope covers a single desktop Description view, not mobile layouts, interactive prototypes, every task status or every product component in the broader inventory above. Fields and the task card are illustrative component patterns; source CSS references remain in their descriptions.
+
+All resting colors, common spacing/radii, button/field heights and text sizes bind to the imported variables. Text nodes use reusable text styles. Hover brightness is a derived color (CSS filter equivalent); fixed icon/layout geometry, the badge's 18 px height/9 px radius, and the card's 158 px height remain explicit. Focus is represented by a 2 px accent border in Figma rather than the web outline's offset. It is a static state, not a keyboard interaction. Automatic font substitution is never silent; the Inter option changes typography and must be visually reviewed.
+
+**Reimport policy:** preserve matching collection, variable, text-style, main-component, instance, and child-layer IDs. Update generated content in place by exact names and type. Preserve top-level frame positions and unrelated layers, and never delete obsolete assets. Changing a managed layer name can cause a new generated layer to be created. Type/name conflicts and swapped managed instances produce an actionable error rather than deleting or detaching the conflicting content. Errors during canvas construction can leave a partial build; after resolving the conflict, rerun to update the existing objects. This is not a transactional rollback.
+
+Generated layers are a source-controlled specimen: their labels, styling, dimensions and variant positions are rewritten on reimport. **Duplicate the task-screen frame before making an independent design**, and rename the duplicate so it is outside the exact generated names. Use unique names for personal annotations. Reimport does not attempt to merge arbitrary manual edits into the source configuration.
+
+The distributable `figma/code.js` is generated by concatenating `figma/src/task-screen.js`, `library.js` and `importer.js` using a dependency-free build script. Edit those source files, not the bundle. Tests reject a stale bundle and cover the full-build structure, native instance references, variable bindings, font failure/fallback, reimport stability and unrelated content preservation. Renderer fidelity still requires inspection in a real Figma file.
