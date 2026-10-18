@@ -38,6 +38,11 @@ export function createFigmaPluginHost() {
       child.parent = this;
       this.children.push(child);
     }
+    remove() {
+      for (const child of [...this.children]) child.remove();
+      if (this.parent) this.parent.children = this.parent.children.filter((n) => n !== this);
+      nodes.delete(this.id);
+    }
     get width() { return this._width; }
     get height() { return this._height; }
     resize(width, height) {
@@ -117,6 +122,7 @@ export function createFigmaPluginHost() {
     createFrame: () => new Node("FRAME"),
     createComponent: () => new Node("COMPONENT"),
     createText: () => new Node("TEXT"),
+    createNodeFromSvg: (_svg) => new Node("FRAME"),
     combineAsVariants: (components, parent) => {
       const set = new Node("COMPONENT_SET"); parent.appendChild(set);
       for (const component of components) set.appendChild(component);
@@ -142,8 +148,8 @@ export function createFigmaPluginHost() {
       },
       createVariable: (name, collection, resolvedType) => {
         const variable = {
-          id: String(++sequence), name, resolvedType, variableCollectionId: collection.id, values: {},
-          setValueForMode(mode, value) { this.values[mode] = value; },
+          id: String(++sequence), name, resolvedType, variableCollectionId: collection.id, values: {}, valuesByMode: {},
+          setValueForMode(mode, value) { this.values[mode] = value; this.valuesByMode[mode] = value; },
           setVariableCodeSyntax(_platform, value) { this.syntax = value; },
         };
         variables.push(variable); return variable;

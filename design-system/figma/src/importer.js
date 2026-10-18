@@ -42,9 +42,14 @@ function scopes(key, type) {
 
 let importing = false;
 figma.ui.onmessage = async (message) => {
-  if (message.type !== "import" || importing) return;
+  if (!["import", "import-screen"].includes(message.type) || importing) return;
   importing = true;
   try {
+    if (message.type === "import-screen") {
+      const screen = await GenieScreen.build(message.screen, message.allowFallback === true);
+      figma.ui.postMessage({ ok: true, screen, text: `Imported ${screen.nodes} editable source nodes and ${screen.componentInstances} component instances. Fonts: ${screen.fonts.join(", ")}. ${screen.warnings.join(" ")}` });
+      return;
+    }
     if (!/^(dark|light)-(violet|blue|teal|green|orange|rose)$/.test(message.mode)) throw new Error("Choose an exported theme/accent pair");
     const entries = Object.entries(message.tokens).filter(([key]) => !key.startsWith("$"));
     if (!entries.length) throw new Error("No tokens found");
