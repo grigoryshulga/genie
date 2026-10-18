@@ -22,9 +22,6 @@ export function MeSettingsPage() {
   const local = session?.mode === "local";
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Настройки профиля</h1>
-      </header>
       <div className="scroll">
         {!session ? null : local ? (
           <div className="st-body">
