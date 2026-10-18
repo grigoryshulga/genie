@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { CI_NAME, CR_NAME, type TaskRepo, useMergeRequest, useTaskRepos } from "@/entities/repo";
 import { ConfirmDialog, useToast } from "@/shared/ui";
+import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
 function ciLevel(ci: TaskRepo["ciState"]): "ok" | "warn" | "fail" | "" {
   return ci === "passed" ? "ok" : ci === "failed" ? "fail" : ci === "pending" || ci === "stalled" ? "warn" : "";
@@ -30,10 +31,7 @@ export function TaskDelivery({ task }: { task: string }) {
   const [merging, setMerging] = useState<TaskRepo>();
   if (!rows.length) return null;
   return (
-    <section className="sec">
-      <h3>
-        Репозитории <span className="n">{rows.length}</span>
-      </h3>
+    <CollapsibleSection title="Репозитории" badge={<span className="n">{rows.length}</span>}>
       <div className="td-delivery">
         {rows.map((r) => (
           <div key={r.repo} className="td-repo">
@@ -90,6 +88,6 @@ export function TaskDelivery({ task }: { task: string }) {
           Запрос слит на хостинге от имени бота genie. Как человек вы не связаны условиями «нужны проверки и одобрения» — но правила защиты веток на хостинге по-прежнему действуют.
         </ConfirmDialog>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
