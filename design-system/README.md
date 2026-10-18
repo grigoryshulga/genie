@@ -7,29 +7,23 @@ The current application is the reference. This package extracts its foundations 
 - `web/src/shared/ui/tokens.css` is the token source used by the application.
 - `tokens.json` is a generated [DTCG 2025.10](https://www.designtokens.org/tr/2025.10/format/) document. Its twelve groups cover dark/light × violet/blue/teal/green/orange/rose. Colors use explicit sRGB components and alpha; dimensions use CSS pixels; shadow is a composite token. CSS names and original expressions live under `$extensions.com.genie`.
 - `web/design-system.html` is a live specimen page using application styles and the actual React status/priority icons. Run `npm run dev:web -- --port 5178` and open `http://localhost:5178/design-system.html`. It requires no tracker login. Switch both appearance controls and inspect focus/disabled states.
-- `figma/` is an offline development plugin that imports foundations and optionally builds reusable text styles, components and a representative task screen. No third-party plugin, paid importer, network request or additional variable modes are needed.
+- Browser capture, the offline Figma plugin, plugin build/test code and agent instructions live in the separate private [genie-figma-tools repository](https://github.com/grigoryshulga/genie-figma-tools).
 
 After editing tokens, run:
 
 ```sh
 node scripts/design-system/export.mjs
 node scripts/design-system/export.mjs --check
-node scripts/design-system/build-plugin.mjs
-node scripts/design-system/build-plugin.mjs --check
 npm test
 ```
 
-The test suite rejects stale generated output, missing/circular references, inconsistent appearance inventories, and importer regressions. The exporter only supports the CSS expressions used by the source and rejects unsupported ones. Color mixes are resolved in sRGB and rounded to 8-bit values; maximum channel rounding is half a step. The browser remains authoritative for rendering.
+The test suite rejects stale generated output, missing/circular references, inconsistent appearance inventories, and insufficient action foreground contrast. The exporter only supports the CSS expressions used by the source and rejects unsupported ones. Color mixes are resolved in sRGB and rounded to 8-bit values; maximum channel rounding is half a step. The browser remains authoritative for rendering.
 
 ## Transfer to Figma
 
-1. In Figma Desktop, create a new development plugin with a UI using the [official setup](https://developers.figma.com/docs/plugins/plugin-quickstart-guide/). Figma assigns its unique plugin ID. Copy `figma/code.js` and `figma/ui.html` to that plugin directory; use `figma/manifest.template.json` as `manifest.json`, replacing `REPLACE_WITH_YOUR_FIGMA_PLUGIN_ID` with that assigned ID. Run **Genie design system** in the destination Design file. This is a local development plugin, not a published Community plugin.
-2. Select `design-system/tokens.json` in its file picker, choose an appearance, then import.
-3. The plugin creates or updates `Genie / <theme>-<accent>` with one mode. Import another pair into its own collection when needed. This avoids requiring twelve modes in a single collection. It preserves matching variable IDs and unrelated document content; it never deletes obsolete variables.
-4. Variables have property scopes and WEB code syntax such as `var(--bg-panel)`. Direct CSS references become native variable aliases. Derived color mixes are stored as resolved colors. The overlay shadow becomes an effect style. The plugin follows Figma's [variables API](https://developers.figma.com/docs/plugins/working-with-variables/).
-5. Install **Geist** and **Geist Mono** to reproduce the web typography. Leave **Build text styles, components and task screen** enabled to generate the library described below on the current page. Missing fonts stop the full build before creating assets. **Allow Inter when Geist is unavailable** is an explicit fallback and the result reports the actual fonts. Disable the full-build checkbox to import only variables and the shadow without requiring any fonts. The plugin does not publish a library. Actual Figma visual validation is distinct from repository tests, which exercise a strict API fake.
+Export current `tokens.json` here, then use the separate [toolkit](https://github.com/grigoryshulga/genie-figma-tools). Its [agent workflow](https://github.com/grigoryshulga/genie-figma-tools/blob/main/docs/agent-workflow.md) covers local plugin setup, importing tokens/components, capturing real screens and verifying editable native layers. The toolkit owns that implementation and its tests; Genie owns these application foundations and their export.
 
-The collection strategy is intentionally simple. Teams with a mode-based library can merge corresponding collections into modes using Figma while retaining the CSS naming contract. `--measure: 64ch` stays documented rather than exported as an inaccurate fixed dimension: `ch` depends on font metrics.
+`--measure: 64ch` stays documented rather than exported as an inaccurate fixed dimension: `ch` depends on font metrics.
 
 ## Foundations
 
@@ -66,7 +60,7 @@ Use Geist for UI/prose and Geist Mono for identifiers, code, and numerical metad
 
 Micro 10 px and emphasis 14 px are also exported. One-off 10.5/16/22 px sizes and icon illustration lettering remain local; they are not additional default text styles.
 
-## Component inventory and Figma construction
+## Component inventory
 
 Use horizontal/vertical auto layout matching the existing CSS, bind fills/strokes/radii/gaps to the imported variables, and keep labels as text properties. SVG source stays editable; use `web/src/shared/ui/icons.tsx` and `web/src/entities/task/ui/StatusIcon.tsx` for the icon artwork. Keep the variant axes below separate to avoid duplicating unrelated components.
 
@@ -99,39 +93,3 @@ Literal values still allowed outside tokens:
 - Telegram's QR code stays dark-on-white for scanning. Avatar JPEG compositing uses a fixed neutral background so a saved image does not depend on the viewer's current theme.
 - Browser meta theme-color has fixed early-boot values for the two themes, independent of loaded CSS.
 - SVG icon geometry, graph coordinates, responsive breakpoints, proportional dimensions, layout widths, uncommon spacing and component-specific radii are local geometry rather than conflicting semantic values.
-
-The full importer builds a bounded first library and a representative task screen; it does not convert arbitrary HTML or automatically reproduce all application screens. It does not claim that every possible screen/state passed an accessibility audit.
-
-## Full-build inventory and safe updates
-
-The optional full build adds two top-level frames on the **current page**:
-
-- `Genie / <theme>-<accent> / Library`: 14 reusable text styles and five component sets. Button/Default and Button/Small each contain 20 variants (five tones × Rest/Hover/Focus/Disabled). Field has three variants (Rest/Focus/Disabled), Badge four tones, and Task card two states. Each family stays below 30 variants. There are **49 component variants** total. The library includes typography specimens; construction assets stay separate from the final screen.
-- `Genie / <theme>-<accent> / Task screen`: a 1440 px desktop specimen with a 232 px sidebar, task title/tabs, description, acceptance criteria, related task and 320 px property rail. Its buttons, badge, fields and related task are native **instances** of the generated components. Text and hierarchy remain editable; no flattened screenshot is used.
-
-The screen is representative sample content, not a snapshot of live tracker data. Edit `figma/src/task-screen.js` to change the fixture, then rebuild. Current scope covers a single desktop Description view, not mobile layouts, interactive prototypes, every task status or every product component in the broader inventory above. Fields and the task card are illustrative component patterns; source CSS references remain in their descriptions.
-
-All resting colors, common spacing/radii, button/field heights and text sizes bind to the imported variables. Text nodes use reusable text styles. Hover brightness is a derived color (CSS filter equivalent); fixed icon/layout geometry, the badge's 18 px height/9 px radius, and the card's 158 px height remain explicit. Focus is represented by a 2 px accent border in Figma rather than the web outline's offset. It is a static state, not a keyboard interaction. Automatic font substitution is never silent; the Inter option changes typography and must be visually reviewed.
-
-**Reimport policy:** preserve matching collection, variable, text-style, main-component, instance, and child-layer IDs. Update generated content in place by exact names and type. Preserve top-level frame positions and unrelated layers, and never delete obsolete assets. Changing a managed layer name can cause a new generated layer to be created. Type/name conflicts and swapped managed instances produce an actionable error rather than deleting or detaching the conflicting content. Errors during canvas construction can leave a partial build; after resolving the conflict, rerun to update the existing objects. This is not a transactional rollback.
-
-Generated layers are a source-controlled specimen: their labels, styling, dimensions and variant positions are rewritten on reimport. **Duplicate the task-screen frame before making an independent design**, and rename the duplicate so it is outside the exact generated names. Use unique names for personal annotations. Reimport does not attempt to merge arbitrary manual edits into the source configuration.
-
-The distributable `figma/code.js` is generated by concatenating `figma/src/task-screen.js`, `library.js`, `screen.js` and `importer.js` using a dependency-free build script. Edit those source files, not the bundle. Tests reject a stale bundle and cover the full-build structure, native instance references, variable bindings, font failure/fallback, reimport stability and unrelated content preservation. Renderer fidelity still requires inspection in a real Figma file.
-
-Native validation on 2026-10-18 used the same importer and builder sources through Scripter in the [Genie Design file](https://www.figma.com/design/5SRTkmHI5iFjkOOPYxg0XG/Genie---Agentic-Factory?node-id=7-288), with the message/UI adapter replaced for execution. Both the 1440 × 960 task screen and the component library were exported and visually inspected. Repeat imports preserved node, variable and text-style IDs, root placement and an unrelated test layer; the screen contains seven component instances. This validates native construction and rendering; the packaged development-plugin UI was not exercised inside Figma. Native validation also caught read-only node dimensions: the builder uses `resize()` and restores auto-layout sizing modes, and the API fake enforces those constraints.
-
-## Capture a real application screen
-
-The offline plugin also accepts a rendered-DOM snapshot. It preserves the current viewport and scroll state as editable text, vector icons and nested fixed-position frames. It does not require a paid importer, Figma AI or an external conversion service.
-
-1. Open the desired page in the running application and select its theme, viewport size, tab and scroll position. Wait for the page to finish loading.
-2. In browser DevTools, create a **Sources → Snippets** snippet from [browser/capture.js](browser/capture.js) and run it. Then run `await GenieCapture.download()` in the Console. This downloads `genie-screen.json`; only paste code you have reviewed. The file contains visible page text, geometry and SVGs, including any displayed task data. It contains no cookies, storage, authorization headers, URL query/hash or input passwords. Mark an element `data-genie-capture="exclude"` to omit its subtree.
-3. In the destination file, first import the corresponding appearance's tokens and text styles using the plugin's existing design-system controls.
-4. Select the JSON under **Rendered page capture**, review reported limitations, then click **Import editable screen**. The capture's recorded appearance determines its token/style bindings; the theme dropdown only controls design-system generation.
-
-Each capture import creates a new named screen and an adjacent source-component frame. Existing screens are never overwritten. Visible buttons, navigation items and form fields become local component instances with editable text properties. Identical captured control structures share a main component. Exact matching colors bind to the existing appearance's variables; matching family/weight/size combinations use its text styles. These captured components supplement the curated library: the importer does not guess that every arbitrary DOM control is a curated Button or Field variant. Geometry is a fixed viewport snapshot, not responsive Auto Layout, and controls have no runtime interactions.
-
-Scope: normal DOM text (with browser line breaks), solid backgrounds, radii, borders, opacity, scroll clipping and inline SVGs. Font availability is checked before writes; Inter substitution remains explicit. Browser-native checkbox/select chrome is approximated using editable shapes and vectors. Gradients/background images, shadows, filters, generated pseudo-elements and raster content are omitted with warnings. CSS transforms use axis-aligned bounds; external SVG references and embedded images are rejected. Hidden details content and off-viewport content are excluded. Screens requiring unsupported effects or media need manual finishing. Construction errors remove only the new partial screen and source-component frame.
-
-The [real task-page capture](https://www.figma.com/design/5SRTkmHI5iFjkOOPYxg0XG/Genie---Agentic-Factory?node-id=8-466) was validated against `/task/GNE-25` at 1440 × 960 CSS pixels. Native read-back found 89 text nodes, 53 vectors and 27 component instances, with Geist/Geist Mono and no image fills. Browser and Figma PNGs were compared; native text auto-sizing prevents a second wrap caused by small browser/Figma glyph-metric differences. The same source ran through Scripter for native verification; packaged plugin UI validation is separate.

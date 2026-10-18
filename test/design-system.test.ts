@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { runInNewContext } from "node:vm";
 import { buildExport, outputPath, readTokens, resolveValue, serializeExport, sourcePath } from "../scripts/design-system/export.mjs";
 
 const css = readFileSync(sourcePath, "utf8");
@@ -36,75 +35,4 @@ test("filled actions retain readable foregrounds in every exported appearance", 
       assert.ok(contrast >= 4.5, `${group}: ${foreground}/${background} contrast ${contrast}`);
     }
   }
-});
-
-type Variable = {
-  id: string; name: string; resolvedType: string; variableCollectionId: string;
-  values: Record<string, unknown>; syntax?: string;
-  setValueForMode: (mode: string, value: unknown) => void;
-  setVariableCodeSyntax: (platform: string, value: string) => void;
-};
-
-function plugin() {
-  const variables: Variable[] = [];
-  const collections: { id: string; name: string; defaultModeId: string }[] = [];
-  const styles: { name?: string; effects?: unknown }[] = [];
-  const messages: { ok: boolean; text: string }[] = [];
-  const figma = {
-    showUI: () => {},
-    ui: { postMessage: (message: { ok: boolean; text: string }) => messages.push(message), onmessage: async (_: unknown) => {} },
-    variables: {
-      getLocalVariableCollectionsAsync: async () => collections,
-      getLocalVariablesAsync: async () => variables,
-      createVariableCollection: (name: string) => {
-        const collection = { id: String(collections.length), name, defaultModeId: "default" };
-        collections.push(collection);
-        return collection;
-      },
-      createVariable: (name: string, collection: { id: string }, resolvedType: string) => {
-        const variable: Variable = {
-          id: String(variables.length), name, resolvedType, variableCollectionId: collection.id, values: {},
-          setValueForMode(mode, value) { this.values[mode] = value; },
-          setVariableCodeSyntax(_platform, value) { this.syntax = value; },
-        };
-        variables.push(variable);
-        return variable;
-      },
-    },
-    getLocalEffectStylesAsync: async () => styles,
-    createEffectStyle: () => { const style = {}; styles.push(style); return style; },
-  };
-  runInNewContext(readFileSync(new URL("../design-system/figma/code.js", import.meta.url), "utf8"), { figma, __html__: "" });
-  return { figma, variables, collections, styles, messages };
-}
-
-test("Figma importer preserves IDs, aliases and unrelated collections on reimport", async () => {
-  const p = plugin();
-  const other = p.figma.variables.createVariableCollection("Other library");
-  const unrelated = p.figma.variables.createVariable("brand", other, "COLOR");
-  unrelated.setValueForMode("default", "unchanged");
-  const request = { type: "import", mode: "light-teal", tokens: bundle["light-teal"] };
-  await p.figma.ui.onmessage(request);
-  assert.equal(p.messages.at(-1)?.ok, true, p.messages.at(-1)?.text ?? "Importer returned no message");
-  const ids = p.variables.map((v) => v.id);
-  await p.figma.ui.onmessage(request);
-  assert.equal(p.messages.at(-1)?.ok, true);
-  assert.deepEqual(p.variables.map((v) => v.id), ids);
-  assert.equal(p.collections.length, 2);
-  assert.equal(p.styles.length, 1);
-  assert.equal(unrelated.values.default, "unchanged");
-  const review = p.variables.find((v) => v.name === "status/review");
-  const green = p.variables.find((v) => v.name === "green");
-  assert.deepEqual(JSON.parse(JSON.stringify(review?.values.default)), { type: "VARIABLE_ALIAS", id: green?.id });
-  assert.equal(review?.syntax, "var(--status-review)");
-});
-
-test("Figma importer rejects malformed values before creating document assets", async () => {
-  const p = plugin();
-  const tokens = structuredClone(bundle["dark-violet"]);
-  tokens.bg.$value.components[0] = 2;
-  await p.figma.ui.onmessage({ type: "import", mode: "dark-violet", tokens });
-  assert.equal(p.messages.at(-1)?.ok, false);
-  assert.equal(p.collections.length, 0);
-  assert.equal(p.variables.length, 0);
 });
