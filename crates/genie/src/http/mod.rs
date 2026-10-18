@@ -15,6 +15,7 @@ pub mod docs;
 pub mod git;
 pub mod ideas;
 pub mod images;
+pub mod intelligence;
 pub mod live;
 pub mod management;
 pub mod mcp_admin;
@@ -136,6 +137,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(management::routes())
         .merge(teams::routes())
         .merge(decisions::routes())
+        .merge(intelligence::routes())
         .merge(agents::routes())
         .merge(docs::routes())
         .merge(images::routes())

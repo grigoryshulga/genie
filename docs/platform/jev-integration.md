@@ -175,3 +175,7 @@ Uncertainty, timeout, provider failure, a missing key, or exhausted allowance pr
 `cargo test -p genie --test it decisions::` exercises the real HTTP boundary against a local fake: wire format, CLI/MCP, grants, task scope, cost, failures, uncertainty, selection modes, previews, overrides, stale facts, and concurrent creation. Tests cover TypeSafe, OpenRouter, a custom endpoint, and task-manager scope without real provider keys or paid calls.
 
 Evaluate decision quality with comparable task runs with and without Jev: acceptance quality, review returns, elapsed time, and cost per accepted task. Integration tests establish mechanism correctness rather than recommendation quality. API references: [TypeSafe models](https://docs.typesafe.ai/models), [choice](https://docs.typesafe.ai/primitives/choice), and [confidence](https://docs.typesafe.ai/confidence).
+
+## Task Intelligence
+
+Optional [Task Intelligence and Factory Analytics](task-intelligence.md) adds versioned signals, mandatory reviewer checks, runtime reassessment, attempt-aware telemetry, and candidate-policy evaluation. Its safety constraints apply independently of Jev selection authority.
