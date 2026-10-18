@@ -1,0 +1,12 @@
+.factory-analytics { display: grid; gap: 20px; }
+.factory-analytics .st-card { padding: 20px; }
+.factory-scroll { overflow-x: auto; margin: 18px 0; }
+.factory-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.factory-table th, .factory-table td { padding: 9px 12px; border-bottom: 1px solid var(--line, #4444); }
+.factory-table tbody th { font-weight: 500; }
+.factory-table td { font-variant-numeric: tabular-nums; }
+.factory-analytics details { margin: 12px 0; }
+.factory-analytics summary { cursor: pointer; }
+.factory-task { padding: 10px 0; border-bottom: 1px solid var(--line, #4444); }
+.factory-task dl { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: 6px 18px; font-size: 13px; }
+.factory-task dd { margin: 0; overflow-wrap: anywhere; }

@@ -580,3 +580,27 @@ pub fn watch(app: &App, caller: &Caller, id: &str, value: Option<bool>) -> AppRe
         Ok(TaskWatch { author, watching: author || db.task_watchers(&caller.project, &task.id)?.contains(&user.id) })
     })
 }
+
+// Task intelligence mutations share this application boundary across HTTP and
+// catalog consumers. Provider calls and routing policy live in their own module.
+pub fn intelligence_history(app: &App, caller: &Caller, id: &str) -> AppResult<genie_core::intelligence::IntelligenceHistory> {
+    authorize(app, caller, id, Touch::Edit)?;
+    app.with_tracker(&caller.project, |t| t.intelligence_history(id))
+}
+pub fn assess_intelligence(
+    app: &App,
+    caller: &Caller,
+    id: &str,
+    body: crate::intelligence::AssessBody,
+) -> AppResult<genie_core::intelligence::Snapshot> {
+    crate::intelligence::assess_task(app, caller, id, body)
+}
+pub fn reassess_intelligence(app: &App, caller: &Caller, id: &str, body: crate::intelligence::ReassessBody) -> AppResult<Value> {
+    crate::intelligence::reassess(app, caller, id, body)
+}
+pub fn shadow_intelligence(app: &App, caller: &Caller, id: &str, body: crate::intelligence::ShadowBody) -> AppResult<Value> {
+    if !caller.is_person() {
+        return Err(AppError::Forbidden("only a project administrator can evaluate candidate policies".into()));
+    }
+    crate::intelligence::shadow(app, caller, id, body)
+}

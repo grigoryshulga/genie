@@ -971,6 +971,16 @@ impl Tracker {
                 actor,
                 json!({ "from": from, "to": to, "note": opts.note, "force": opts.force, "action": action.as_ref().map(OwnerAction::kind) }),
             )?;
+            if to == Status::InProgress {
+                self.begin_attempt(actor, &task.id)?;
+            } else if matches!(to, Status::Done | Status::Cancelled) {
+                let event = self.conn().query_row(
+                    "SELECT MAX(id) FROM events WHERE subject=?1 AND type='task.status_changed'",
+                    [&task.id],
+                    |r| r.get::<_, i64>(0),
+                )?;
+                self.finalize_attempt(actor, &task.id, if to == Status::Done { "accepted" } else { "cancelled" }, event)?;
+            }
             let suffix = opts.note.as_deref().filter(|n| !n.is_empty()).map(|n| format!(": {n}")).unwrap_or_default();
             self.management().on_status(actor, &task.id, to)?;
             self.tell_orchestrator(actor, &task.id, &format!("The owner moved {} from {from} to {to}{suffix}", task.id))

@@ -19,6 +19,8 @@ use crate::spend::{self, Item, Prices, Spend, TaskIndex};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectStats {
+    #[serde(default)]
+    pub factory: crate::factory::FactoryAnalytics,
     pub project: String,
     pub name: String,
     /// Tasks (not epics) created in the period, and how many of them by people.
@@ -242,6 +244,7 @@ fn usage_stats(p: &mut ProjectStats, db: &Path, since: &str, prices: &Prices) ->
         d.cost = (d.cost * 10_000.0).round() / 10_000.0;
         d.cost_by_model.values_mut().for_each(|c| *c = (*c * 10_000.0).round() / 10_000.0);
     }
+    p.factory = crate::factory::collect(&conn, since, &Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true), prices)?;
     p.usage = Usage {
         spend: Spend::of(prices, &rows),
         epics: spend::by_epic(prices, &rows, &tasks),
@@ -340,6 +343,16 @@ pub fn render(s: &Stats) -> String {
         ));
         out.push(format!("  people       {}", if p.people.is_empty() { "—".to_string() } else { p.people.join(", ") }));
         out.push(format!("  spent        {}", spent(&p.usage.spend)));
+        for (name, metric) in &p.factory.metrics {
+            out.push(format!(
+                "  factory {name}: {} {} (N={}, eligible={}, missing={})",
+                metric.value.map_or("unknown".into(), |v| format!("{v:.4}")),
+                metric.unit,
+                metric.denominator,
+                metric.eligible,
+                metric.missing
+            ));
+        }
         for m in &p.usage.spend.models {
             let cost = m.cost.map_or("no price".to_string(), |c| format!("${c:.2}"));
             out.push(format!("    {:<30} {cost}, {} tokens", m.model, tokens(m.tokens.total())));

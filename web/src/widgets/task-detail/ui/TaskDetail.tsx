@@ -1,3 +1,4 @@
+import { TaskIntelligence } from "./TaskIntelligence.tsx";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
@@ -423,6 +424,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           {criteria}
           {!isEpic && <TaskDelivery task={t.id} />}
           {!isEpic && <TaskManager key={t.id} task={t} />}
+            {!isEpic && <TaskIntelligence task={t.id} />}
           <footer className="detail-more">
             {last && <span className="muted">Последнее: {last.kind === "event" ? `${last.h.actor} ${historyText(last.h, isEpic)}` : `${last.c.author}, ${KIND_NAME[last.c.kind] ?? last.c.kind}`} · {timeAgo(last.at)}</span>}
             <span className="grow" />
@@ -493,6 +495,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             {criteria}
             {!isEpic && <TaskDelivery task={t.id} />}
             {!isEpic && <TaskManager key={t.id} task={t} />}
+            {!isEpic && <TaskIntelligence task={t.id} />}
             {t.plan.trim() && (
               <section className="sec">
                 <h3>{isEpic ? "Дорожная карта" : "План"}</h3>

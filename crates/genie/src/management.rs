@@ -121,8 +121,12 @@ pub fn sources(app: &App, project: &str, task: &str) -> AppResult<Value> {
     for agent in agents {
         records.push(json!({ "id": format!("session:{agent}"), "agent": agent, "available": true, "kind": "transcript" }));
     }
-    Ok(json!({ "task": task.id, "sources": records, "executionCutoff": execution_cutoff,
-        "scope": "All recorded execution turns, including failed/interrupted attempts, former members and the task manager; task history, mail, clarifications and artifacts are available in manager show and team show." }))
+    let intelligence = app.with_tracker(project, |t| t.intelligence_history(&task.id))?;
+    let recommendations = crate::intelligence::recommendations(&intelligence);
+    Ok(
+        json!({ "task": task.id, "sources": records, "executionCutoff": execution_cutoff, "intelligence": intelligence, "routingRecommendations": recommendations,
+        "scope": "All recorded execution turns, including failed/interrupted attempts, former members and the task manager; task history, mail, clarifications and artifacts are available in manager show and team show." }),
+    )
 }
 
 pub fn source(app: &App, project: &str, task: &str, id: &str, offset: usize) -> AppResult<Value> {
@@ -188,6 +192,10 @@ pub fn retrospective(app: &App, project: &str, actor: &Actor, task: &str, report
         } else {
             "all recorded sources reviewed"
         }
+    );
+    let report = format!(
+        "{report}\n## Routing policy proposals\n\n{}\n\nThese proposals require human evaluation and approval; no policy was changed.\n",
+        serde_json::to_string_pretty(&inventory["routingRecommendations"]).map_err(genie_core::GenieError::from)?
     );
     app.with_tracker(project, |t| t.management().publish_retrospective(actor, task, &report, !incomplete))
 }

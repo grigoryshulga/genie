@@ -2092,6 +2092,32 @@ pub fn spawn_team(app: &App, slug: &str, mut req: SpawnRequest) -> AppResult<gen
             "task or agent/decision configuration changed during Jev evaluation; retry with current facts".into(),
         ));
     }
+    let applied_routing = prepared.snapshot.as_ref().map(|snapshot| {
+        use genie_core::intelligence::{DecisionKind, RoutingPlan, RoutingStatus};
+        (
+            snapshot.id,
+            RoutingPlan {
+                decision_kind: DecisionKind::Initial,
+                router_provider: if prepared.records.is_empty() { "configured".into() } else { "jev".into() },
+                router_version: app.cfg.decisions.model.clone(),
+                policy_version: crate::intelligence::fingerprint(&prepared.policy),
+                eligible_templates: prepared.eligible_templates.clone(),
+                selected_template: prepared.roster.template.as_ref().map(|t| t.id.clone()),
+                selected_models: crate::intelligence::models(&agents, &prepared.roster),
+                required_checks: crate::intelligence::required(&prepared.policy.intelligence, &snapshot.profile),
+                decision_status: if req.decision_override.is_some() {
+                    RoutingStatus::Overridden
+                } else if prepared.fallback {
+                    RoutingStatus::Fallback
+                } else {
+                    RoutingStatus::Selected
+                },
+                override_reason: req.decision_override.clone(),
+                reason_codes: vec![if prepared.fallback { "router_unavailable_or_abstained".into() } else { "delivery_dispatch".into() }],
+                provider_decision_ids: prepared.records.iter().map(|r| r.id).collect(),
+            },
+        )
+    });
     let Roster { template, asked } = prepared.roster;
     let roles = checked_roles(app, slug, &agents, &ctx, &asked)?;
     let team_id = app.with_tracker(slug, |t| t.bus().free_id(&task.id))?;
@@ -2104,35 +2130,41 @@ pub fn spawn_team(app: &App, slug: &str, mut req: SpawnRequest) -> AppResult<gen
     spec.initiator = req.initiator.clone().or_else(|| crate::llm_key::initiator_of(app, slug, &req.by, Some(&task.id)));
     let system = Actor::new(req.by.name.clone(), if req.by.role == Role::Human { Role::Human } else { Role::Orchestrator });
     let created = app.with_tracker(slug, |t| {
-        let team = t.bus().create(
-            &req.by.name,
-            req.by.role.as_str(),
-            NewTeam {
-                id: team_id.clone(),
-                task: task.id.clone(),
-                template: spec.template.clone(),
-                cwd: cwd.clone(),
-                worktree: worktree.clone(),
-                members: members.clone(),
-                spec: Some(spec.to_value()),
-            },
-        )?;
-        assign_and_stage(t, &system, &team_id, worktree.as_ref(), &members, &ctx)?;
-        let epic = t.epic_context(&task.id)?.epic;
-        let k = Kickoff {
-            team: &team_id,
-            task: &task,
-            cwd: &cwd,
-            worktree: worktree.as_ref(),
-            spec: &spec,
-            agents: &agents,
-            note: req.note.as_deref(),
-            epic: epic.as_ref(),
-            joining: false,
-            docs: docs.as_deref(),
-        };
-        send_kickoffs(t, &team_id, &spec, &k)?;
-        Ok(team)
+        t.tx(|| {
+            let team = t.bus().create(
+                &req.by.name,
+                req.by.role.as_str(),
+                NewTeam {
+                    id: team_id.clone(),
+                    task: task.id.clone(),
+                    template: spec.template.clone(),
+                    cwd: cwd.clone(),
+                    worktree: worktree.clone(),
+                    members: members.clone(),
+                    spec: Some(spec.to_value()),
+                },
+            )?;
+            assign_and_stage(t, &system, &team_id, worktree.as_ref(), &members, &ctx)?;
+            if let Some((snapshot, plan)) = &applied_routing {
+                let attempt = t.begin_attempt(&req.by, &task.id)?;
+                t.append_routing(&req.by, &task.id, Some(attempt.id), *snapshot, &format!("dispatch:{team_id}"), plan)?;
+            }
+            let epic = t.epic_context(&task.id)?.epic;
+            let k = Kickoff {
+                team: &team_id,
+                task: &task,
+                cwd: &cwd,
+                worktree: worktree.as_ref(),
+                spec: &spec,
+                agents: &agents,
+                note: req.note.as_deref(),
+                epic: epic.as_ref(),
+                joining: false,
+                docs: docs.as_deref(),
+            };
+            send_kickoffs(t, &team_id, &spec, &k)?;
+            Ok(team)
+        })
     })?;
     app.wake_runtime.notify_one();
     for record in &prepared.records {

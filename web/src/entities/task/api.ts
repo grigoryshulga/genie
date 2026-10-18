@@ -94,3 +94,8 @@ export const useAddArtifact = () =>
 export async function fetchArtifact(task: string, n: number): Promise<{ name: string; kind: string; size: number; text?: string; mime?: string }> {
   return request("GET", `/api/tasks/${encodeURIComponent(task)}/artifacts/${n}`);
 }
+
+export const useTaskIntelligence = (id: string, enabled: boolean) => useQuery({
+  queryKey: ["intelligence", id], enabled,
+  queryFn: () => request<import("../../shared/api/generated/IntelligenceHistory.ts").IntelligenceHistory>("GET", `/api/tasks/${encodeURIComponent(id)}/intelligence`),
+});

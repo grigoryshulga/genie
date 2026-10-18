@@ -27,6 +27,7 @@ pub mod api;
 mod automations;
 mod decisions;
 mod docs;
+mod intelligence;
 mod mail;
 mod management;
 mod me;
@@ -364,6 +365,7 @@ pub fn catalog() -> &'static [Entry] {
         tasks::register(&mut all);
         teams::register(&mut all);
         decisions::register(&mut all);
+        intelligence::register(&mut all);
         mail::register(&mut all);
         management::register(&mut all);
         docs::register(&mut all);

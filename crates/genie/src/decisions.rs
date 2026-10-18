@@ -39,6 +39,7 @@ pub struct Profile {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct Policy {
+    pub intelligence: genie_core::intelligence::IntelligencePolicy,
     pub allow_external: bool,
     pub tool_enabled: bool,
     pub tool_roles: Vec<String>,
@@ -56,6 +57,7 @@ pub struct Policy {
 impl Default for Policy {
     fn default() -> Self {
         Self {
+            intelligence: Default::default(),
             allow_external: false,
             tool_enabled: false,
             tool_roles: vec!["orchestrator".into(), "analyst".into()],
@@ -186,6 +188,7 @@ pub fn policy(app: &App, project: &str) -> AppResult<Policy> {
 }
 
 pub fn validate_policy(app: &App, project: &str, p: &Policy) -> AppResult<()> {
+    crate::intelligence::validate_policy(app, project, &p.intelligence)?;
     let bad = |message: &str| AppError::Bad(message.into());
     if !(0.0..=1.0).contains(&p.min_confidence)
         || !(0.0..=1.0).contains(&p.min_margin)
