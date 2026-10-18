@@ -744,7 +744,7 @@ Routes in `crates/genie/src/http/observation.rs`, merged in `http::router`, unde
 
 `CaseView` (application layer, exported): `case: ObservationCase`, `contract: Option<ContractVersion>` (current), `contracts: Vec<ContractVersionInfo>` (`version`, `author`, `reason`, `created`), `armProblems: Vec<String>`, `deployments`, `evaluations` (newest 50, newest first), `incidents`, `followups`, `evidence` (newest 100, newest first).
 
-Status codes follow the existing mapping: domain `Invalid`/`NotFound`/`Denied` → 422, `AppError::Bad` → 400, `Forbidden` → 403, `Conflict` → 409. Unknown case → 422 `observation O-9 not found` (domain not-found, same as tasks).
+Status codes follow the existing mapping: domain `Invalid`/`NotFound` → 422; a domain `Denied` reaches HTTP as `Forbidden` → 403 (the service maps it); `AppError::Bad` → 400; `Conflict` → 409. Creating a case or a source returns 201. Unknown case → 422 `observation O-9 not found` (domain not-found, same as tasks).
 
 ## 16. CLI and MCP
 
