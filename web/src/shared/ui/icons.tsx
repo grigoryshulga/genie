@@ -114,11 +114,17 @@ export const Icon = {
       <path d="M8 1.5v4M8 10.5v4M1.5 8h4M10.5 8h4M3.4 3.4l2.2 2.2M10.4 10.4l2.2 2.2M12.6 3.4l-2.2 2.2M5.6 10.4l-2.2 2.2" />
     </svg>
   ),
-  /** genie mark: the logo in the sidebar and on public pages. */
-  mark: ({ size, ...p }: IconProps) => (
-    <svg {...stroke(size, p)}>
-      <path d="M8 2v3M8 11v3M2 8h3M11 8h3" />
-      <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none" />
+  /**
+   * genie mark: the logo in the sidebar and on public pages. The compound path
+   * is the smoke-shaped lowercase g of docs/assets/brand/genie-mark.svg, filled
+   * with the surrounding color (the tile behind it sets the periwinkle).
+   */
+  mark: ({ size = 16, ...p }: IconProps) => (
+    <svg width={size} height={size} viewBox="300 160 500 570" fill="currentColor" aria-hidden="true" {...p}>
+      <path
+        fillRule="evenodd"
+        d="M667 278C710 293 762 260 767 237C773 212 750 188 726 190C699 190 691 207 680 224C667 247 651 253 625 248C567 233 525 234 483 246C421 264 394 305 391 347C388 397 417 427 469 443L507 452C467 468 415 482 378 513C342 543 326 573 342 609C363 648 411 662 461 662C489 662 516 660 535 657C539 656 537 652 533 650C516 638 487 628 461 618C430 608 411 589 414 568C415 558 417 550 420 542C438 514 477 491 509 476C503 495 519 507 544 518C575 532 632 545 649 569C671 598 653 623 626 644C600 664 549 677 509 687C500 689 501 696 511 695C580 687 652 666 689 628C716 596 712 563 688 539C662 512 608 497 570 484C546 476 536 470 551 465C599 452 644 429 671 400C695 374 700 337 686 308C680 295 673 285 667 278ZM614 343C615 302 593 275 559 270C521 265 489 291 480 326C469 365 479 402 509 416C540 432 576 417 596 393C607 380 613 361 614 343Z"
+      />
     </svg>
   ),
   bolt: ({ size, ...p }: IconProps) => (

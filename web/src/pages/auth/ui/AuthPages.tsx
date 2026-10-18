@@ -11,7 +11,7 @@ function AuthCard({ title, sub, foot, children }: { title: string; sub?: string;
       <div className="auth-card">
         <div className="auth-head">
           <span className="logo-mark lg">
-            <Icon.mark size={22} />
+            <Icon.mark size={34} />
           </span>
           <h1>{title}</h1>
           {sub && <p className="auth-sub">{sub}</p>}

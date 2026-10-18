@@ -33,7 +33,7 @@ export function SettingsShell() {
       <nav className="sidebar" aria-label={title}>
         <div className={`project${many ? " switch" : ""}`} title={project ? (project.hasRepo ? "Проект с репозиторием кода" : "Проект без кода") : undefined}>
           <span className="logo-mark">
-            <Icon.mark size={15} />
+            <Icon.mark size={22} />
           </span>
           <span className="txt">
             <span className="name">{title}</span>

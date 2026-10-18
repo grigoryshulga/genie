@@ -1033,7 +1033,9 @@ body:has(.auth-page) { overflow: auto; }
 .fbtn.select { position: relative; }
 .fbtn.select select { field-sizing: content; appearance: none; border: 0; background: none; color: inherit; font: inherit; padding: 0 2px; max-width: 220px; outline: 0; cursor: pointer; }
 .fbtn.select select option { background: var(--bg-card); color: var(--text); }
-.fpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 240px; max-width: 340px; max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 6px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-card); box-shadow: var(--shadow); }
+/* Fixed, so the popover leaves the filter toolbar's horizontal scroll box, which
+   would otherwise clip it. FilterMenu sets --fpop-top/left/max from the button. */
+.fpop { position: fixed; top: var(--fpop-top, -9999px); left: var(--fpop-left, 8px); z-index: 20; min-width: 240px; max-width: 340px; max-height: var(--fpop-max, 60vh); overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 6px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-card); box-shadow: var(--shadow); }
 .fpop .fhead { padding: 6px 8px 4px; font-size: 11px; color: var(--muted); }
 .fpop .seg.full { margin: 2px 2px 6px; }
 .fpop .seg.full button { flex: 1; justify-content: center; }
