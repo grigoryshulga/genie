@@ -35,6 +35,8 @@ const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.Answe
 const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
 const NotificationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.NotificationsPage));
 const ProposalsPage = lazyPage(() => import("@/pages/platform").then((m) => m.ProposalsPage));
+const ObservationsPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationsPage));
+const ObservationPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationPage));
 const TaskDetail = lazyPage(() => import("@/widgets/task-detail").then((m) => m.TaskDetail));
 const CommandPalette = lazyPage(() => import("@/features/command-palette").then((m) => m.CommandPalette));
 const NewTaskDialog = lazyPage(() => import("@/features/create-task").then((m) => m.NewTaskDialog));
@@ -77,7 +79,7 @@ function Shell() {
   const teamRoute = location.pathname.startsWith("/team/");
   const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
-  const platformRoute = ["/automations", "/agents", "/notifications", "/statistics"].some((p) => location.pathname.startsWith(p));
+  const platformRoute = ["/automations", "/observation", "/agents", "/notifications", "/statistics"].some((p) => location.pathname.startsWith(p));
   // Pages without the task list or board: opening a task from the palette goes to the list.
   const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
@@ -337,6 +339,8 @@ export const router = createBrowserRouter([
           { path: "docs/edit", element: <DocsPage /> },
           { path: "docs/proposals", element: <ProposalsPage /> },
           { path: "automations", element: <AutomationsPage /> },
+          { path: "observations", element: <ObservationsPage /> },
+          { path: "observation/:caseId", element: <ObservationPage /> },
           { path: "agents", element: <AgentsPage /> },
           { path: "notifications", element: <NotificationsPage /> },
           { path: "statistics", element: <RequireServerAdmin><ServerStatisticsPage /></RequireServerAdmin> },
