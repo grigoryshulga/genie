@@ -3,6 +3,7 @@
 //! agents list the operations their role may use (`docs/platform/observation-plane.md` §16).
 
 use crate::common::Harness;
+use crate::common::fakemetrics;
 use genie::ops::{self, AgentKind, Auth, Cx, InProcess, Out};
 use genie_core::{Capability, Role};
 use serde_json::{Value, json};
@@ -243,4 +244,76 @@ fn command_tables_list_what_each_role_may_use() {
         let table = ops::command_table(kind, &caps(role));
         assert!(!table.contains("genie_observe"), "{role:?} lists observation commands:\n{table}");
     }
+}
+
+#[tokio::test]
+async fn the_lifecycle_commands_answer_on_the_command_line() {
+    let h = project().await;
+    let admin = cx(&h, Auth::Operator, true);
+    cli(&admin, &["task", "create", "Second part"]).await.unwrap();
+    let contract = guardrail_contract().to_string();
+    cli(&admin, &["observe", "create", "--title", "Checkout errors", "--policy", "guardrails", "--task", "G-1", "--contract", &contract])
+        .await
+        .unwrap();
+
+    let linked = cli(&admin, &["observe", "update", "O-1", "--title", "Checkout errors (v2)", "--add-task", "G-2"]).await.unwrap();
+    assert_eq!(linked.data["case"]["title"], "Checkout errors (v2)");
+    assert_eq!(linked.data["case"]["tasks"], json!(["G-1", "G-2"]));
+    let unlinked = cli(&admin, &["observe", "update", "O-1", "--remove-task", "G-1"]).await.unwrap();
+    assert_eq!(unlinked.data["case"]["tasks"], json!(["G-2"]));
+
+    cli(&admin, &["observe", "arm", "O-1"]).await.unwrap();
+    cli(&admin, &["observe", "start", "O-1"]).await.unwrap();
+    let asked = cli(&admin, &["observe", "evaluate", "O-1"]).await.unwrap();
+    assert_eq!(asked.data["case"]["evaluationRequested"], "manual", "{}", asked.text);
+    let final_ = cli(&admin, &["observe", "evaluate", "O-1", "--final"]).await.unwrap();
+    assert_eq!(final_.data["case"]["evaluationRequested"], "final", "a final request beats a manual one");
+
+    let deployed = cli(&admin, &["observe", "deploy", "O-1", "--ref", "v1.4.2", "--environment", "production"]).await.unwrap();
+    assert_eq!(deployed.data["deployments"][0]["ref"], "v1.4.2", "{}", deployed.text);
+    assert_eq!(deployed.data["deployments"][0]["environment"], "production");
+
+    let followed = cli(&admin, &["observe", "followup", "O-1", "--title", "Investigate checkout"]).await.unwrap();
+    assert_eq!(followed.data["followups"].as_array().map(Vec::len), Some(1), "{}", followed.text);
+
+    cli(&admin, &["observe", "create", "--title", "Superseded", "--policy", "guardrails", "--task", "G-1"]).await.unwrap();
+    let cancelled = cli(&admin, &["observe", "cancel", "O-2", "--reason", "superseded by O-1"]).await.unwrap();
+    assert_eq!(cancelled.data["case"]["status"], "cancelled", "{}", cancelled.text);
+    assert_eq!(cancelled.data["case"]["conclusion"], "superseded by O-1");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn source_tests_return_the_value_the_source_gives() {
+    let fake = fakemetrics::spawn(None).await;
+    fake.state.lock().respond(
+        "api_calls",
+        json!({ "status": "success", "data": { "resultType": "vector", "result": [{ "metric": {}, "value": [1760702400, "0.25"] }] } }),
+    );
+    let h = project().await;
+    let admin = cx(&h, Auth::Operator, true);
+    cli(&admin, &["observe", "source-add", "prom", "--kind", "prometheus", "--url", fake.url.as_str()]).await.unwrap();
+
+    let tested = cli(&admin, &["observe", "source-test", "prom", "--query", "sum(rate(api_calls[5m]))", "--window", "30m"]).await.unwrap();
+    assert_eq!(tested.data["value"], 0.25, "{}", tested.text);
+    assert_eq!(tested.data["query"], "sum(rate(api_calls[5m]))");
+    assert!(fake.state.lock().calls.iter().any(|c| c.url.contains("api_calls")), "the source was queried");
+}
+
+#[tokio::test]
+async fn secret_values_are_strings_from_the_command_line_and_never_stdin_over_mcp() {
+    let h = project().await;
+    let admin = cx(&h, Auth::Operator, true);
+    cli(&admin, &["observe", "source-add", "prom", "--kind", "prometheus", "--url", "http://127.0.0.1:9", "--auth", "bearer"])
+        .await
+        .unwrap();
+
+    let mcp = cx(&h, Auth::Operator, false);
+    let numeric = op(&mcp, "observe", "source-secret", json!({ "name": "prom", "value": 123456789 })).await.unwrap_err();
+    assert!(numeric.contains("value must be a string: the bearer token, or user:password"), "{numeric}");
+    assert!(!numeric.contains("123456789"), "the refused value is not echoed: {numeric}");
+    let dash = op(&mcp, "observe", "source-secret", json!({ "name": "prom", "value": "-" })).await.unwrap_err();
+    assert_eq!(dash, "`-` reads stdin on the command line only; pass the secret itself");
+
+    let blank = cli(&admin, &["observe", "source-secret", "prom", "--value", ""]).await.unwrap_err();
+    assert_eq!(blank, "stdin held no secret; pass --clear to remove the stored one");
 }

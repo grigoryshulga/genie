@@ -87,6 +87,16 @@ fn opt_key_text<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>
     }
 }
 
+/// A secret that must be a JSON string. Any other value is refused with a fixed message that never
+/// echoes it: a secret must not reach a log or an error message.
+fn opt_secret<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    match Value::deserialize(d)? {
+        Value::Null => Ok(None),
+        Value::String(text) => Ok(Some(text)),
+        _ => Err(serde::de::Error::custom("value must be a string: the bearer token, or user:password")),
+    }
+}
+
 /// A contract as JSON, given inline or read from a file (the command line only).
 fn read_contract(cx: &Cx, inline: Option<String>, file: Option<PathBuf>) -> Result<Option<Contract>, String> {
     cx.text(inline, file)?.map(|text| serde_json::from_str(&text).map_err(|e| format!("the contract must be JSON: {e}"))).transpose()
@@ -186,6 +196,7 @@ pub struct Update {
     #[serde(deserialize_with = "key_text")]
     #[schemars(with = "String")]
     pub id: String,
+    /// The new title (1 to 200 characters).
     #[arg(long)]
     #[serde(default)]
     pub title: Option<String>,
@@ -334,6 +345,7 @@ pub struct Cancel {
     #[serde(deserialize_with = "key_text")]
     #[schemars(with = "String")]
     pub id: String,
+    /// Why the case is cancelled; the reason becomes its conclusion.
     #[arg(long)]
     pub reason: String,
 }
@@ -359,9 +371,10 @@ pub struct Deploy {
     #[schemars(with = "String")]
     pub id: String,
     /// A commit SHA, tag or release name.
-    #[arg(long = "ref")]
+    #[arg(id = "ref", long = "ref")]
     #[serde(rename = "ref")]
     pub reference: String,
+    /// The environment deployed to, such as `production`.
     #[arg(long)]
     #[serde(default)]
     pub environment: Option<String>,
@@ -432,12 +445,14 @@ pub struct Report {
     /// The hypothesis or guardrail id of the contract.
     #[arg(long)]
     pub criterion: String,
+    /// The measured value (a finite number).
     #[arg(long, allow_hyphen_values = true)]
     pub value: f64,
     /// Overrides the baseline of the criterion for the change.
     #[arg(long, allow_hyphen_values = true)]
     #[serde(default)]
     pub baseline: Option<f64>,
+    /// How many samples the value covers, when known.
     #[arg(long)]
     #[serde(default)]
     pub samples: Option<i64>,
@@ -453,6 +468,7 @@ pub struct Report {
     #[arg(long)]
     #[serde(default)]
     pub to: Option<String>,
+    /// Where the value came from, for the people who read the record.
     #[arg(long)]
     #[serde(default)]
     pub note: Option<String>,
@@ -505,6 +521,7 @@ pub struct Resolve {
     #[serde(deserialize_with = "key_text")]
     #[schemars(with = "String")]
     pub id: String,
+    /// A note on the resolution (optional).
     #[arg(long)]
     #[serde(default)]
     pub note: Option<String>,
@@ -530,6 +547,7 @@ pub struct Dismiss {
     #[serde(deserialize_with = "key_text")]
     #[schemars(with = "String")]
     pub id: String,
+    /// Why the incident is a false positive (required).
     #[arg(long)]
     pub note: String,
 }
@@ -558,9 +576,11 @@ pub struct Followup {
     #[serde(default, deserialize_with = "opt_key_text")]
     #[schemars(with = "Option<String>")]
     pub incident: Option<String>,
+    /// The title of the task (default: derived from the incident or the case).
     #[arg(long)]
     #[serde(default)]
     pub title: Option<String>,
+    /// The description of the task (default: links to the case, its tasks and the incident evidence).
     #[arg(long)]
     #[serde(default)]
     pub description: Option<String>,
@@ -598,7 +618,7 @@ impl Op for Sources {
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceArgs {
-    /// The name the contracts use, such as `prom`.
+    /// The source's name, such as `prom`.
     #[arg(value_name = "NAME")]
     pub name: String,
     /// `prometheus` or `sentry`.
@@ -693,6 +713,7 @@ impl Op for SourceUpdate {
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceRemove {
+    /// The source's name, such as `prom`.
     #[arg(value_name = "NAME")]
     pub name: String,
 }
@@ -709,11 +730,12 @@ impl Op for SourceRemove {
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSecret {
+    /// The source's name, such as `prom`.
     #[arg(value_name = "NAME")]
     pub name: String,
-    /// The secret; `-` reads stdin. The secret is never printed back.
+    /// The secret: the bearer token, or `user:password`. `-` reads stdin (command line only). The secret is never printed back.
     #[arg(long, allow_hyphen_values = true, conflicts_with = "clear")]
-    #[serde(default)]
+    #[serde(default, deserialize_with = "opt_secret")]
     pub value: Option<String>,
     /// Remove the stored secret instead.
     #[arg(long, conflicts_with = "value")]
@@ -729,7 +751,13 @@ impl Op for SourceSecret {
         match (self.clear, self.value) {
             (true, None) => Ok(out(cx.call("DELETE", &path, None).await?)),
             (false, Some(value)) => {
+                if value == "-" && !cx.local {
+                    return Err("`-` reads stdin on the command line only; pass the secret itself".into());
+                }
                 let value = cx.text(Some(value), None)?.unwrap_or_default();
+                if value.trim().is_empty() {
+                    return Err("stdin held no secret; pass --clear to remove the stored one".into());
+                }
                 Ok(out(cx.send("PUT", &path, &SecretBody { value }).await?))
             }
             _ => Err("pass the secret as --value (`-` reads stdin), or --clear to remove the stored one".into()),
@@ -741,6 +769,7 @@ impl Op for SourceSecret {
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceTest {
+    /// The source's name, such as `prom`.
     #[arg(value_name = "NAME")]
     pub name: String,
     /// The query in the source's language (PromQL for prometheus).
