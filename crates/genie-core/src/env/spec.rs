@@ -398,16 +398,22 @@ pub fn resolve(
     let mut components = Vec::new();
     let mut requirements = vec![profile.requires.clone()];
     let mut repos_seen = BTreeSet::new();
+    // Components that could not be resolved: their steps are unknown, so a grant to them is not reported again.
+    let mut unresolved = BTreeSet::new();
     for c in &profile.components {
         if !repos_seen.insert(c.repo.as_str()) {
             push(&mut problems, format!("component {}: the repository has more than one component", c.repo));
         }
-        let Some(mount) = repos.iter().find(|r| r.name == c.repo).map(|r| r.mount.clone()) else {
+        let mount = repos.iter().find(|r| r.name == c.repo).map(|r| r.mount.clone());
+        if mount.is_none() {
             push(&mut problems, format!("component {}: the project has no repository named {}", c.repo, c.repo));
-            continue;
-        };
-        let Some((recipe, hash)) = recipes(&c.recipe) else {
+        }
+        let recipe = recipes(&c.recipe);
+        if recipe.is_none() {
             push(&mut problems, format!("component {}: no recipe named {}", c.repo, c.recipe));
+        }
+        let (Some(mount), Some((recipe, hash))) = (mount, recipe) else {
+            unresolved.insert(c.repo.as_str());
             continue;
         };
         requirements.push(recipe.requires.clone());
@@ -432,7 +438,9 @@ pub fn resolve(
             push(&mut problems, format!("secret {name}: the file {:?} must be an absolute path", grant.file));
         }
         for step in &grant.steps {
-            if step != "work" && !steps.contains(step) {
+            let owner = step.split_once('/').map(|(repo, _)| repo);
+            let known = step == "work" || steps.contains(step) || owner.is_some_and(|repo| unresolved.contains(repo));
+            if !known {
                 push(&mut problems, format!("secret {name}: {step} is not a step of this environment (use <repository>/<step> or work)"));
             }
         }
@@ -1235,6 +1243,22 @@ mod tests {
         assert_eq!(steps[0].secrets, vec![("npm_token".to_string(), "/run/secrets/npm".to_string())]);
         assert!(steps[1].secrets.is_empty());
         assert!(resolved.secrets.contains_key("deploy"), "work grants stay in the resolved profile");
+    }
+
+    #[test]
+    fn a_missing_repository_does_not_hide_a_missing_recipe_or_cascade_into_grants() {
+        let mut profile =
+            Profile { components: vec![component("gone", "missing-recipe"), component("api", "custom")], ..Default::default() };
+        profile.components[1].prepare.push(step("install", "make"));
+        profile.secrets.insert(
+            "token".into(),
+            SecretGrant { steps: vec!["gone/install".into(), "api/install".into(), "api/nope".into()], file: "/run/secrets/token".into() },
+        );
+        let p = problems(&profile, vec![recipe("custom")]);
+        assert!(has(&p, "component gone: the project has no repository named gone"), "{p:?}");
+        assert!(has(&p, "component gone: no recipe named missing-recipe"), "both problems of one component are reported: {p:?}");
+        assert!(has(&p, "secret token: api/nope is not a step"), "{p:?}");
+        assert!(!has(&p, "gone/install"), "a grant to an unresolved component is not a second problem: {p:?}");
     }
 
     #[test]
