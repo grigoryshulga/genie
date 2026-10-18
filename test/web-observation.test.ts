@@ -31,9 +31,11 @@ import {
   SOURCE_KIND_LABEL,
   SOURCE_NAME_PATTERN,
   SOURCE_STALE,
+  STATUS_DOT,
   STATUS_LABEL,
   type SourceDraft,
   caseActions,
+  caseDot,
   caseListQuery,
   contractTemplate,
   criterionChange,
@@ -519,4 +521,14 @@ test("a secret must fit its authorization: a token for bearer, login:password fo
   assert.equal(secretProblem("basic", "monitor:pass"), undefined);
   assert.match(secretProblem("basic", "monitor") ?? "", /двоеточие/);
   assert.match(secretProblem("basic", "") ?? "", /двоеточие/);
+});
+
+test("a concluded case's dot shows its result, and an open case's dot shows its status", () => {
+  assert.equal(caseDot({ status: "concluded", result: "confirmed" }), "ok");
+  assert.equal(caseDot({ status: "concluded", result: "negative" }), "failed");
+  assert.equal(caseDot({ status: "concluded", result: "inconclusive" }), "off");
+  assert.equal(caseDot({ status: "observing" }), STATUS_DOT.observing);
+  assert.equal(caseDot({ status: "waiting" }), "waiting");
+  assert.equal(caseDot({ status: "cancelled" }), "off");
+  assert.equal(STATUS_DOT.concluded, "", "a concluded case takes its dot from its result");
 });

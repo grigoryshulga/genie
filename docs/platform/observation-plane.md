@@ -305,7 +305,7 @@ proposed ──arm──▶ waiting ──start / all tasks done / deployment─
 | set contract | Manager in `proposed`/`waiting`; **person only** with non-empty `reason` in `observing`/`evaluating` | Valid for the policy; rejected in `concluded`/`cancelled` | New version `n+1`; `contractVersion = n+1` | `outcome.updated` (`contractVersion`, `reason`) |
 | arm: `proposed` → `waiting` | Manager | Contract exists; ≥ 1 linked task; no arm problems (below) | `armedAt`; if `start = tasks_done` and every linked task is `done`, start at once in the same transaction | `outcome.updated` (`status`) and maybe `observation.started` |
 | start: `waiting` → `observing` | Manager (any `start` mode); scheduler (`tasks_done`); deployment record (`deployment`) | Status `waiting` | Anchor = now (manual, tasks done) or the deployment's `at`; `nextGuardrailAt = anchor`; `nextEvaluationAt = anchor + minimumWindow` | `observation.started` |
-| request evaluation | Manager; `final` only by a person | Status `observing` | `evaluationRequested = manual` or `final` | `outcome.ready_for_evaluation` |
+| request evaluation | Manager; `final` only by a person | Status `observing` or `evaluating` (a request made during a pass is taken by the next one, §11.4) | `evaluationRequested = manual` or `final` | `outcome.ready_for_evaluation` |
 | evaluation (scheduler) | System | `observing`/`evaluating` | §11.4 | `outcome.evaluated` or `outcome.<result>` |
 | cancel | Manager | Not `concluded`/`cancelled`; reason non-empty | `conclusion = reason`; `observationCompletedAt` when it had started | `outcome.cancelled` |
 
@@ -320,11 +320,11 @@ The case view returns the same list as `armProblems` so the UI can explain a dis
 
 ### 6.3 Automatic start
 
-The scheduler's intake (§11.2) reads `task.status_changed` events with `to = "done"`. For each case in `waiting` with `start = tasks_done` linked to that task, it starts the case when **all** linked tasks are `done`. `cancelled` tasks do not count as done; a person can start the case manually.
+The scheduler's intake (§11.2) reads `task.status_changed` events with `to = "done"`. For each case in `waiting` with `start = tasks_done` linked to that task, it starts the case when **all** linked tasks are `done`. `cancelled` tasks do not count as done; a person can start the case manually. The same check runs in the transaction of a change to the linked tasks or a contract change that leaves a waiting case with only done tasks; the anchor is the time of that change, the caller's `now`.
 
 ### 6.4 Evaluation requests
 
-`evaluationRequested` holds the strongest pending request: `final` beats `manual`. The scheduler clears it after the evaluation is recorded.
+`evaluationRequested` holds the strongest pending request: `final` beats `manual`. An evaluation pass clears the request it read, and keeps any request that arrived while it ran (§11.4, step 5).
 
 ### 6.5 Deployments
 
@@ -500,7 +500,7 @@ Per project, cursor name `observation`: read events after the cursor (batches of
 1. **Snapshot** (tracker lock): case, current contract, latest usable baseline per criterion.
 2. **Sources** (server lock): the project's source configs and secrets for the criteria to collect.
 3. **Baselines**: for each criterion that needs a baseline and has none, measure the baseline window (§7.2).
-4. **Guardrails** when `nextGuardrailAt ≤ now`: measure every non-manual guardrail over its window. A window that is still empty (the first pass at the anchor) is skipped; only the schedule advances.
+4. **Guardrails** when `nextGuardrailAt ≤ now`: measure every non-manual guardrail over its window. A window shorter than one second (the first pass at the anchor; the stored anchor has millisecond precision, so a pass a few milliseconds after it sees such a window) is skipped; only the schedule advances.
 5. **Write** (one tracker transaction, conditional on the case still being `observing`/`evaluating`): insert the records; run `check_guardrail` on new observed guardrail records and open incidents; set `nextGuardrailAt = now + guardrailInterval`; set `failures` to 0 when every measurement succeeded, else increment it and store `lastError`; write one `evidence.collected` event (`{ case, records, errors }`) when any record was inserted.
 6. **Side effects after commit**: notifications for new incidents; automatic follow-ups (§10.2); when `failures` reaches 3, notify project admins once per streak (dedupe key `observation-failures:<project>:<case>:<armedAt>:<streak>`, where `<streak>` identifies the alerting pass, so a later streak alerts again). An alert has kind `observation.failing`.
 7. **Evaluation** when `nextEvaluationAt ≤ now` or requested (§11.4).
@@ -513,9 +513,9 @@ Steps 2–4 run without any database lock; adapters run with `state::block_on`. 
 2. Trigger: requested `final` → `final`; requested `manual` → `manual`; `now ≥ anchor + preferredWindow` → `final`; else `window`.
 3. Measure every non-manual hypothesis over `[A, now]` (and its samples query); store the records as in §11.3 step 5.
 4. Load the current version's records and the violated guardrails; call `evaluate`.
-5. `finish_evaluation` in one transaction: insert the `Evaluation`; clear `evaluationRequested`; then
-   - `insufficient` → status `observing`, `nextEvaluationAt = min(now + evaluationInterval, anchor + preferredWindow)`, event `outcome.evaluated`;
-   - otherwise → status `concluded`, `result`, `confidence`, `conclusion = summary`, `observationCompletedAt = now`, `nextEvaluationAt`/`nextGuardrailAt` cleared, event `outcome.confirmed`, `outcome.negative`, or `outcome.inconclusive`.
+5. `finish_evaluation` in one transaction: insert the `Evaluation`; then
+   - `insufficient` → status `observing`, `nextEvaluationAt = min(now + evaluationInterval, anchor + preferredWindow)`, `evaluationRequested` cleared only when it still equals the request the pass read (a `final` that arrived during the pass stays for the next pass), event `outcome.evaluated`;
+   - otherwise → status `concluded`, `result`, `confidence`, `conclusion = summary`, `observationCompletedAt = now`, `nextEvaluationAt`/`nextGuardrailAt`/`evaluationRequested` cleared, event `outcome.confirmed`, `outcome.negative`, or `outcome.inconclusive`.
    If the case is no longer `evaluating` (cancelled meanwhile), or its contract was revised after the pass read it, write nothing and return; the revised contract is evaluated on a later pass. Collections apply the same version check (D8).
 6. After a conclusion: notify project admins and the case author; mail the project manager with the summary and the follow-up command.
 

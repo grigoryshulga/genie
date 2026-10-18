@@ -328,10 +328,15 @@ struct Want {
     adapter: Option<SourceKind>,
 }
 
+/// The shortest observed guardrail window that is measured. The anchor is stored with millisecond
+/// precision (§4.2) while a pass runs at its own time, so a window of a few milliseconds after the
+/// anchor is an artifact of the storage, not observation: such a check is only scheduled.
+const MIN_OBSERVED_WINDOW: Duration = Duration::seconds(1);
+
 /// The measurements a pass takes (§11.3 steps 3, 4 and 7): a missing baseline, the guardrails when
 /// their check is due, and the hypotheses when the case is evaluated. Manual criteria are never
-/// measured (§7.1). Windows follow §7.2. An observed guardrail window that is empty, as at the
-/// anchor, has nothing to observe yet: the check is only scheduled.
+/// measured (§7.1). Windows follow §7.2. An observed guardrail window shorter than
+/// `MIN_OBSERVED_WINDOW`, as at the anchor, has nothing to observe yet: the check is only scheduled.
 fn wanted(contract: &Contract, sources: &Sources, baselines: &BTreeMap<String, f64>, times: &Times) -> AppResult<Vec<Want>> {
     let mut wants = Vec::new();
     for c in criteria(contract).into_iter().filter(|c| c.source != MANUAL) {
@@ -342,7 +347,7 @@ fn wanted(contract: &Contract, sources: &Sources, baselines: &BTreeMap<String, f
         }
         if c.kind == CriterionKind::Guardrail && times.guardrails_due {
             let start = times.anchor.max(sub_from(times.end, times.guardrail_window, &times.key)?);
-            if start < times.end {
+            if times.end - start >= MIN_OBSERVED_WINDOW {
                 wants.push(want(&c, adapter, EvidencePhase::Observed, Span { start, end: times.end }, None));
             }
         }
@@ -442,8 +447,11 @@ fn evaluate_case(
     let outcome =
         evaluate::evaluate(&EvalInput { policy: case.policy, contract, anchor, now, trigger, evidence: &evidence, violated: &violated });
     let actor = scheduler_actor();
-    let concluded =
-        app.with_tracker(project, |t| t.observation().finish_evaluation(&actor, case.id, &outcome, trigger, case.contract_version, now))?;
+    // The request this pass read is the one it consumes; a request that arrived since stays (§6.4).
+    let consumed = case.evaluation_requested;
+    let concluded = app.with_tracker(project, |t| {
+        t.observation().finish_evaluation(&actor, case.id, &outcome, trigger, case.contract_version, consumed, now)
+    })?;
     if let Some(done) = concluded.filter(|c| c.status == CaseStatus::Concluded)
         && let Err(e) = service::notify_concluded(app, project, &done)
     {

@@ -26,7 +26,7 @@ import {
   POLICY_LABEL,
   RESULT_LABEL,
   START_LABEL,
-  STATUS_DOT,
+  caseDot,
   STATUS_LABEL,
   TRIGGER_LABEL,
   TRUST_LABEL,
@@ -181,7 +181,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
             <dt>{FIELD_LABEL.status}</dt>
             <dd>
               <span className="obs-status">
-                <span className={`state-dot ${STATUS_DOT[c.status]}`} aria-hidden="true" />
+                <span className={`state-dot ${caseDot(c)}`} aria-hidden="true" />
                 {STATUS_LABEL[c.status]}
                 {c.result && ` · ${RESULT_LABEL[c.result]}`}
               </span>

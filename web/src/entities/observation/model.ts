@@ -160,15 +160,31 @@ export const FIELD_LABEL = {
   startOn: "Старт",
 } as const;
 
-/** The dot before a case status, by the colours the other lists use for the same meaning. */
+/**
+ * The dot before a case status, by the colours the other lists use for the same meaning. A
+ * concluded case has no dot here: its dot comes from its result (`caseDot`).
+ */
 export const STATUS_DOT: Record<CaseStatus, string> = {
   proposed: "",
   waiting: "waiting",
   observing: "running",
   evaluating: "running",
-  concluded: "ok",
+  concluded: "",
   cancelled: "off",
 };
+
+/** The dot of a concluded case's result: confirmed is ok, negative the error colour, inconclusive neutral. */
+export const RESULT_DOT: Record<CaseResult, string> = {
+  confirmed: "ok",
+  negative: "failed",
+  inconclusive: "off",
+};
+
+/** The dot of a case: its result once it has concluded, otherwise its status dot. */
+export function caseDot(c: Pick<ObservationCase, "status" | "result">): string {
+  if (c.status === "concluded" && c.result) return RESULT_DOT[c.result];
+  return STATUS_DOT[c.status];
+}
 
 // --- status and permissions (§6.1, §14) --------------------------------------------------------------
 

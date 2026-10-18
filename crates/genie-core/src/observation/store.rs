@@ -7,9 +7,9 @@
 //! Each change and its journal event (§12) commit in one transaction (`Tracker::tx`).
 //!
 //! The operations live on [`Observation`], reached through [`Tracker::observation`]. Writes that
-//! take no `now` parameter (create, update, set_contract, start, request_evaluation, open_incident,
-//! resolve and dismiss, add_followup) stamp their times with the current time; every other
-//! time-dependent rule takes `now` from the caller.
+//! take no `now` parameter (create, request_evaluation, open_incident, resolve and dismiss,
+//! add_followup) stamp their times with the current time; every other time-dependent rule takes
+//! `now` from the caller, including a start that an update or a contract change causes (§6.2, §6.3).
 
 use std::collections::BTreeSet;
 
@@ -227,8 +227,9 @@ impl Observation<'_> {
     }
 
     /// Changes the title in `proposed`, `waiting` or `observing`; the policy and the tasks only in
-    /// `proposed` or `waiting` (§6.2). A policy change re-validates the current contract.
-    pub fn update(&self, actor: &Actor, id: i64, patch: CasePatch) -> Result<ObservationCase> {
+    /// `proposed` or `waiting` (§6.2). A policy change re-validates the current contract. A change
+    /// that leaves a waiting case with only done tasks starts it at `now` (§6.3).
+    pub fn update(&self, actor: &Actor, id: i64, patch: CasePatch, now: DateTime<Utc>) -> Result<ObservationCase> {
         self.0.tx(|| {
             let case = self.get(id)?;
             let open = matches!(case.status, CaseStatus::Proposed | CaseStatus::Waiting);
@@ -287,7 +288,7 @@ impl Observation<'_> {
             self.emit(actor, id, events::OUTCOME_UPDATED, &changes)?;
             // Removing the open task of a waiting case can leave every linked task done (§6.2, §6.3).
             if tasks_changed && case.status == CaseStatus::Waiting {
-                self.start_if_tasks_done(actor, id, &stamp)?;
+                self.start_if_tasks_done(actor, id, &stamp, now)?;
             }
             self.get(id)
         })
@@ -296,7 +297,8 @@ impl Observation<'_> {
     /// Sets a new contract version. In `proposed` or `waiting` any manager may do it. After the
     /// observation started (`observing`, `evaluating`) only a person may, with a reason, and the
     /// older versions are kept (§6.2, D8). A concluded or cancelled case has no contract changes.
-    pub fn set_contract(&self, actor: &Actor, id: i64, contract: &Contract, reason: &str) -> Result<ObservationCase> {
+    /// A waiting case whose new contract starts on done tasks starts at `now`.
+    pub fn set_contract(&self, actor: &Actor, id: i64, contract: &Contract, reason: &str, now: DateTime<Utc>) -> Result<ObservationCase> {
         self.0.tx(|| {
             let case = self.get(id)?;
             let reason = reason.trim();
@@ -335,7 +337,7 @@ impl Observation<'_> {
             self.emit(actor, id, events::OUTCOME_UPDATED, &[("contractVersion", json!(version)), ("reason", json!(stored_reason))])?;
             // A waiting case whose new contract starts on done tasks starts at once (§6.2).
             if case.status == CaseStatus::Waiting {
-                self.start_if_tasks_done(actor, id, &stamp)?;
+                self.start_if_tasks_done(actor, id, &stamp, now)?;
             }
             self.get(id)
         })
@@ -500,17 +502,18 @@ impl Observation<'_> {
         Ok(deployments)
     }
 
-    /// Asks the scheduler to evaluate an observing case at its next pass. A `final` request is
-    /// a person's and beats a `manual` one (§6.4).
+    /// Asks the scheduler to evaluate an observing or evaluating case at its next pass. A request
+    /// made during a pass survives that pass's `finish_evaluation` unless the pass concluded the
+    /// case, so the next pass takes it. A `final` request is a person's and beats a `manual` one (§6.4).
     pub fn request_evaluation(&self, actor: &Actor, id: i64, final_: bool) -> Result<ObservationCase> {
         if final_ && actor.role != Role::Human {
             return Err(GenieError::Denied("only a person may request a final evaluation".into()));
         }
         self.0.tx(|| {
             let case = self.get(id)?;
-            if case.status != CaseStatus::Observing {
+            if !matches!(case.status, CaseStatus::Observing | CaseStatus::Evaluating) {
                 return Err(GenieError::invalid(format!(
-                    "an evaluation can be requested only while the case is observing; {} is {}",
+                    "an evaluation can be requested only while the case is observing or evaluating; {} is {}",
                     case.key, case.status
                 )));
             }
@@ -603,13 +606,13 @@ impl Observation<'_> {
     }
 
     /// Starts a waiting case whose contract starts on `tasks_done` once every linked task is done,
-    /// anchored at the current time. This is the arming rule (§6.2), re-checked after a task or
-    /// contract change. Writes nothing when the case stays waiting.
-    fn start_if_tasks_done(&self, actor: &Actor, id: i64, stamp: &str) -> Result<()> {
+    /// anchored at `now`, the caller's time. This is the arming rule (§6.2), re-checked after a task
+    /// or contract change. Writes nothing when the case stays waiting.
+    fn start_if_tasks_done(&self, actor: &Actor, id: i64, stamp: &str, now: DateTime<Utc>) -> Result<()> {
         let case = self.get(id)?;
         let Some(contract) = self.current_contract(&case)? else { return Ok(()) };
         if contract.observation.start == StartOn::TasksDone && self.all_tasks_done(id)? {
-            self.begin(actor, &case, &contract, wall_clock(), StartOn::TasksDone, stamp)?;
+            self.begin(actor, &case, &contract, now, StartOn::TasksDone, stamp)?;
         }
         Ok(())
     }
@@ -812,11 +815,15 @@ impl Observation<'_> {
 
     /// Records an evaluation and applies its verdict (§11.4 step 5). Returns `None`, and writes
     /// nothing, unless the case is still `evaluating` (for instance cancelled meanwhile). The
-    /// evaluation is stored and the request cleared. `insufficient` keeps the case observing and
-    /// schedules the next evaluation at the earlier of one interval later and the preferred window;
-    /// any other verdict concludes the case with its result, confidence and summary. `contract_version`
-    /// is the version the verdict was computed under: when the case has moved to another version
-    /// since, the outcome is stale and nothing is written.
+    /// evaluation is stored. `consumed` is the evaluation request the pass read before it began
+    /// (`None` when there was none): an `insufficient` verdict clears the request only while it
+    /// still equals `consumed`, so a request that arrived during the pass (a person's `final`, say)
+    /// is kept for the next pass. `insufficient` keeps the case observing and schedules the next
+    /// evaluation at the earlier of one interval later and the preferred window; any other verdict
+    /// concludes the case with its result, confidence and summary, which answers every request.
+    /// `contract_version` is the version the verdict was computed under: when the case has moved to
+    /// another version since, the outcome is stale and nothing is written.
+    #[allow(clippy::too_many_arguments)]
     pub fn finish_evaluation(
         &self,
         actor: &Actor,
@@ -824,6 +831,7 @@ impl Observation<'_> {
         outcome: &EvalOutcome,
         trigger: EvalTrigger,
         contract_version: i64,
+        consumed: Option<EvalTrigger>,
         now: DateTime<Utc>,
     ) -> Result<Option<ObservationCase>> {
         self.0.tx(|| {
@@ -856,9 +864,10 @@ impl Observation<'_> {
                     let next = next_evaluation(&case, &contract, now)?;
                     self.0.conn().execute(
                         "UPDATE observation_cases
-                         SET status = 'observing', next_evaluation_at = ?1, evaluation_requested = NULL, updated = ?2
-                         WHERE id = ?3",
-                        params![ts(next), stamp, id],
+                         SET status = 'observing', next_evaluation_at = ?1, updated = ?2,
+                             evaluation_requested = CASE WHEN evaluation_requested IS ?3 THEN NULL ELSE evaluation_requested END
+                         WHERE id = ?4",
+                        params![ts(next), stamp, consumed, id],
                     )?;
                     self.emit(
                         actor,

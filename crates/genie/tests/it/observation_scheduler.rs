@@ -314,6 +314,33 @@ async fn the_first_pass_collects_baselines_then_guardrails_in_the_windows_of_sec
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_guardrail_window_shorter_than_a_second_after_the_anchor_is_only_scheduled() {
+    let fake = fakemetrics::spawn(None).await;
+    fake.state.lock().respond("errors", vector("40"));
+    let (h, task) = project();
+    service::add_source(&h.app, PROJECT, &person(), source("metrics", &fake.url)).unwrap();
+    let id = observing(
+        &h,
+        &task,
+        ObservationPolicy::Guardrails,
+        contract(json!({
+            "guardrails": [{ "id": "errors", "source": "metrics", "query": "sum(rate(errors[$__range]))", "max": 50 }],
+            "observation": { "minimumWindow": "24h" }
+        })),
+    );
+
+    // The anchor is stored with millisecond precision while a pass runs at its own time, so the pass
+    // 5 ms after the anchor sees a 5 ms window. That is not observation: nothing is asked, nothing is
+    // stored, and the next check is one interval on.
+    let at = now() + Duration::milliseconds(5);
+    pass(&h, at).await;
+    assert!(calls(&fake).is_empty(), "{:?}", calls(&fake));
+    assert!(evidence(&h, id).is_empty());
+    assert_eq!(case(&h, id).next_guardrail_at, Some(ts(at + Duration::minutes(15))));
+    assert_eq!(case(&h, id).failures, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_violating_guardrail_opens_one_incident_across_passes_and_files_one_follow_up() {
     let fake = fakemetrics::spawn(None).await;
     fake.state.lock().respond("latency_ms", vector("61"));
@@ -490,7 +517,7 @@ fn a_case_cancelled_during_an_evaluation_is_never_written_by_it() {
     let scheduler_actor = Actor::new("genie", Role::Orchestrator);
     let stored = h
         .app
-        .with_tracker(PROJECT, |t| t.observation().finish_evaluation(&scheduler_actor, id, &outcome, EvalTrigger::Final, 1, now()))
+        .with_tracker(PROJECT, |t| t.observation().finish_evaluation(&scheduler_actor, id, &outcome, EvalTrigger::Final, 1, None, now()))
         .unwrap();
     assert!(stored.is_none());
     let cancelled = view(&h, id);

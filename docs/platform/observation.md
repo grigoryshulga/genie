@@ -227,7 +227,7 @@ Add `--json` to any command for the API response.
 
 ## Automations and journal events
 
-Every observation event has the subject `observation:<id>`, not a task. The automation engine therefore has no `task` context for these events: read the payload instead. Payload fields are available as top-level template fields and under `event.payload`. The event names are listed in [automations](automations.md#triggers). Payload details are in §12 of the [specification](observation-plane.md).
+Every observation event has the subject `observation:<id>`, not a task, so the automation engine finds no task for it and `task` is `null` in the templates (and in `event.task`). Payload fields are top-level template fields under their own names, with one exception: `task` is always the engine's task context, so a payload `task` is hidden at the top level. `followup_task.created`, for example, carries the created follow-up task in its `task` field, which is read as `event.payload.task`. Read payload fields under `event.payload` when in doubt. The event names are listed in [automations](automations.md#triggers). Payload details are in §12 of the [specification](observation-plane.md).
 
 For example, to notify the project's administrators when an incident opens:
 

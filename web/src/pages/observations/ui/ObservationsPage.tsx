@@ -10,7 +10,7 @@ import {
   OBSERVATION_TEXT,
   POLICY_LABEL,
   RESULT_LABEL,
-  STATUS_DOT,
+  caseDot,
   STATUS_LABEL,
   useObservationCases,
   useObservationIncidents,
@@ -97,7 +97,7 @@ export function ObservationsPage() {
                         <td>{POLICY_LABEL[c.policy]}</td>
                         <td>
                           <span className="obs-status">
-                            <span className={`state-dot ${STATUS_DOT[c.status]}`} aria-hidden="true" />
+                            <span className={`state-dot ${caseDot(c)}`} aria-hidden="true" />
                             {STATUS_LABEL[c.status]}
                             {c.result && ` · ${RESULT_LABEL[c.result]}`}
                           </span>

@@ -234,7 +234,7 @@ fn an_unknown_task_is_rejected_by_name() {
         "task G-99 not found",
     );
     let case = guard_case(&t, &[]);
-    expect_err(o.update(&me(), case.id, CasePatch { add_tasks: vec!["G-98".into()], ..Default::default() }), "task G-98 not found");
+    expect_err(o.update(&me(), case.id, CasePatch { add_tasks: vec!["G-98".into()], ..Default::default() }, now()), "task G-98 not found");
 }
 
 #[test]
@@ -269,6 +269,7 @@ fn update_changes_each_field_in_the_statuses_that_allow_it() {
                 add_tasks: vec![b.clone()],
                 remove_tasks: vec![a.clone()],
             },
+            now(),
         )
         .unwrap();
     assert_eq!(updated.title, "Latency of checkout");
@@ -281,7 +282,7 @@ fn update_changes_each_field_in_the_statuses_that_allow_it() {
     assert_eq!(last.payload["tasks"], json!([b]));
     // A patch that changes nothing writes no event.
     let events_before = kinds(&t, case.id).len();
-    let unchanged = o.update(&me(), case.id, CasePatch { title: Some("Latency of checkout".into()), ..Default::default() }).unwrap();
+    let unchanged = o.update(&me(), case.id, CasePatch { title: Some("Latency of checkout".into()), ..Default::default() }, now()).unwrap();
     assert_eq!(unchanged.title, "Latency of checkout");
     assert_eq!(kinds(&t, case.id).len(), events_before, "an unchanged title writes no event");
 
@@ -290,7 +291,7 @@ fn update_changes_each_field_in_the_statuses_that_allow_it() {
         .create(&me(), NewCase { title: "V".into(), policy: ObservationPolicy::Verify, tasks: vec![], contract: Some(verify_contract()) })
         .unwrap();
     expect_err(
-        o.update(&me(), verify.id, CasePatch { policy: Some(ObservationPolicy::Guardrails), ..Default::default() }),
+        o.update(&me(), verify.id, CasePatch { policy: Some(ObservationPolicy::Guardrails), ..Default::default() }, now()),
         "contract is invalid: hypotheses: the guardrails policy takes no hypotheses; use the verify policy; \
          guardrails: the guardrails policy needs at least one guardrail",
     );
@@ -299,20 +300,21 @@ fn update_changes_each_field_in_the_statuses_that_allow_it() {
     // Waiting: the title and the task links may still change.
     let waiting = armed_case(&t, &a);
     assert_eq!(waiting.status, CaseStatus::Waiting);
-    let linked =
-        o.update(&me(), waiting.id, CasePatch { title: Some("Waiting".into()), add_tasks: vec![b.clone()], ..Default::default() }).unwrap();
+    let linked = o
+        .update(&me(), waiting.id, CasePatch { title: Some("Waiting".into()), add_tasks: vec![b.clone()], ..Default::default() }, now())
+        .unwrap();
     assert_eq!((linked.title.as_str(), linked.tasks.len(), linked.status), ("Waiting", 2, CaseStatus::Waiting));
 
     // Observing: only the title.
     let observing = observing_case(&t, &b);
     assert_eq!(observing.status, CaseStatus::Observing);
-    assert_eq!(o.update(&me(), observing.id, CasePatch { title: Some("Live".into()), ..Default::default() }).unwrap().title, "Live");
+    assert_eq!(o.update(&me(), observing.id, CasePatch { title: Some("Live".into()), ..Default::default() }, now()).unwrap().title, "Live");
     expect_err(
-        o.update(&me(), observing.id, CasePatch { policy: Some(ObservationPolicy::Verify), ..Default::default() }),
+        o.update(&me(), observing.id, CasePatch { policy: Some(ObservationPolicy::Verify), ..Default::default() }, now()),
         &format!("the policy and the tasks can change only while the case is proposed or waiting; O-{} is observing", observing.id),
     );
     expect_err(
-        o.update(&me(), observing.id, CasePatch { add_tasks: vec![a.clone()], ..Default::default() }),
+        o.update(&me(), observing.id, CasePatch { add_tasks: vec![a.clone()], ..Default::default() }, now()),
         &format!("the policy and the tasks can change only while the case is proposed or waiting; O-{} is observing", observing.id),
     );
 
@@ -320,11 +322,11 @@ fn update_changes_each_field_in_the_statuses_that_allow_it() {
     let cancelled = guard_case(&t, &[]);
     o.cancel(&me(), cancelled.id, "not needed", now()).unwrap();
     expect_err(
-        o.update(&me(), cancelled.id, CasePatch { title: Some("Late".into()), ..Default::default() }),
+        o.update(&me(), cancelled.id, CasePatch { title: Some("Late".into()), ..Default::default() }, now()),
         &format!("the title can change only while the case is proposed, waiting or observing; O-{} is cancelled", cancelled.id),
     );
     expect_err(
-        o.update(&me(), cancelled.id, CasePatch { title: Some("".into()), ..Default::default() }),
+        o.update(&me(), cancelled.id, CasePatch { title: Some("".into()), ..Default::default() }, now()),
         &format!("the title can change only while the case is proposed, waiting or observing; O-{} is cancelled", cancelled.id),
     );
 }
@@ -342,22 +344,25 @@ fn contract_versions_increment_and_an_agent_cannot_revise_after_the_start() {
         "guardrails": [{ "id": "error_rate", "source": "prom", "query": "rate(errors[$__range])", "maxChange": "+0.05pp" }],
         "observation": { "minimumWindow": "24h" }
     }));
-    let v2 = o.set_contract(&pm(), case.id, &tighter, "").unwrap();
+    let v2 = o.set_contract(&pm(), case.id, &tighter, "", now()).unwrap();
     assert_eq!(v2.contract_version, 2);
     o.arm(&me(), case.id, now()).unwrap();
     o.start(&me(), case.id, now(), StartOn::Manual).unwrap();
 
     expect_denied(
-        o.set_contract(&pm(), case.id, &verify_contract(), "agent reason"),
+        o.set_contract(&pm(), case.id, &verify_contract(), "agent reason", now()),
         "only a person may revise the contract after observation starts",
     );
-    expect_err(o.set_contract(&me(), case.id, &verify_contract(), "   "), "a contract revision after observation starts needs a reason");
     expect_err(
-        o.set_contract(&me(), case.id, &contract_of(json!({ "observation": { "minimumWindow": "1h" } })), "widen"),
+        o.set_contract(&me(), case.id, &verify_contract(), "   ", now()),
+        "a contract revision after observation starts needs a reason",
+    );
+    expect_err(
+        o.set_contract(&me(), case.id, &contract_of(json!({ "observation": { "minimumWindow": "1h" } })), "widen", now()),
         "contract is invalid: guardrails: the guardrails policy needs at least one guardrail",
     );
 
-    let v3 = o.set_contract(&me(), case.id, &guard_contract(), "  the limit was too tight  ").unwrap();
+    let v3 = o.set_contract(&me(), case.id, &guard_contract(), "  the limit was too tight  ", now()).unwrap();
     assert_eq!(v3.contract_version, 3);
     let history = o.contracts(case.id).unwrap();
     assert_eq!(history.iter().map(|v| v.version).collect::<Vec<_>>(), [1, 2, 3]);
@@ -378,7 +383,7 @@ fn contract_versions_increment_and_an_agent_cannot_revise_after_the_start() {
     // A concluded or cancelled case has no contract changes.
     o.cancel(&me(), case.id, "stop", now()).unwrap();
     expect_err(
-        o.set_contract(&me(), case.id, &guard_contract(), "later"),
+        o.set_contract(&me(), case.id, &guard_contract(), "later", now()),
         &format!("O-{} is cancelled; its contract cannot change", case.id),
     );
 }
@@ -400,7 +405,7 @@ fn arming_needs_a_contract_and_a_task_and_leaves_no_trace_when_refused() {
     assert_eq!(o.get(no_task.id).unwrap().status, CaseStatus::Proposed);
     assert_eq!(kinds(&t, no_task.id).len(), before, "a refused arm writes no event");
 
-    o.update(&me(), no_task.id, CasePatch { add_tasks: vec![task.clone()], ..Default::default() }).unwrap();
+    o.update(&me(), no_task.id, CasePatch { add_tasks: vec![task.clone()], ..Default::default() }, now()).unwrap();
     let armed = o.arm(&me(), no_task.id, now()).unwrap();
     assert_eq!(armed.status, CaseStatus::Waiting);
     assert_eq!(armed.armed_at.as_deref(), Some(NOW));
@@ -638,7 +643,7 @@ fn request_evaluation_keeps_final_over_manual_and_only_a_person_asks_for_final()
     let waiting = armed_case(&t, &new_task(&t, "Later"));
     expect_err(
         o.request_evaluation(&me(), waiting.id, false),
-        &format!("an evaluation can be requested only while the case is observing; O-{} is waiting", waiting.id),
+        &format!("an evaluation can be requested only while the case is observing or evaluating; O-{} is waiting", waiting.id),
     );
 }
 
@@ -694,13 +699,13 @@ fn every_operation_appends_its_journal_event_with_the_case_subject() {
     let other = new_task(&t, "Other");
 
     let case = guard_case(&t, &[&task]);
-    o.update(&me(), case.id, CasePatch { title: Some("Renamed".into()), ..Default::default() }).unwrap();
-    o.set_contract(&pm(), case.id, &guard_contract(), "").unwrap();
+    o.update(&me(), case.id, CasePatch { title: Some("Renamed".into()), ..Default::default() }, now()).unwrap();
+    o.set_contract(&pm(), case.id, &guard_contract(), "", now()).unwrap();
     o.arm(&me(), case.id, now()).unwrap();
     o.start(&me(), case.id, now(), StartOn::Manual).unwrap();
     o.record_deployment(&pm(), case.id, NewDeployment { reference: "v1".into(), environment: "prod".into(), at: now() }, now()).unwrap();
     o.request_evaluation(&me(), case.id, false).unwrap();
-    o.set_contract(&me(), case.id, &guard_contract(), "tighten").unwrap();
+    o.set_contract(&me(), case.id, &guard_contract(), "tighten", now()).unwrap();
     o.cancel(&me(), case.id, "done", now()).unwrap();
     // Another case's events do not show up in this one's journal.
     let second = guard_case(&t, &[&other]);
@@ -747,7 +752,7 @@ fn a_rejected_operation_writes_neither_state_nor_event() {
     let before = kinds(&t, case.id);
 
     expect_denied(
-        o.set_contract(&pm(), case.id, &guard_contract(), "agent reason"),
+        o.set_contract(&pm(), case.id, &guard_contract(), "agent reason", now()),
         "only a person may revise the contract after observation starts",
     );
     expect_denied(o.request_evaluation(&pm(), case.id, true), "only a person may request a final evaluation");
@@ -808,15 +813,14 @@ fn a_waiting_case_starts_when_removing_its_open_task_leaves_only_done_tasks() {
     let case = guard_case(&t, &[&done, &open]);
     assert_eq!(o.arm(&me(), case.id, now()).unwrap().status, CaseStatus::Waiting);
 
-    let started = o.update(&me(), case.id, CasePatch { remove_tasks: vec![open.clone()], ..Default::default() }).unwrap();
+    // The change is made 30 minutes after arming: the anchor is the caller's time of the change.
+    let changed = now() + Duration::minutes(30);
+    let started = o.update(&me(), case.id, CasePatch { remove_tasks: vec![open.clone()], ..Default::default() }, changed).unwrap();
     assert_eq!(started.status, CaseStatus::Observing);
     assert_eq!(started.tasks, vec![done.clone()]);
-    // The anchor is the moment of the change (the wall clock), not the arming time.
-    let anchor = parse_ts(started.observation_started_at.as_deref().unwrap()).unwrap();
-    let wall = Utc::now();
-    assert!(anchor <= wall && wall - anchor < Duration::minutes(5), "anchor {anchor} is not the time of the change");
+    assert_eq!(started.observation_started_at.as_deref(), Some(ts(changed).as_str()), "not the arming time");
     assert_eq!(started.next_guardrail_at, started.observation_started_at);
-    assert_eq!(parse_ts(started.next_evaluation_at.as_deref().unwrap()).unwrap(), anchor + Duration::hours(24));
+    assert_eq!(started.next_evaluation_at.as_deref(), Some(ts(changed + Duration::hours(24)).as_str()));
     assert_eq!(kinds(&t, case.id), ["outcome.created", "outcome.updated", "outcome.updated", "observation.started"]);
     let started_event = journal(&t, case.id).pop().unwrap();
     assert_eq!(started_event.payload["tasks"], json!([done]));
@@ -830,7 +834,7 @@ fn a_waiting_case_keeps_at_least_one_task() {
     let case = armed_case(&t, &only);
     let before = kinds(&t, case.id);
     expect_err(
-        o.update(&me(), case.id, CasePatch { remove_tasks: vec![only.clone()], ..Default::default() }),
+        o.update(&me(), case.id, CasePatch { remove_tasks: vec![only.clone()], ..Default::default() }, now()),
         "a waiting case needs at least one task",
     );
     let kept = o.get(case.id).unwrap();
@@ -840,7 +844,7 @@ fn a_waiting_case_keeps_at_least_one_task() {
     // Swapping the only task in one patch keeps the case waiting and linked.
     let other = new_task(&t, "Other");
     let swapped = o
-        .update(&me(), case.id, CasePatch { add_tasks: vec![other.clone()], remove_tasks: vec![only.clone()], ..Default::default() })
+        .update(&me(), case.id, CasePatch { add_tasks: vec![other.clone()], remove_tasks: vec![only.clone()], ..Default::default() }, now())
         .unwrap();
     assert_eq!((swapped.status, swapped.tasks.clone()), (CaseStatus::Waiting, vec![other.clone()]));
 }
@@ -868,17 +872,18 @@ fn a_waiting_case_starts_when_its_new_contract_starts_on_done_tasks() {
         .unwrap();
     assert_eq!(o.arm(&me(), case.id, now()).unwrap().status, CaseStatus::Waiting);
 
-    // Every linked task is done and the new contract starts on done tasks: the case starts now.
-    let started = o.set_contract(&me(), case.id, &guard_contract(), "").unwrap();
+    // Every linked task is done and the new contract starts on done tasks: the case starts at the caller's time.
+    let revised_at = now() + Duration::minutes(30);
+    let started = o.set_contract(&me(), case.id, &guard_contract(), "", revised_at).unwrap();
     assert_eq!(started.contract_version, 2);
     assert_eq!(started.status, CaseStatus::Observing);
-    assert!(started.observation_started_at.is_some());
+    assert_eq!(started.observation_started_at.as_deref(), Some(ts(revised_at).as_str()));
     assert_eq!(kinds(&t, case.id).last().unwrap(), "observation.started");
 
     // With an open task the same contract leaves the case waiting.
     let open = new_task(&t, "Open");
     let waiting = armed_case(&t, &open);
-    let still = o.set_contract(&me(), waiting.id, &guard_contract(), "").unwrap();
+    let still = o.set_contract(&me(), waiting.id, &guard_contract(), "", now()).unwrap();
     assert_eq!(still.contract_version, 2);
     assert_eq!(still.status, CaseStatus::Waiting);
 }
@@ -895,7 +900,7 @@ fn a_revision_after_the_start_moves_the_first_evaluation_to_the_revised_minimum_
         "guardrails": [{ "id": "error_rate", "source": "prom", "query": "rate(errors[$__range])", "maxChange": "+0.1pp" }],
         "observation": { "minimumWindow": "48h" }
     }));
-    let revised = o.set_contract(&me(), case.id, &longer, "longer window agreed").unwrap();
+    let revised = o.set_contract(&me(), case.id, &longer, "longer window agreed", now()).unwrap();
     assert_eq!(revised.observation_started_at.as_deref(), Some(NOW), "the anchor is unchanged");
     assert_eq!(revised.next_evaluation_at.as_deref(), Some("2026-10-19T12:00:00.000Z"), "anchor plus the revised 48h minimum window");
     assert_eq!(revised.next_guardrail_at.as_deref(), Some(NOW), "the guardrail schedule is unchanged");
@@ -1375,12 +1380,14 @@ fn an_insufficient_evaluation_reschedules_to_the_earlier_of_one_interval_and_the
         details: vec![],
     };
 
-    // A request made before the pass is cleared by the insufficient verdict as well.
-    o.request_evaluation(&me(), case.id, false).unwrap();
+    // A request the pass read is cleared by the insufficient verdict as well.
+    let requested = o.request_evaluation(&me(), case.id, false).unwrap();
     assert!(o.begin_evaluation(case.id).unwrap());
     let at = now() + Duration::hours(25);
-    let after =
-        o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 1, at).unwrap().expect("the case was evaluating");
+    let after = o
+        .finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 1, requested.evaluation_requested, at)
+        .unwrap()
+        .expect("the case was evaluating");
     assert_eq!(after.status, CaseStatus::Observing);
     assert_eq!(after.evaluation_requested, None);
     assert_eq!(after.next_evaluation_at.as_deref(), Some(ts(at + Duration::hours(6)).as_str()), "one interval after the pass");
@@ -1388,7 +1395,7 @@ fn an_insufficient_evaluation_reschedules_to_the_earlier_of_one_interval_and_the
     // Close to the preferred window (72h after the anchor), the window is the earlier one.
     assert!(o.begin_evaluation(case.id).unwrap());
     let late = now() + Duration::hours(70);
-    let after = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Manual, 1, late).unwrap().unwrap();
+    let after = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Manual, 1, None, late).unwrap().unwrap();
     assert_eq!(after.next_evaluation_at.as_deref(), Some(ts(now() + Duration::hours(72)).as_str()));
 
     let evaluations = o.evaluations(case.id, None).unwrap();
@@ -1403,6 +1410,70 @@ fn an_insufficient_evaluation_reschedules_to_the_earlier_of_one_interval_and_the
     assert_eq!(events[0].payload["verdict"], "insufficient");
     assert_eq!(events[0].payload["nextEvaluationAt"], ts(at + Duration::hours(6)).as_str());
     assert_eq!(events[0].payload["evaluation"], evaluations[1].id);
+}
+
+#[test]
+fn a_final_request_that_arrives_during_an_evaluation_survives_an_insufficient_verdict() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let insufficient = EvalOutcome {
+        verdict: Verdict::Insufficient,
+        confidence: None,
+        summary: "insufficient: minimum window not reached".into(),
+        details: vec![],
+    };
+
+    // The pass reads no request and takes the case into `evaluating`.
+    assert!(o.begin_evaluation(case.id).unwrap());
+    // A person's final request arrives while the pass runs: evaluating accepts requests as observing does.
+    let during = o.request_evaluation(&me(), case.id, true).unwrap();
+    assert_eq!((during.status, during.evaluation_requested), (CaseStatus::Evaluating, Some(EvalTrigger::Final)));
+
+    // The window is still insufficient. The pass consumed no request, so the final one is kept.
+    let at = now() + Duration::hours(1);
+    let after = o
+        .finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 1, None, at)
+        .unwrap()
+        .expect("the case was evaluating");
+    assert_eq!(after.status, CaseStatus::Observing);
+    assert_eq!(after.evaluation_requested, Some(EvalTrigger::Final));
+
+    // The next pass takes the request and concludes the case.
+    assert!(o.begin_evaluation(case.id).unwrap());
+    let concluded = o
+        .finish_evaluation(&scheduler(), case.id, &confirmed(), EvalTrigger::Final, 1, Some(EvalTrigger::Final), at + Duration::hours(1))
+        .unwrap()
+        .unwrap();
+    assert_eq!(concluded.status, CaseStatus::Concluded);
+    assert_eq!(concluded.evaluation_requested, None);
+}
+
+#[test]
+fn an_upgrade_to_final_during_an_evaluation_survives_the_insufficient_verdict_that_consumed_a_manual_request() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let insufficient = EvalOutcome {
+        verdict: Verdict::Insufficient,
+        confidence: None,
+        summary: "insufficient: minimum window not reached".into(),
+        details: vec![],
+    };
+
+    // The pass reads a manual request, then a person asks for the final evaluation before it finishes.
+    let requested = o.request_evaluation(&me(), case.id, false).unwrap();
+    assert!(o.begin_evaluation(case.id).unwrap());
+    o.request_evaluation(&me(), case.id, true).unwrap();
+
+    let at = now() + Duration::hours(1);
+    let after = o
+        .finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Manual, 1, requested.evaluation_requested, at)
+        .unwrap()
+        .expect("the case was evaluating");
+    assert_eq!(after.evaluation_requested, Some(EvalTrigger::Final), "the request changed, so the pass does not clear it");
 }
 
 #[test]
@@ -1422,7 +1493,7 @@ fn a_confirmed_evaluation_concludes_the_case_clears_its_schedule_and_writes_its_
         details: vec![],
     };
     let at = now() + Duration::hours(72);
-    let concluded = o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, at).unwrap().unwrap();
+    let concluded = o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, None, at).unwrap().unwrap();
     assert_eq!(concluded.status, CaseStatus::Concluded);
     assert_eq!(concluded.result, Some(CaseResult::Confirmed));
     assert_eq!(concluded.confidence, Some(Confidence::High));
@@ -1445,7 +1516,7 @@ fn a_confirmed_evaluation_concludes_the_case_clears_its_schedule_and_writes_its_
 
     // A concluded case is neither evaluated nor due.
     assert!(!o.begin_evaluation(case.id).unwrap());
-    assert!(o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, at).unwrap().is_none());
+    assert!(o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, None, at).unwrap().is_none());
     assert!(o.due(at + Duration::days(30)).unwrap().is_empty());
 }
 
@@ -1462,8 +1533,10 @@ fn each_conclusion_maps_to_its_result_confidence_and_event() {
         let case = observing_mixed(&t, &task);
         assert!(o.begin_evaluation(case.id).unwrap());
         let outcome = EvalOutcome { verdict, confidence: Some(confidence), summary: format!("{verdict}: test"), details: vec![] };
-        let done =
-            o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, now() + Duration::hours(72)).unwrap().unwrap();
+        let done = o
+            .finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, 1, None, now() + Duration::hours(72))
+            .unwrap()
+            .unwrap();
         assert_eq!((done.status, done.result, done.confidence), (CaseStatus::Concluded, Some(result), Some(confidence)));
         assert_eq!(events_of(&t, case.id, kind).len(), 1, "{kind} is written once");
     }
@@ -1477,13 +1550,13 @@ fn a_finished_evaluation_after_a_cancel_or_without_a_begin_writes_nothing() {
     let cancelled = observing_mixed(&t, &task);
     assert!(o.begin_evaluation(cancelled.id).unwrap());
     o.cancel(&me(), cancelled.id, "the change was reverted", now()).unwrap();
-    assert!(o.finish_evaluation(&scheduler(), cancelled.id, &confirmed(), EvalTrigger::Final, 1, now()).unwrap().is_none());
+    assert!(o.finish_evaluation(&scheduler(), cancelled.id, &confirmed(), EvalTrigger::Final, 1, None, now()).unwrap().is_none());
     assert!(o.evaluations(cancelled.id, None).unwrap().is_empty());
     assert!(events_of(&t, cancelled.id, "outcome.confirmed").is_empty());
 
     // Without a begin the case is still observing, so there is nothing to finish.
     let observing = observing_mixed(&t, &task);
-    assert!(o.finish_evaluation(&scheduler(), observing.id, &confirmed(), EvalTrigger::Final, 1, now()).unwrap().is_none());
+    assert!(o.finish_evaluation(&scheduler(), observing.id, &confirmed(), EvalTrigger::Final, 1, None, now()).unwrap().is_none());
     assert!(o.evaluations(observing.id, None).unwrap().is_empty());
     assert_eq!(o.get(observing.id).unwrap().status, CaseStatus::Observing);
 }
@@ -1505,7 +1578,7 @@ fn begin_evaluation_is_true_only_for_observing_and_evaluating_cases() {
     o.cancel(&me(), cancelled.id, "dropped", now()).unwrap();
     let concluded = observing_mixed(&t, &new_task(&t, "Done"));
     assert!(o.begin_evaluation(concluded.id).unwrap());
-    o.finish_evaluation(&scheduler(), concluded.id, &confirmed(), EvalTrigger::Final, 1, now() + Duration::hours(72)).unwrap();
+    o.finish_evaluation(&scheduler(), concluded.id, &confirmed(), EvalTrigger::Final, 1, None, now() + Duration::hours(72)).unwrap();
 
     assert!(!o.begin_evaluation(proposed.id).unwrap());
     assert!(!o.begin_evaluation(waiting.id).unwrap());
@@ -1769,7 +1842,7 @@ fn evidence_is_filtered_and_paged_and_the_current_queries_see_only_the_current_c
     // A person revises the contract after the start: records of version 1 stop being current.
     let mut revised = mixed_contract();
     revised.guardrails[0].max_change = Some("+0.2pp".into());
-    o.set_contract(&me(), case.id, &revised, "loosen error_rate after the release notes").unwrap();
+    o.set_contract(&me(), case.id, &revised, "loosen error_rate after the release notes", now()).unwrap();
     assert!(o.current_evidence(case.id).unwrap().is_empty());
     assert!(o.latest_baseline(case.id, "p95").unwrap().is_none(), "baselines of version 1 do not count");
     assert_eq!(listed(EvidenceFilter::default()), [1, 2, 3, 4, 5, 6, 7], "history keeps every version");
@@ -1813,7 +1886,7 @@ fn a_pass_or_an_evaluation_under_a_superseded_contract_writes_nothing() {
     // A person revises the contract while the scheduler is measuring under version 1 (D8).
     let mut revised = mixed_contract();
     revised.guardrails[0].max_change = Some("+0.2pp".into());
-    o.set_contract(&me(), case.id, &revised, "loosen error_rate").unwrap();
+    o.set_contract(&me(), case.id, &revised, "loosen error_rate", now()).unwrap();
     let before = serde_json::to_value(o.get(case.id).unwrap()).unwrap();
     let journal_before = journal(&t, case.id).len();
 
@@ -1831,7 +1904,9 @@ fn a_pass_or_an_evaluation_under_a_superseded_contract_writes_nothing() {
     let insufficient =
         EvalOutcome { verdict: Verdict::Insufficient, confidence: None, summary: "insufficient: test".into(), details: vec![] };
     assert!(
-        o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 1, now() + Duration::hours(25)).unwrap().is_none()
+        o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 1, None, now() + Duration::hours(25))
+            .unwrap()
+            .is_none()
     );
 
     assert!(o.evidence(case.id, &EvidenceFilter::default()).unwrap().is_empty());
@@ -1848,7 +1923,7 @@ fn a_pass_or_an_evaluation_under_a_superseded_contract_writes_nothing() {
     };
     assert_eq!(apply(&t, case.id, current).unwrap().unwrap().evidence.len(), 1);
     let at = now() + Duration::hours(25);
-    let finished = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 2, at).unwrap().unwrap();
+    let finished = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, 2, None, at).unwrap().unwrap();
     assert_eq!(finished.status, CaseStatus::Observing);
 }
 

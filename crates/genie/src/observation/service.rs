@@ -378,7 +378,7 @@ pub fn create(app: &App, project: &str, actor: &Actor, body: CreateCaseBody) -> 
 }
 
 /// Changes the title, the policy or the linked tasks, as the case's status allows (§6.2).
-pub fn update(app: &App, project: &str, actor: &Actor, id: i64, body: UpdateCaseBody) -> AppResult<CaseView> {
+pub fn update(app: &App, project: &str, actor: &Actor, id: i64, body: UpdateCaseBody, now: DateTime<Utc>) -> AppResult<CaseView> {
     authorize_manage(actor)?;
     let patch = CasePatch {
         title: body.title,
@@ -386,15 +386,15 @@ pub fn update(app: &App, project: &str, actor: &Actor, id: i64, body: UpdateCase
         add_tasks: body.add_tasks.unwrap_or_default(),
         remove_tasks: body.remove_tasks.unwrap_or_default(),
     };
-    tracker(app, project, |t| t.observation().update(actor, id, patch))?;
+    tracker(app, project, |t| t.observation().update(actor, id, patch, now))?;
     view(app, project, id)
 }
 
 /// Sets a new contract version. After observation started only a person may, with a reason (§6.2, D8).
-pub fn set_contract(app: &App, project: &str, actor: &Actor, id: i64, body: ContractBody) -> AppResult<CaseView> {
+pub fn set_contract(app: &App, project: &str, actor: &Actor, id: i64, body: ContractBody, now: DateTime<Utc>) -> AppResult<CaseView> {
     authorize_manage(actor)?;
     let reason = body.reason.unwrap_or_default();
-    tracker(app, project, |t| t.observation().set_contract(actor, id, &body.contract, &reason))?;
+    tracker(app, project, |t| t.observation().set_contract(actor, id, &body.contract, &reason, now))?;
     view(app, project, id)
 }
 

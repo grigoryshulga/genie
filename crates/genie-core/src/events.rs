@@ -66,7 +66,8 @@ pub const INCIDENT_CREATED: &str = "incident.created";
 pub const INCIDENT_RESOLVED: &str = "incident.resolved";
 /// An incident was dismissed as a false positive.
 pub const INCIDENT_DISMISSED: &str = "incident.dismissed";
-/// The case is ready for an evaluation (a window closed or one was requested).
+/// An evaluation was requested (`trigger`: `manual` or `final`, §6.4). Only a request emits it; a
+/// closed window is evaluated by the scheduler without this event.
 pub const OUTCOME_READY: &str = "outcome.ready_for_evaluation";
 /// An evaluation ran without a conclusion.
 pub const OUTCOME_EVALUATED: &str = "outcome.evaluated";

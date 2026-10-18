@@ -127,7 +127,7 @@ async fn update_case(
     let a = ctx.access(&app, None).await?;
     a.write()?;
     let id = case_id(&id)?;
-    let view = app.blocking(move |app| service::update(app, &a.project, &a.actor, id, b)).await?;
+    let view = app.blocking(move |app| service::update(app, &a.project, &a.actor, id, b, Utc::now())).await?;
     Ok(Json(view))
 }
 
@@ -140,7 +140,7 @@ async fn set_contract(
     let a = ctx.access(&app, None).await?;
     a.write()?;
     let id = case_id(&id)?;
-    let view = app.blocking(move |app| service::set_contract(app, &a.project, &a.actor, id, b)).await?;
+    let view = app.blocking(move |app| service::set_contract(app, &a.project, &a.actor, id, b, Utc::now())).await?;
     Ok(Json(view))
 }
 

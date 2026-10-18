@@ -207,11 +207,19 @@ fn team_members_and_task_managers_are_refused_every_mutation() {
                 &actor,
                 id,
                 UpdateCaseBody { title: Some("Renamed".into()), policy: None, add_tasks: None, remove_tasks: None },
+                now(),
             ),
             MANAGE,
         );
         forbidden(
-            service::set_contract(&h.app, PROJECT, &actor, id, ContractBody { contract: guard_contract(), reason: Some("tighter".into()) }),
+            service::set_contract(
+                &h.app,
+                PROJECT,
+                &actor,
+                id,
+                ContractBody { contract: guard_contract(), reason: Some("tighter".into()) },
+                now(),
+            ),
             MANAGE,
         );
         forbidden(service::arm(&h.app, PROJECT, &actor, id, now()), MANAGE);
@@ -265,7 +273,7 @@ fn the_project_manager_may_not_revise_request_final_dismiss_or_manage_sources() 
     let incident = report(&h, &person(), id, "checkout_errors", 61.0).unwrap().incidents[0].id;
     let pm = project_manager();
     forbidden(
-        service::set_contract(&h.app, PROJECT, &pm, id, ContractBody { contract: guard_contract(), reason: Some("tighter".into()) }),
+        service::set_contract(&h.app, PROJECT, &pm, id, ContractBody { contract: guard_contract(), reason: Some("tighter".into()) }, now()),
         "only a person may revise the contract after observation starts",
     );
     forbidden(
@@ -483,6 +491,7 @@ fn the_case_view_carries_contract_history_arm_problems_incidents_and_follow_ups(
             })),
             reason: Some("tighter limit after the incident review".into()),
         },
+        now(),
     )
     .unwrap();
     assert_eq!(revised.case.contract_version, 2);
@@ -773,7 +782,7 @@ fn a_concluded_case_notifies_once_and_mails_the_manager() {
                 summary: "negative: 0/1 ok, 1 violated; attribution: not assessed".into(),
                 details: Vec::new(),
             };
-            t.observation().finish_evaluation(&person(), id, &outcome, EvalTrigger::Manual, contract_version, later())
+            t.observation().finish_evaluation(&person(), id, &outcome, EvalTrigger::Manual, contract_version, None, later())
         })
         .unwrap();
     let concluded = service::show(&h.app, PROJECT, id).unwrap();
