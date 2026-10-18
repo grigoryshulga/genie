@@ -230,8 +230,9 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
   const [draft, setDraft] = useState<SourceDraft>(() => (source ? sourceDraft(source) : emptySourceDraft()));
   const set = <K extends keyof SourceDraft>(key: K, value: SourceDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const sentry = draft.kind === "sentry";
-  // A new source with an authorization kind takes its secret in the same form; it is sent after the source exists.
-  const needsSecret = !editing && draft.auth !== "none";
+  // A new source with an authorization kind may take its secret in the same form; it is sent after the source
+  // exists. It may also be left empty and set later in the source's row: arming reports a missing secret.
+  const needsSecret = !editing && draft.auth !== "none" && draft.secret !== "";
   const secretMissing = needsSecret ? secretProblem(draft.auth, draft.secret) : undefined;
   const pending = add.isPending || update.isPending || setSecret.isPending;
 
@@ -425,7 +426,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
               placeholder={SECRET_PLACEHOLDER[draft.auth]}
               spellCheck={false}
             />
-            {draft.secret !== "" && secretMissing && <div className="st-note">{secretMissing}</div>}
+            {secretMissing && <div className="st-note">{secretMissing}</div>}
           </div>
         </div>
       )}
