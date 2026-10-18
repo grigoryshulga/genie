@@ -896,6 +896,76 @@ body:has(.auth-page) { overflow: auto; }
 .auth-foot { margin: 0; text-align: center; color: var(--muted); line-height: 1.5; }
 .auth-error { color: var(--red); font-size: 12.5px; }
 
+.login-page { position: relative; justify-content: flex-end; overflow: hidden; padding: 64px clamp(28px, 8vw, 132px); isolation: isolate; background: #080a13; }
+.login-card { position: relative; z-index: 1; width: min(390px, 100%); gap: 22px; padding: 31px 32px 27px; border: 1px solid #39364d; border-radius: 20px; background: linear-gradient(145deg, rgb(25 25 40 / 96%), rgb(15 16 26 / 97%)); box-shadow: 0 26px 90px #02030ac2, 0 0 50px #8669e51c, inset 0 1px #ffffff0b; backdrop-filter: blur(18px); }
+.login-card .auth-head { gap: 13px; margin-bottom: 2px; }
+.login-card .auth-head .logo-mark { width: 42px; height: 42px; border: 1px solid #ffffff20; border-radius: 12px; background: linear-gradient(145deg, #29233e, #171624); color: #c4afff; box-shadow: 0 0 28px #a183ff24; }
+.login-card .auth-head h1 { font-size: 23px; letter-spacing: -0.035em; }
+.login-card .auth-sub { max-width: 280px; color: #a6a2b8; }
+.login-card .auth-form { gap: 17px; }
+.login-card .auth-form .field { color: #d0ccda; }
+.login-card .auth-form .field input { border-color: #393749; background: #11121d; }
+.login-card .auth-form .field input:focus { border-color: #a18aff; box-shadow: 0 0 0 3px #a18aff22; }
+.login-card .auth-form > .btn { height: 44px; border-radius: 9px; background: linear-gradient(100deg, #9275f0, #7258d5); box-shadow: 0 8px 24px #795bdf35; font-size: 13px; }
+.login-card .auth-foot { color: #8c899e; font-size: 12px; }
+.login-universe { position: absolute; z-index: 0; inset: 0; overflow: hidden; pointer-events: none; background: radial-gradient(ellipse at 39% 51%, #29204c40, transparent 40%), linear-gradient(120deg, #090b17, #0b0b16 53%, #100f1b); }
+.login-nebula { position: absolute; width: 66vw; height: 66vw; border-radius: 50%; filter: blur(85px); opacity: .27; }
+.login-nebula-a { top: 1%; left: -13%; background: radial-gradient(circle, #6552b5 0, #352764 31%, transparent 69%); }
+.login-nebula-b { top: 13%; left: 22%; width: 55vw; height: 55vw; background: radial-gradient(circle, #147c89 0, #164c6a 27%, transparent 68%); opacity: .14; }
+.login-stars, .login-star-dust { position: absolute; inset: -3%; background-repeat: repeat; }
+.login-stars { opacity: .73; background-image: radial-gradient(1px 1px at 14px 24px, #f5eeff 98%, transparent), radial-gradient(1px 1px at 74px 102px, #e0d5ff 98%, transparent), radial-gradient(1.4px 1.4px at 142px 42px, #fff 98%, transparent), radial-gradient(1px 1px at 203px 129px, #bfd6ff 98%, transparent), radial-gradient(1px 1px at 258px 76px, #fff 98%, transparent), radial-gradient(1.2px 1.2px at 311px 161px, #d7caff 98%, transparent); background-size: 347px 197px; animation: login-star-shimmer 8s ease-in-out infinite alternate; }
+.login-star-dust { opacity: .34; background-image: radial-gradient(1px 1px at 39px 60px, #f8f2ff 98%, transparent), radial-gradient(1px 1px at 191px 114px, #b4c7ff 98%, transparent), radial-gradient(1.2px 1.2px at 267px 21px, #fff 98%, transparent), radial-gradient(1px 1px at 348px 93px, #e3dbff 98%, transparent); background-size: 421px 181px; }
+.login-shooting-star { position: absolute; top: 16%; left: 44%; width: 120px; height: 1px; opacity: 0; transform: rotate(-28deg); transform-origin: left center; background: linear-gradient(90deg, #e0d5ff, #a58aff 26%, transparent); filter: drop-shadow(0 0 5px #c9b7ff); animation: login-shooting-star 9s ease-in-out infinite; }
+.login-network { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.login-network-routes path { fill: none; stroke: #76669c; stroke-width: 1.25; stroke-opacity: .34; }
+.login-network-pulses path { fill: none; stroke: #c9b5ff; stroke-width: 1.65; stroke-opacity: .72; stroke-linecap: round; stroke-dasharray: 1 18; filter: drop-shadow(0 0 5px #aa8cff); animation: login-data-flow 4s linear infinite; }
+.login-network-pulses path:nth-child(2n) { stroke: #75d5dd; stroke-opacity: .68; animation-duration: 5.2s; }
+.login-network-pulses path:nth-child(3n) { animation-delay: -2.7s; }
+.login-network-pulses path:nth-child(4n) { animation-delay: -1.2s; animation-duration: 6s; }
+.login-network-halo { opacity: .19; animation: login-hub-pulse 3.2s ease-in-out infinite; }
+.login-network-core { fill: #d5c5ff; filter: drop-shadow(0 0 9px #b397ff); }
+.login-network-label { position: absolute; left: 53%; top: calc(50% + 30px); color: #c4b8e2; font-size: 11px; letter-spacing: .04em; text-shadow: 0 1px 10px #080914; }
+.login-network-label span { display: block; margin-top: 4px; color: #77718e; font-size: 9px; letter-spacing: .02em; }
+.login-member { position: absolute; display: flex; align-items: center; gap: 9px; min-width: 142px; padding: 7px 10px 7px 7px; border: 1px solid #9a8bb330; border-radius: 12px; background: linear-gradient(120deg, #171625dc, #11121ad9); box-shadow: 0 8px 28px #04040a55, inset 0 1px #ffffff09; color: #e2ddec; transform: translateY(-50%); }
+.login-member-1 { left: 7.5%; top: 23%; }
+.login-member-2 { left: 12%; top: 67%; }
+.login-member-3 { left: 33%; top: 13%; }
+.login-member-4 { left: 35%; top: 80%; }
+.login-member-5 { left: 27%; top: 47%; }
+.login-member-avatar { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border: 1px solid #a48adf75; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #514278, #211d32 72%); color: #d7c7ff; font-size: 15px; box-shadow: 0 0 18px #a183ff27; }
+.login-member-avatar.is-agent { border-color: #6f9ea175; background: radial-gradient(circle at 35% 30%, #315563, #1a252f 72%); color: #a5e7e0; }
+.login-member-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.login-member-name { color: #e9e4f1; font-size: 11px; line-height: 1.2; }
+.login-member-role { color: #9791aa; font-size: 9px; line-height: 1.2; }
+.login-member-activity { color: #817c91; font-size: 9px; line-height: 1.2; white-space: nowrap; }
+.login-member-activity i { display: inline-block; width: 5px; height: 5px; margin: 0 5px 1px 0; border-radius: 50%; background: #74d8bd; box-shadow: 0 0 7px #74d8bd; }
+@keyframes login-data-flow { to { stroke-dashoffset: -76; } }
+@keyframes login-hub-pulse { 50% { opacity: .38; transform: scale(1.18); transform-origin: 684px 400px; } }
+@keyframes login-star-shimmer { to { opacity: .4; transform: translate3d(-4px, 3px, 0); } }
+@keyframes login-shooting-star { 0%, 68%, 100% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-28deg); } 72% { opacity: .85; } 82% { opacity: 0; transform: translate3d(210px, 115px, 0) rotate(-28deg); } }
+@media (max-width: 840px) {
+  .login-page { min-height: 100svh; justify-content: center; align-items: flex-start; overflow-x: hidden; overflow-y: auto; padding: 270px 18px 32px; }
+  .login-card { width: min(390px, 100%); margin: 0 auto; padding: 26px 24px 23px; }
+  .login-universe { position: absolute; min-height: 100%; }
+  .login-network { height: 260px; bottom: auto; }
+  .login-network-label { display: none; }
+  .login-member { min-width: 0; gap: 6px; padding: 5px 7px 5px 5px; border-radius: 10px; }
+  .login-member-avatar { width: 27px; height: 27px; font-size: 12px; }
+  .login-member-name { font-size: 9px; }
+  .login-member-role, .login-member-activity { font-size: 8px; }
+  .login-member-1 { left: 4%; top: 60px; }
+  .login-member-2 { left: 8%; top: 185px; }
+  .login-member-3 { left: 48%; top: 34px; }
+  .login-member-4 { left: 52%; top: 218px; }
+  .login-member-5 { left: 31%; top: 126px; }
+  .login-nebula { width: 120vw; height: 120vw; filter: blur(60px); }
+  .login-nebula-b { left: 23%; }
+  .login-shooting-star { top: 12%; left: 42%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-stars, .login-shooting-star, .login-network-pulses path, .login-network-halo { animation: none; }
+}
+
 .answer { width: min(560px, 100%); display: flex; flex-direction: column; gap: 24px; font-size: 15px; }
 .answer .ctx { font-size: 13px; color: var(--muted); }
 .answer h1 { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
