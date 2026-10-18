@@ -3,13 +3,13 @@ import { useSession } from "@/entities/session";
 import { useToast } from "@/shared/ui";
 import { useState } from "react";
 import { useAssessTaskSignals, useResolveTaskSignals, useTaskIntelligence } from "@/entities/task";
+import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
 /** Lazy task evidence, using project/task-scoped API and generated Rust types. */
 export function TaskIntelligence({ task }: { task: string }) {
   const [open, setOpen] = useState(false);
   const history = useTaskIntelligence(task, open);
-  return <details className="sec" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-    <summary>Оценка задачи и история маршрутизации</summary>
+  return <CollapsibleSection title="Оценка задачи и история маршрутизации" open={open} onOpenChange={setOpen}>
     {history.isError ? <p role="alert">{history.error.message}</p> : !history.data ? <p className="muted">Загрузка…</p> : <>
       <SignalActions task={task} latest={history.data.snapshots.at(-1)} />
       {!history.data.snapshots.length && <p className="muted">Для этой задачи сигналы не записаны. Исторические оценки не восстанавливаются предположениями.</p>}
@@ -27,7 +27,7 @@ export function TaskIntelligence({ task }: { task: string }) {
       {history.data.attempts.map((a) => <p key={a.id}>Попытка {a.ordinal} (#{a.id}) · {new Date(a.startedAt).toLocaleString("ru-RU")} → {history.data.assessments.filter((r) => r.attemptId === a.id).map((r) => r.result).join(", ") || "Результат ещё не зафиксирован"}</p>)}
       {history.data.evaluations.map((evaluation) => <details key={evaluation.id}><summary>Shadow evaluation #{evaluation.id} · {new Date(evaluation.createdAt).toLocaleString("ru-RU")}</summary><p>Предложение для проверки человеком. Политика выполнения не меняется.</p><p>{recommendation(evaluation.evidence)}</p></details>)}
     </>}
-  </details>;
+  </CollapsibleSection>;
 }
 
 function recommendation(evidence: unknown): string {

@@ -14,6 +14,7 @@ import {
 import { canWriteProject, useSession } from "@/entities/session";
 import type { Task } from "@/entities/task";
 import { useToast } from "@/shared/ui";
+import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
 const POLICIES = Object.keys(POLICY_LABEL) as ObservationPolicy[];
 /** The check a delivered task is usually observed with: whether its result held (§5.1). */
@@ -36,14 +37,14 @@ export function TaskObservation({ task }: { task: Task }) {
   const create = useCreateCase();
   // The same writer rule as TaskManager (canWriteProject): a member, an admin or an owner, or a local session.
   const writable = canWriteProject(useSession().data);
-  const [open, setOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [policy, setPolicy] = useState<ObservationPolicy>(DEFAULT_POLICY);
 
   const startForm = () => {
     setTitle(newCaseTitle(task.title));
     setPolicy(DEFAULT_POLICY);
-    setOpen(true);
+    setFormOpen(true);
   };
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -54,7 +55,7 @@ export function TaskObservation({ task }: { task: Task }) {
       { title: name, policy, tasks: [task.id] },
       {
         onSuccess: (view) => {
-          setOpen(false);
+          setFormOpen(false);
           navigate(`/observation/${view.case.id}`);
         },
         onError: (err) => toast(`Не удалось: ${err.message}`, "error"),
@@ -65,19 +66,18 @@ export function TaskObservation({ task }: { task: Task }) {
   const cases = query.data ?? [];
 
   return (
-    <section className="sec" aria-label={OBSERVATION_TEXT.section}>
-      <h3>
-        {OBSERVATION_TEXT.section}
-        {query.isSuccess && cases.length > 0 && <span className="n">{cases.length}</span>}
-        {writable && !open && (
+    <CollapsibleSection
+      title={OBSERVATION_TEXT.section}
+      badge={query.isSuccess && cases.length > 0 ? <span className="n">{cases.length}</span> : undefined}
+      action={writable && !formOpen ? (
           <button type="button" className="btn ghost" style={{ height: 24 }} onClick={startForm}>
             {OBSERVATION_TEXT.create}
           </button>
-        )}
-      </h3>
+        ) : undefined}
+    >
       {query.isPending && <div className="muted">Загрузка…</div>}
       {query.isError && <p role="alert">{query.error.message}</p>}
-      {open && (
+      {formOpen && (
         <form aria-label={OBSERVATION_TEXT.create} onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
           <label className="field">
             Название
@@ -100,7 +100,7 @@ export function TaskObservation({ task }: { task: Task }) {
             </select>
           </label>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" className="btn ghost" disabled={create.isPending} onClick={() => setOpen(false)}>
+              <button type="button" className="btn ghost" disabled={create.isPending} onClick={() => setFormOpen(false)}>
               Отмена
             </button>
             <button type="submit" className="btn primary" disabled={create.isPending || !title.trim()}>
@@ -109,7 +109,7 @@ export function TaskObservation({ task }: { task: Task }) {
           </div>
         </form>
       )}
-      {query.isSuccess && cases.length === 0 && !open && <div className="muted">{OBSERVATION_TEXT.empty}</div>}
+      {query.isSuccess && cases.length === 0 && !formOpen && <div className="muted">{OBSERVATION_TEXT.empty}</div>}
       {cases.length > 0 && (
         <ul style={{ display: "flex", flexDirection: "column", gap: 8, listStyle: "none", margin: 0, padding: 0 }}>
           {cases.map((c) => (
@@ -123,6 +123,6 @@ export function TaskObservation({ task }: { task: Task }) {
           ))}
         </ul>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
