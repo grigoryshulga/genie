@@ -6,5 +6,8 @@
 //! are here.
 
 pub mod catalog;
+pub mod host;
+pub mod inputs;
 pub mod layout;
 pub mod runner;
+pub mod store;

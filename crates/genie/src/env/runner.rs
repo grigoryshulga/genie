@@ -13,7 +13,9 @@ use std::time::Duration;
 use genie_core::env::caps::{Capabilities, Limits};
 use genie_core::env::spec::{NetworkMode, Probe};
 
-use crate::config::EnvironmentsConfig;
+use super::host::HostRunner;
+use super::store::Store;
+use crate::config::{EnvironmentsConfig, SandboxConfig};
 
 /// How a mount is exposed to the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,12 +169,18 @@ pub trait Runner: Send + Sync {
     fn harness(&self, ws: &str, cwd: &str, env_names: &[String], argv: &[String]) -> Result<(String, Vec<String>), String>;
 }
 
-/// The runner the server uses, from `environments.runner`. Only the runners of later phases can be
-/// selected, so until they exist every choice is refused with its name.
-pub fn select(cfg: &EnvironmentsConfig) -> Result<Arc<dyn Runner>, String> {
+/// The runner the server uses, from `environments.runner`. `data` is the server's data directory
+/// (it holds the default store root) and `sandbox` the `runtime.sandbox` setting, which decides
+/// whether host processes run in bubblewrap. The podman runner is not available in this build yet,
+/// so `podman` and `auto` are refused with their names.
+pub fn select(cfg: &EnvironmentsConfig, data: &Path, sandbox: &SandboxConfig) -> Result<Arc<dyn Runner>, String> {
     match cfg.runner.as_str() {
+        "host" => {
+            let store = Store::open(cfg, data)?;
+            let sandboxed = crate::sandbox::enabled(sandbox)?;
+            Ok(Arc::new(HostRunner::new(store.root, sandboxed)))
+        }
         "podman" => Err("the podman runner is not available yet in this build; set environments.runner to auto or host once it is".into()),
-        "host" => Err("the host runner is not available yet in this build".into()),
         _ => Err("neither the podman nor the host runner is available yet in this build; auto needs one of them".into()),
     }
 }
@@ -182,13 +190,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_configured_runner_is_refused_until_its_phase_lands() {
+    fn auto_and_podman_are_refused_until_the_podman_runner_lands() {
+        let data = tempfile::tempdir().unwrap();
+        let sandbox = SandboxConfig { mode: "off".into(), ..Default::default() };
         let mut cfg = EnvironmentsConfig::default();
-        for runner in ["auto", "podman", "host"] {
+        for runner in ["auto", "podman"] {
             cfg.runner = runner.into();
-            let err = select(&cfg).err().unwrap_or_else(|| panic!("{runner} unexpectedly available"));
+            let err = select(&cfg, data.path(), &sandbox).err().unwrap_or_else(|| panic!("{runner} unexpectedly available"));
             assert!(err.contains("available yet"), "{runner}: {err}");
         }
+    }
+
+    #[test]
+    fn host_selects_the_host_runner_with_the_store_under_the_data_directory() {
+        let data = tempfile::tempdir().unwrap();
+        let cfg = EnvironmentsConfig { runner: "host".into(), ..Default::default() };
+        let sandbox = SandboxConfig { mode: "off".into(), ..Default::default() };
+        let runner = select(&cfg, data.path(), &sandbox).unwrap();
+        assert_eq!(runner.kind(), "host");
+        assert_eq!(runner.capabilities().unwrap().network, vec![genie_core::env::spec::NetworkMode::Full]);
+        assert!(data.path().join("env-store/workspaces").is_dir(), "the store is created");
+    }
+
+    #[test]
+    fn host_refuses_a_store_inside_a_git_work_tree() {
+        let data = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(data.path().join(".git")).unwrap();
+        let cfg = EnvironmentsConfig { runner: "host".into(), ..Default::default() };
+        let sandbox = SandboxConfig { mode: "off".into(), ..Default::default() };
+        let err = select(&cfg, data.path(), &sandbox).err().expect("refused");
+        assert!(err.contains("Git work tree"), "{err}");
     }
 
     #[test]
