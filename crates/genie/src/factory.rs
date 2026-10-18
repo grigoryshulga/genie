@@ -414,8 +414,7 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
                 row.execution_hours = elapsed(start, &end);
                 let mut status = events
                     .iter()
-                    .filter(|(_, at, _, kind, _)| kind == "task.status_changed" && at <= start)
-                    .next_back()
+                    .rfind(|(_, at, _, kind, _)| kind == "task.status_changed" && at <= start)
                     .and_then(|(_, _, _, _, p)| p["to"].as_str())
                     .map(str::to_string);
                 let mut at = start.as_str();
