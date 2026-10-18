@@ -5,6 +5,8 @@
 .agents .seg button { white-space: nowrap; flex: none; }
 
 .ag-page { padding: 24px 40px 48px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; min-height: 0; }
+/* The catalogue is a centred column, like every other page. */
+@media (min-width: 901px) { .ag-page { padding-inline: max(40px, calc((100% - var(--content)) / 2)); } }
 /* The page scrolls; its parts keep their height (a table that scrolls sideways would shrink). */
 .ag-page > * { flex-shrink: 0; }
 .ag-page-head { display: flex; align-items: flex-start; gap: 16px; }

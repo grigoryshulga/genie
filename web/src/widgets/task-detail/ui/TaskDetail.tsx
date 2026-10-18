@@ -280,8 +280,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
       <h3>
         {isEpic ? "Цель" : "Описание"}
         {editDesc === undefined ? (
-          <button type="button" className="btn ghost" style={{ height: 24 }} onClick={() => setEditDesc(t.description)}>
-            Изменить
+          <button type="button" className="sec-edit" onClick={() => setEditDesc(t.description)} aria-label={isEpic ? "Изменить цель" : "Изменить описание"} title={isEpic ? "Изменить цель" : "Изменить описание"}>
+            <Icon.pencil size={13} />
           </button>
         ) : null}
       </h3>
@@ -532,9 +532,10 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
                 a.kind === "event" ? (
                   <div key={`h${a.at}${a.h.event}`} className="ev">
                     <i />
-                    <span>
-                      <span style={{ color: "var(--text-2)" }}>{a.h.actor}</span> {historyText(a.h, isEpic)} · {timeAgo(a.at)}
+                    <span className="txt">
+                      <span style={{ color: "var(--text-2)" }}>{a.h.actor}</span> {historyText(a.h, isEpic)}
                     </span>
+                    <span className="when">{timeAgo(a.at)}</span>
                   </div>
                 ) : (
                   <div key={`c${a.c.id}`} className={`comment${a.c.role === "human" ? " mine" : ""}`}>

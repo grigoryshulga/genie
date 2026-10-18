@@ -54,11 +54,7 @@ export function ServerSettingsPage() {
     return <Navigate to={settingsTabHref("server", "tools", tab)} replace />;
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Глобальные настройки</h1>
-        <span className="sub">{local ? "локальный режим" : "администрирование"}</span>
-      </header>
-        <SettingsTabs scope="server" section={section === "health" || section === "vault" ? "tools" : section} current={section === "health" || section === "vault" ? section : undefined} />
+      <SettingsTabs scope="server" section={section === "health" || section === "vault" ? "tools" : section} current={section === "health" || section === "vault" ? section : undefined} />
       <div className="scroll">
         {section === "projects" ? (
           <Projects current={session?.project} tab={tab} />
