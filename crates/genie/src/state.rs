@@ -100,6 +100,9 @@ pub struct App {
     /// Wakes the observation scheduler: every journal event, and the service's changes to a case
     /// (armed, started, evaluation requested, reported evidence). See `observation::scheduler`.
     pub wake_observation: Arc<Notify>,
+    /// Cases whose last scheduler pass failed, with the time they may be tried again, keyed by
+    /// project and case ID (`observation::scheduler`). Kept in memory: a restart tries them at once.
+    pub observation_retry: Mutex<HashMap<(String, i64), DateTime<Utc>>>,
     /// Wakes the delivery poller (a task's delivery started to be watched).
     pub wake_poller: Notify,
     /// Path of the running `genie` binary, given to agents so they can call back.
@@ -155,6 +158,7 @@ impl App {
             wake_engine: Default::default(),
             wake_outbox: Default::default(),
             wake_observation: Default::default(),
+            observation_retry: Default::default(),
             wake_poller: Notify::new(),
             exe,
             sessions: Default::default(),

@@ -3,8 +3,8 @@
 //! evaluates on schedule. Every step is stored before the next one runs, and the state lives in the
 //! tracker, so a restart continues from what was stored (§6.1).
 
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::{Arc, MutexGuard};
 
 use chrono::{DateTime, Duration, Utc};
 use genie_core::events;
@@ -12,7 +12,7 @@ use genie_core::observation::contract::Contract;
 use genie_core::observation::evaluate::{self, EvalInput};
 use genie_core::observation::store::{CollectionInput, NewEvidence};
 use genie_core::observation::{
-    CaseStatus, CriterionKind, EvalTrigger, EvidencePhase, ObservationCase, SourceConfig, SourceKind, TrustLevel, case_key, parse_ts,
+    CaseStatus, CriterionKind, EvalTrigger, EvidencePhase, ObservationCase, SourceConfig, SourceKind, TrustLevel, case_key, parse_ts, ts,
 };
 use genie_core::{Actor, GenieError, Role};
 use serde_json::json;
@@ -33,7 +33,7 @@ const FAILURE_ALERT: i64 = 3;
 /// The notification kind of a case whose collection keeps failing. §18 lists only the incident and
 /// conclusion kinds; this one is the scheduler's own.
 pub const FAILURE_KIND: &str = "observation.failing";
-/// The wait before a pass that failed, or found a case it could not move on, is tried again.
+/// The wait before a case whose pass failed, or a pass that could not finish, is tried again.
 const RETRY_AFTER: Duration = Duration::seconds(10);
 /// Passes in a row that ask for another at once; a bug that keeps asking falls back to the deadlines.
 const MAX_BACK_TO_BACK: u32 = 20;
@@ -43,9 +43,10 @@ const MANUAL: &str = "manual";
 /// What a pass learned about when it must run again without being woken (§11.5).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Plan {
-    /// The earliest `nextGuardrailAt` or `nextEvaluationAt` of an observing or evaluating case.
+    /// The earliest `nextGuardrailAt`, `nextEvaluationAt` or retry time of a case that is still due.
     pub at: Option<DateTime<Utc>>,
-    /// A case still holds an evaluation request after the pass: pass again at once.
+    /// An evaluation was requested while the pass ran, for a case the pass had not reached: pass again
+    /// at once. A failed case never asks for this; it waits for its retry time.
     pub again: bool,
 }
 
@@ -66,7 +67,7 @@ pub fn start(app: &Arc<App>) {
                 Ok(plan) => plan,
                 Err(e) => {
                     eprintln!("genie observation: {e}");
-                    Plan { at: Some(Utc::now() + RETRY_AFTER), again: false }
+                    Plan { at: Some(retry_at(Utc::now())), again: false }
                 }
             };
             streak = if plan.again { streak + 1 } else { 0 };
@@ -81,49 +82,64 @@ pub fn start(app: &Arc<App>) {
     });
 }
 
-/// One pass over every project at time `now` (§11.1). A failure of one project or one case is
-/// logged and retried after `RETRY_AFTER`; the pass fails only when the projects cannot be listed.
+/// One pass over every project at time `now` (§11.1). A failure of one project is logged and the
+/// other projects still run; the pass itself fails only when the projects cannot be listed.
 pub fn pass_at(app: &App, now: DateTime<Utc>) -> AppResult<Plan> {
     let mut plan = Plan::default();
-    let mut retry = false;
     for project in app.with_server(|db| db.projects())? {
-        if let Err(e) = run_project(app, &project.slug, now, &mut plan, &mut retry) {
+        if let Err(e) = run_project(app, &project.slug, now, &mut plan) {
             eprintln!("genie observation: {}: {e}", project.slug);
-            retry = true;
+            plan.due(retry_at(now));
         }
-    }
-    if retry {
-        plan.due(now + RETRY_AFTER);
     }
     Ok(plan)
 }
 
 /// Intake, then every due case of one project, then the schedule for the next pass (§11.2, §11.5).
-fn run_project(app: &App, project: &str, now: DateTime<Utc>, plan: &mut Plan, retry: &mut bool) -> AppResult<()> {
-    intake(app, project, now)?;
-    for case in app.with_tracker(project, |t| t.observation().due(now))? {
-        if let Err(e) = process(app, project, case.id, now) {
-            eprintln!("genie observation: {project}: {}: {e}", case_key(case.id));
-            *retry = true;
+/// A failed intake does not stop the due cases; a failed case is skipped until its retry time.
+fn run_project(app: &App, project: &str, now: DateTime<Utc>, plan: &mut Plan) -> AppResult<()> {
+    if let Err(e) = intake(app, project, now) {
+        eprintln!("genie observation: {project}: intake: {e}");
+        plan.due(retry_at(now));
+    }
+    let due = app.with_tracker(project, |t| t.observation().due(now))?;
+    let initial: BTreeSet<i64> = due.iter().map(|case| case.id).collect();
+    for case in &due {
+        if let Some(until) = retry_until(app, project, case.id)?
+            && until > now
+        {
+            continue;
+        }
+        match process(app, project, case.id, now) {
+            Ok(()) => clear_retry(app, project, case.id)?,
+            Err(e) => {
+                eprintln!("genie observation: {project}: {}: {e}", case_key(case.id));
+                set_retry(app, project, case.id, retry_at(now))?;
+            }
         }
     }
     let pending = app.with_tracker(project, |t| t.observation().due(now))?;
-    plan.again |= pending.iter().any(|case| case.evaluation_requested.is_some());
+    // A request that arrived while this pass ran, for a case the pass did not reach, runs at once.
+    plan.again |= pending.iter().any(|case| case.evaluation_requested.is_some() && !initial.contains(&case.id));
+    for case in &pending {
+        if let Some(until) = retry_until(app, project, case.id)?
+            && until > now
+        {
+            plan.due(until);
+        }
+    }
     if let Some(at) = app.with_tracker(project, |t| t.observation().next_due())? {
         let at = parse_ts(&at)?;
-        // A deadline that has passed means a case was left due (a race or a failure): retry later
+        // A deadline that has passed belongs to a case that stayed due (a race): try again later
         // instead of spinning on it.
-        if at > now {
-            plan.due(at);
-        } else {
-            *retry = true;
-        }
+        plan.due(if at > now { at } else { retry_at(now) });
     }
     Ok(())
 }
 
 /// Starts the waiting cases whose tasks became done since the last pass (§6.3, §11.2). The journal
-/// cursor moves after each batch; starting a case again is a no-op, so a re-read is harmless.
+/// cursor moves after each batch, and only after a batch succeeded; starting a case again is a
+/// no-op, so a re-read is harmless.
 fn intake(app: &App, project: &str, now: DateTime<Utc>) -> AppResult<()> {
     let actor = scheduler_actor();
     let mut cursor = app.with_tracker(project, |t| t.event_cursor(CURSOR))?;
@@ -164,6 +180,7 @@ fn process(app: &App, project: &str, id: i64, now: DateTime<Utc>) -> AppResult<(
     // The evaluation begins before anything is measured, so a crash leaves the case `evaluating` (§11.4).
     let evaluating = evaluation_due && app.with_tracker(project, |t| t.observation().begin_evaluation(id))?;
     let times = Times {
+        key: case.key.clone(),
         anchor,
         end: now.max(anchor),
         guardrail_window: windows.guardrail_window,
@@ -171,7 +188,8 @@ fn process(app: &App, project: &str, id: i64, now: DateTime<Utc>) -> AppResult<(
         guardrails_due,
         hypotheses_due: evaluating,
     };
-    let measured = measure_all(wanted(&contract, &sources, &baselines, &times), &sources);
+    let wants = wanted(&contract, &sources, &baselines, &times)?;
+    let measured = measure_all(wants, &sources);
 
     // Observed records of this pass use the baseline the pass has just measured, if it had none.
     let mut known = baselines;
@@ -182,14 +200,9 @@ fn process(app: &App, project: &str, id: i64, now: DateTime<Utc>) -> AppResult<(
     }
     let failed = measured.iter().find_map(|(_, result)| result.as_ref().err().cloned());
     let records: Vec<NewEvidence> = measured.into_iter().map(|(want, result)| record(want, result, &known)).collect();
-    let input = CollectionInput {
-        records,
-        contract_version: case.contract_version,
-        now,
-        next_guardrail_at: guardrails_due.then(|| now + windows.guardrail_interval),
-        failed: failed.clone(),
-        pass: true,
-    };
+    let next_guardrail_at = if guardrails_due { Some(add_to(now, windows.guardrail_interval, &case.key)?) } else { None };
+    let input =
+        CollectionInput { records, contract_version: case.contract_version, now, next_guardrail_at, failed: failed.clone(), pass: true };
     // A contract revised since the snapshot, or a case that stopped observing, writes nothing; the
     // next pass measures again under the current version.
     let Some(applied) = app.with_tracker(project, |t| t.observation().apply_collection(&actor, id, input))? else {
@@ -198,10 +211,12 @@ fn process(app: &App, project: &str, id: i64, now: DateTime<Utc>) -> AppResult<(
 
     service::announce_incidents(app, project, id, &applied.new_incidents);
     if applied.failures == FAILURE_ALERT {
-        notify_failures(app, project, &case, failed.as_deref().unwrap_or_default());
+        // The first record of the alerting pass names the streak: a later streak stores new records.
+        let streak = applied.evidence.first().map_or_else(|| ts(now), |record| record.id.to_string());
+        notify_failures(app, project, &case, failed.as_deref().unwrap_or_default(), &streak);
     }
     if evaluating {
-        let trigger = trigger_of(&case, anchor, now, windows.preferred_window);
+        let trigger = trigger_of(&case, anchor, now, windows.preferred_window)?;
         evaluate_case(app, project, &case, &contract, trigger, now)?;
     }
     Ok(())
@@ -243,8 +258,15 @@ fn sources_of(app: &App, project: &str, contract: &Contract) -> AppResult<Source
         let mut sources = BTreeMap::new();
         for name in contract.sources() {
             let source = db.observation_source(project, &name)?;
-            // A stored secret that cannot be read back counts as none, as the arm rules do.
-            let secret = db.observation_secret(project, &name).ok().flatten();
+            // A secret that cannot be read back counts as none, as the arm rules do. The reason is
+            // logged; the secret never is.
+            let secret = match db.observation_secret(project, &name) {
+                Ok(secret) => secret,
+                Err(e) => {
+                    eprintln!("genie observation: {project}: cannot read the secret of source {name}: {e}");
+                    None
+                }
+            };
             sources.insert(name, (source, secret));
         }
         Ok(sources)
@@ -253,6 +275,8 @@ fn sources_of(app: &App, project: &str, contract: &Contract) -> AppResult<Source
 
 /// The times and windows of one case in one pass.
 struct Times {
+    /// The case key, for the messages of out-of-range windows.
+    key: String,
     anchor: DateTime<Utc>,
     /// The end of every observed window: the pass time, never before the anchor.
     end: DateTime<Utc>,
@@ -306,18 +330,21 @@ struct Want {
 
 /// The measurements a pass takes (§11.3 steps 3, 4 and 7): a missing baseline, the guardrails when
 /// their check is due, and the hypotheses when the case is evaluated. Manual criteria are never
-/// measured (§7.1). Windows follow §7.2.
-fn wanted(contract: &Contract, sources: &Sources, baselines: &BTreeMap<String, f64>, times: &Times) -> Vec<Want> {
+/// measured (§7.1). Windows follow §7.2. An observed guardrail window that is empty, as at the
+/// anchor, has nothing to observe yet: the check is only scheduled.
+fn wanted(contract: &Contract, sources: &Sources, baselines: &BTreeMap<String, f64>, times: &Times) -> AppResult<Vec<Want>> {
     let mut wants = Vec::new();
     for c in criteria(contract).into_iter().filter(|c| c.source != MANUAL) {
         let adapter = sources.get(&c.source).and_then(|(source, _)| source.as_ref()).map(|source| source.kind);
         if c.needs_baseline && !baselines.contains_key(&c.id) {
-            let span = Span { start: times.anchor - times.baseline_window, end: times.anchor };
+            let span = Span { start: sub_from(times.anchor, times.baseline_window, &times.key)?, end: times.anchor };
             wants.push(want(&c, adapter, EvidencePhase::Baseline, span, None));
         }
         if c.kind == CriterionKind::Guardrail && times.guardrails_due {
-            let span = Span { start: times.anchor.max(times.end - times.guardrail_window), end: times.end };
-            wants.push(want(&c, adapter, EvidencePhase::Observed, span, None));
+            let start = times.anchor.max(sub_from(times.end, times.guardrail_window, &times.key)?);
+            if start < times.end {
+                wants.push(want(&c, adapter, EvidencePhase::Observed, Span { start, end: times.end }, None));
+            }
         }
         if c.kind == CriterionKind::Hypothesis && times.hypotheses_due {
             let span = Span { start: times.anchor, end: times.end };
@@ -325,7 +352,7 @@ fn wanted(contract: &Contract, sources: &Sources, baselines: &BTreeMap<String, f
             wants.push(want(&c, adapter, EvidencePhase::Observed, span, samples_query));
         }
     }
-    wants
+    Ok(wants)
 }
 
 fn want(c: &Criterion, adapter: Option<SourceKind>, phase: EvidencePhase, span: Span, samples_query: Option<String>) -> Want {
@@ -344,7 +371,7 @@ fn measure_all(wants: Vec<Want>, sources: &Sources) -> Vec<(Want, Result<Measure
                         .await
                         .map_err(|e| e.to_string())
                 }
-                _ => Err(format!("source {} is not configured", want.source)),
+                _ => Err(format!("unknown source {}", want.source)),
             };
             measured.push((want, result));
         }
@@ -364,7 +391,9 @@ fn record(want: Want, result: Result<Measurement, String>, baselines: &BTreeMap<
     let (query, value, samples, provenance, error) = match result {
         Ok(m) => (m.query, Some(m.value), m.samples.and_then(|n| i64::try_from(n).ok()), m.provenance, None),
         Err(message) => {
-            (adapters::substitute_range(&query, span), None, None, json!({ "adapter": adapter.map(SourceKind::as_str) }), Some(message))
+            // The adapter is named only when the source is known; no null placeholder.
+            let provenance = adapter.map_or_else(|| json!({}), |kind| json!({ "adapter": kind.as_str() }));
+            (adapters::substitute_range(&query, span), None, None, provenance, Some(message))
         }
     };
     NewEvidence {
@@ -386,13 +415,13 @@ fn record(want: Want, result: Result<Measurement, String>, baselines: &BTreeMap<
 }
 
 /// Why this evaluation runs (§11.4 step 2): a request wins, else the preferred window has passed.
-fn trigger_of(case: &ObservationCase, anchor: DateTime<Utc>, now: DateTime<Utc>, preferred: Duration) -> EvalTrigger {
-    match case.evaluation_requested {
+fn trigger_of(case: &ObservationCase, anchor: DateTime<Utc>, now: DateTime<Utc>, preferred: Duration) -> AppResult<EvalTrigger> {
+    Ok(match case.evaluation_requested {
         Some(EvalTrigger::Final) => EvalTrigger::Final,
         Some(EvalTrigger::Manual) => EvalTrigger::Manual,
-        _ if now >= anchor + preferred => EvalTrigger::Final,
+        _ if now >= add_to(anchor, preferred, &case.key)? => EvalTrigger::Final,
         _ => EvalTrigger::Window,
-    }
+    })
 }
 
 /// Evaluates the case from its stored records and stores the verdict (§11.4 steps 4 to 6). A stale
@@ -424,8 +453,8 @@ fn evaluate_case(
 }
 
 /// Tells the project's admins that a case's collection failed `FAILURE_ALERT` passes in a row
-/// (§11.3 step 6). The dedupe key allows one notice per case and arming.
-fn notify_failures(app: &App, project: &str, case: &ObservationCase, last_error: &str) {
+/// (§11.3 step 6). `streak` names the streak: the dedupe key holds one notice per streak and arming.
+fn notify_failures(app: &App, project: &str, case: &ObservationCase, last_error: &str, streak: &str) {
     let result = (|| -> AppResult<()> {
         let users = notify::resolve(app, project, &["project.admins".to_string()], &json!({}))?;
         let msg = Message {
@@ -437,13 +466,56 @@ fn notify_failures(app: &App, project: &str, case: &ObservationCase, last_error:
             link: Some(format!("/observation/{}", case.id)),
             ..Default::default()
         };
-        let dedupe = format!("observation-failures:{project}:{}:{}", case.id, case.armed_at.as_deref().unwrap_or_default());
+        let armed = case.armed_at.as_deref().unwrap_or_default();
+        let dedupe = format!("observation-failures:{project}:{}:{armed}:{streak}", case.id);
         notify::send(app, &users, &msg, Some(&dedupe))?;
         Ok(())
     })();
     if let Err(e) = result {
         eprintln!("genie observation: cannot notify about the failures of {}: {e}", case.key);
     }
+}
+
+/// The locked retry map of `App::observation_retry`: per-case retry times of failed passes, keyed by
+/// project and case ID. Kept in memory: a restart tries every due case at once.
+type RetryGuard<'a> = MutexGuard<'a, HashMap<(String, i64), DateTime<Utc>>>;
+
+fn retries(app: &App) -> AppResult<RetryGuard<'_>> {
+    app.observation_retry.lock().map_err(|_| AppError::Internal("observation retry lock poisoned".into()))
+}
+
+fn retry_until(app: &App, project: &str, id: i64) -> AppResult<Option<DateTime<Utc>>> {
+    Ok(retries(app)?.get(&(project.to_string(), id)).copied())
+}
+
+fn set_retry(app: &App, project: &str, id: i64, until: DateTime<Utc>) -> AppResult<()> {
+    retries(app)?.insert((project.to_string(), id), until);
+    Ok(())
+}
+
+fn clear_retry(app: &App, project: &str, id: i64) -> AppResult<()> {
+    retries(app)?.remove(&(project.to_string(), id));
+    Ok(())
+}
+
+/// When a failed pass is tried again: `RETRY_AFTER` after `now`, or at the end of time if the clock
+/// cannot hold it.
+fn retry_at(now: DateTime<Utc>) -> DateTime<Utc> {
+    now.checked_add_signed(RETRY_AFTER).unwrap_or(DateTime::<Utc>::MAX_UTC)
+}
+
+/// `at` plus `by`; an out-of-range result fails the case, never the process (§11.3).
+fn add_to(at: DateTime<Utc>, by: Duration, key: &str) -> AppResult<DateTime<Utc>> {
+    at.checked_add_signed(by).ok_or_else(|| out_of_range(key))
+}
+
+/// `at` minus `by`; an out-of-range result fails the case, never the process (§11.3).
+fn sub_from(at: DateTime<Utc>, by: Duration, key: &str) -> AppResult<DateTime<Utc>> {
+    at.checked_sub_signed(by).ok_or_else(|| out_of_range(key))
+}
+
+fn out_of_range(key: &str) -> AppError {
+    AppError::Genie(GenieError::invalid(format!("{key}: a window is out of range")))
 }
 
 fn is_due(at: Option<&str>, now: DateTime<Utc>) -> AppResult<bool> {
@@ -463,4 +535,26 @@ fn anchor_of(case: &ObservationCase) -> AppResult<DateTime<Utc>> {
 
 fn scheduler_actor() -> Actor {
     Actor::new(SCHEDULER, Role::Orchestrator)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_that_leaves_the_calendar_is_an_error_of_its_case() {
+        let at = DateTime::<Utc>::MAX_UTC;
+        let error = add_to(at, Duration::seconds(1), "case-1").unwrap_err().to_string();
+        assert_eq!(error, "case-1: a window is out of range");
+        let error = sub_from(DateTime::<Utc>::MIN_UTC, Duration::seconds(1), "case-1").unwrap_err().to_string();
+        assert_eq!(error, "case-1: a window is out of range");
+        assert_eq!(add_to(at, Duration::zero(), "case-1").unwrap(), at);
+    }
+
+    #[test]
+    fn a_failed_pass_is_retried_after_the_retry_interval_or_never_when_the_clock_cannot_hold_it() {
+        let now = DateTime::<Utc>::MIN_UTC;
+        assert_eq!(retry_at(now), now + RETRY_AFTER);
+        assert_eq!(retry_at(DateTime::<Utc>::MAX_UTC), DateTime::<Utc>::MAX_UTC);
+    }
 }
