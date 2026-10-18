@@ -13,6 +13,7 @@ use std::time::Duration;
 use genie_core::env::caps::{Capabilities, Limits};
 use genie_core::env::spec::{NetworkMode, Probe};
 
+use super::podman::PodmanRunner;
 use crate::config::EnvironmentsConfig;
 
 /// How a mount is exposed to the workspace.
@@ -167,13 +168,22 @@ pub trait Runner: Send + Sync {
     fn harness(&self, ws: &str, cwd: &str, env_names: &[String], argv: &[String]) -> Result<(String, Vec<String>), String>;
 }
 
-/// The runner the server uses, from `environments.runner`. Only the runners of later phases can be
-/// selected, so until they exist every choice is refused with its name.
+/// The runner the server uses, from `environments.runner`. `podman` is chosen as configured; `auto`
+/// takes podman only when it works rootless. The host runner lands in phase 2b, so `host` and an
+/// `auto` without rootless podman are refused for now.
 pub fn select(cfg: &EnvironmentsConfig) -> Result<Arc<dyn Runner>, String> {
     match cfg.runner.as_str() {
-        "podman" => Err("the podman runner is not available yet in this build; set environments.runner to auto or host once it is".into()),
-        "host" => Err("the host runner is not available yet in this build".into()),
-        _ => Err("neither the podman nor the host runner is available yet in this build; auto needs one of them".into()),
+        "podman" => Ok(Arc::new(PodmanRunner::new(cfg))),
+        // TODO(phase 2b): the host runner is selected here when rootless podman is not usable.
+        "auto" => {
+            let podman = PodmanRunner::new(cfg);
+            match podman.capabilities() {
+                Ok(_) => Ok(Arc::new(podman)),
+                Err(e) => Err(format!("environments.runner auto: rootless podman is not usable ({e}); the host runner lands in phase 2b")),
+            }
+        }
+        "host" => Err("the host runner lands in phase 2b; set environments.runner to podman or auto with rootless podman".into()),
+        other => Err(format!("environments.runner: {other} is not auto, podman or host")),
     }
 }
 
@@ -182,13 +192,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_configured_runner_is_refused_until_its_phase_lands() {
+    fn the_host_runner_is_refused_until_phase_2b() {
+        let cfg = EnvironmentsConfig { runner: "host".into(), ..EnvironmentsConfig::default() };
+        let err = select(&cfg).err().expect("host is not available yet");
+        assert!(err.contains("phase 2b"), "{err}");
+    }
+
+    #[test]
+    fn the_podman_runner_is_chosen_as_configured() {
+        let cfg = EnvironmentsConfig { runner: "podman".into(), ..EnvironmentsConfig::default() };
+        assert_eq!(select(&cfg).unwrap().kind(), "podman");
+    }
+
+    #[test]
+    fn auto_without_a_usable_podman_names_the_missing_one_and_the_host_fallback() {
         let mut cfg = EnvironmentsConfig::default();
-        for runner in ["auto", "podman", "host"] {
-            cfg.runner = runner.into();
-            let err = select(&cfg).err().unwrap_or_else(|| panic!("{runner} unexpectedly available"));
-            assert!(err.contains("available yet"), "{runner}: {err}");
-        }
+        cfg.podman.binary = "/nonexistent/genie-test-podman".into();
+        let err = select(&cfg).err().expect("no podman binary");
+        assert!(err.contains("rootless podman is not usable") && err.contains("phase 2b"), "{err}");
     }
 
     #[test]
