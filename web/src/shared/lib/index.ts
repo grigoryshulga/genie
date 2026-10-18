@@ -1,6 +1,7 @@
 export * from "./format.ts";
 export * from "./isTyping.ts";
 export * from "./preferences.ts";
+export * from "./appearance.ts";
 export * from "./useTick.ts";
 export * from "./images.ts";
 export * from "./workRoute.ts";
