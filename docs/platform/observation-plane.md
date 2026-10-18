@@ -500,12 +500,12 @@ Per project, cursor name `observation`: read events after the cursor (batches of
 1. **Snapshot** (tracker lock): case, current contract, latest usable baseline per criterion.
 2. **Sources** (server lock): the project's source configs and secrets for the criteria to collect.
 3. **Baselines**: for each criterion that needs a baseline and has none, measure the baseline window (§7.2).
-4. **Guardrails** when `nextGuardrailAt ≤ now`: measure every non-manual guardrail over its window.
+4. **Guardrails** when `nextGuardrailAt ≤ now`: measure every non-manual guardrail over its window. A window that is still empty (the first pass at the anchor) is skipped; only the schedule advances.
 5. **Write** (one tracker transaction, conditional on the case still being `observing`/`evaluating`): insert the records; run `check_guardrail` on new observed guardrail records and open incidents; set `nextGuardrailAt = now + guardrailInterval`; set `failures` to 0 when every measurement succeeded, else increment it and store `lastError`; write one `evidence.collected` event (`{ case, records, errors }`) when any record was inserted.
-6. **Side effects after commit**: notifications for new incidents; automatic follow-ups (§10.2); when `failures` reaches 3, notify project admins once per streak (dedupe key `observation-failures:<project>:<case>:<armedAt>`).
+6. **Side effects after commit**: notifications for new incidents; automatic follow-ups (§10.2); when `failures` reaches 3, notify project admins once per streak (dedupe key `observation-failures:<project>:<case>:<armedAt>:<streak>`, where `<streak>` identifies the alerting pass, so a later streak alerts again). An alert has kind `observation.failing`.
 7. **Evaluation** when `nextEvaluationAt ≤ now` or requested (§11.4).
 
-Steps 2–4 run without any database lock; adapters run with `state::block_on`.
+Steps 2–4 run without any database lock; adapters run with `state::block_on`. When the guardrail and evaluation passes are both due, their records go in one write. A case whose processing fails is skipped, including on wake-ups, until 10 seconds have passed, so a failing source is not hammered.
 
 ### 11.4 Evaluation pass
 
@@ -792,7 +792,7 @@ All Russian labels (statuses, results, policies, incident states, navigation, bu
 ## 18. Agents, notifications, and documentation
 
 - `agents/project-manager.md` gains an "Observation" section: propose a case during planning for risky or measurable changes, write the contract before delivery, never conclude or dismiss, react to incident and conclusion mail with follow-ups or escalation. English, like the existing prompt.
-- Notification kinds: `observation.incident` and `observation.concluded`, link `/observation/<id>`, dedupe keys `observation-incident:<project>:<incident id>` and `observation-concluded:<project>:<case id>`.
+- Notification kinds: `observation.incident`, `observation.concluded` and `observation.failing` (§11.3), link `/observation/<id>`, dedupe keys `observation-incident:<project>:<incident id>` and `observation-concluded:<project>:<case id>`.
 - Documentation (OBS-17): user reference `docs/platform/observation.md`, a decisions row (PD25: "Observation is a separate plane with its own lifecycle; it consumes delivery events and creates work only through task services"), the architecture code map, the CLI reference, the automations event list, `CHANGELOG.md` (Unreleased), the VitePress sidebar, and the roadmap. This specification's status becomes `current` once Phase 1 ships.
 
 ## 19. Risks and limits
