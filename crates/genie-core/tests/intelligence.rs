@@ -12,6 +12,7 @@ fn profile() -> SignalProfile {
         brief_version: 0,
         brief_fingerprint: "brief-v1".into(),
         project_profile_version: "policy-v1".into(),
+        project_policy: None,
         extractor_version: "test-v1".into(),
         signals: SignalName::ALL.into_iter().map(|n| Signal::unknown(n, "test-v1")).collect(),
         affected_paths: vec![],
@@ -24,6 +25,7 @@ fn plan() -> RoutingPlan {
         router_version: "1".into(),
         policy_version: "1".into(),
         eligible_templates: vec!["solo".into()],
+        template_evidence: vec![],
         selected_template: Some("solo".into()),
         selected_models: vec![],
         required_checks: vec![],
@@ -134,4 +136,19 @@ fn schema_six_upgrade_keeps_existing_data_and_does_not_guess_history() {
     assert!(t.intelligence_history(&id).unwrap().attempts.is_empty());
     let integrity: String = t.conn().query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
     assert_eq!(integrity, "ok");
+}
+
+#[test]
+fn usage_accounting_and_attempt_attribution_commit_together() {
+    let (_d, t, id) = fresh();
+    let actor = Actor::new("owner", Role::Human);
+    let attempt = t.begin_attempt(&actor, &id).unwrap();
+    t.record_usage("executor", Some(&id), "fake/model", &genie_core::usage::Tokens { input: 10, ..Default::default() }).unwrap();
+    let linked: i64 = t.conn().query_row("SELECT attempt_id FROM usage_attributions WHERE task=?1", [&id], |r| r.get(0)).unwrap();
+    assert_eq!(linked, attempt.id);
+    t.conn().execute_batch("CREATE TRIGGER reject_usage BEFORE INSERT ON usage_attributions BEGIN SELECT RAISE(ABORT,'injected attribution failure'); END;").unwrap();
+    assert!(t.record_usage("executor", Some(&id), "fake/model", &genie_core::usage::Tokens { input: 20, ..Default::default() }).is_err());
+    let usage = t.usage_of_task(&id).unwrap();
+    assert_eq!(usage[0].calls, 1);
+    assert_eq!(usage[0].tokens.input, 10);
 }

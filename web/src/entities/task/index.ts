@@ -6,5 +6,3 @@ export * from "./ui/Labels.tsx";
 export * from "./ui/Epic.tsx";
 export * from "./ui/ArtifactThumb.tsx";
 export * from "./ui/ArtifactModal.tsx";
-
-export { useTaskIntelligence } from "./api.ts";

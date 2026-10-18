@@ -58,6 +58,9 @@ pub fn prepare(
     let mut records = Vec::new();
     let mut notice = Vec::new();
     let delivery = !matches!(task.status, Status::Inbox | Status::Draft | Status::Refining);
+    if delivery && app.with_tracker(project, |t| t.has_unresolved_safety(&task.id))? {
+        return Err(AppError::Conflict("resolve the task's runtime safety constraint explicitly before dispatch".into()));
+    }
     let snapshot = if delivery { Some(crate::intelligence::dispatch_snapshot(app, project, &req.by, task, &p)?) } else { None };
     let eligible_templates = if let Some(s) = &snapshot { crate::intelligence::eligible(app, project, &p, s, &roster)? } else { vec![] };
     if let Some(s) = &snapshot {
@@ -166,13 +169,13 @@ pub fn prepare(
                     }
                     if selected(&record, "team").is_none_or(|key| key == "need_evidence") {
                         fallback = true;
-                        if p.team == Mode::Select {
-                            if let Some(id) = p.intelligence.fallback_template.as_ref().filter(|id| eligible_templates.contains(id)) {
-                                req.template = Some(id.clone());
-                                req.members.clear();
-                                req.models.clear();
-                                roster = asked_roster(agents, project, req)?;
-                            }
+                        if p.team == Mode::Select
+                            && let Some(id) = p.intelligence.fallback_template.as_ref().filter(|id| eligible_templates.contains(id))
+                        {
+                            req.template = Some(id.clone());
+                            req.members.clear();
+                            req.models.clear();
+                            roster = asked_roster(agents, project, req)?;
                         }
                     }
                     if p.team != Mode::Observe {
@@ -182,13 +185,13 @@ pub fn prepare(
                 }
                 Err(error) if p.team != Mode::Observe => {
                     fallback = true;
-                    if p.team == Mode::Select {
-                        if let Some(id) = p.intelligence.fallback_template.as_ref().filter(|id| eligible_templates.contains(id)) {
-                            req.template = Some(id.clone());
-                            req.members.clear();
-                            req.models.clear();
-                            roster = asked_roster(agents, project, req)?;
-                        }
+                    if p.team == Mode::Select
+                        && let Some(id) = p.intelligence.fallback_template.as_ref().filter(|id| eligible_templates.contains(id))
+                    {
+                        req.template = Some(id.clone());
+                        req.members.clear();
+                        req.models.clear();
+                        roster = asked_roster(agents, project, req)?;
                     }
                     notice.push(format!("Jev team evaluation unavailable; using safe fallback: {error}"))
                 }

@@ -194,3 +194,13 @@ Controlled experiments are a documented future extension, not automatically enab
 
 Implementation checkpoints must record what is implemented and what remains; this
 specification is not a claim that the proposed behavior already exists.
+
+## Review-driven clarifications
+
+Runtime safety constraints survive reassessment and require an explicit human
+resolution with evidence against the latest snapshot. Member/spec/mail updates,
+pause/status changes and applied routing commit atomically; live-session side
+effects follow commit. Refinement discoveries do not open delivery attempts.
+Historical costs and attempt membership are bounded by the report cutoff. Daily
+legacy buckets overlapping an intraday cutoff remain incomplete. Historical policy
+replay uses frozen eligible template definitions and the original versioned brief.

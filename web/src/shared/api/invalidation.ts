@@ -48,6 +48,10 @@ const DOCS: KeyPrefix[] = [["docs"], ["proposals"], ["proposal"], ["task"] /* th
  */
 export function keysFor(e: JournalEvent): KeyPrefix[] | null {
   switch (e.type) {
+    case "task.signals_resolved":
+    case "task.safety_paused":
+    case "task.routing_input_changed":
+    case "task.brief_changed":
     case "task.signals_assessed":
     case "task.routing_decided":
     case "task.execution_started":

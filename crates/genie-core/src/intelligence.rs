@@ -141,6 +141,8 @@ pub struct SignalProfile {
     pub brief_version: i64,
     pub brief_fingerprint: String,
     pub project_profile_version: String,
+    #[serde(default)]
+    pub project_policy: Option<IntelligencePolicy>,
     pub extractor_version: String,
     pub signals: Vec<Signal>,
     pub affected_paths: Vec<String>,
@@ -156,6 +158,9 @@ impl SignalProfile {
         }
         for text in [&self.brief_fingerprint, &self.project_profile_version, &self.extractor_version] {
             bounded(text, 200)?;
+        }
+        if let Some(policy) = &self.project_policy {
+            policy.validate()?;
         }
         refs(&self.affected_paths, 128)?;
         for s in &self.signals {
@@ -244,12 +249,25 @@ pub struct ModelSelection {
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
+pub struct TemplateEvidence {
+    pub id: String,
+    pub definition_hash: String,
+    pub description: String,
+    pub workspace: String,
+    pub members: Vec<ModelSelection>,
+    pub reviewer_roles: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
 pub struct RoutingPlan {
     pub decision_kind: DecisionKind,
     pub router_provider: String,
     pub router_version: String,
     pub policy_version: String,
     pub eligible_templates: Vec<String>,
+    #[serde(default)]
+    pub template_evidence: Vec<TemplateEvidence>,
     pub selected_template: Option<String>,
     pub selected_models: Vec<ModelSelection>,
     pub required_checks: Vec<String>,
@@ -264,6 +282,17 @@ impl RoutingPlan {
         bounded(&self.router_version, 200)?;
         bounded(&self.policy_version, 200)?;
         refs(&self.eligible_templates, 64)?;
+        if self.template_evidence.len() > 64 {
+            return Err(GenieError::invalid("too many frozen template definitions"));
+        }
+        for evidence in &self.template_evidence {
+            bounded(&evidence.id, 120)?;
+            bounded(&evidence.definition_hash, 200)?;
+            if evidence.description.len() > 4000 || evidence.members.len() > 64 {
+                return Err(GenieError::invalid("frozen template definition exceeds bounds"));
+            }
+            refs(&evidence.reviewer_roles, 64)?;
+        }
         refs(&self.required_checks, 64)?;
         refs(&self.reason_codes, 32)?;
         if let Some(id) = &self.selected_template {
@@ -465,10 +494,10 @@ impl Tracker {
         let task = self.get(task)?.id;
         self.tx(|| {
             self.signal_snapshot(&task, snapshot)?;
-            if let Some(id) = attempt {
-                if !self.execution_attempts(&task)?.iter().any(|a| a.id == id) {
-                    return Err(GenieError::invalid("attempt belongs to another task"));
-                }
+            if let Some(id) = attempt
+                && !self.execution_attempts(&task)?.iter().any(|a| a.id == id)
+            {
+                return Err(GenieError::invalid("attempt belongs to another task"));
             }
             let existing: Option<i64> = self
                 .conn()
@@ -607,6 +636,9 @@ pub struct ProtectedComponent {
 impl IntelligencePolicy {
     pub fn validate(&self) -> Result<()> {
         bounded(&self.version, 120)?;
+        if serde_json::to_vec(self)?.len() > 64_000 {
+            return Err(GenieError::invalid("project intelligence policy exceeds 64000 bytes"));
+        }
         if self.components.len() > 64 || self.checks.len() > 32 || self.cooldown_secs > 3600 {
             return Err(GenieError::invalid("intelligence policy exceeds configured bounds"));
         }
@@ -652,7 +684,7 @@ impl IntelligencePolicy {
 }
 pub fn valid_path(path: &str) -> bool {
     !path.is_empty()
-        && path.len() <= 512
+        && path.len() <= 500
         && !path.starts_with('/')
         && !path.contains(['\\', '*', '?'])
         && !path.chars().any(char::is_control)
@@ -661,4 +693,14 @@ pub fn valid_path(path: &str) -> bool {
 pub fn path_matches(path: &str, prefix: &str) -> bool {
     let prefix = prefix.trim_end_matches('/');
     path == prefix || path.strip_prefix(prefix).is_some_and(|s| s.starts_with('/'))
+}
+
+impl Tracker {
+    pub fn resolved_signal_snapshot(&self, task: &str) -> Result<i64> {
+        Ok(self.conn().query_row("SELECT COALESCE(MAX(CAST(json_extract(payload,'$.snapshotId') AS INTEGER)),0) FROM events WHERE subject=?1 AND type='task.signals_resolved'",[task],|r|r.get(0))?)
+    }
+    pub fn has_unresolved_safety(&self, task: &str) -> Result<bool> {
+        let resolved = self.resolved_signal_snapshot(task)?;
+        Ok(self.conn().query_row("SELECT EXISTS(SELECT 1 FROM events WHERE subject=?1 AND type='task.safety_paused' AND CAST(json_extract(payload,'$.snapshotId') AS INTEGER)>?2)",params![task,resolved],|r|r.get(0))?)
+    }
 }

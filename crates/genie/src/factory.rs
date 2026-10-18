@@ -26,6 +26,7 @@ pub struct FactoryAttempt {
     pub started_at: String,
     pub result: Option<String>,
     pub escalated: Option<bool>,
+    pub human_escalated: Option<bool>,
     pub cost_usd: Option<f64>,
     pub routing_ids: Vec<i64>,
 }
@@ -72,6 +73,7 @@ pub struct FactoryTask {
     pub models: Vec<String>,
     pub roles: Vec<String>,
     pub policy_versions: Vec<String>,
+    pub profile_versions: Vec<String>,
     pub router_versions: Vec<String>,
     pub reason_codes: Vec<String>,
     pub initial_signals: BTreeMap<String, String>,
@@ -158,14 +160,22 @@ pub fn metrics(rows: &[&FactoryTask]) -> BTreeMap<String, Metric> {
     out.insert("retryRate".into(), ratio(rows.iter().map(|r| r.retries.map(|v| v > 0)), n));
     let attempts: Vec<_> = rows.iter().flat_map(|r| &r.attempts).collect();
     out.insert("escalationRate".into(), ratio(attempts.iter().map(|a| a.escalated), attempts.len()));
+    out.insert("humanEscalationRate".into(), ratio(attempts.iter().map(|a| a.human_escalated), attempts.len()));
+    for result in ["accepted", "rejected", "failed", "cancelled"] {
+        out.insert(
+            format!("attempt_{}_rate", result),
+            ratio(attempts.iter().map(|a| a.result.as_deref().filter(|s| *s != "unknown").map(|value| value == result)), attempts.len()),
+        );
+    }
     out.insert("attemptTelemetryCoverage".into(), ratio(rows.iter().map(|r| Some(!r.attempts.is_empty())), n));
     out.insert("humanInterventionRate".into(), ratio(rows.iter().map(|r| r.human_interventions.map(|v| v > 0)), n));
     out.insert("ownerClarificationRate".into(), ratio(rows.iter().map(|r| Some(r.owner_clarifications > 0)), n));
     out.insert("acceptanceRate".into(), ratio(rows.iter().map(|r| Some(r.result == "accepted")), n));
-    out.insert("executionHoursMedian".into(), distribution(rows.iter().map(|r| r.execution_hours), n, 0.5, "hours"));
-    out.insert("executionHoursP90".into(), distribution(rows.iter().map(|r| r.execution_hours), n, 0.9, "hours"));
-    out.insert("activeHoursMedian".into(), distribution(rows.iter().map(|r| r.active_hours), n, 0.5, "hours"));
-    out.insert("waitingHoursMedian".into(), distribution(rows.iter().map(|r| r.waiting_hours), n, 0.5, "hours"));
+    let delivery: Vec<_> = rows.iter().filter(|r| r.result == "accepted").collect();
+    out.insert("executionHoursMedian".into(), distribution(delivery.iter().map(|r| r.execution_hours), delivery.len(), 0.5, "hours"));
+    out.insert("executionHoursP90".into(), distribution(delivery.iter().map(|r| r.execution_hours), delivery.len(), 0.9, "hours"));
+    out.insert("activeHoursMedian".into(), distribution(delivery.iter().map(|r| r.active_hours), delivery.len(), 0.5, "hours"));
+    out.insert("waitingHoursMedian".into(), distribution(delivery.iter().map(|r| r.waiting_hours), delivery.len(), 0.5, "hours"));
     let completed = rows.iter().filter(|r| r.first_pass_accepted.is_some()).collect::<Vec<_>>();
     out.insert("reviewRoundsMedian".into(), distribution(completed.iter().map(|r| Some(r.review_rounds as f64)), n, 0.5, "rounds"));
     // All attributable work of the cohort, including rejected/cancelled attempts
@@ -222,7 +232,93 @@ fn json_value<T: serde::de::DeserializeOwned>(text: String) -> rusqlite::Result<
     serde_json::from_str(&text).map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))
 }
 
+fn task_costs(
+    conn: &Connection,
+    usage: &[genie_core::usage::UsageRow],
+    prices: &Prices,
+    row: &mut FactoryTask,
+    until: &str,
+) -> rusqlite::Result<()> {
+    use genie_core::usage::Tokens;
+    let task = &row.task;
+    let daily: Vec<_> = usage.iter().filter(|u| u.task.as_deref() == Some(task.as_str())).collect();
+    let aggregate_calls: u64 = daily.iter().map(|u| u.calls).sum();
+    let aggregate_tokens = daily.iter().fold(Tokens::default(), |mut sum, u| {
+        sum.add(&u.tokens);
+        sum
+    });
+    let mut complete = false;
+    if table(conn, "usage_attributions")? {
+        let total:(i64,Tokens)=conn.query_row("SELECT COUNT(*),COALESCE(SUM(input),0),COALESCE(SUM(output),0),COALESCE(SUM(cache_read),0),COALESCE(SUM(cache_write),0) FROM usage_attributions WHERE task=?1",[task],|r|Ok((r.get(0)?,Tokens {input:r.get::<_,i64>(1)?.max(0) as u64,output:r.get::<_,i64>(2)?.max(0) as u64,cache_read:r.get::<_,i64>(3)?.max(0) as u64,cache_write:r.get::<_,i64>(4)?.max(0) as u64})))?;
+        complete = aggregate_calls > 0 && aggregate_calls == total.0 as u64 && aggregate_tokens == total.1;
+        let mut q=conn.prepare("SELECT attempt_id,stage,role,model,COUNT(*),SUM(input),SUM(output),SUM(cache_read),SUM(cache_write) FROM usage_attributions WHERE task=?1 AND at<=?2 GROUP BY attempt_id,stage,role,model")?;
+        for item in q.query_map(params![task, until], |r| {
+            Ok((
+                r.get::<_, Option<i64>>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, i64>(4)? as usize,
+                Tokens {
+                    input: r.get::<_, i64>(5)?.max(0) as u64,
+                    output: r.get::<_, i64>(6)?.max(0) as u64,
+                    cache_read: r.get::<_, i64>(7)?.max(0) as u64,
+                    cache_write: r.get::<_, i64>(8)?.max(0) as u64,
+                },
+            ))
+        })? {
+            let (attempt_id, stage, role, model, calls, tokens) = item?;
+            let (cost, unpriced) = crate::config::price_of(prices, &model).map_or((0.0, tokens.total()), |price| price.split(&tokens));
+            row.costs.push(FactoryCost {
+                attempt_id,
+                stage,
+                role,
+                model,
+                calls,
+                cost_usd: (unpriced == 0).then_some(cost),
+                known_cost_usd: cost,
+                unpriced_tokens: unpriced,
+            });
+        }
+    }
+    if complete {
+        row.attempt_cost_coverage = "complete".into();
+        row.known_cost_usd = row.costs.iter().map(|c| c.known_cost_usd).sum();
+        row.unpriced_tokens = row.costs.iter().map(|c| c.unpriced_tokens).sum();
+        row.cost_usd = (row.unpriced_tokens == 0).then_some(row.known_cost_usd);
+        for attempt in &mut row.attempts {
+            let costs: Vec<_> = row.costs.iter().filter(|c| c.attempt_id == Some(attempt.id)).collect();
+            if costs.iter().all(|c| c.cost_usd.is_some()) {
+                attempt.cost_usd = Some(costs.iter().filter_map(|c| c.cost_usd).sum());
+            }
+        }
+    } else {
+        let cutoff_day = &until[..10];
+        let ambiguous = daily.iter().any(|u| u.day == cutoff_day);
+        let observed: Vec<_> = daily.iter().filter(|u| u.day.as_str() < cutoff_day).collect();
+        for u in &observed {
+            let (cost, unpriced) = crate::config::price_of(prices, &u.model).map_or((0.0, u.tokens.total()), |p| p.split(&u.tokens));
+            row.known_cost_usd += cost;
+            row.unpriced_tokens += unpriced;
+        }
+        // A legacy daily bucket cannot say which side of an intraday cutoff a
+        // call occurred on. Only exact new evidence contributes on that day.
+        if !ambiguous && !observed.is_empty() && row.unpriced_tokens == 0 {
+            row.cost_usd = Some(row.known_cost_usd);
+        }
+        if ambiguous {
+            row.missing.push("intraday_usage_attribution".into());
+        }
+        if !row.costs.is_empty() {
+            row.attempt_cost_coverage = "partial".into();
+        }
+    }
+    Ok(())
+}
+
 pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> rusqlite::Result<FactoryAnalytics> {
+    // One read snapshot reconciles accounting and attribution while agents append.
+    let _read = conn.is_autocommit().then(|| conn.unchecked_transaction()).transpose()?;
     let has_intelligence = table(conn, "execution_attempts")?;
     // Last observed terminal delivery per task at the report cutoff. Reopened
     // tasks remain in the cohort for their delivered work; tasks are counted once.
@@ -297,7 +393,7 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
                     state = Some(to.to_string());
                 }
                 // Read from/to, not a person's free-form note, for durations.
-                if from == "" {
+                if from.is_empty() {
                     known_intervals = false;
                 }
             }
@@ -309,21 +405,59 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
         }
         row.human_interventions = (!events.is_empty()).then_some(interventions);
         if has_intelligence {
-            let mut q =
-                conn.prepare("SELECT id,started_at FROM execution_attempts WHERE task=?1 AND start_event_id<=?2 ORDER BY ordinal")?;
+            let mut q = conn.prepare("SELECT id,started_at FROM execution_attempts WHERE task=?1 AND started_at<=?2 ORDER BY ordinal")?;
             let attempts = q
-                .query_map(params![task, end_event], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+                .query_map(params![task, until], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             row.attempt_ids = attempts.iter().map(|(id, _)| *id).collect();
             if let Some((_, start)) = attempts.first() {
                 row.execution_hours = elapsed(start, &end);
+                let mut status = events
+                    .iter()
+                    .filter(|(_, at, _, kind, _)| kind == "task.status_changed" && at <= start)
+                    .next_back()
+                    .and_then(|(_, _, _, _, p)| p["to"].as_str())
+                    .map(str::to_string);
+                let mut at = start.as_str();
+                let mut active = 0.0;
+                let mut waiting = 0.0;
+                let mut measured = status.is_some();
+                for (_, next, _, _, payload) in
+                    events.iter().filter(|(_, at, _, kind, _)| kind == "task.status_changed" && at > start && at <= &end)
+                {
+                    if let Some(duration) = elapsed(at, next) {
+                        if status.as_deref() == Some("in_progress") {
+                            active += duration;
+                        } else {
+                            waiting += duration;
+                        }
+                    } else {
+                        measured = false;
+                    }
+                    status = payload["to"].as_str().map(str::to_string);
+                    at = next;
+                }
+                if let Some(duration) = elapsed(at, &end) {
+                    if status.as_deref() == Some("in_progress") {
+                        active += duration;
+                    } else {
+                        waiting += duration;
+                    }
+                } else {
+                    measured = false;
+                }
+                row.active_hours = measured.then_some(active);
+                row.waiting_hours = measured.then_some(waiting);
                 row.retries = Some(attempts.len().saturating_sub(1));
             }
             let mut q = conn.prepare("SELECT id,data FROM task_signal_snapshots WHERE task=?1 AND created_at<=?2 ORDER BY revision")?;
             let snapshots = q
-                .query_map(params![task, end], |r| Ok((r.get::<_, i64>(0)?, json_value::<SignalProfile>(r.get(1)?)?)))?
+                .query_map(params![task, until], |r| Ok((r.get::<_, i64>(0)?, json_value::<SignalProfile>(r.get(1)?)?)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             row.snapshot_ids = snapshots.iter().map(|(id, _)| *id).collect();
+            row.profile_versions = snapshots.iter().map(|(_, s)| s.project_profile_version.clone()).collect();
+            row.profile_versions.sort();
+            row.profile_versions.dedup();
             if let Some((_, profile)) = snapshots.first() {
                 row.initial_signals = profile
                     .signals
@@ -333,7 +467,7 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
             }
             let mut q = conn.prepare("SELECT id,data FROM routing_decisions WHERE task=?1 AND created_at<=?2 ORDER BY id")?;
             let routing = q
-                .query_map(params![task, end], |r| Ok((r.get::<_, i64>(0)?, json_value::<RoutingPlan>(r.get(1)?)?)))?
+                .query_map(params![task, until], |r| Ok((r.get::<_, i64>(0)?, json_value::<RoutingPlan>(r.get(1)?)?)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             row.routing_ids = routing.iter().map(|(id, _)| *id).collect();
             row.initial_topology = routing.first().map(|(_, r)| r.selected_template.clone().unwrap_or_else(|| "custom".into()));
@@ -350,21 +484,28 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
             for (id, started_at) in &attempts {
                 let result: Option<String> = conn
                     .query_row(
-                        "SELECT result FROM execution_assessments WHERE attempt_id=?1 AND event_id<=?2 ORDER BY revision DESC LIMIT 1",
-                        params![id, end_event],
+                        "SELECT result FROM execution_assessments WHERE attempt_id=?1 AND created_at<=?2 ORDER BY revision DESC LIMIT 1",
+                        params![id, until],
                         |r| r.get(0),
                     )
                     .optional()?;
                 let mut q = conn.prepare("SELECT id, data FROM routing_decisions WHERE attempt_id=?1 AND created_at<=?2 ORDER BY id")?;
                 let decisions = q
-                    .query_map(params![id, end], |r| Ok((r.get::<_, i64>(0)?, json_value::<RoutingPlan>(r.get(1)?)?)))?
+                    .query_map(params![id, until], |r| Ok((r.get::<_, i64>(0)?, json_value::<RoutingPlan>(r.get(1)?)?)))?
                     .collect::<rusqlite::Result<Vec<_>>>()?;
+                let mut human_upgrade = false;
+                for (routing_id, decision) in &decisions {
+                    if decision.reason_codes.iter().any(|c| c == "topology_upgrade") {
+                        human_upgrade |= conn.query_row("SELECT EXISTS(SELECT 1 FROM events WHERE subject=?1 AND type='task.routing_decided' AND actor_role='human' AND json_extract(payload,'$.routingId')=?2)",params![task,routing_id],|r|r.get::<_,bool>(0))?;
+                    }
+                }
                 row.attempts.push(FactoryAttempt {
                     id: *id,
                     started_at: started_at.clone(),
                     result,
                     escalated: (!decisions.is_empty())
                         .then(|| decisions.iter().any(|(_, d)| d.reason_codes.iter().any(|c| c == "topology_upgrade"))),
+                    human_escalated: (!decisions.is_empty()).then_some(human_upgrade),
                     cost_usd: None,
                     routing_ids: decisions.iter().map(|(id, _)| *id).collect(),
                 });
@@ -385,76 +526,7 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
                 v.dedup();
             }
         }
-        let rows: Vec<_> = usage.iter().filter(|u| u.task.as_deref() == Some(task.as_str())).collect();
-        for u in &rows {
-            if let Some(price) = crate::config::price_of(prices, &u.model) {
-                let (cost, unpriced) = price.split(&u.tokens);
-                row.known_cost_usd += cost;
-                row.unpriced_tokens += unpriced;
-            } else {
-                row.unpriced_tokens += u.tokens.total();
-            }
-        }
-        if !rows.is_empty() && row.unpriced_tokens == 0 {
-            row.cost_usd = Some(row.known_cost_usd);
-        }
-        if has_intelligence && table(conn, "usage_attributions")? {
-            use genie_core::usage::Tokens;
-            let mut q = conn.prepare("SELECT attempt_id,stage,role,model,COUNT(*),SUM(input),SUM(output),SUM(cache_read),SUM(cache_write) FROM usage_attributions WHERE task=?1 GROUP BY attempt_id,stage,role,model")?;
-            let attributions = q
-                .query_map([&task], |r| {
-                    Ok((
-                        r.get::<_, Option<i64>>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, Option<String>>(2)?,
-                        r.get::<_, String>(3)?,
-                        r.get::<_, i64>(4)? as usize,
-                        Tokens {
-                            input: r.get::<_, i64>(5)?.max(0) as u64,
-                            output: r.get::<_, i64>(6)?.max(0) as u64,
-                            cache_read: r.get::<_, i64>(7)?.max(0) as u64,
-                            cache_write: r.get::<_, i64>(8)?.max(0) as u64,
-                        },
-                    ))
-                })?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            let aggregate_calls: u64 = usage.iter().filter(|u| u.task.as_deref() == Some(task.as_str())).map(|u| u.calls).sum();
-            let aggregate_tokens =
-                usage.iter().filter(|u| u.task.as_deref() == Some(task.as_str())).fold(Tokens::default(), |mut sum, u| {
-                    sum.add(&u.tokens);
-                    sum
-                });
-            let mut attributed_tokens = Tokens::default();
-            for (_, _, _, _, _, tokens) in &attributions {
-                attributed_tokens.add(tokens);
-            }
-            let attributed_calls: usize = attributions.iter().map(|a| a.4).sum();
-            let complete = aggregate_calls > 0 && aggregate_calls == attributed_calls as u64 && aggregate_tokens == attributed_tokens;
-            for (attempt, stage, role, model, calls, tokens) in attributions {
-                let (cost, unpriced) = crate::config::price_of(prices, &model).map_or((0.0, tokens.total()), |price| price.split(&tokens));
-                row.costs.push(FactoryCost {
-                    attempt_id: attempt,
-                    stage,
-                    role,
-                    model,
-                    calls,
-                    cost_usd: (unpriced == 0).then_some(cost),
-                    known_cost_usd: cost,
-                    unpriced_tokens: unpriced,
-                });
-            }
-            if complete {
-                row.attempt_cost_coverage = "complete".into();
-                for attempt in &mut row.attempts {
-                    let costs: Vec<_> = row.costs.iter().filter(|c| c.attempt_id == Some(attempt.id)).collect();
-                    if costs.iter().all(|c| c.cost_usd.is_some()) {
-                        attempt.cost_usd = Some(costs.iter().filter_map(|c| c.cost_usd).sum());
-                    }
-                }
-            } else if !row.costs.is_empty() {
-                row.attempt_cost_coverage = "partial".into();
-            }
-        }
+        task_costs(conn, &usage, prices, &mut row, until)?;
         if row.first_pass_accepted.is_none() {
             row.missing.push("completed_first_review".into());
         }
@@ -482,6 +554,7 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
             ("model", &row.models),
             ("role", &row.roles),
             ("policy_version", &row.policy_versions),
+            ("profile_version", &row.profile_versions),
             ("router_version", &row.router_versions),
             ("reason", &row.reason_codes),
         ] {
@@ -576,9 +649,46 @@ mod tests {
     fn empty_and_unpriced_samples_stay_unknown_and_quantiles_are_nearest_rank() {
         assert_eq!(ratio(std::iter::empty(), 0).value, None);
         assert_eq!(distribution([Some(1.0), None, Some(2.0), Some(9.0)].into_iter(), 4, 0.9, "hours").value, Some(9.0));
-        let rows = vec![FactoryTask { result: "accepted".into(), known_cost_usd: 2.0, unpriced_tokens: 10, ..Default::default() }];
+        let rows = [FactoryTask { result: "accepted".into(), known_cost_usd: 2.0, unpriced_tokens: 10, ..Default::default() }];
         let metrics = metrics(&rows.iter().collect::<Vec<_>>());
         assert_eq!(metrics["costPerAcceptedTask"].value, None);
         assert_eq!(metrics["costPerAcceptedTask"].missing, 1);
+    }
+    #[test]
+    fn historical_cutoff_excludes_future_spend_and_future_attempts() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = Tracker::init(dir.path(), None, None).unwrap();
+        let task = t
+            .create(&Actor::new("owner", Role::Human), CreateInput { title: "Delivered then reopened".into(), ..Default::default() })
+            .unwrap()
+            .id;
+        to(&t, &task, Status::InProgress);
+        t.record_usage("executor", Some(&task), "fake/model", &Tokens { input: 1_000_000, ..Default::default() }).unwrap();
+        to(&t, &task, Status::Done);
+        let boundary: i64 = t.conn().query_row("SELECT MAX(id) FROM events", [], |r| r.get(0)).unwrap();
+        to(&t, &task, Status::InProgress);
+        t.record_usage("executor", Some(&task), "fake/model", &Tokens { input: 9_000_000, ..Default::default() }).unwrap();
+        t.conn()
+            .execute(
+                "UPDATE events SET at=CASE WHEN id<=?1 THEN '2026-10-19T11:00:00.000Z' ELSE '2026-10-20T11:00:00.000Z' END",
+                [boundary],
+            )
+            .unwrap();
+        t.conn().execute("UPDATE execution_attempts SET started_at=CASE WHEN ordinal=1 THEN '2026-10-19T10:00:00.000Z' ELSE '2026-10-20T10:00:00.000Z' END",[]).unwrap();
+        t.conn()
+            .execute(
+                "UPDATE usage_attributions SET at=CASE WHEN id=1 THEN '2026-10-19T10:30:00.000Z' ELSE '2026-10-20T10:30:00.000Z' END",
+                [],
+            )
+            .unwrap();
+        t.conn().execute("UPDATE execution_assessments SET created_at='2026-10-19T11:00:00.000Z'", []).unwrap();
+        let prices = BTreeMap::from([("fake/model".into(), ModelPrice { input: 1.0, ..Default::default() })]);
+        let monday = collect(t.conn(), "2026-10-19T00:00:00.000Z", "2026-10-19T23:59:59.999Z", &prices).unwrap();
+        assert_eq!(monday.tasks[0].cost_usd, Some(1.0));
+        assert_eq!(monday.tasks[0].attempts.len(), 1);
+        assert_eq!(monday.metrics["costPerAcceptedTask"].value, Some(1.0));
+        let tuesday = collect(t.conn(), "2026-10-19T00:00:00.000Z", "2026-10-20T23:59:59.999Z", &prices).unwrap();
+        assert_eq!(tuesday.tasks[0].cost_usd, Some(10.0));
+        assert_eq!(tuesday.tasks[0].attempts.len(), 2);
     }
 }

@@ -122,7 +122,19 @@ pub fn sources(app: &App, project: &str, task: &str) -> AppResult<Value> {
         records.push(json!({ "id": format!("session:{agent}"), "agent": agent, "available": true, "kind": "transcript" }));
     }
     let intelligence = app.with_tracker(project, |t| t.intelligence_history(&task.id))?;
-    let recommendations = crate::intelligence::recommendations(&intelligence);
+    let mut recommendations = crate::intelligence::recommendations(&intelligence);
+    let prices = app.prices()?;
+    let since = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let until = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let cohorts = app.with_tracker(project, |t| {
+        let analytics = crate::factory::collect(t.conn(), &since, &until, &prices)?;
+        Ok(analytics
+            .cohorts
+            .into_iter()
+            .filter(|c| c.tasks.contains(&task.id) && matches!(c.dimension.as_str(), "comparable_routing" | "policy_by_signals"))
+            .collect::<Vec<_>>())
+    })?;
+    recommendations["cohortEvidence"] = json!({"since":since,"until":until,"cohorts":cohorts});
     Ok(
         json!({ "task": task.id, "sources": records, "executionCutoff": execution_cutoff, "intelligence": intelligence, "routingRecommendations": recommendations,
         "scope": "All recorded execution turns, including failed/interrupted attempts, former members and the task manager; task history, mail, clarifications and artifacts are available in manager show and team show." }),

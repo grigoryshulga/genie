@@ -6,4 +6,4 @@ export type FactoryTask = { task: string, title: string, result: string, deliver
 /**
  * Historical daily usage cannot be losslessly attributed to execution attempts.
  */
-attemptCostCoverage: string, costs: Array<FactoryCost>, initialTopology: string | null, finalTopology: string | null, models: Array<string>, roles: Array<string>, policyVersions: Array<string>, routerVersions: Array<string>, reasonCodes: Array<string>, initialSignals: { [key in string]: string }, snapshotIds: Array<number>, routingIds: Array<number>, missing: Array<string>, };
+attemptCostCoverage: string, costs: Array<FactoryCost>, initialTopology: string | null, finalTopology: string | null, models: Array<string>, roles: Array<string>, policyVersions: Array<string>, profileVersions: Array<string>, routerVersions: Array<string>, reasonCodes: Array<string>, initialSignals: { [key in string]: string }, snapshotIds: Array<number>, routingIds: Array<number>, missing: Array<string>, };

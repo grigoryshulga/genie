@@ -7,13 +7,14 @@ import type { FactoryAnalytics as Analytics } from "@/shared/api/generated/Facto
 import type { Metric } from "@/shared/api/generated/Metric.ts";
 
 const NAMES: Record<string, string> = {
+  humanEscalationRate: "Усиления по решению человека", attempt_accepted_rate: "Принятые попытки", attempt_rejected_rate: "Отклонённые попытки", attempt_failed_rate: "Неудачные попытки", attempt_cancelled_rate: "Отменённые попытки",
   attemptTelemetryCoverage: "Покрытие истории попыток", deliveredTasks: "Доставлено задач", firstPassAcceptance: "Принятие с первого ревью", retryRate: "Повторные попытки",
   escalationRate: "Усиление команды", humanInterventionRate: "Вмешательство людей", ownerClarificationRate: "Вопросы владельцу",
   acceptanceRate: "Доля принятых", executionHoursMedian: "Выполнение: медиана", executionHoursP90: "Выполнение: P90",
   activeHoursMedian: "Активное время: медиана", waitingHoursMedian: "Ожидание: медиана", reviewRoundsMedian: "Завершённые раунды ревью: медиана",
   costPerAcceptedTask: "Стоимость принятой задачи", failedWorkCost: "Стоимость неудачной работы",
 };
-const DIMENSIONS: Record<string, string> = { initial_topology: "Начальная команда", final_topology: "Итоговая команда", model: "Модель", role: "Роль", policy_version: "Версия политики", router_version: "Версия маршрутизатора", reason: "Причина решения" };
+const DIMENSIONS: Record<string, string> = { initial_topology: "Начальная команда", final_topology: "Итоговая команда", model: "Модель", role: "Роль", policy_version: "Версия политики", router_version: "Версия маршрутизатора", reason: "Причина решения", profile_version: "Версия профиля", comparable_routing: "Команды при сопоставимых сигналах", policy_by_signals: "Политики при сопоставимых сигналах" };
 function value(m: Metric) {
   if (m.value === null) return "Нет данных";
   if (m.unit === "fraction") return `${(m.value * 100).toFixed(1)}%`;

@@ -2,5 +2,6 @@
 import type { DecisionKind } from "./DecisionKind.ts";
 import type { ModelSelection } from "./ModelSelection.ts";
 import type { RoutingStatus } from "./RoutingStatus.ts";
+import type { TemplateEvidence } from "./TemplateEvidence.ts";
 
-export type RoutingPlan = { decisionKind: DecisionKind, routerProvider: string, routerVersion: string, policyVersion: string, eligibleTemplates: Array<string>, selectedTemplate: string | null, selectedModels: Array<ModelSelection>, requiredChecks: Array<string>, decisionStatus: RoutingStatus, overrideReason: string | null, reasonCodes: Array<string>, providerDecisionIds: Array<number>, };
+export type RoutingPlan = { decisionKind: DecisionKind, routerProvider: string, routerVersion: string, policyVersion: string, eligibleTemplates: Array<string>, templateEvidence: Array<TemplateEvidence>, selectedTemplate: string | null, selectedModels: Array<ModelSelection>, requiredChecks: Array<string>, decisionStatus: RoutingStatus, overrideReason: string | null, reasonCodes: Array<string>, providerDecisionIds: Array<number>, };

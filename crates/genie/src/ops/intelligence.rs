@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 pub fn register(all: &mut Vec<Entry>) {
-    register!(all, History, Assess, Reassess, Shadow);
+    register!(all, History, Assess, Reassess, Shadow, Resolve);
 }
 fn out(value: Value) -> Out {
     Out::new(serde_json::to_string_pretty(&value).unwrap_or_default(), value)
@@ -84,5 +84,22 @@ impl Op for Shadow {
     const NEED: Need = Need::Admin;
     async fn run(self, cx: &Cx) -> Result<Out, String> {
         Ok(out(cx.call("POST", &format!("/tasks/{}/intelligence/shadow", enc(&cx.task(self.task)?)), Some(self.request)).await?))
+    }
+}
+
+/// Explicitly resolve runtime constraints with human-reviewed evidence. Does not resume execution.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Resolve {
+    #[arg(long)]
+    pub task: Option<String>,
+    #[arg(long,value_parser=parse)]
+    pub request: Value,
+}
+impl Op for Resolve {
+    const GROUP: &'static str = "intelligence";
+    const NAME: &'static str = "resolve";
+    const NEED: Need = Need::Person;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        Ok(out(cx.call("POST", &format!("/tasks/{}/intelligence/resolve", enc(&cx.task(self.task)?)), Some(self.request)).await?))
     }
 }

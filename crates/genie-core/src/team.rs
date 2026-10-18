@@ -630,6 +630,9 @@ impl Bus<'_> {
     /// Pause (`paused`) or resume (`active`) a member: a paused member keeps its mail
     /// but gets no deliveries and its session is stopped.
     pub fn set_paused(&self, team: &str, member: &str, paused: bool, by: &str) -> Result<()> {
+        if !paused && self.t.has_unresolved_safety(&self.get(team)?.task)? {
+            return Err(GenieError::invalid("resolve the task's runtime safety constraint before resuming members"));
+        }
         self.t.tx(|| {
             let (from, to) = if paused { ("active", "paused") } else { ("paused", "active") };
             let n = self

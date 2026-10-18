@@ -861,6 +861,9 @@ impl Tracker {
     pub fn set_status(&self, actor: &Actor, id: &str, to: Status, opts: StatusOptions) -> Result<Task> {
         let task = self.get(id)?;
         let from = task.status;
+        if matches!(to, Status::InProgress | Status::Done) && self.has_unresolved_safety(&task.id)? {
+            return Err(GenieError::invalid("explicitly resolve the runtime safety constraint before execution or completion"));
+        }
         if from == to {
             return Err(GenieError::invalid(format!("{} is already {to}", task.id)));
         }

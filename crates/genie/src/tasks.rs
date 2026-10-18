@@ -604,3 +604,11 @@ pub fn shadow_intelligence(app: &App, caller: &Caller, id: &str, body: crate::in
     }
     crate::intelligence::shadow(app, caller, id, body)
 }
+pub fn resolve_intelligence(
+    app: &App,
+    caller: &Caller,
+    id: &str,
+    body: crate::intelligence::ResolveBody,
+) -> AppResult<genie_core::intelligence::Snapshot> {
+    crate::intelligence::resolve(app, caller, id, body)
+}

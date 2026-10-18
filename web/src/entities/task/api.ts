@@ -99,3 +99,6 @@ export const useTaskIntelligence = (id: string, enabled: boolean) => useQuery({
   queryKey: ["intelligence", id], enabled,
   queryFn: () => request<import("../../shared/api/generated/IntelligenceHistory.ts").IntelligenceHistory>("GET", `/api/tasks/${encodeURIComponent(id)}/intelligence`),
 });
+
+export const useAssessTaskSignals = () => useInvalidating(({ id, body }: { id: string; body: import("../../shared/api/generated/AssessBody.ts").AssessBody }) => request<import("../../shared/api/generated/Snapshot.ts").Snapshot>("POST", `/api/tasks/${encodeURIComponent(id)}/intelligence/assess`, body), [["intelligence"], ["stats"]]);
+export const useResolveTaskSignals = () => useInvalidating(({ id, body }: { id: string; body: import("../../shared/api/generated/ResolveBody.ts").ResolveBody }) => request<import("../../shared/api/generated/Snapshot.ts").Snapshot>("POST", `/api/tasks/${encodeURIComponent(id)}/intelligence/resolve`, body), [["intelligence"], ["task"], ["stats"]]);

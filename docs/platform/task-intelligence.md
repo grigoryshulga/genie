@@ -71,9 +71,14 @@ Material reasons are `sensitive_change`, `scope_expansion`, `irreversible_change
 when retrying. Required reviewers join the existing workspace; the task's artifacts,
 conversation and attempt survive. Safety upgrades may bypass cooldown; routine
 reassessment is debounced. The server does not automatically downgrade a running team.
-Unresolved sensitive changes, missing recovery checks, or conflicting requirements
-pause members and request an owner decision. Resolve the policy/brief and explicitly
-resume members through the existing team controls.
+Unknown high-impact scope blocks dispatch after bounded preflight; a person must
+record affected paths or clarify the brief. Unresolved sensitive changes, missing
+recovery checks, or conflicting requirements pause members and request an owner
+decision. Runtime discoveries survive subsequent assessments. Use the task's
+resolution form or `genie intelligence resolve --task G-123 --request` with
+`{snapshotId, reason, evidenceRefs}` to record an explicit human resolution of the
+latest snapshot, then resume members through the existing team controls. Changing
+status, reassessing, or resuming cannot bypass an unresolved safety pause.
 
 ## Statistics
 
@@ -113,7 +118,9 @@ genie intelligence shadow --task G-123 --request '{
 ```
 
 Unspecified candidate fields use the shared policy defaults. Shadow evaluation freezes
-the existing snapshot, candidate, eligible templates and baseline references. It uses
+the existing snapshot, candidate, eligible templates, original versioned brief, and baseline references.
+Historical replay intersects candidate choices with frozen template definitions;
+new choices introduced after the original decision are excluded. It uses
 the current external-call grant and allowance, saves uncertainty/unavailability, and
 starts no teams or sessions. It changes no task status or production policy. It does
 not predict unobserved quality or hypothetical cost savings.

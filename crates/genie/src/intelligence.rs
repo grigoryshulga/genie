@@ -50,11 +50,11 @@ fn inventory(root: &Path) -> Vec<String> {
     type Cache = std::collections::HashMap<std::path::PathBuf, (Instant, Vec<String>)>;
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Cache>> = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
-    if let Ok(entries) = cache.lock() {
-        if let Some((at, facts)) = entries.get(root).filter(|(at, _)| at.elapsed() < Duration::from_secs(60)) {
-            let _ = at;
-            return facts.clone();
-        }
+    if let Ok(entries) = cache.lock()
+        && let Some((at, facts)) = entries.get(root).filter(|(at, _)| at.elapsed() < Duration::from_secs(60))
+    {
+        let _ = at;
+        return facts.clone();
     }
     let facts = scan_inventory(root);
     if let Ok(mut entries) = cache.lock() {
@@ -127,7 +127,7 @@ pub fn assess(
     if paths.len() > 128 || paths.iter().any(|p| !genie_core::intelligence::valid_path(p)) {
         return Err(AppError::Bad("affected paths must be bounded relative repository paths".into()));
     }
-    let brief_version = app.with_tracker(project, |t| Ok(t.management().manager(&task.id)?.map_or(0, |m| m.brief_version)))?;
+    let brief_version = app.with_tracker(project, |t| t.management().capture_brief(actor, &task.id))?;
     // Hash only brief facts; operational timestamps, status, acceptance checkmarks,
     // mail and token usage do not change the assessed requirements.
     let brief = brief_input(task);
@@ -137,6 +137,7 @@ pub fn assess(
         brief_version,
         brief_fingerprint: fingerprint(&brief),
         project_profile_version: fingerprint(policy),
+        project_policy: Some(policy.clone()),
         extractor_version: EXTRACTOR.into(),
         signals: SignalName::ALL.into_iter().map(|n| Signal::unknown(n, EXTRACTOR)).collect(),
         affected_paths: paths,
@@ -169,7 +170,12 @@ pub fn assess(
                     .find(|s| s.name == SignalName::Sensitivity && s.source == SignalSource::Policy)
                     .map(|s| s.evidence_refs.clone())
                     .unwrap_or_default();
-                evidence.push(format!("project-policy:{}:component:{}", policy.version, component.id));
+                if evidence.is_empty() {
+                    evidence.push(format!("project-policy:{}:profile:{}", policy.version, fingerprint(policy)));
+                }
+                if evidence.len() < 32 {
+                    evidence.push(format!("project-policy:{}:component:{}", policy.version, component.id));
+                }
                 let old = profile.value(SignalName::Sensitivity);
                 let sensitivity =
                     if old != "unknown" && old != component.sensitivity { "protected".to_string() } else { component.sensitivity.clone() };
@@ -251,19 +257,35 @@ pub fn assess(
     // that discovery. This is not mutation of an earlier assessment.
     app.with_tracker(project, |t| {
         let history = t.intelligence_history(&task.id)?;
-        if trigger.is_none() {
-            if let Some(previous) = history.snapshots.last() {
-                let mut current = profile.clone();
-                let mut old = previous.profile.clone();
-                for s in &mut current.signals {
-                    s.assessed_at.clear();
-                }
-                for s in &mut old.signals {
-                    s.assessed_at.clear();
-                }
-                if current == old {
-                    return Ok(previous.clone());
-                }
+        let resolved = t.resolved_signal_snapshot(&task.id)?;
+        // Model reassessment cannot erase a material runtime discovery. Only an
+        // explicit human resolution advances the durable resolution boundary.
+        for name in SignalName::ALL {
+            if let Some(runtime) = history
+                .snapshots
+                .iter()
+                .rev()
+                .filter(|s| s.id > resolved)
+                .flat_map(|s| &s.profile.signals)
+                .find(|s| s.name == name && s.source == SignalSource::Runtime)
+                && let Some(current) = profile.signals.iter_mut().find(|s| s.name == name && s.source != SignalSource::Policy)
+            {
+                *current = runtime.clone();
+            }
+        }
+        if trigger.is_none()
+            && let Some(previous) = history.snapshots.last()
+        {
+            let mut current = profile.clone();
+            let mut old = previous.profile.clone();
+            for s in &mut current.signals {
+                s.assessed_at.clear();
+            }
+            for s in &mut old.signals {
+                s.assessed_at.clear();
+            }
+            if current == old {
+                return Ok(previous.clone());
             }
         }
         t.append_signal_snapshot(actor, &task.id, &profile, trigger)
@@ -320,6 +342,9 @@ pub(crate) fn enforce(agents: &AgentConfig, roster: &Roster, p: &Policy, snapsho
         return Err(AppError::Conflict("task assessment requires an owner decision; clarify the brief before dispatch".into()));
     }
     let checks = required(&p.intelligence, &snapshot.profile);
+    if snapshot.profile.value(SignalName::Scope) == "unknown" && snapshot.profile.value(SignalName::BlastRadius) == "high" {
+        return Err(AppError::Conflict("bounded preflight could not establish the scope of a high-impact task; a person must record affected paths or clarify the brief before dispatch".into()));
+    }
     if !roster_satisfies(agents, roster, &p.intelligence, &checks) {
         return Err(AppError::Conflict(format!(
             "team does not satisfy mandatory policy checks: {}; add the configured independent reviewer roles",
@@ -343,7 +368,8 @@ pub(crate) fn models(agents: &AgentConfig, roster: &Roster) -> Vec<ModelSelectio
         .collect()
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, ts_rs::TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssessBody {
     #[serde(default)]
@@ -356,9 +382,10 @@ pub fn assess_task(app: &App, caller: &Caller, id: &str, body: AssessBody) -> Ap
             "only people can narrow policy scope with affected paths; agents report discoveries through reassessment".into(),
         ));
     }
-    let gate = app.decision_gates.task(&caller.project, id);
-    let _guard = gate.lock().map_err(|_| AppError::Internal("assessment lock poisoned".into()))?;
     let task = app.with_tracker(&caller.project, |t| t.get(id))?;
+    let gate = app.decision_gates.task(&caller.project, &task.id);
+    let _guard = gate.lock().map_err(|_| AppError::Internal("assessment lock poisoned".into()))?;
+    let task = app.with_tracker(&caller.project, |t| t.get(&task.id))?;
     let p = decisions::policy(app, &caller.project)?;
     assess(app, &caller.project, &caller.actor, &task, &p, body.affected_paths, None)
 }
@@ -425,22 +452,33 @@ pub fn reassess(app: &App, caller: &Caller, id: &str, body: ReassessBody) -> App
     if team.state != genie_core::TeamState::Active {
         return Err(AppError::Conflict("reassessment requires an active team".into()));
     }
+    if matches!(
+        task.status,
+        genie_core::Status::Inbox
+            | genie_core::Status::Draft
+            | genie_core::Status::Refining
+            | genie_core::Status::Done
+            | genie_core::Status::Cancelled
+    ) || team.spec.as_ref().and_then(crate::agent_config::TeamSpec::from_value).is_none_or(|s| s.stage != Stage::Delivery)
+        || app.with_tracker(&caller.project, |t| t.open_attempt(&task.id))?.is_none()
+    {
+        return Err(AppError::Conflict(
+            "reassessment requires an open delivery attempt; refinement discoveries do not start execution".into(),
+        ));
+    }
     let checks = if p.intelligence.enabled { p.intelligence.required(&paths) } else { vec![] };
     let mut roles: BTreeSet<String> = checks.iter().filter_map(|c| p.intelligence.checks.get(c).cloned()).collect();
     if matches!(body.reason.as_str(), "scope_expansion" | "verification_gap" | "review_return") {
         roles.insert("reviewer".into());
     }
     let missing: Vec<_> = roles.into_iter().filter(|role| !team.members.iter().any(|m| &m.role == role)).collect();
-    if missing.is_empty() && !["sensitive_change", "irreversible_change", "requirement_conflict"].contains(&body.reason.as_str()) {
-        if let Some(last) = history.routing.iter().rev().find(|r| matches!(r.plan.decision_kind, DecisionKind::Reassessment)) {
-            if chrono::DateTime::parse_from_rfc3339(&last.created_at)
-                .is_ok_and(|at| chrono::Utc::now().signed_duration_since(at).num_seconds() < i64::from(p.intelligence.cooldown_secs))
-            {
-                return Err(AppError::Conflict(
-                    "reassessment cooldown is active; required safety upgrades are still allowed immediately".into(),
-                ));
-            }
-        }
+    if missing.is_empty()
+        && !["sensitive_change", "irreversible_change", "requirement_conflict"].contains(&body.reason.as_str())
+        && let Some(last) = history.routing.iter().rev().find(|r| matches!(r.plan.decision_kind, DecisionKind::Reassessment))
+        && chrono::DateTime::parse_from_rfc3339(&last.created_at)
+            .is_ok_and(|at| chrono::Utc::now().signed_duration_since(at).num_seconds() < i64::from(p.intelligence.cooldown_secs))
+    {
+        return Err(AppError::Conflict("reassessment cooldown is active; required safety upgrades are still allowed immediately".into()));
     }
     if team.members.len() + missing.len() > app.cfg.limits.max_members_per_team {
         return Err(AppError::Conflict(
@@ -488,89 +526,56 @@ pub fn reassess(app: &App, caller: &Caller, id: &str, body: ReassessBody) -> App
     let blocked = body.reason == "requirement_conflict"
         || (body.reason == "irreversible_change" && !checks.iter().any(|c| c == "recovery_plan"))
         || (body.reason == "sensitive_change" && checks.is_empty());
-    if !blocked {
-        for role in &missing {
-            crate::runtime::add_member(
-                app,
-                &caller.project,
-                team_id,
-                crate::config::MemberSpec {
-                    role: role.clone(),
-                    name: None,
-                    model: None,
-                    thinking: None,
-                    instructions: Some(format!(
-                        "Mandatory independent check after {}. Evidence: {}",
-                        body.reason,
-                        body.evidence_refs.join(", ")
-                    )),
-                },
-                &caller.actor.name,
-            )?;
+    let agents = app.agents();
+    let roles =
+        missing.iter().map(|role| Ok((role.clone(), agents.role_for(&caller.project, role)?.clone()))).collect::<AppResult<Vec<_>>>()?;
+    let docs = crate::context::l1(app, &caller.project, &task);
+    let (routing, final_team) = app.with_tracker(&caller.project, |t| t.tx(|| {
+        // Recheck the mutable input while holding the write transaction. Remote
+        // assessment already finished; no SQLite lock crosses a provider call.
+        if serde_json::to_value(t.get(&task.id)?)? != serde_json::to_value(&task)? || serde_json::to_value(t.bus().get(team_id)?)? != serde_json::to_value(&team)? {
+            return Err(genie_core::GenieError::invalid("task or team changed during reassessment; retry with current facts"));
         }
-    }
+        if !blocked {
+            for (role_id, role) in &roles {
+                crate::runtime::add_member_in_tracker(t, team_id, &crate::config::MemberSpec {
+                    role: role_id.clone(), instructions: Some(format!("Mandatory independent check after {}. Evidence: {}", body.reason, body.evidence_refs.join(", "))), ..Default::default()
+                }, &caller.actor.name, &crate::runtime::MemberAddition { agents: &agents, role, max: app.cfg.limits.max_members_per_team, docs: docs.as_deref() })?;
+            }
+        } else {
+            for member in &team.members { t.bus().set_paused(team_id, &member.name, true, &caller.actor.name)?; }
+            t.append_event("task.safety_paused", Some(&task.id), &caller.actor.name, caller.actor.role.as_str(), json!({"snapshotId":snapshot.id,"reason":body.reason}))?;
+            if task.status != genie_core::Status::NeedsOwner {
+                t.set_status(&caller.actor, &task.id, genie_core::Status::NeedsOwner, genie_core::StatusOptions {
+                    note: Some(format!("Task intelligence discovered {}. Execution is paused; explicitly resolve the safety constraint before resuming. Evidence: {}", body.reason, body.evidence_refs.join(", "))), ..Default::default()
+                })?;
+            }
+        }
+        let final_team = t.bus().get(team_id)?;
+        let selections = team_models(&agents, &final_team);
+        let mut reasons = vec![key.clone(), input_key, body.reason.clone()];
+        if !blocked && !missing.is_empty() { reasons.push("topology_upgrade".into()); }
+        if blocked { reasons.push("owner_decision_required".into()); }
+        let plan = RoutingPlan {
+            decision_kind: DecisionKind::Reassessment, router_provider: "server_policy".into(), router_version: EXTRACTOR.into(), policy_version: fingerprint(&p),
+            eligible_templates: final_team.template.iter().cloned().collect(),
+            template_evidence: history.routing.last().map(|r|r.plan.template_evidence.clone()).unwrap_or_default(), selected_template: if !blocked && !missing.is_empty() {None} else {final_team.template.clone()},
+            selected_models: selections, required_checks: checks, decision_status: if blocked {RoutingStatus::Abstained} else {RoutingStatus::Selected}, override_reason: None, reason_codes: reasons, provider_decision_ids: vec![],
+        };
+        let attempt = t.open_attempt(&task.id)?.ok_or_else(||genie_core::GenieError::invalid("delivery attempt ended during reassessment"))?;
+        let routing = t.append_routing(&caller.actor, &task.id, Some(attempt.id), snapshot.id, &key, &plan)?;
+        Ok((routing, final_team))
+    }))?;
+    // Session side effects follow the atomic durable pause. Recovery also sees
+    // paused members if this process stops before notifying live sessions.
     if blocked {
         for member in &team.members {
-            app.with_tracker(&caller.project, |t| t.bus().set_paused(team_id, &member.name, true, &caller.actor.name))?;
             crate::sessions::reset(
                 app,
                 &crate::runtime::AgentKey::Member { project: caller.project.clone(), team: team_id.into(), member: member.name.clone() },
             );
         }
     }
-    if blocked && task.status != genie_core::Status::NeedsOwner {
-        tasks::set_status(
-            app,
-            caller,
-            &task.id,
-            tasks::StatusBody::to(
-                genie_core::Status::NeedsOwner,
-                Some(format!(
-                    "Task intelligence discovered {}. Execution is paused; resolve the requirement or configure mandatory safety checks before resuming. Evidence: {}",
-                    body.reason,
-                    body.evidence_refs.join(", ")
-                )),
-            ),
-        )?;
-    }
-    let final_team = app.with_tracker(&caller.project, |t| t.bus().get(team_id))?;
-    let agents = app.agents();
-    let selections = final_team
-        .members
-        .iter()
-        .map(|m| ModelSelection {
-            role: m.role.clone(),
-            model: m.model.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.model.clone())),
-            thinking: m.thinking.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.thinking.clone())),
-        })
-        .collect();
-    let mut reasons = vec![key.clone(), input_key, body.reason.clone()];
-    if !blocked && !missing.is_empty() {
-        reasons.push("topology_upgrade".into());
-    }
-    if blocked {
-        reasons.push("owner_decision_required".into());
-    }
-    let plan = RoutingPlan {
-        decision_kind: DecisionKind::Reassessment,
-        router_provider: "server_policy".into(),
-        router_version: EXTRACTOR.into(),
-        policy_version: fingerprint(&p),
-        eligible_templates: final_team.template.iter().cloned().collect(),
-        selected_template: final_team.template.clone(),
-        selected_models: selections,
-        required_checks: checks,
-        decision_status: if blocked { RoutingStatus::Abstained } else { RoutingStatus::Selected },
-        override_reason: None,
-        reason_codes: reasons,
-        provider_decision_ids: vec![],
-    };
-    let routing = app.with_tracker(&caller.project, |t| {
-        t.tx(|| {
-            let a = t.begin_attempt(&caller.actor, &task.id)?;
-            t.append_routing(&caller.actor, &task.id, Some(a.id), snapshot.id, &key, &plan)
-        })
-    })?;
     tasks::changed(app);
     Ok(json!({"snapshot":snapshot,"routing":routing,"team":final_team,"requiresOwner":blocked}))
 }
@@ -585,27 +590,32 @@ pub fn shadow(app: &App, caller: &Caller, id: &str, body: ShadowBody) -> AppResu
     tasks::authorize(app, caller, id, Touch::Edit)?;
     let task = app.with_tracker(&caller.project, |t| t.get(id))?;
     let current = decisions::policy(app, &caller.project)?;
-    decisions::validate_policy(app, &caller.project, &body.candidate)?;
+    decisions::validate_policy_shape(&body.candidate)?;
     let snapshot = app.with_tracker(&caller.project, |t| t.signal_snapshot(&task.id, body.snapshot_id))?;
     let history = app.with_tracker(&caller.project, |t| t.intelligence_history(&task.id))?;
     let baseline = history.routing.iter().rev().find(|r| r.snapshot_id == snapshot.id);
     let checks = body.candidate.intelligence.required(&snapshot.profile.affected_paths);
-    let agents = app.agents();
-    let eligible: Vec<_> = body
-        .candidate
-        .templates
+    let definitions = baseline.map(|r| r.plan.template_evidence.as_slice()).unwrap_or(&[]);
+    let eligible: Vec<_> = definitions
         .iter()
-        .filter(|id| {
-            agents
-                .team_for(&caller.project, id)
-                .is_ok_and(|t| checks.iter().all(|c| t.members.iter().any(|m| body.candidate.intelligence.checks.get(c) == Some(&m.role))))
+        .filter(|t| {
+            body.candidate.templates.contains(&t.id)
+                && checks.iter().all(|c| body.candidate.intelligence.checks.get(c).is_some_and(|role| t.reviewer_roles.contains(role)))
         })
-        .cloned()
+        .map(|t| t.id.clone())
         .collect();
-    let mut criteria: BTreeMap<String, String> = eligible.iter().map(|id| (id.clone(), format!("Configured template {id}"))).collect();
+    let mut criteria: BTreeMap<String, String> = definitions
+        .iter()
+        .filter(|t| eligible.contains(&t.id))
+        .map(|t| (t.id.clone(), format!("{}: {}. Frozen members: {:?}", t.id, t.description, t.members)))
+        .collect();
+    let brief = if snapshot.profile.brief_version > 0 {
+        app.with_tracker(&caller.project, |t| t.management().brief(&task.id, Some(snapshot.profile.brief_version)))?.get("content").cloned()
+    } else {
+        None
+    };
     criteria.insert("unknown".into(), "Insufficient evidence; abstain".into());
-    let frozen =
-        json!({"snapshot":snapshot,"candidate":body.candidate,"baseline":baseline,"eligibleTemplates":eligible,"requiredChecks":checks});
+    let frozen = json!({"snapshot":snapshot,"brief":brief,"candidate":body.candidate,"baseline":baseline,"frozenTemplates":definitions,"eligibleTemplates":eligible,"requiredChecks":checks});
     let mut record = None;
     if current.allow_external && app.cfg.decisions.enabled && criteria.len() > 1 {
         let request = Request {
@@ -632,7 +642,7 @@ pub fn shadow(app: &App, caller: &Caller, id: &str, body: ShadowBody) -> AppResu
     } else {
         "Gather missing decision-time evidence or repair provider availability before proposing a routing policy change."
     };
-    let evidence = json!({"schemaVersion":1,"mode":"shadow","frozenInput":frozen,"providerDecisionId":record.as_ref().map(|r|r.id),"status":record.as_ref().map_or("unavailable",|r|r.status.as_str()),"selectedTemplate":selected,"baselineTemplate":baseline.and_then(|r|r.plan.selected_template.as_deref()),"recommendation":recommendation,"limitations":["Descriptive comparison; no counterfactual quality or cost prediction","Small cohorts require human evaluation"],"productionPolicyChanged":false});
+    let evidence = json!({"schemaVersion":1,"mode":"shadow","frozenInput":frozen,"providerDecisionId":record.as_ref().map(|r|r.id),"status":record.as_ref().map_or("unavailable",|r|r.status.as_str()),"selectedTemplate":selected,"baselineTemplate":baseline.and_then(|r|r.plan.selected_template.as_deref()),"recommendation":recommendation,"limitations":["Descriptive comparison; no counterfactual quality or cost prediction","Small cohorts require human evaluation","New template choices unavailable at decision time are excluded from historical replay"],"productionPolicyChanged":false});
     let evaluation = app.with_tracker(&caller.project, |t| t.append_policy_evaluation(&caller.actor, &task.id, snapshot.id, &evidence))?;
     Ok(json!(evaluation))
 }
@@ -679,21 +689,14 @@ pub(crate) fn record_live_plan(
     let Some(attempt) = t.open_attempt(&team.task)? else {
         return Ok(());
     };
-    let models = team
-        .members
-        .iter()
-        .map(|m| ModelSelection {
-            role: m.role.clone(),
-            model: m.model.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.model.clone())),
-            thinking: m.thinking.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.thinking.clone())),
-        })
-        .collect();
+    let models = team_models(agents, &team);
     let plan = RoutingPlan {
         decision_kind: kind,
         router_provider: "explicit".into(),
         router_version: EXTRACTOR.into(),
         policy_version: fingerprint(p),
         eligible_templates: team.template.iter().cloned().collect(),
+        template_evidence: history.routing.last().map(|r| r.plan.template_evidence.clone()).unwrap_or_default(),
         selected_template: if reason == "manual_model_change" { team.template.clone() } else { None },
         selected_models: models,
         required_checks: required(&p.intelligence, &snapshot.profile),
@@ -711,4 +714,102 @@ pub(crate) fn record_live_plan(
     )?;
     t.append_routing(actor, &team.task, Some(attempt.id), snapshot.id, &format!("change:{event}"), &plan)?;
     Ok(())
+}
+
+fn team_models(agents: &AgentConfig, team: &genie_core::team::Team) -> Vec<ModelSelection> {
+    team.members
+        .iter()
+        .map(|m| ModelSelection {
+            role: m.role.clone(),
+            model: m.model.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.model.clone())),
+            thinking: m.thinking.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.thinking.clone())),
+        })
+        .collect()
+}
+
+#[derive(Debug, Deserialize, ts_rs::TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResolveBody {
+    pub snapshot_id: i64,
+    pub reason: String,
+    pub evidence_refs: Vec<String>,
+}
+pub fn resolve(app: &App, caller: &Caller, id: &str, body: ResolveBody) -> AppResult<Snapshot> {
+    tasks::authorize(app, caller, id, Touch::Edit)?;
+    if !caller.is_person() {
+        return Err(AppError::Forbidden("only a person may explicitly resolve runtime constraints".into()));
+    }
+    if body.reason.trim().len() < 12
+        || body.reason.len() > 2000
+        || body.evidence_refs.is_empty()
+        || body.evidence_refs.len() > 31
+        || body.evidence_refs.iter().any(|r| r.trim().is_empty() || r.len() > 512 || r.chars().any(char::is_control))
+    {
+        return Err(AppError::Bad("resolution requires a 12–2000 character reason and bounded evidence references".into()));
+    }
+    let task = app.with_tracker(&caller.project, |t| t.get(id))?;
+    let gate = app.decision_gates.task(&caller.project, &task.id);
+    let _guard = gate.lock().map_err(|_| AppError::Internal("resolution lock poisoned".into()))?;
+    app.with_tracker(&caller.project, |t| {
+        t.tx(|| {
+            let history = t.intelligence_history(&task.id)?;
+            let snapshot = history.snapshots.last().filter(|s| s.id == body.snapshot_id).ok_or_else(|| {
+                genie_core::GenieError::invalid("resolve the latest snapshot; reassessments after the selected revision must be reviewed")
+            })?;
+            let event = t.append_event(
+                "task.signals_resolved",
+                Some(&task.id),
+                &caller.actor.name,
+                caller.actor.role.as_str(),
+                json!({"snapshotId":snapshot.id,"reason":body.reason,"evidenceRefs":body.evidence_refs}),
+            )?;
+            let mut profile = snapshot.profile.clone();
+            for signal in &mut profile.signals {
+                if signal.source == SignalSource::Runtime {
+                    signal.value = "unknown".into();
+                    signal.source = SignalSource::Human;
+                    signal.evidence_refs = body.evidence_refs.clone();
+                    signal.evidence_refs.push(format!("event:{event}"));
+                    signal.assessed_at = genie_core::db::now();
+                    signal.assessor_version = "human-resolution-v1".into();
+                    signal.confidence = None;
+                }
+            }
+            t.append_signal_snapshot(&caller.actor, &task.id, &profile, Some(event))
+        })
+    })
+}
+
+pub(crate) fn freeze_templates(
+    agents: &AgentConfig,
+    project: &str,
+    ids: &[String],
+) -> AppResult<Vec<genie_core::intelligence::TemplateEvidence>> {
+    ids.iter()
+        .map(|id| {
+            let t = agents.team_for(project, id)?;
+            Ok(genie_core::intelligence::TemplateEvidence {
+                id: id.clone(),
+                definition_hash: crate::agent_config::template_hash(t),
+                description: t.description.chars().take(1000).collect(),
+                workspace: serde_json::to_value(t.workspace).map_err(genie_core::GenieError::from)?.as_str().unwrap_or("unknown").into(),
+                members: t
+                    .members
+                    .iter()
+                    .map(|m| ModelSelection {
+                        role: m.role.clone(),
+                        model: m.model.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.model.clone())),
+                        thinking: m.thinking.clone().or_else(|| agents.roles.get(&m.role).and_then(|r| r.thinking.clone())),
+                    })
+                    .collect(),
+                reviewer_roles: t
+                    .members
+                    .iter()
+                    .filter(|m| agents.roles.get(&m.role).is_some_and(|r| r.class == Role::Reviewer))
+                    .map(|m| m.role.clone())
+                    .collect(),
+            })
+        })
+        .collect()
 }

@@ -225,7 +225,7 @@ fn server_stats(p: &mut ProjectStats, conn: &Connection, since: &str) -> rusqlit
     Ok(())
 }
 
-fn usage_stats(p: &mut ProjectStats, db: &Path, since: &str, prices: &Prices) -> rusqlite::Result<()> {
+fn usage_stats(p: &mut ProjectStats, db: &Path, since: &str, until: &str, prices: &Prices) -> rusqlite::Result<()> {
     let conn = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     conn.busy_timeout(std::time::Duration::from_secs(10))?;
     let rows = genie_core::usage::usage_since(&conn, &since[..10])?;
@@ -244,7 +244,7 @@ fn usage_stats(p: &mut ProjectStats, db: &Path, since: &str, prices: &Prices) ->
         d.cost = (d.cost * 10_000.0).round() / 10_000.0;
         d.cost_by_model.values_mut().for_each(|c| *c = (*c * 10_000.0).round() / 10_000.0);
     }
-    p.factory = crate::factory::collect(&conn, since, &Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true), prices)?;
+    p.factory = crate::factory::collect(&conn, since, until, prices)?;
     p.usage = Usage {
         spend: Spend::of(prices, &rows),
         epics: spend::by_epic(prices, &rows, &tasks),
@@ -285,7 +285,14 @@ pub fn collect(data: &Path, days: i64, only: Option<&str>, prices: &Prices) -> R
             ProjectStats { project: pr.slug.clone(), name: pr.name.clone(), daily: empty_days(since_at, now), ..Default::default() };
         tracker_stats(&mut p, &Path::new(&pr.tracker_dir).join("genie.db"), &since).map_err(|e| format!("{}: {e}", pr.slug))?;
         server_stats(&mut p, &raw, &since).map_err(|e| format!("{}: {e}", pr.slug))?;
-        usage_stats(&mut p, &Path::new(&pr.tracker_dir).join("genie.db"), &since, prices).map_err(|e| format!("{}: {e}", pr.slug))?;
+        usage_stats(
+            &mut p,
+            &Path::new(&pr.tracker_dir).join("genie.db"),
+            &since,
+            &now.to_rfc3339_opts(SecondsFormat::Millis, true),
+            prices,
+        )
+        .map_err(|e| format!("{}: {e}", pr.slug))?;
         projects.push(p);
     }
     if let Some(o) = only
