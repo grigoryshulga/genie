@@ -103,7 +103,7 @@ jobs:
       # Rootless Podman for the environment runner tests.
       - name: Sandbox
         run: |
-          pkgs="bubblewrap podman slirp4netns uidmap fuse-overlayfs"
+          pkgs="bubblewrap podman slirp4netns uidmap fuse-overlayfs catatonit"
           # The runner's package lists are usually fresh enough; refresh them only when the install fails.
           sudo apt-get install -y -q --no-install-recommends $pkgs \
             || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends $pkgs; }

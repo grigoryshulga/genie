@@ -15,6 +15,7 @@ mod delivery;
 mod docs;
 mod engine;
 mod env_host;
+mod env_podman;
 mod git_flow;
 mod git_hosts;
 mod git_proxy;

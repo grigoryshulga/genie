@@ -14,6 +14,7 @@ use genie_core::env::caps::{Capabilities, Limits};
 use genie_core::env::spec::{NetworkMode, Probe};
 
 use super::host::HostRunner;
+use super::podman::PodmanRunner;
 use super::store::Store;
 use crate::config::{EnvironmentsConfig, SandboxConfig};
 
@@ -171,17 +172,28 @@ pub trait Runner: Send + Sync {
 
 /// The runner the server uses, from `environments.runner`. `data` is the server's data directory
 /// (it holds the default store root) and `sandbox` the `runtime.sandbox` setting, which decides
-/// whether host processes run in bubblewrap. The podman runner is not available in this build yet,
-/// so `podman` and `auto` are refused with their names.
+/// whether host processes run in bubblewrap. `auto` takes podman when it works rootless and the
+/// host runner otherwise.
 pub fn select(cfg: &EnvironmentsConfig, data: &Path, sandbox: &SandboxConfig) -> Result<Arc<dyn Runner>, String> {
+    let host = || -> Result<Arc<dyn Runner>, String> {
+        let store = Store::open(cfg, data)?;
+        let sandboxed = crate::sandbox::enabled(sandbox)?;
+        Ok(Arc::new(HostRunner::new(store.root, sandboxed)))
+    };
     match cfg.runner.as_str() {
-        "host" => {
-            let store = Store::open(cfg, data)?;
-            let sandboxed = crate::sandbox::enabled(sandbox)?;
-            Ok(Arc::new(HostRunner::new(store.root, sandboxed)))
+        "podman" => Ok(Arc::new(PodmanRunner::new(cfg))),
+        "host" => host(),
+        "auto" => {
+            let podman = PodmanRunner::new(cfg);
+            match podman.capabilities() {
+                Ok(_) => Ok(Arc::new(podman)),
+                Err(e) => {
+                    eprintln!("genie: environments.runner auto: rootless podman is not usable ({e}); using the host runner");
+                    host()
+                }
+            }
         }
-        "podman" => Err("the podman runner is not available yet in this build; set environments.runner to auto or host once it is".into()),
-        _ => Err("neither the podman nor the host runner is available yet in this build; auto needs one of them".into()),
+        other => Err(format!("environments.runner: {other} is not auto, podman or host")),
     }
 }
 
@@ -190,15 +202,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn auto_and_podman_are_refused_until_the_podman_runner_lands() {
+    fn the_podman_runner_is_chosen_as_configured() {
+        let data = tempfile::tempdir().unwrap();
+        let sandbox = SandboxConfig { mode: "off".into(), ..Default::default() };
+        let cfg = EnvironmentsConfig { runner: "podman".into(), ..EnvironmentsConfig::default() };
+        assert_eq!(select(&cfg, data.path(), &sandbox).unwrap().kind(), "podman");
+    }
+
+    #[test]
+    fn auto_without_a_usable_podman_falls_back_to_the_host_runner() {
         let data = tempfile::tempdir().unwrap();
         let sandbox = SandboxConfig { mode: "off".into(), ..Default::default() };
         let mut cfg = EnvironmentsConfig::default();
-        for runner in ["auto", "podman"] {
-            cfg.runner = runner.into();
-            let err = select(&cfg, data.path(), &sandbox).err().unwrap_or_else(|| panic!("{runner} unexpectedly available"));
-            assert!(err.contains("available yet"), "{runner}: {err}");
-        }
+        cfg.podman.binary = "/nonexistent/genie-test-podman".into();
+        assert_eq!(select(&cfg, data.path(), &sandbox).unwrap().kind(), "host");
     }
 
     #[test]

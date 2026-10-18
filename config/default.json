@@ -16,7 +16,7 @@
     "runner": "auto",
     "podman": {
       "binary": "podman",
-      "network": "slirp4netns:allow_host_loopback=true",
+      "network": "auto",
       "hostAddress": "10.0.2.2"
     },
     "policy": {
