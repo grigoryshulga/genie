@@ -35,7 +35,31 @@ genie task --help
 genie task create --help
 ```
 
-Operation groups include `task`, `team`, `mail`, `docs`, `job`, `automation`, `agents`, `project`, `observe`, `user`, `me`, and `server`. Repository and delivery commands are under `repos` and `pr`. Operator commands include `serve`, `doctor`, `backup`, `restore`, and `migrate`.
+Operation groups include `task`, `team`, `mail`, `docs`, `job`, `automation`, `agents`, `project`, `observe`, `user`, `me`, and `server`. Task assessment, routing evidence and policy comparisons are under `intelligence`; Jev calls are under `decision`, and project/task management is under `manager`. Repository and delivery commands are under `repos` and `pr`. Operator commands include `serve`, `doctor`, `backup`, `restore`, and `migrate`.
+
+## Task intelligence
+
+```bash
+genie --project shop intelligence history --task G-7
+genie --project shop intelligence assess --task G-7 --affected-path src/auth/login.rs
+genie intelligence reassess --help
+genie intelligence resolve --help
+genie intelligence shadow --help
+```
+
+`history` reads immutable assessments, applied routing plans, execution attempts and
+shadow evaluations. `assess` records an assessment; only people can narrow the scope
+using confirmed affected paths. `reassess` records a material discovery and applies
+mandatory reviewers or pauses the existing team. `resolve` records a human decision
+about runtime constraints; it does not resume agents or remove required reviewers.
+`shadow` evaluates a candidate policy without applying it and requires a human project
+administrator. The latter three commands accept their shared JSON contract through
+`--request`.
+
+The MCP tool is `genie_intelligence` with actions `history`, `assess`, `reassess`,
+`resolve`, and `shadow`. Caller permissions and assigned task scope are enforced by
+the server. See [Task Intelligence](../platform/task-intelligence.md) for request
+examples, safety constraints, cost coverage and evaluation limits.
 
 ## Observe
 

@@ -6,10 +6,10 @@
 .ip-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; }
 .ip-note { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 10px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .ip-note b { color: var(--text-2); font-weight: 500; }
-.ip-note.ok { border: 1px solid #1f3a2c; background: #0f1a14; }
+.ip-note.ok { border: 1px solid var(--green-line); background: var(--green-bg); }
 .ip-note.ok b { color: var(--green); }
-.ip-epic { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid #2e2a44; border-radius: 12px; background: #15131e; }
-.ip-epic .kind { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #c9b3f5; }
+.ip-epic { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-panel); }
+.ip-epic .kind { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-text); }
 .ip-epic b { font-size: 14px; font-weight: 600; }
 .ip-epic p, .ip-more p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; }
 .ip-epic ul, .ip-more ul, .ip-open ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
@@ -28,7 +28,7 @@
 .ip-more { display: flex; flex-direction: column; gap: 6px; }
 .ip-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .ip-tags .tag { padding: 0 7px; border-radius: 9px; background: var(--bg-card); color: var(--text-2); font-size: 11px; line-height: 18px; }
-.ip-tags .tag.dep { background: var(--amber-bg); color: #f5b670; }
+.ip-tags .tag.dep { background: var(--amber-bg); color: var(--amber-text); }
 .ip-tags .tag.dep.lost { text-decoration: line-through; }
 .ip-open { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px dashed var(--line-strong); border-radius: 10px; }
 .ip-open h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-2); }
@@ -38,7 +38,7 @@
 /* «Новая задача»: how to file it. */
 .nt-mode { display: flex; padding: 3px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--bg-sunken); }
 .nt-mode button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
-.nt-mode button[aria-checked="true"] { background: #262a4a; color: var(--text); }
+.nt-mode button[aria-checked="true"] { background: var(--accent-soft); color: var(--text); }
 .nt-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: nt; }
 .nt-steps li { padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--text-body); counter-increment: nt; }
 .nt-steps li::before { content: counter(nt); display: block; margin-bottom: 6px; font-family: var(--mono); font-size: 11px; color: var(--accent-text); }

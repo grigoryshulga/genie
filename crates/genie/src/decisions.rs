@@ -39,6 +39,7 @@ pub struct Profile {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct Policy {
+    pub intelligence: genie_core::intelligence::IntelligencePolicy,
     pub allow_external: bool,
     pub tool_enabled: bool,
     pub tool_roles: Vec<String>,
@@ -56,6 +57,7 @@ pub struct Policy {
 impl Default for Policy {
     fn default() -> Self {
         Self {
+            intelligence: Default::default(),
             allow_external: false,
             tool_enabled: false,
             tool_roles: vec!["orchestrator".into(), "analyst".into()],
@@ -185,7 +187,8 @@ pub fn policy(app: &App, project: &str) -> AppResult<Policy> {
     Ok(p)
 }
 
-pub fn validate_policy(app: &App, project: &str, p: &Policy) -> AppResult<()> {
+pub fn validate_policy_shape(p: &Policy) -> AppResult<()> {
+    p.intelligence.validate()?;
     let bad = |message: &str| AppError::Bad(message.into());
     if !(0.0..=1.0).contains(&p.min_confidence)
         || !(0.0..=1.0).contains(&p.min_margin)
@@ -198,16 +201,6 @@ pub fn validate_policy(app: &App, project: &str, p: &Policy) -> AppResult<()> {
     }
     if p.templates.len() > 24 || p.profiles.len() > 48 || p.tool_roles.len() > 64 {
         return Err(bad("too many Jev templates, profiles or tool roles"));
-    }
-    let agents = app.agents();
-    for id in &p.tool_roles {
-        agents.role_for(project, id)?;
-    }
-    for id in &p.templates {
-        let t = agents.team_for(project, id)?;
-        if t.stage != crate::agent_config::Stage::Delivery || t.members.len() > app.cfg.limits.max_members_per_team {
-            return Err(bad("Jev templates must be delivery teams within the member limit"));
-        }
     }
     let mut ids = BTreeSet::new();
     for profile in &p.profiles {
@@ -223,6 +216,23 @@ pub fn validate_policy(app: &App, project: &str, p: &Policy) -> AppResult<()> {
         {
             return Err(bad("each Jev profile needs a unique id, provider/model, description, allowed roles and a valid thinking level"));
         }
+    }
+    Ok(())
+}
+pub fn validate_policy(app: &App, project: &str, p: &Policy) -> AppResult<()> {
+    validate_policy_shape(p)?;
+    crate::intelligence::validate_policy(app, project, &p.intelligence)?;
+    let agents = app.agents();
+    for id in &p.tool_roles {
+        agents.role_for(project, id)?;
+    }
+    for id in &p.templates {
+        let t = agents.team_for(project, id)?;
+        if t.stage != crate::agent_config::Stage::Delivery || t.members.len() > app.cfg.limits.max_members_per_team {
+            return Err(AppError::Bad("Jev templates must be delivery teams within the member limit".into()));
+        }
+    }
+    for profile in &p.profiles {
         for id in &profile.roles {
             agents.role_for(project, id)?;
         }

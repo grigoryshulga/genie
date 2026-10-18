@@ -27,6 +27,7 @@ pub mod api;
 mod automations;
 mod decisions;
 mod docs;
+mod intelligence;
 mod mail;
 mod management;
 mod me;
@@ -340,6 +341,7 @@ impl Entry {
 
 /// The groups of operations, in the order people read them.
 pub const GROUPS: &[(&str, &str)] = &[
+    ("intelligence", "Task signals, constrained routing history and shadow policy evaluation"),
     ("decision", "Jev judgements: evaluate alternatives, inspect uncertainty and read recorded decisions"),
     ("manager", "Project memory and task managers: dispatch, clarification, execution evidence and retrospectives"),
     ("observe", "Outcome cases after delivery: contracts, evidence, guardrail incidents and evaluation"),
@@ -366,6 +368,7 @@ pub fn catalog() -> &'static [Entry] {
         tasks::register(&mut all);
         teams::register(&mut all);
         decisions::register(&mut all);
+        intelligence::register(&mut all);
         mail::register(&mut all);
         management::register(&mut all);
         docs::register(&mut all);

@@ -3,7 +3,7 @@
 //! project's tracker so a task's subtasks and its epic are a join away; what
 //! the tokens cost is worked out when they are shown, from the server's prices.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
@@ -112,6 +112,7 @@ impl Tracker {
     /// Add one model response of `agent` to today's row.
     pub fn record_usage(&self, agent: &str, task: Option<&str>, model: &str, t: &Tokens) -> Result<()> {
         let day = crate::db::now()[..10].to_string();
+        self.tx(|| {
         self.conn().execute(
             "INSERT INTO usage(day, agent, task, model, calls, input, output, cache_read, cache_write)
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8)
@@ -120,7 +121,21 @@ impl Tracker {
                cache_read = cache_read + excluded.cache_read, cache_write = cache_write + excluded.cache_write",
             params![day, agent, task.unwrap_or(""), model, t.input as i64, t.output as i64, t.cache_read as i64, t.cache_write as i64],
         )?;
+        if let Some(task) = task.filter(|task| !task.is_empty()) {
+            // Attribution is new information the daily aggregate cannot recover.
+            // Keep it transactional with the authoritative accounting increment;
+            // historical aggregate rows are deliberately not backfilled.
+            if self.exists(task)? {
+                let attempt = self.open_attempt(task)?.map(|a| a.id);
+                let stage: String = self.conn().query_row("SELECT status FROM tasks WHERE id=?1", [task], |r| r.get(0))?;
+                let role: Option<String> = if let Some((team, member)) = agent.split_once('/') {
+                    self.conn().query_row("SELECT role FROM members WHERE team=?1 AND name=?2", params![team, member], |r| r.get(0)).optional()?
+                } else { None };
+                self.conn().execute("INSERT INTO usage_attributions(task,attempt_id,at,day,agent,model,stage,role,input,output,cache_read,cache_write) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)", params![task,attempt,crate::db::now(),day,agent,model,stage,role,t.input as i64,t.output as i64,t.cache_read as i64,t.cache_write as i64])?;
+            }
+        }
         Ok(())
+        })
     }
 
     /// Every row of a task and of the tasks under it (an epic's tasks, subtasks).

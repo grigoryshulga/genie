@@ -46,15 +46,7 @@ export function ProjectSettingsPage() {
   if (section === "tools" && tab === "automations") return <Navigate to={settingsTabHref("project", "tools", tab)} replace />;
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Управление проектом</h1>
-        {project && (
-          <span className="sub">
-            {project.name} · {PROJECT_ROLE_NAME[project.role]}
-          </span>
-        )}
-      </header>
-        <SettingsTabs scope="project" section={section} />
+      <SettingsTabs scope="project" section={section} />
       <div className="scroll">
         {!project ? (
           <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>

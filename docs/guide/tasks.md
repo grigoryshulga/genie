@@ -41,6 +41,21 @@ Project autonomy controls the orchestrator:
 | `autonomous` | The orchestrator can also close and cancel tasks. Repository policies still apply. |
 | `manual` | No server orchestrator runs. People direct the work. |
 
+## Assessments and execution history
+
+Open the task's **Task assessment and routing history** section to inspect the
+assessment used at dispatch, selected team/models, required checks, evidence,
+execution attempts and results. People can record confirmed repository-relative
+paths and resolve runtime discoveries with a reason and evidence references.
+Resuming the team remains a separate action; current mandatory reviewers are still
+required. A safety pause cannot be cleared by changing task status alone.
+
+Review returns and added members keep the same execution attempt and workspace.
+Completion or cancellation ends the attempt; restarting execution creates another.
+Old tasks retain explicitly missing history rather than reconstructed assessments.
+See [Task Intelligence and Factory Analytics](../platform/task-intelligence.md) for
+policy setup, reassessment through CLI/API, and measured results.
+
 ## Epics
 
 Use an epic for a goal that needs several tasks. Record its success criteria, roadmap, and shared artifacts there. Child tasks receive the epic's goal and artifact list in their context.

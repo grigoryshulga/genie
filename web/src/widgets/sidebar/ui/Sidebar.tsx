@@ -40,7 +40,7 @@ export function Sidebar({ onNew, online, compact, onToggleCompact, searchRef, on
       <div className={`project${many ? " switch" : ""}`} title={project ? `${project.name} · ${project.hasRepo ? "проект с репозиторием кода" : "проект без кода"}` : "genie"}>
         <span className="sidebar-brand">
           <span className="logo-mark" aria-hidden="true">
-            <Icon.mark size={15} />
+            <Icon.mark size={22} />
           </span>
           <button
             type="button"

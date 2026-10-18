@@ -1,0 +1,10 @@
+{
+  "title": "Соло",
+  "description": "Один исполнитель для ограниченной задачи. Обязательные проверки политики и независимое принятие результата сохраняются.",
+  "stage": "delivery",
+  "workspace": "worktree",
+  "members": [{"role": "executor"}],
+  "relations": [
+    {"from": "executor", "to": "orchestrator", "type": "reports", "note": "delivery and verification evidence; request independent review when required"}
+  ]
+}

@@ -35,6 +35,8 @@ A CLI invocation with `GENIE_TOKEN` calls the server. Without it, the CLI acts a
 
 ## Persistence and events
 
+[Task Intelligence and Factory Analytics](task-intelligence.md) extends the same tracker and Statistics page with immutable routing evidence and attempt-aware measurements.
+
 SQLite stores server-wide data in `server.db` and a tracker per project. Task mutations and their event entries share a transaction. Automation cursors, run/step state, mail leases, and notification delivery state persist across restarts.
 
 The knowledge vault is a separate Git repository; its SQLite search index is disposable. See [operations](operations.md#data-directory) for the directory layout.
