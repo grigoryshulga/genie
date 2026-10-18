@@ -10,6 +10,10 @@ import type { Evidence } from "../../shared/api/generated/Evidence.ts";
 import type { Incident } from "../../shared/api/generated/Incident.ts";
 import type { IncidentStatus } from "../../shared/api/generated/IncidentStatus.ts";
 import type { ObservationCase } from "../../shared/api/generated/ObservationCase.ts";
+import type { SourceAuth } from "../../shared/api/generated/SourceAuth.ts";
+import type { SourceBody } from "../../shared/api/generated/SourceBody.ts";
+import type { SourceKind } from "../../shared/api/generated/SourceKind.ts";
+import type { SourceView } from "../../shared/api/generated/SourceView.ts";
 import type { ObservationPolicy } from "../../shared/api/generated/ObservationPolicy.ts";
 
 export type { CaseResult, CaseStatus, Contract, Evidence, IncidentStatus, ObservationCase, ObservationPolicy };
@@ -279,3 +283,106 @@ export const observationKeys = {
  * arm problems depend on the project's sources (§6.2).
  */
 export const SOURCE_STALE: readonly (readonly string[])[] = [observationKeys.sources, observationKeys.caseRoot];
+
+// --- observation sources (§7.3, §13.2, §15) ---------------------------------------------------------
+
+export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
+  prometheus: "Prometheus-совместимый",
+  sentry: "Sentry-совместимый",
+};
+
+export const SOURCE_AUTH_LABEL: Record<SourceAuth, string> = {
+  none: "Без авторизации",
+  bearer: "Токен (Bearer)",
+  basic: "Логин и пароль (Basic)",
+};
+
+/**
+ * The source name rule of §13.2 in the form the HTML `pattern` attribute takes (the browser anchors
+ * the whole value). It mirrors `source_names_follow_the_pattern` in crates/genie-core.
+ */
+export const SOURCE_NAME_PATTERN = "[a-z0-9][a-z0-9_\\-]{0,31}";
+
+/** The source form's fields. Numbers and optional text stay strings until the body is built. */
+export interface SourceDraft {
+  name: string;
+  kind: SourceKind;
+  url: string;
+  auth: SourceAuth;
+  organization: string;
+  sentryProject: string;
+  environment: string;
+  field: string;
+  dataset: string;
+  timeoutSecs: string;
+  /** Read only when a new source is saved. It never enters the body: the server stores it apart (§15). */
+  secret: string;
+}
+
+export function emptySourceDraft(): SourceDraft {
+  return {
+    name: "",
+    kind: "prometheus",
+    url: "",
+    auth: "none",
+    organization: "",
+    sentryProject: "",
+    environment: "",
+    field: "",
+    dataset: "",
+    timeoutSecs: "",
+    secret: "",
+  };
+}
+
+/** The draft of a stored source, without its secret (the secret changes in its own row). */
+export function sourceDraft(view: SourceView): SourceDraft {
+  return {
+    name: view.name,
+    kind: view.kind,
+    url: view.url,
+    auth: view.auth,
+    organization: view.organization ?? "",
+    sentryProject: view.sentryProject ?? "",
+    environment: view.environment ?? "",
+    field: view.field ?? "",
+    dataset: view.dataset ?? "",
+    timeoutSecs: view.timeoutSecs === undefined ? "" : String(view.timeoutSecs),
+    secret: "",
+  };
+}
+
+const SENTRY_TEXT_FIELDS = ["organization", "sentryProject", "environment", "field", "dataset"] as const;
+
+/**
+ * The request body of a draft (§13.2). Blank text and a blank timeout are left out, not sent as
+ * empty strings; Sentry fields are sent only for a Sentry source, so a kind change drops the rest.
+ * The body never carries the secret. The server replaces the whole configuration on update.
+ */
+export function sourceBody(draft: SourceDraft): SourceBody {
+  const body: SourceBody = {
+    name: draft.name.trim(),
+    kind: draft.kind,
+    url: draft.url.trim(),
+    auth: draft.auth,
+  };
+  if (draft.kind === "sentry") {
+    for (const key of SENTRY_TEXT_FIELDS) {
+      const value = draft[key].trim();
+      if (value) body[key] = value;
+    }
+  }
+  const timeout = draft.timeoutSecs.trim();
+  if (timeout) body.timeoutSecs = Number(timeout);
+  return body;
+}
+
+/**
+ * Why a secret cannot be saved for an authorization kind, or undefined when it can: a bearer token
+ * must not be blank, and basic takes `user:password` with a colon. `none` takes no secret.
+ */
+export function secretProblem(auth: SourceAuth, value: string): string | undefined {
+  if (auth === "none") return undefined;
+  if (auth === "bearer") return value.trim() ? undefined : "Введите токен доступа.";
+  return value.includes(":") ? undefined : "Введите логин и пароль через двоеточие: логин:пароль.";
+}

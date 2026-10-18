@@ -1,11 +1,20 @@
 // The observation sources of the project (docs/platform/observation-plane.md §13.2, §15, §17):
 // the servers that observation cases read their measurements from. Only project administrators
 // reach the list; the server refuses everyone else, so other members see a notice instead.
-// A secret is entered once, never shown again, and only its hint is listed.
+// A secret is entered once, never shown again, and only its hint is listed. The rules of a draft,
+// its request body and the shape of a secret live in entities/observation/model.ts.
 
 import { type FormEvent, useId, useState } from "react";
 import {
   OBSERVATION_TEXT,
+  SOURCE_AUTH_LABEL,
+  SOURCE_KIND_LABEL,
+  SOURCE_NAME_PATTERN,
+  type SourceDraft,
+  emptySourceDraft,
+  secretProblem,
+  sourceBody,
+  sourceDraft,
   useAddSource,
   useClearSourceSecret,
   useObservationSources,
@@ -15,33 +24,41 @@ import {
   useUpdateSource,
 } from "@/entities/observation";
 import type { SourceAuth } from "@/shared/api/generated/SourceAuth.ts";
-import type { SourceBody } from "@/shared/api/generated/SourceBody.ts";
 import type { SourceKind } from "@/shared/api/generated/SourceKind.ts";
 import type { SourceTestView } from "@/shared/api/generated/SourceTestView.ts";
 import type { SourceView } from "@/shared/api/generated/SourceView.ts";
-import { ConfirmDialog, Icon, useAct } from "@/shared/ui";
+import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 
 const SOURCE_KINDS: SourceKind[] = ["prometheus", "sentry"];
 const SOURCE_AUTHS: SourceAuth[] = ["none", "bearer", "basic"];
 
-const KIND_LABEL: Record<SourceKind, string> = {
-  prometheus: "Prometheus-совместимый",
-  sentry: "Sentry-совместимый",
+const URL_HINT =
+  "Например https://prometheus.example.com или http://mimir:8080/prometheus. Без логина, пароля, параметров запроса и «#» в адресе.";
+const URL_PLACEHOLDER: Record<SourceKind, string> = {
+  prometheus: "https://prometheus.example.com",
+  sentry: "https://sentry.io",
 };
-
-const AUTH_LABEL: Record<SourceAuth, string> = {
-  none: "Без авторизации",
-  bearer: "Токен (Bearer)",
-  basic: "Логин и пароль (Basic)",
+/** What a secret is for, per authorization kind. A source without authorization takes none. */
+const SECRET_HINT: Record<SourceAuth, string> = {
+  none: "Для входа без авторизации секрет не нужен.",
+  bearer: "Токен доступа. После сохранения не показывается.",
+  basic: "Логин и пароль через двоеточие. После сохранения не показывается.",
 };
-
+const SECRET_PLACEHOLDER: Record<SourceAuth, string> = {
+  none: "",
+  bearer: "Токен",
+  basic: "логин:пароль",
+};
 const QUERY_PLACEHOLDER: Record<SourceKind, string> = {
   prometheus: "sum(rate(http_requests_total[$__range]))",
   sentry: "level:error",
 };
+const DEFAULT_RANGE = "1h";
 
-/** The source name rule of §13.2; the server also refuses the reserved name `manual`. */
-const NAME_PATTERN = "[a-z0-9][a-z0-9_\\-]{0,31}";
+/** The text of a failed request, for a toast or an inline note. */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 export function ObservationSources({ admin }: { admin: boolean }) {
   const sources = useObservationSources(admin);
@@ -51,9 +68,17 @@ export function ObservationSources({ admin }: { admin: boolean }) {
 
   return (
     <div className="st-body">
-      <div className="st-head">
-        <h2>{OBSERVATION_TEXT.section}</h2>
-        <p>Источники — серверы метрик и ошибок, из которых наблюдения берут измерения. Секреты хранятся на сервере зашифрованными и после сохранения не показываются.</p>
+      <div className="st-head-row">
+        <div className="st-head">
+          <h2>{OBSERVATION_TEXT.section}</h2>
+          <p>Источники — серверы метрик и ошибок, из которых наблюдения берут измерения. Секреты хранятся на сервере зашифрованными и после сохранения не показываются.</p>
+        </div>
+        {admin && !adding && (
+          <button type="button" className="btn primary" onClick={() => setAdding(true)}>
+            <Icon.plus size={14} />
+            Добавить источник
+          </button>
+        )}
       </div>
 
       {!admin ? (
@@ -65,12 +90,6 @@ export function ObservationSources({ admin }: { admin: boolean }) {
         </section>
       ) : (
         <>
-          {!adding && (
-            <button type="button" className="btn primary" style={{ alignSelf: "flex-start" }} onClick={() => setAdding(true)}>
-              <Icon.plus size={14} />
-              Добавить источник
-            </button>
-          )}
           {adding && (
             <section className="st-card" aria-label="Новый источник">
               <div className="st-card-head">
@@ -116,13 +135,13 @@ function SourceCard({ source, editing, onEdit }: { source: SourceView; editing: 
   const titleId = useId();
   return (
     <section className="st-card" aria-labelledby={titleId}>
-      <div className="st-card-head" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+      <div className="st-card-head st-head-line">
+        <div className="st-head-main">
           <h3 id={titleId} className="mono">
             {source.name}
           </h3>
           <p>
-            {KIND_LABEL[source.kind]} · <span className="mono">{source.url}</span>
+            {SOURCE_KIND_LABEL[source.kind]} · <span className="mono">{source.url}</span>
           </p>
         </div>
         {!editing && (
@@ -141,9 +160,17 @@ function SourceCard({ source, editing, onEdit }: { source: SourceView; editing: 
         <div className="st-card-body">
           <dl className="st-facts">
             <dt>Авторизация</dt>
-            <dd>{AUTH_LABEL[source.auth]}</dd>
+            <dd>{SOURCE_AUTH_LABEL[source.auth]}</dd>
             <dt>Секрет</dt>
-            <dd>{source.secret ? <>Задан: <span className="mono">{source.secret.hint}</span></> : "Не задан"}</dd>
+            <dd>
+              {source.secret ? (
+                <>
+                  Задан: <span className="mono">{source.secret.hint}</span>
+                </>
+              ) : (
+                "Не задан"
+              )}
+            </dd>
             {source.kind === "sentry" && (
               <>
                 <dt>Организация</dt>
@@ -169,7 +196,7 @@ function SourceCard({ source, editing, onEdit }: { source: SourceView; editing: 
 
       {removing && (
         <ConfirmDialog
-          title="Удалить источник?"
+          title={`Удалить источник ${source.name}?`}
           confirmLabel="Удалить"
           danger
           busy={remove.isPending}
@@ -183,111 +210,61 @@ function SourceCard({ source, editing, onEdit }: { source: SourceView; editing: 
             })
           }
         >
-          Секрет источника удалится вместе с ним. Наблюдения, которые его используют, перестанут получать измерения: их сбор будет записывать ошибку. Вернуть источник можно,
-          создав его заново с тем же именем.
+          Секрет удалится вместе с ним. Наблюдения, которые его используют, перестанут получать измерения: их сбор будет записывать ошибку. Вернуть источник можно, создав
+          его заново с тем же именем и снова задав секрет.
         </ConfirmDialog>
       )}
     </section>
   );
 }
 
-/** The editable fields of a source. Numbers and optional text stay strings until the body is built. */
-interface Draft {
-  name: string;
-  kind: SourceKind;
-  url: string;
-  auth: SourceAuth;
-  organization: string;
-  sentryProject: string;
-  environment: string;
-  field: string;
-  dataset: string;
-  timeoutSecs: string;
-  /** Only read when a new source is saved; an existing one changes its secret in its own row. */
-  secret: string;
-}
-
-const EMPTY_DRAFT: Draft = {
-  name: "",
-  kind: "prometheus",
-  url: "",
-  auth: "none",
-  organization: "",
-  sentryProject: "",
-  environment: "",
-  field: "",
-  dataset: "",
-  timeoutSecs: "",
-  secret: "",
-};
-
-function draftOf(source: SourceView): Draft {
-  return {
-    name: source.name,
-    kind: source.kind,
-    url: source.url,
-    auth: source.auth,
-    organization: source.organization ?? "",
-    sentryProject: source.sentryProject ?? "",
-    environment: source.environment ?? "",
-    field: source.field ?? "",
-    dataset: source.dataset ?? "",
-    timeoutSecs: source.timeoutSecs === undefined ? "" : String(source.timeoutSecs),
-    secret: "",
-  };
-}
-
-/**
- * The request body of a draft. Fields that the kind does not use are left out, so an update
- * drops them: the server replaces the whole configuration (§13.2).
- */
-function bodyOf(draft: Draft): SourceBody {
-  const text = (value: string) => value.trim() || undefined;
-  const sentry = draft.kind === "sentry";
-  return {
-    name: draft.name.trim(),
-    kind: draft.kind,
-    url: draft.url.trim(),
-    auth: draft.auth,
-    organization: sentry ? text(draft.organization) : undefined,
-    sentryProject: sentry ? text(draft.sentryProject) : undefined,
-    environment: sentry ? text(draft.environment) : undefined,
-    field: sentry ? text(draft.field) : undefined,
-    dataset: sentry ? text(draft.dataset) : undefined,
-    timeoutSecs: text(draft.timeoutSecs) === undefined ? undefined : Number(draft.timeoutSecs),
-  };
-}
-
-/** The form of a new source (no `source`) or of an existing one, whose name cannot change. */
+/** The form of a new source (no `source`) or of a stored one, whose name cannot change. */
 function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => void }) {
   const editing = source !== undefined;
   const add = useAddSource();
   const update = useUpdateSource();
   const setSecret = useSetSourceSecret();
   const act = useAct();
+  const toast = useToast();
   const id = useId();
-  const [draft, setDraft] = useState<Draft>(() => (source ? draftOf(source) : EMPTY_DRAFT));
-  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
+  const [draft, setDraft] = useState<SourceDraft>(() => (source ? sourceDraft(source) : emptySourceDraft()));
+  const set = <K extends keyof SourceDraft>(key: K, value: SourceDraft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const sentry = draft.kind === "sentry";
+  // A new source with an authorization kind takes its secret in the same form; it is sent after the source exists.
+  const needsSecret = !editing && draft.auth !== "none";
+  const secretMissing = needsSecret ? secretProblem(draft.auth, draft.secret) : undefined;
   const pending = add.isPending || update.isPending || setSecret.isPending;
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const body = bodyOf(draft);
+    const body = sourceBody(draft);
     if (source) {
       if (await act(() => update.mutateAsync(body), `Источник ${body.name} сохранён`)) onDone();
       return;
     }
-    if (!(await act(() => add.mutateAsync(body), `Источник ${body.name} добавлен`))) return;
-    // The secret is a second request. If it fails, the source stays and its row offers the secret again.
-    if (draft.auth !== "none" && draft.secret.trim()) {
-      await act(() => setSecret.mutateAsync({ name: body.name, value: draft.secret }), `Секрет ${body.name} сохранён`);
+    try {
+      await add.mutateAsync(body);
+    } catch (err) {
+      toast(messageOf(err), "error");
+      return;
     }
+    if (needsSecret) {
+      try {
+        await setSecret.mutateAsync({ name: body.name, value: draft.secret });
+      } catch (err) {
+        setSecret.reset();
+        toast(`Источник ${body.name} добавлен, но секрет не сохранён: ${messageOf(err)}. Задайте его в строке «Секрет».`, "error");
+        onDone();
+        return;
+      }
+      setSecret.reset();
+    }
+    toast(`Источник ${body.name} добавлен`);
     onDone();
   };
 
   return (
-    <form onSubmit={(e) => void submit(e)} aria-label={editing ? `Изменить источник ${source.name}` : "Параметры источника"}>
+    <form onSubmit={(e) => void submit(e)} aria-label={source ? `Изменить источник ${source.name}` : "Параметры источника"}>
       <div className="st-row">
         <label className="lbl" htmlFor={`${id}-name`}>
           <b>Имя</b>
@@ -299,7 +276,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
             className="st-input mono"
             value={draft.name}
             onChange={(e) => set("name", e.target.value)}
-            pattern={NAME_PATTERN}
+            pattern={SOURCE_NAME_PATTERN}
             maxLength={32}
             required
             disabled={editing}
@@ -318,7 +295,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
           <select id={`${id}-kind`} value={draft.kind} onChange={(e) => set("kind", e.target.value as SourceKind)}>
             {SOURCE_KINDS.map((kind) => (
               <option key={kind} value={kind}>
-                {KIND_LABEL[kind]}
+                {SOURCE_KIND_LABEL[kind]}
               </option>
             ))}
           </select>
@@ -328,7 +305,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
       <div className="st-row">
         <label className="lbl" htmlFor={`${id}-url`}>
           <b>Адрес сервера</b>
-          <span>Например https://prometheus.example.com. Без пути, логина, пароля и параметров в адресе.</span>
+          <span>{URL_HINT}</span>
         </label>
         <div className="ctl">
           <input
@@ -337,7 +314,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
             type="url"
             value={draft.url}
             onChange={(e) => set("url", e.target.value)}
-            placeholder="https://prometheus.example.com"
+            placeholder={URL_PLACEHOLDER[draft.kind]}
             required
             spellCheck={false}
           />
@@ -353,7 +330,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
           <select id={`${id}-auth`} value={draft.auth} onChange={(e) => set("auth", e.target.value as SourceAuth)}>
             {SOURCE_AUTHS.map((auth) => (
               <option key={auth} value={auth}>
-                {AUTH_LABEL[auth]}
+                {SOURCE_AUTH_LABEL[auth]}
               </option>
             ))}
           </select>
@@ -431,11 +408,11 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
         </div>
       </div>
 
-      {!editing && draft.auth !== "none" && (
+      {needsSecret && (
         <div className="st-row">
           <label className="lbl" htmlFor={`${id}-secret`}>
             <b>Секрет</b>
-            <span>{draft.auth === "basic" ? "Логин и пароль через двоеточие." : "Токен доступа."} После сохранения не показывается.</span>
+            <span>{SECRET_HINT[draft.auth]}</span>
           </label>
           <div className="ctl">
             <input
@@ -445,9 +422,10 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
               autoComplete="new-password"
               value={draft.secret}
               onChange={(e) => set("secret", e.target.value)}
-              placeholder={draft.auth === "basic" ? "логин:пароль" : "Токен"}
+              placeholder={SECRET_PLACEHOLDER[draft.auth]}
               spellCheck={false}
             />
+            {draft.secret !== "" && secretMissing && <div className="st-note">{secretMissing}</div>}
           </div>
         </div>
       )}
@@ -457,8 +435,8 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
         <button type="button" className="btn ghost" disabled={pending} onClick={onDone}>
           Отменить
         </button>
-        <button className="btn primary" disabled={pending || !draft.name.trim() || !draft.url.trim()}>
-          {pending ? "Сохраняю…" : editing ? "Сохранить" : "Добавить"}
+        <button className="btn primary" disabled={pending || !draft.name.trim() || !draft.url.trim() || secretMissing !== undefined}>
+          {pending ? "Сохраняю…" : source ? "Сохранить" : "Добавить"}
         </button>
       </div>
     </form>
@@ -466,8 +444,8 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
 }
 
 /**
- * The secret of a source: a password field, cleared after each save, that never shows the value,
- * only its hint (§15). A source without authorization takes no secret.
+ * The secret of a stored source: a password field, cleared after each successful save, that never
+ * shows the value, only its hint (§15). A source without authorization takes no secret.
  */
 function SecretRow({ source }: { source: SourceView }) {
   const setSecret = useSetSourceSecret();
@@ -476,24 +454,33 @@ function SecretRow({ source }: { source: SourceView }) {
   const id = useId();
   const [value, setValue] = useState("");
   const usable = source.auth !== "none";
+  const problem = secretProblem(source.auth, value);
   const busy = setSecret.isPending || clear.isPending;
-  const status = source.secret ? `Задан: ${source.secret.hint}. Новое значение заменит его.` : "Не задан.";
+  const status = source.secret
+    ? `Задан: ${source.secret.hint}.${usable ? " Новое значение заменит его." : " Сейчас не используется."}`
+    : "Не задан.";
+
+  const save = async () => {
+    if (!usable || problem) return;
+    const ok = await act(() => setSecret.mutateAsync({ name: source.name, value }), `Секрет ${source.name} сохранён`);
+    setSecret.reset();
+    if (ok) setValue("");
+  };
 
   return (
     <form
       className="st-row"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!usable || !value.trim()) return;
-        void act(() => setSecret.mutateAsync({ name: source.name, value }), `Секрет ${source.name} сохранён`).then((ok) => ok && setValue(""));
+        void save();
       }}
     >
       <label className="lbl" htmlFor={`${id}-value`}>
         <b>Секрет</b>
-        <span>{usable ? (source.auth === "basic" ? "Логин и пароль через двоеточие." : "Токен доступа.") : "Для входа без авторизации секрет не нужен."}</span>
+        <span>{SECRET_HINT[source.auth]}</span>
       </label>
       <div className="ctl">
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="st-inline">
           <input
             id={`${id}-value`}
             className="st-input mono"
@@ -503,10 +490,9 @@ function SecretRow({ source }: { source: SourceView }) {
             disabled={!usable || busy}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder={source.auth === "basic" ? "логин:пароль" : "Токен"}
-            style={{ flex: 1, minWidth: 180 }}
+            placeholder={SECRET_PLACEHOLDER[source.auth]}
           />
-          <button className="btn sm" disabled={!usable || busy || !value.trim()}>
+          <button className="btn sm" disabled={!usable || busy || problem !== undefined}>
             {setSecret.isPending ? "Сохраняю…" : source.secret ? "Заменить" : "Сохранить"}
           </button>
           {source.secret && (
@@ -515,18 +501,15 @@ function SecretRow({ source }: { source: SourceView }) {
             </button>
           )}
         </div>
-        <span className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
-          {usable ? status : ""}
-        </span>
+        {value !== "" && problem && <div className="st-note">{problem}</div>}
+        <span className="st-hint">{status}</span>
       </div>
     </form>
   );
 }
 
-const DEFAULT_RANGE = "1h";
-
 /**
- * A test query against the source over a window ending now. The value or the source's error
+ * A test query against the source over a window ending now. The value, or the source's error,
  * shows in the row; nothing is stored (§15).
  */
 function TestRow({ source }: { source: SourceView }) {
@@ -545,7 +528,7 @@ function TestRow({ source }: { source: SourceView }) {
     try {
       setResult(await check.mutateAsync({ name: source.name, query: query.trim(), window: range.trim() || undefined }));
     } catch (err) {
-      setFailure(err instanceof Error ? err.message : String(err));
+      setFailure(messageOf(err));
     }
   };
 
@@ -567,29 +550,21 @@ function TestRow({ source }: { source: SourceView }) {
           placeholder={QUERY_PLACEHOLDER[source.kind]}
           spellCheck={false}
         />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <label htmlFor={`${id}-range`} className="muted">
+        <div className="st-inline">
+          <label htmlFor={`${id}-range`} className="st-hint">
             Окно
           </label>
-          <input
-            id={`${id}-range`}
-            className="st-input mono"
-            value={range}
-            onChange={(e) => setRange(e.target.value)}
-            placeholder={DEFAULT_RANGE}
-            spellCheck={false}
-            style={{ width: 96, maxWidth: 96 }}
-          />
+          <input id={`${id}-range`} className="st-input mono st-input-short" value={range} onChange={(e) => setRange(e.target.value)} placeholder={DEFAULT_RANGE} spellCheck={false} />
           <button className="btn sm" disabled={check.isPending || !query.trim()}>
             {check.isPending ? "Проверяю…" : "Проверить"}
           </button>
         </div>
         {result && (
-          <p role="status" style={{ margin: 0, fontSize: 13 }}>
+          <p role="status" className="st-result">
             Значение <b className="mono">{result.value}</b>
             {result.samples !== undefined && <> · выборка {result.samples}</>}
             <br />
-            <span className="muted" style={{ fontSize: 12 }}>
+            <span className="st-hint">
               Отправлено: <code>{result.query}</code>
             </span>
           </p>

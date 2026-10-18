@@ -11,22 +11,31 @@ import {
   OBSERVATION_TEXT,
   POLICY_LABEL,
   RESULT_LABEL,
+  SOURCE_AUTH_LABEL,
+  SOURCE_KIND_LABEL,
+  SOURCE_NAME_PATTERN,
   SOURCE_STALE,
   STATUS_LABEL,
+  type SourceDraft,
   caseActions,
   caseListQuery,
   contractTemplate,
   criterionChange,
+  emptySourceDraft,
   evidenceListQuery,
   formatDelta,
   incidentActions,
   isActive,
   newCaseTitle,
   observationKeys,
+  secretProblem,
+  sourceBody,
+  sourceDraft,
 } from "../web/src/entities/observation/model.ts";
 import type { CaseStatus } from "../web/src/shared/api/generated/CaseStatus.ts";
 import type { Contract } from "../web/src/shared/api/generated/Contract.ts";
 import type { IncidentStatus } from "../web/src/shared/api/generated/IncidentStatus.ts";
+import type { SourceView } from "../web/src/shared/api/generated/SourceView.ts";
 import { matchesAny } from "../web/src/shared/api/invalidation.ts";
 
 /** The rows of the "Observation plane" section of GLOSSARY.md: key, the middle cell, and the label. */
@@ -302,4 +311,122 @@ test("query keys differ by their parameters", () => {
   assert.notDeepEqual(observationKeys.incidents("open"), observationKeys.incidents());
   assert.notDeepEqual(observationKeys.cases({ status: "observing" }), observationKeys.cases({ status: "concluded" }));
   assert.notDeepEqual(observationKeys.case(7), observationKeys.case(8));
+});
+
+// --- observation sources (§7.3, §13.2, §15) -------------------------------------------------------
+
+/** The field names of a generated type, read from its one-line declaration (`export type X = { a: T, b?: U, };`). */
+function generatedFields(name: string): string[] {
+  const text = readFileSync(new URL(`../web/src/shared/api/generated/${name}.ts`, import.meta.url), "utf8");
+  const line = text.split("\n").find((l) => l.startsWith(`export type ${name} = `));
+  assert.ok(line, `${name} is a generated object type`);
+  return [...line.matchAll(/(\w+)\??:/g)].map((m) => m[1]);
+}
+
+const SENTRY_VIEW: SourceView = {
+  name: "sentry-main",
+  kind: "sentry",
+  url: "https://sentry.io",
+  auth: "bearer",
+  organization: "acme",
+  sentryProject: "backend",
+  environment: "production",
+  field: "count()",
+  dataset: "errors",
+  timeoutSecs: 45,
+  created: "2026-10-17T12:00:00.000Z",
+  updated: "2026-10-17T12:00:00.000Z",
+  secret: { hint: "…abcd", updated: "2026-10-17T12:00:00.000Z" },
+};
+
+test("the source kind and auth labels are the glossary's words", () => {
+  assert.deepEqual(SOURCE_KIND_LABEL, glossary("kind"));
+  assert.deepEqual(SOURCE_AUTH_LABEL, glossary("auth"));
+});
+
+test("the source labels cover every generated kind and auth, and no other", () => {
+  assert.deepEqual(Object.keys(SOURCE_KIND_LABEL).sort(), generatedUnion("SourceKind"));
+  assert.deepEqual(Object.keys(SOURCE_AUTH_LABEL).sort(), generatedUnion("SourceAuth"));
+});
+
+test("a Prometheus source sends no Sentry fields, even ones filled before the kind changed", () => {
+  const body = sourceBody({
+    ...emptySourceDraft(),
+    name: "prom",
+    url: "https://prom.example.com",
+    organization: "acme",
+    sentryProject: "backend",
+    environment: "prod",
+    field: "count()",
+    dataset: "errors",
+  });
+  assert.deepEqual(body, { name: "prom", kind: "prometheus", url: "https://prom.example.com", auth: "none" });
+});
+
+test("blank and whitespace text fields are left out of the body, not sent as empty strings", () => {
+  const body = sourceBody({
+    ...emptySourceDraft(),
+    name: " sentry-main ",
+    kind: "sentry",
+    url: " https://sentry.io ",
+    organization: "acme",
+    sentryProject: "   ",
+    environment: "",
+    field: "  ",
+    dataset: "",
+  });
+  assert.deepEqual(body, { name: "sentry-main", kind: "sentry", url: "https://sentry.io", auth: "none", organization: "acme" });
+});
+
+test("the timeout is sent only when given: blank keeps the server default, \"45\" is the number 45", () => {
+  const draft: SourceDraft = { ...emptySourceDraft(), name: "prom", url: "https://prom.example.com" };
+  assert.equal("timeoutSecs" in sourceBody({ ...draft, timeoutSecs: "" }), false);
+  assert.equal("timeoutSecs" in sourceBody({ ...draft, timeoutSecs: "   " }), false);
+  assert.equal(sourceBody({ ...draft, timeoutSecs: "45" }).timeoutSecs, 45);
+});
+
+test("a stored Sentry source comes back from its draft unchanged, without its secret", () => {
+  assert.deepEqual(sourceBody(sourceDraft(SENTRY_VIEW)), {
+    name: "sentry-main",
+    kind: "sentry",
+    url: "https://sentry.io",
+    auth: "bearer",
+    organization: "acme",
+    sentryProject: "backend",
+    environment: "production",
+    field: "count()",
+    dataset: "errors",
+    timeoutSecs: 45,
+  });
+});
+
+test("a body names only fields of the generated SourceBody", () => {
+  const fields = generatedFields("SourceBody");
+  const full = sourceBody(sourceDraft(SENTRY_VIEW));
+  const plain = sourceBody({ ...emptySourceDraft(), name: "prom", url: "https://prom.example.com", auth: "basic" });
+  for (const body of [full, plain]) for (const key of Object.keys(body)) assert.ok(fields.includes(key), `${key} is a SourceBody field`);
+  assert.equal(Object.keys(full).length, 10, "a full Sentry body has every field the form sends");
+});
+
+test("the body never carries the secret, in any shape", () => {
+  const body = sourceBody({ ...emptySourceDraft(), name: "prom", url: "https://prom.example.com", auth: "basic", secret: "monitor:s3cret-value" });
+  assert.equal("secret" in body, false);
+  assert.equal(JSON.stringify(body).includes("s3cret-value"), false);
+});
+
+test("a source name follows the server's rule: 1 to 32 characters, lowercase letters, digits, dashes and underscores, not starting with a dash or underscore", () => {
+  // Mirrors source_names_follow_the_pattern in crates/genie-core/src/observation/sources.rs.
+  const pattern = new RegExp(`^(?:${SOURCE_NAME_PATTERN})$`);
+  for (const name of ["prom", "2fast_1-x", "a".repeat(32)]) assert.ok(pattern.test(name), `${name} is accepted`);
+  for (const name of ["a".repeat(33), "", "-prom", "_prom", "Prom", "pro m"]) assert.equal(pattern.test(name), false, `${name} is refused`);
+});
+
+test("a secret must fit its authorization: a token for bearer, login:password for basic, nothing for none", () => {
+  assert.equal(secretProblem("none", ""), undefined);
+  assert.equal(secretProblem("bearer", "glpat-x"), undefined);
+  assert.match(secretProblem("bearer", "") ?? "", /токен/);
+  assert.match(secretProblem("bearer", "   ") ?? "", /токен/);
+  assert.equal(secretProblem("basic", "monitor:pass"), undefined);
+  assert.match(secretProblem("basic", "monitor") ?? "", /двоеточие/);
+  assert.match(secretProblem("basic", "") ?? "", /двоеточие/);
 });

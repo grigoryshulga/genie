@@ -25,6 +25,7 @@ Terms and Russian UI labels of the [observation plane](docs/platform/observation
 | **Evidence record** | One structured measurement with provenance and trust level. Russian: свидетельство. |
 | **Incident** | An open guardrail violation of a case, key `I-<n>`. Russian: инцидент. |
 | **Follow-up task** | A delivery task created from an incident or a conclusion. Russian: задача по итогам наблюдения. |
+| **Observation source** | A project's configured Prometheus- or Sentry-compatible server that cases read measurements from; its secret stays on the server. Russian: источник наблюдения. |
 
 | UI key | Value | Russian label |
 | --- | --- | --- |
@@ -42,6 +43,11 @@ Terms and Russian UI labels of the [observation plane](docs/platform/observation
 | `incident` | `open` | Открыт |
 | `incident` | `resolved` | Разрешён |
 | `incident` | `dismissed` | Отклонён |
+| `kind` | `prometheus` | Prometheus-совместимый |
+| `kind` | `sentry` | Sentry-совместимый |
+| `auth` | `none` | Без авторизации |
+| `auth` | `bearer` | Токен (Bearer) |
+| `auth` | `basic` | Логин и пароль (Basic) |
 | `nav` | sidebar item and list page title | Наблюдения |
 | `section` | task card section and settings section title | Наблюдение |
 | `empty` | task card without cases | Наблюдение не настроено |
