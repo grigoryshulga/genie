@@ -38,14 +38,22 @@
   margin: 0;
 }
 .tg-project {
-  padding-bottom: 0;
+  padding: 0 40px;
+  max-width: var(--content);
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
 }
+.tg-project label { color: var(--muted); font-size: 12px; }
 .tg-project .st-input {
-  width: auto;
+  width: min(240px, 60vw);
+  height: 32px;
+  font-size: 12px;
 }
 
 .tg-connected { width: 100%; flex-wrap: wrap; }
 .tg-connected .grow { flex-basis: 100%; }
+
+@media (max-width: 900px) {
+  .tg-project { padding-inline: 16px; }
+}

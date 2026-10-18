@@ -5,6 +5,9 @@
 .st-tabs a { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; color: var(--muted); font-size: 12px; text-decoration: none; white-space: nowrap; }
 .st-tabs a:hover { color: var(--text); background: var(--bg-hover); }
 .st-tabs a.on { background: var(--bg-active); color: var(--text); }
+.st-tabs button { display: flex; align-items: center; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.st-tabs button:hover { color: var(--text); background: var(--bg-hover); }
+.st-tabs button.on { background: var(--bg-active); color: var(--text); }
 .st-tabs .n { font-size: 11px; color: var(--muted); }
 
 .st-body { padding: 32px 40px 48px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; max-width: var(--content); box-sizing: border-box; }
@@ -13,9 +16,16 @@
 .st-head { display: flex; flex-direction: column; gap: 4px; }
 .st-head h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .st-head p { margin: 0; color: var(--muted); line-height: 1.5; }
-.provider-headline { display: flex; align-items: center; gap: 8px; }
-.provider-add { width: 30px; height: 30px; padding: 0; display: inline-grid; place-items: center; color: var(--text-2); }
-.provider-add:hover { color: var(--text); border-color: var(--accent); }
+.provider-headline { display: flex; align-items: center; gap: 8px; width: 100%; }
+.provider-headline .provider-add { margin-left: auto; width: 30px; height: 30px; padding: 0; display: inline-grid; place-items: center; }
+.provider-admin-connected { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 13px; }
+.provider-admin-unreadable { grid-column: 1 / -1; }
+.provider-admin-status { padding-block: 12px; }
+.provider-card > .st-row:first-child { padding-block: 14px; }
+.tokens-page { gap: 16px; }
+.tokens-page > .st-tabs { margin: 0; }
+.tokens-page .tokens-guide { max-width: 820px; }
+.tokens-guide-intro { margin: 0; line-height: 1.5; }
 .provider-connect .st-input { max-width: none; }
 .provider-connect > .lbl { display: flex; flex-direction: column; gap: 4px; }
 .provider-connect > .lbl b { font-weight: 500; }
