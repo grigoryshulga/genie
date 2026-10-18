@@ -410,7 +410,7 @@ pub fn arm(app: &App, project: &str, actor: &Actor, id: i64, now: DateTime<Utc>)
         }
     }
     tracker(app, project, |t| t.observation().arm(actor, id, now))?;
-    // OBS-09: wake the observation scheduler
+    app.wake_observation.notify_one();
     view(app, project, id)
 }
 
@@ -418,7 +418,7 @@ pub fn arm(app: &App, project: &str, actor: &Actor, id: i64, now: DateTime<Utc>)
 pub fn start(app: &App, project: &str, actor: &Actor, id: i64, now: DateTime<Utc>) -> AppResult<CaseView> {
     authorize_manage(actor)?;
     tracker(app, project, |t| t.observation().start(actor, id, now, StartOn::Manual))?;
-    // OBS-09: wake the observation scheduler
+    app.wake_observation.notify_one();
     view(app, project, id)
 }
 
@@ -427,7 +427,7 @@ pub fn evaluate(app: &App, project: &str, actor: &Actor, id: i64, body: Evaluate
     authorize_manage(actor)?;
     let final_ = body.final_.unwrap_or(false);
     tracker(app, project, |t| t.observation().request_evaluation(actor, id, final_))?;
-    // OBS-09: wake the observation scheduler
+    app.wake_observation.notify_one();
     view(app, project, id)
 }
 
@@ -447,7 +447,7 @@ pub fn deploy(app: &App, project: &str, actor: &Actor, id: i64, body: Deployment
     };
     let input = NewDeployment { reference: body.reference, environment: body.environment.unwrap_or_default(), at };
     tracker(app, project, |t| t.observation().record_deployment(actor, id, input, now))?;
-    // OBS-09: wake the observation scheduler
+    app.wake_observation.notify_one();
     view(app, project, id)
 }
 
@@ -529,7 +529,7 @@ pub fn report_evidence(app: &App, project: &str, actor: &Actor, id: i64, body: E
     let Some(applied) = applied else {
         return Err(AppError::Conflict(format!("{} changed while the evidence was stored; report it again", case.key)));
     };
-    // OBS-09: wake the observation scheduler
+    app.wake_observation.notify_one();
     announce_incidents(app, project, id, &applied.new_incidents);
     view(app, project, id)
 }
@@ -537,7 +537,7 @@ pub fn report_evidence(app: &App, project: &str, actor: &Actor, id: i64, body: E
 /// The side effects of incidents opened by a committed write: notifications and automatic
 /// follow-ups (§10.1, §10.2). The write has happened, so a failure here is logged and the caller
 /// still succeeds.
-fn announce_incidents(app: &App, project: &str, id: i64, incidents: &[Incident]) {
+pub fn announce_incidents(app: &App, project: &str, id: i64, incidents: &[Incident]) {
     if incidents.is_empty() {
         return;
     }
