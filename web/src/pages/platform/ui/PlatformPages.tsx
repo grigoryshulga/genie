@@ -47,7 +47,7 @@ export function AnswerPage() {
     <div className="auth-page">
       <div className="answer">
         <span className="logo-mark lg">
-          <Icon.mark size={22} />
+          <Icon.mark size={34} />
         </span>
         {error && <div className="auth-error">{error}</div>}
         {!qn && !error && <div className="muted">Загрузка…</div>}

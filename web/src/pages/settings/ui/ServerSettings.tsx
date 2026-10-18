@@ -478,7 +478,7 @@ export function FirstProjectPage() {
       <div className="auth-card pj-first">
         <div className="auth-head">
           <span className="logo-mark lg">
-            <Icon.mark size={22} />
+            <Icon.mark size={34} />
           </span>
           <h1>Первый проект</h1>
           <p className="auth-sub">Создайте первый проект.</p>
