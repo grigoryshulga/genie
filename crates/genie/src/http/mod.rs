@@ -22,6 +22,7 @@ pub mod mcp_admin;
 pub mod mcp_gateway;
 pub mod mcp_server;
 pub mod repos;
+pub mod social_auth;
 pub mod tasks;
 pub mod teams;
 pub mod telegram;
@@ -132,6 +133,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/health", get(|| async { Json(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") })) }))
         .route("/wake", post(wake))
         .merge(account::routes())
+        .merge(social_auth::routes())
         .merge(tasks::routes())
         .merge(ideas::routes())
         .merge(management::routes())

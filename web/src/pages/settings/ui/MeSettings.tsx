@@ -5,6 +5,7 @@
 
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { SocialAuth } from "@/features/social-auth";
 import { PersonAvatar, PROJECT_ROLE_NAME, usePatchUser, useSetAvatar } from "@/entities/project";
 import { useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
@@ -231,6 +232,7 @@ function SecurityTab() {
         <h2>Вход и пароль</h2>
         <p>После смены пароля все сессии закрываются, в том числе эта: войдите снова с новым паролем. Токены CLI и MCP продолжают работать.</p>
       </div>
+      <SocialAuth link />
       <form
         className="st-card"
         onSubmit={(e) => {

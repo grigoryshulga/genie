@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
+import { SocialAuth } from "@/features/social-auth";
 import { sessionKey } from "@/entities/session";
 import { request } from "@/shared/api";
 import { Icon } from "@/shared/ui";
@@ -89,6 +90,7 @@ export function LoginPage({ note }: { note?: string }) {
           Войти
         </button>
       </form>
+      <SocialAuth />
     </AuthCard>
   );
 }

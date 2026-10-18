@@ -105,6 +105,7 @@ pub struct App {
     pub sessions: crate::sessions::Registry,
     /// Per-user Pi OAuth sessions started from the provider settings dialog.
     pub llm_oauth: crate::llm_oauth::Registry,
+    pub social_auth: crate::http::social_auth::Registry,
     /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
     /// Turn slots (`runtime.maxConcurrent`), shared with the scheduler loop; members
@@ -155,6 +156,7 @@ impl App {
             exe,
             sessions: Default::default(),
             llm_oauth: Default::default(),
+            social_auth: Default::default(),
             sched: Default::default(),
             slots,
             attempts: Default::default(),

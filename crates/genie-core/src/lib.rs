@@ -16,6 +16,7 @@ pub mod model;
 pub mod repos;
 pub mod secrets;
 pub mod server_db;
+pub mod social_auth;
 pub mod team;
 pub mod telegram;
 pub mod tracker;

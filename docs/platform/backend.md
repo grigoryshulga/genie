@@ -47,6 +47,10 @@ Bubblewrap hides server databases, credentials, and unrelated projects while all
 
 Server permissions and the MCP gateway enforce access by token. Harness rules for file tools and shell patterns are weaker than filesystem isolation. Hosted repository writes pass through the [Git proxy](git-repositories.md).
 
+## Account authentication
+
+Password and invitation authentication share browser sessions with optional [GitHub and Google sign-in](../development/social-auth.md). Provider identities map stable provider subjects to users in server schema 7. Registration is closed by default; linking requires an existing browser session, and matching email addresses never merge users. New social accounts receive no administrative privileges or project memberships.
+
 ## Web contract
 
 The web UI consumes REST and SSE. Rust structs generate TypeScript API types through `ts-rs` during `cargo test`; generated files are committed in `web/src/shared/api/generated/`.
