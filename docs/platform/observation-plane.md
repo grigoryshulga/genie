@@ -516,7 +516,7 @@ Steps 2–4 run without any database lock; adapters run with `state::block_on`.
 5. `finish_evaluation` in one transaction: insert the `Evaluation`; clear `evaluationRequested`; then
    - `insufficient` → status `observing`, `nextEvaluationAt = min(now + evaluationInterval, anchor + preferredWindow)`, event `outcome.evaluated`;
    - otherwise → status `concluded`, `result`, `confidence`, `conclusion = summary`, `observationCompletedAt = now`, `nextEvaluationAt`/`nextGuardrailAt` cleared, event `outcome.confirmed`, `outcome.negative`, or `outcome.inconclusive`.
-   If the case is no longer `evaluating` (cancelled meanwhile), write nothing and return.
+   If the case is no longer `evaluating` (cancelled meanwhile), or its contract was revised after the pass read it, write nothing and return; the revised contract is evaluated on a later pass. Collections apply the same version check (D8).
 6. After a conclusion: notify project admins and the case author; mail the project manager with the summary and the follow-up command.
 
 A pass that fails between steps 1 and 5 leaves the case in `evaluating`; the next pass handles it as `observing` (§6.1).
