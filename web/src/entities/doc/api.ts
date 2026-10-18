@@ -4,6 +4,7 @@ import { request } from "@/shared/api";
 import type { DocPage, DocReadResult, DocSearchResult } from "./model.ts";
 
 export interface DocsTreeResponse {
+  roots: string[];
   version: string;
   pages: DocPage[];
   diagnostics: { path: string; diagnostics: string[] }[];
@@ -70,6 +71,7 @@ export async function saveDoc(v: { path: string; content: string; mode: "create"
     body: JSON.stringify(v),
   });
   const data = (await res.json().catch(() => ({}))) as Partial<DocsSaveResponse> & { error?: string; diagnostics?: string[] };
+  if (res.status === 202) throw new DocSaveError("Изменения отправлены на проверку владельцу раздела. Статья появится после одобрения.", 202);
   if (!res.ok) throw new DocSaveError(data.error ?? `${res.status} ${res.statusText}`, res.status, data.diagnostics ?? []);
   return data as DocsSaveResponse;
 }
