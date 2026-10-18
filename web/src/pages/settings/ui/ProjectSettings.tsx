@@ -26,6 +26,7 @@ import { request } from "@/shared/api";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 import { TelegramSettings } from "./TelegramSettings.tsx";
 import { RepositoriesSection } from "./RepositoriesSection.tsx";
+import { ObservationSources } from "./ObservationSources.tsx";
 import { SettingsTabs, useSettingsTab } from "./SettingsTabs.tsx";
 import { ProjectToolsSection } from "./ProjectTools.tsx";
 import { FeatureRequest } from "./FeatureRequest.tsx";
@@ -57,6 +58,8 @@ export function ProjectSettingsPage() {
       <div className="scroll">
         {!project ? (
           <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>
+        ) : section === "observation" ? (
+          <ObservationSources key={project.slug} admin={admin} />
         ) : section === "channels" ? (
           <><div className="st-body"><div className="st-head"><h2>Каналы связи</h2><p>Подключения для уведомлений проекта. Сейчас доступен Telegram; Slack и Mattermost планируются.</p></div></div><TelegramSettings key={project.slug} project={project.slug} admin={admin} /></>
         ) : section === "tools" ? (

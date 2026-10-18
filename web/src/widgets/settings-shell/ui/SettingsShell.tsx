@@ -2,6 +2,7 @@
 
 import { Suspense } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { OBSERVATION_TEXT } from "@/entities/observation";
 import { useSession, useSwitchProject } from "@/entities/session";
 import { lastWorkRoute } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
@@ -18,7 +19,7 @@ export function SettingsShell() {
   const title = projectMode ? "Управление проектом" : serverMode ? "Глобальные настройки" : "Настройки";
   const items = projectMode ? [
     ["general", "Общие настройки"], ["repos", "Репозитории и окружение"],
-    ["tools", "Инструменты"], ["people", "Доступ и роли"],
+    ["tools", "Инструменты"], ["observation", OBSERVATION_TEXT.section], ["people", "Доступ и роли"],
     ["channels", "Каналы связи"], ["knowledge", "База знаний"],
   ] : serverMode ? [
     ["projects", "Проекты"], ["accounts", "Учётные записи"],
