@@ -6,6 +6,7 @@
 //! are here.
 
 pub mod catalog;
+pub mod harness;
 pub mod host;
 pub mod inputs;
 pub mod layout;
