@@ -14,7 +14,7 @@
 .ac-dot.amber { background: var(--amber); }
 
 .ac-feed { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 8px 40px 12px; }
-.ac-feed .inner { margin-top: auto; display: flex; flex-direction: column; gap: 12px; max-width: 900px; }
+.ac-feed .inner { margin-top: auto; display: flex; flex-direction: column; gap: 12px; max-width: var(--content); }
 .ac-feed .mail { margin-top: 0; }
 .ac-feed.dim .inner > *:not(.ac-caption):not(.ac-mail) { opacity: 0.55; }
 .ac-caption { font-size: 12px; font-weight: 500; color: var(--muted); }
@@ -131,3 +131,6 @@
   /* "What is it doing?" opens the agent panel as a sheet. */
   .team-aside.ac-aside.open { display: flex; position: fixed; inset: auto 0 0 0; max-height: 75vh; border-top: 1px solid var(--line-strong); border-radius: 16px 16px 0 0; box-shadow: var(--shadow); z-index: 15; }
 }
+
+/* The conversation is a centred column, like every other page. */
+@media (min-width: 901px) { .ac-feed { padding-inline: max(40px, calc((100% - var(--content)) / 2)); } }
