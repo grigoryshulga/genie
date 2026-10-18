@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use genie_core::db::SCHEMA_VERSION;
+use genie_core::migrate;
 use genie_core::observation::contract::Contract;
 use genie_core::observation::store::{CaseFilter, CasePatch, NewCase, NewDeployment};
 use genie_core::observation::{CaseStatus, EvalTrigger, ObservationCase, ObservationPolicy, StartOn, parse_ts};
@@ -493,6 +494,13 @@ fn start_is_idempotent_on_an_observing_case_and_refused_from_other_statuses() {
     let again = o.start(&me(), observing.id, now() + Duration::hours(1), StartOn::Deployment).unwrap();
     assert_eq!(again.observation_started_at.as_deref(), Some(NOW), "the first anchor is kept");
     assert_eq!(kinds(&t, observing.id).len(), before, "a repeated start writes no event");
+
+    // An evaluating case is started already: starting it returns it unchanged.
+    t.conn().execute("UPDATE observation_cases SET status = 'evaluating' WHERE id = ?1", [observing.id]).unwrap();
+    let evaluating = o.start(&me(), observing.id, now() + Duration::hours(2), StartOn::Manual).unwrap();
+    assert_eq!(evaluating.status, CaseStatus::Evaluating);
+    assert_eq!(evaluating.observation_started_at.as_deref(), Some(NOW), "the anchor of an evaluating case is kept");
+    assert_eq!(kinds(&t, observing.id).len(), before, "starting an evaluating case writes no event");
 }
 
 #[test]
@@ -529,8 +537,10 @@ fn a_deployment_starts_a_waiting_case_at_its_time_and_later_ones_keep_the_anchor
     assert_eq!((first.id, first.reference.as_str(), first.environment.as_str()), (1, "v1.4.0", "prod"));
     assert_eq!(first.at, "2026-10-17T10:00:00.000Z");
     assert_eq!(first.recorded_by, "project-manager");
+    assert_eq!(first.created, NOW, "the deployment is stamped with the caller's now");
     let started = o.get(case.id).unwrap();
     assert_eq!(started.status, CaseStatus::Observing);
+    assert_eq!(started.updated, NOW, "the case is stamped with the caller's now too");
     assert_eq!(started.observation_started_at.as_deref(), Some("2026-10-17T10:00:00.000Z"), "the anchor is the deployment time");
     assert_eq!(started.next_guardrail_at.as_deref(), Some("2026-10-17T10:00:00.000Z"));
     assert_eq!(started.next_evaluation_at.as_deref(), Some("2026-10-18T10:00:00.000Z"));
@@ -780,6 +790,161 @@ fn list_is_newest_first_filtered_and_bounded() {
     assert_eq!(bounded.len(), 3);
     assert_eq!(bounded[0].tasks, vec![b.clone()]);
     assert_eq!(bounded[2].tasks, vec![a.clone()]);
+}
+
+#[test]
+fn a_waiting_case_starts_when_removing_its_open_task_leaves_only_done_tasks() {
+    let (_dir, t) = fresh();
+    let o = t.observation();
+    let done = new_task(&t, "Done");
+    let open = new_task(&t, "Open");
+    finish_task(&t, &done);
+    let case = guard_case(&t, &[&done, &open]);
+    assert_eq!(o.arm(&me(), case.id, now()).unwrap().status, CaseStatus::Waiting);
+
+    let started = o.update(&me(), case.id, CasePatch { remove_tasks: vec![open.clone()], ..Default::default() }).unwrap();
+    assert_eq!(started.status, CaseStatus::Observing);
+    assert_eq!(started.tasks, vec![done.clone()]);
+    // The anchor is the moment of the change (the wall clock), not the arming time.
+    let anchor = parse_ts(started.observation_started_at.as_deref().unwrap()).unwrap();
+    let wall = Utc::now();
+    assert!(anchor <= wall && wall - anchor < Duration::minutes(5), "anchor {anchor} is not the time of the change");
+    assert_eq!(started.next_guardrail_at, started.observation_started_at);
+    assert_eq!(parse_ts(started.next_evaluation_at.as_deref().unwrap()).unwrap(), anchor + Duration::hours(24));
+    assert_eq!(kinds(&t, case.id), ["outcome.created", "outcome.updated", "outcome.updated", "observation.started"]);
+    let started_event = journal(&t, case.id).pop().unwrap();
+    assert_eq!(started_event.payload["tasks"], json!([done]));
+}
+
+#[test]
+fn a_waiting_case_keeps_at_least_one_task() {
+    let (_dir, t) = fresh();
+    let o = t.observation();
+    let only = new_task(&t, "Only");
+    let case = armed_case(&t, &only);
+    let before = kinds(&t, case.id);
+    expect_err(
+        o.update(&me(), case.id, CasePatch { remove_tasks: vec![only.clone()], ..Default::default() }),
+        "a waiting case needs at least one task",
+    );
+    let kept = o.get(case.id).unwrap();
+    assert_eq!((kept.status, kept.tasks.clone()), (CaseStatus::Waiting, vec![only.clone()]));
+    assert_eq!(kinds(&t, case.id), before, "a refused removal writes no event");
+
+    // Swapping the only task in one patch keeps the case waiting and linked.
+    let other = new_task(&t, "Other");
+    let swapped = o
+        .update(&me(), case.id, CasePatch { add_tasks: vec![other.clone()], remove_tasks: vec![only.clone()], ..Default::default() })
+        .unwrap();
+    assert_eq!((swapped.status, swapped.tasks.clone()), (CaseStatus::Waiting, vec![other.clone()]));
+}
+
+#[test]
+fn a_waiting_case_starts_when_its_new_contract_starts_on_done_tasks() {
+    let (_dir, t) = fresh();
+    let o = t.observation();
+    let task = new_task(&t, "Shipped");
+    finish_task(&t, &task);
+    let manual = contract_of(json!({
+        "guardrails": [{ "id": "error_rate", "source": "prom", "query": "q", "max": 1 }],
+        "observation": { "start": "manual", "minimumWindow": "24h" }
+    }));
+    let case = o
+        .create(
+            &me(),
+            NewCase {
+                title: "Manual start".into(),
+                policy: ObservationPolicy::Guardrails,
+                tasks: vec![task.clone()],
+                contract: Some(manual),
+            },
+        )
+        .unwrap();
+    assert_eq!(o.arm(&me(), case.id, now()).unwrap().status, CaseStatus::Waiting);
+
+    // Every linked task is done and the new contract starts on done tasks: the case starts now.
+    let started = o.set_contract(&me(), case.id, &guard_contract(), "").unwrap();
+    assert_eq!(started.contract_version, 2);
+    assert_eq!(started.status, CaseStatus::Observing);
+    assert!(started.observation_started_at.is_some());
+    assert_eq!(kinds(&t, case.id).last().unwrap(), "observation.started");
+
+    // With an open task the same contract leaves the case waiting.
+    let open = new_task(&t, "Open");
+    let waiting = armed_case(&t, &open);
+    let still = o.set_contract(&me(), waiting.id, &guard_contract(), "").unwrap();
+    assert_eq!(still.contract_version, 2);
+    assert_eq!(still.status, CaseStatus::Waiting);
+}
+
+#[test]
+fn a_revision_after_the_start_moves_the_first_evaluation_to_the_revised_minimum_window() {
+    let (_dir, t) = fresh();
+    let o = t.observation();
+    let task = new_task(&t, "Ship");
+    let case = observing_case(&t, &task);
+    assert_eq!(case.next_evaluation_at.as_deref(), Some("2026-10-18T12:00:00.000Z"));
+
+    let longer = contract_of(json!({
+        "guardrails": [{ "id": "error_rate", "source": "prom", "query": "rate(errors[$__range])", "maxChange": "+0.1pp" }],
+        "observation": { "minimumWindow": "48h" }
+    }));
+    let revised = o.set_contract(&me(), case.id, &longer, "longer window agreed").unwrap();
+    assert_eq!(revised.observation_started_at.as_deref(), Some(NOW), "the anchor is unchanged");
+    assert_eq!(revised.next_evaluation_at.as_deref(), Some("2026-10-19T12:00:00.000Z"), "anchor plus the revised 48h minimum window");
+    assert_eq!(revised.next_guardrail_at.as_deref(), Some(NOW), "the guardrail schedule is unchanged");
+}
+
+#[test]
+fn a_schema_6_tracker_upgrades_to_schema_7_with_every_observation_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".genie");
+    let t = Tracker::init(&root, None, None).unwrap();
+    let task = new_task(&t, "Legacy");
+    // Shape a schema-6 tracker: no observation tables or indexes, and the old version recorded.
+    for table in [
+        "observation_followups",
+        "observation_incidents",
+        "observation_evaluations",
+        "observation_evidence",
+        "observation_deployments",
+        "observation_contracts",
+        "observation_case_tasks",
+        "observation_cases",
+    ] {
+        t.conn().execute_batch(&format!("DROP TABLE {table};")).unwrap();
+    }
+    t.conn().execute("UPDATE meta SET value = '6' WHERE key = 'schema'", []).unwrap();
+    assert_eq!(names(&t, "table"), Vec::<String>::new());
+    drop(t);
+
+    let t = Tracker::open(&root).unwrap();
+    assert_eq!(migrate::version(&root.join("genie.db")).unwrap(), Some(7), "the upgrade records schema 7");
+    assert_eq!(
+        names(&t, "table"),
+        [
+            "observation_case_tasks",
+            "observation_cases",
+            "observation_contracts",
+            "observation_deployments",
+            "observation_evaluations",
+            "observation_evidence",
+            "observation_followups",
+            "observation_incidents",
+        ]
+    );
+    assert_eq!(
+        names(&t, "index"),
+        [
+            "observation_case_tasks_task",
+            "observation_cases_status",
+            "observation_evaluations_case",
+            "observation_evidence_case",
+            "observation_incidents_open",
+        ]
+    );
+    assert_eq!(t.get(&task).unwrap().title, "Legacy", "existing tasks survive the upgrade");
+    assert!(t.observation().list(&CaseFilter::default()).unwrap().is_empty());
 }
 
 #[test]

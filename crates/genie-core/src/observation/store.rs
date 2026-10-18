@@ -21,7 +21,7 @@ use crate::model::{Actor, Role};
 use crate::observation::contract::{Contract, Resolved};
 use crate::observation::{
     CaseStatus, ContractVersion, ContractVersionInfo, Deployment, EvalTrigger, ObservationCase, ObservationPolicy, StartOn, case_key,
-    case_subject, ts,
+    case_subject, parse_ts, ts,
 };
 use crate::tracker::Tracker;
 
@@ -198,14 +198,24 @@ impl Observation<'_> {
                 conn.execute("DELETE FROM observation_case_tasks WHERE case_id = ?1 AND task = ?2", params![id, task])?;
             }
             let tasks = self.task_links(id)?;
-            if tasks != case.tasks {
+            // A waiting case keeps at least one task: arming requires one (§6.2).
+            if case.status == CaseStatus::Waiting && tasks.is_empty() {
+                return Err(GenieError::invalid("a waiting case needs at least one task"));
+            }
+            let tasks_changed = tasks != case.tasks;
+            if tasks_changed {
                 changes.push(("tasks", json!(tasks)));
             }
             if changes.is_empty() {
                 return Ok(case);
             }
-            conn.execute("UPDATE observation_cases SET updated = ?1 WHERE id = ?2", params![clock(), id])?;
+            let stamp = clock();
+            conn.execute("UPDATE observation_cases SET updated = ?1 WHERE id = ?2", params![stamp, id])?;
             self.emit(actor, id, events::OUTCOME_UPDATED, &changes)?;
+            // Removing the open task of a waiting case can leave every linked task done (§6.2, §6.3).
+            if tasks_changed && case.status == CaseStatus::Waiting {
+                self.start_if_tasks_done(actor, id, &stamp)?;
+            }
             self.get(id)
         })
     }
@@ -241,7 +251,19 @@ impl Observation<'_> {
             self.0
                 .conn()
                 .execute("UPDATE observation_cases SET contract_version = ?1, updated = ?2 WHERE id = ?3", params![version, stamp, id])?;
+            // After a revision the first evaluation falls a minimum window of the revised contract after the anchor.
+            if revised && let Some(started) = case.observation_started_at.as_deref() {
+                let anchor = parse_ts(started)?;
+                self.0.conn().execute(
+                    "UPDATE observation_cases SET next_evaluation_at = ?1 WHERE id = ?2",
+                    params![ts(anchor + contract.resolved().minimum_window), id],
+                )?;
+            }
             self.emit(actor, id, events::OUTCOME_UPDATED, &[("contractVersion", json!(version)), ("reason", json!(stored_reason))])?;
+            // A waiting case whose new contract starts on done tasks starts at once (§6.2).
+            if case.status == CaseStatus::Waiting {
+                self.start_if_tasks_done(actor, id, &stamp)?;
+            }
             self.get(id)
         })
     }
@@ -303,13 +325,13 @@ impl Observation<'_> {
         })
     }
 
-    /// `waiting` → `observing`, with the anchor `anchor` (§6.2). Starting an observing case is a
-    /// no-op that returns it.
+    /// `waiting` → `observing`, with the anchor `anchor` (§6.2). A case that is already observing
+    /// or evaluating is returned unchanged: starting it again is a no-op.
     pub fn start(&self, actor: &Actor, id: i64, anchor: DateTime<Utc>, how: StartOn) -> Result<ObservationCase> {
         self.0.tx(|| {
             let case = self.get(id)?;
             match case.status {
-                CaseStatus::Observing => return Ok(case),
+                CaseStatus::Observing | CaseStatus::Evaluating => return Ok(case),
                 CaseStatus::Waiting => {}
                 _ => return Err(GenieError::invalid(format!("only a waiting case can start; {} is {}", case.key, case.status))),
             }
@@ -371,7 +393,8 @@ impl Observation<'_> {
                     case.key, case.status
                 )));
             }
-            let stamp = clock();
+            // The deployment is stamped with the caller's `now`, like every other write of this operation.
+            let stamp = ts(now);
             let at = ts(input.at);
             self.0.conn().execute(
                 "INSERT INTO observation_deployments(case_id, ref, environment, at, recorded_by, created)
@@ -506,6 +529,18 @@ impl Observation<'_> {
         Ok(Some(serde_json::from_str(&content)?))
     }
 
+    /// Starts a waiting case whose contract starts on `tasks_done` once every linked task is done,
+    /// anchored at the current time. This is the arming rule (§6.2), re-checked after a task or
+    /// contract change. Writes nothing when the case stays waiting.
+    fn start_if_tasks_done(&self, actor: &Actor, id: i64, stamp: &str) -> Result<()> {
+        let case = self.get(id)?;
+        let Some(contract) = self.current_contract(&case)? else { return Ok(()) };
+        if contract.observation.start == StartOn::TasksDone && self.all_tasks_done(id)? {
+            self.begin(actor, &case, &contract, wall_clock(), StartOn::TasksDone, stamp)?;
+        }
+        Ok(())
+    }
+
     /// Whether the case links at least one task and every linked task is `done`.
     fn all_tasks_done(&self, id: i64) -> Result<bool> {
         let (linked, open): (i64, i64) = self.0.conn().query_row(
@@ -587,10 +622,15 @@ fn clean_title(title: &str) -> Result<String> {
     Ok(title.to_string())
 }
 
-/// The write stamp of an operation with no `now` parameter. Only this function reads the clock
-/// inside the store; time-dependent rules take `now` as a parameter.
+/// The current time, for the operations with no `now` parameter. Only `wall_clock` and `clock`
+/// read the clock inside the store; time-dependent rules take `now` as a parameter.
+fn wall_clock() -> DateTime<Utc> {
+    Utc::now()
+}
+
+/// The write stamp of an operation with no `now` parameter.
 fn clock() -> String {
-    ts(Utc::now())
+    ts(wall_clock())
 }
 
 /// A case row without its tasks (loaded by the caller).
