@@ -1,12 +1,18 @@
-//! Case lifecycle store of the observation plane (`docs/platform/observation-plane.md` §6, §12, §13.1)
-//! against a real tracker in a temporary directory.
+//! Case lifecycle store, evidence, evaluations, incidents and follow-ups of the observation plane
+//! (`docs/platform/observation-plane.md` §6 to §13) against a real tracker in a temporary directory.
 
 use chrono::{DateTime, Duration, Utc};
 use genie_core::db::SCHEMA_VERSION;
 use genie_core::migrate;
 use genie_core::observation::contract::Contract;
-use genie_core::observation::store::{CaseFilter, CasePatch, NewCase, NewDeployment};
-use genie_core::observation::{CaseStatus, EvalTrigger, ObservationCase, ObservationPolicy, StartOn, parse_ts};
+use genie_core::observation::evaluate::EvalOutcome;
+use genie_core::observation::store::{
+    Applied, CaseFilter, CasePatch, CollectionInput, EvidenceFilter, NewCase, NewDeployment, NewEvidence,
+};
+use genie_core::observation::{
+    CaseResult, CaseStatus, Confidence, CriterionKind, EvalTrigger, EvidencePhase, IncidentStatus, ObservationCase, ObservationPolicy,
+    StartOn, TrustLevel, Verdict, parse_ts, ts,
+};
 use genie_core::*;
 use serde_json::{Value, json};
 
@@ -957,4 +963,785 @@ fn a_case_key_resolves_through_the_accessor_and_the_status_strings_round_trip() 
     assert_eq!(case.key, "O-1");
     assert_eq!(serde_json::to_value(&case).unwrap()["status"], "waiting");
     assert_eq!(serde_json::to_value(&case).unwrap()["armedAt"], NOW);
+}
+
+// Evidence, evaluations, incidents, follow-ups and the scheduler's queries (§7.5, §8, §9, §10, §11.3 to §11.5).
+
+/// The scheduler's identity: an orchestrator, so the core accepts it for every write but a person's.
+fn scheduler() -> Actor {
+    Actor::new("genie", Role::Orchestrator)
+}
+
+/// Verify policy with one hypothesis and two guardrails, a change limit and a maximum. Minimum
+/// window 24h, preferred 72h, evaluated every 6h, guardrails checked every 15m over the last hour.
+fn mixed_contract() -> Contract {
+    contract_of(json!({
+        "hypotheses": [{ "id": "p95", "source": "prom", "query": "histogram_quantile(0.95, x)", "expect": { "change": "-20%" } }],
+        "guardrails": [
+            { "id": "error_rate", "source": "prom", "query": "rate(errors[$__range])", "maxChange": "+0.1pp" },
+            { "id": "checkout_errors", "source": "sentry", "query": "level:error", "max": 50 }
+        ],
+        "observation": {
+            "minimumWindow": "24h",
+            "preferredWindow": "72h",
+            "evaluationInterval": "6h",
+            "guardrailInterval": "15m",
+            "guardrailWindow": "1h"
+        }
+    }))
+}
+
+/// A verify case on `mixed_contract`, armed on `task` and started by hand at `now`.
+fn observing_mixed(t: &Tracker, task: &str) -> ObservationCase {
+    let o = t.observation();
+    let case = o
+        .create(
+            &me(),
+            NewCase {
+                title: "Checkout".into(),
+                policy: ObservationPolicy::Verify,
+                tasks: vec![task.into()],
+                contract: Some(mixed_contract()),
+            },
+        )
+        .unwrap();
+    o.arm(&me(), case.id, now()).unwrap();
+    o.start(&me(), case.id, now(), StartOn::Manual).unwrap()
+}
+
+/// An observed record of `criterion`, measured over the hour before `now`.
+fn observed(criterion: &str, kind: CriterionKind, value: f64, baseline: Option<f64>, trust: TrustLevel) -> NewEvidence {
+    NewEvidence {
+        criterion: criterion.into(),
+        kind,
+        phase: EvidencePhase::Observed,
+        source: "prom".into(),
+        query: "q".into(),
+        window_start: now() - Duration::hours(1),
+        window_end: now(),
+        value: Some(value),
+        baseline,
+        samples: None,
+        provenance: json!({ "adapter": "prometheus" }),
+        trust,
+        error: None,
+        note: String::new(),
+    }
+}
+
+/// A record whose collection failed: no value, the error stored.
+fn failed_record(criterion: &str, kind: CriterionKind, error: &str) -> NewEvidence {
+    NewEvidence { value: None, error: Some(error.into()), ..observed(criterion, kind, 0.0, None, TrustLevel::Measured) }
+}
+
+/// A scheduler pass at `now` with these records and no schedule change.
+fn pass(records: Vec<NewEvidence>) -> CollectionInput {
+    CollectionInput { records, now: now(), next_guardrail_at: None, failed: None }
+}
+
+fn apply(t: &Tracker, id: i64, input: CollectionInput) -> genie_core::Result<Option<Applied>> {
+    t.observation().apply_collection(&scheduler(), id, input)
+}
+
+fn confirmed() -> EvalOutcome {
+    EvalOutcome { verdict: Verdict::Confirmed, confidence: Some(Confidence::High), summary: "confirmed: test".into(), details: vec![] }
+}
+
+/// The journal events of one case with this kind, oldest first.
+fn events_of(t: &Tracker, id: i64, kind: &str) -> Vec<Event> {
+    journal(t, id).into_iter().filter(|e| e.kind == kind).collect()
+}
+
+#[track_caller]
+fn assert_close(actual: Option<f64>, expected: Option<f64>) {
+    match (actual, expected) {
+        (Some(a), Some(e)) => assert!((a - e).abs() < 1e-9, "{a} is not {e}"),
+        (a, e) => assert_eq!(a, e),
+    }
+}
+
+#[test]
+fn a_collection_on_a_case_that_is_not_observed_writes_nothing() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let o = t.observation();
+    let proposed = o
+        .create(
+            &me(),
+            NewCase {
+                title: "Draft".into(),
+                policy: ObservationPolicy::Verify,
+                tasks: vec![task.clone()],
+                contract: Some(mixed_contract()),
+            },
+        )
+        .unwrap();
+    let waiting = armed_case(&t, &task);
+    let cancelled = observing_mixed(&t, &task);
+    o.cancel(&me(), cancelled.id, "the release was rolled back", now()).unwrap();
+
+    // Both a violating record and a failed pass would be written for an observed case.
+    for id in [proposed.id, waiting.id, cancelled.id] {
+        let violating = vec![observed("error_rate", CriterionKind::Guardrail, 1.0, Some(0.5), TrustLevel::Measured)];
+        assert!(apply(&t, id, pass(violating.clone())).unwrap().is_none(), "O-{id} stores nothing");
+        let failing = CollectionInput { failed: Some("timeout".into()), ..pass(violating) };
+        assert!(apply(&t, id, failing).unwrap().is_none());
+        assert!(o.evidence(id, &EvidenceFilter::default()).unwrap().is_empty());
+        assert!(o.case_incidents(id).unwrap().is_empty());
+        let case = o.get(id).unwrap();
+        assert_eq!((case.failures, case.last_error), (0, None));
+        assert!(!kinds(&t, id).iter().any(|k| k == "evidence.collected" || k == "guardrail.violated"));
+    }
+    assert!(o.incidents(None).unwrap().is_empty());
+}
+
+#[test]
+fn records_must_name_a_criterion_of_the_current_contract_with_its_kind() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    expect_err(
+        apply(&t, case.id, pass(vec![observed("nope", CriterionKind::Hypothesis, 1.0, None, TrustLevel::Measured)])),
+        "criterion nope is not in the current contract of O-1",
+    );
+    expect_err(
+        apply(&t, case.id, pass(vec![observed("p95", CriterionKind::Guardrail, 1.0, None, TrustLevel::Measured)])),
+        "criterion p95 is a hypothesis, not a guardrail",
+    );
+    expect_err(
+        apply(&t, case.id, pass(vec![observed("error_rate", CriterionKind::Hypothesis, 1.0, None, TrustLevel::Measured)])),
+        "criterion error_rate is a guardrail, not a hypothesis",
+    );
+    // One bad record rejects the whole pass: the good record before it is not kept.
+    expect_err(
+        apply(
+            &t,
+            case.id,
+            pass(vec![
+                observed("p95", CriterionKind::Hypothesis, 80.0, Some(100.0), TrustLevel::Measured),
+                observed("nope", CriterionKind::Hypothesis, 1.0, None, TrustLevel::Measured),
+            ]),
+        ),
+        "criterion nope is not in the current contract of O-1",
+    );
+    assert!(o.evidence(case.id, &EvidenceFilter::default()).unwrap().is_empty());
+    assert!(!kinds(&t, case.id).iter().any(|k| k == "evidence.collected"));
+}
+
+#[test]
+fn malformed_records_are_rejected_with_the_reason_before_anything_is_stored() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let hypothesis = || observed("p95", CriterionKind::Hypothesis, 80.0, Some(100.0), TrustLevel::Measured);
+    expect_err(apply(&t, case.id, pass(vec![NewEvidence { value: Some(f64::NAN), ..hypothesis() }])), "value must be a finite number");
+    expect_err(
+        apply(&t, case.id, pass(vec![NewEvidence { baseline: Some(f64::INFINITY), ..hypothesis() }])),
+        "baseline must be a finite number",
+    );
+    expect_err(apply(&t, case.id, pass(vec![NewEvidence { value: None, ..hypothesis() }])), "a record needs a value or an error");
+    expect_err(
+        apply(&t, case.id, pass(vec![NewEvidence { error: Some("timeout".into()), ..hypothesis() }])),
+        "a record has either a value or an error, not both",
+    );
+    expect_err(apply(&t, case.id, pass(vec![NewEvidence { samples: Some(-1), ..hypothesis() }])), "samples must be zero or more");
+    let at = now();
+    expect_err(
+        apply(&t, case.id, pass(vec![NewEvidence { window_start: at, window_end: at, ..hypothesis() }])),
+        "the window must start before it ends",
+    );
+    assert!(o.evidence(case.id, &EvidenceFilter::default()).unwrap().is_empty());
+    match o.evidence(9, &EvidenceFilter::default()) {
+        Err(GenieError::NotFound(m)) => assert_eq!(m, "observation O-9 not found"),
+        other => panic!("expected not found, got {other:?}"),
+    }
+}
+
+#[test]
+fn deltas_are_computed_from_the_baseline_and_left_out_without_one() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let baseline =
+        NewEvidence { phase: EvidencePhase::Baseline, ..observed("p95", CriterionKind::Hypothesis, 100.0, None, TrustLevel::Measured) };
+    apply(
+        &t,
+        case.id,
+        pass(vec![
+            baseline,
+            observed("p95", CriterionKind::Hypothesis, 80.0, Some(100.0), TrustLevel::Measured),
+            observed("p95", CriterionKind::Hypothesis, 5.0, Some(0.0), TrustLevel::Measured),
+            observed("p95", CriterionKind::Hypothesis, 90.0, None, TrustLevel::Measured),
+            failed_record("p95", CriterionKind::Hypothesis, "timeout"),
+        ]),
+    )
+    .unwrap();
+    let stored = o.current_evidence(case.id).unwrap();
+    assert_eq!(stored.len(), 5);
+    // The baseline record itself has no deltas.
+    assert_eq!(stored[0].phase, EvidencePhase::Baseline);
+    assert_close(stored[0].delta_abs, None);
+    // 80 against a baseline of 100 is -20 absolute and -20 percent relative.
+    assert_close(stored[1].delta_abs, Some(-20.0));
+    assert_close(stored[1].delta_rel, Some(-20.0));
+    assert_eq!(stored[1].baseline, Some(100.0));
+    // A zero baseline has an absolute delta but no relative one.
+    assert_close(stored[2].delta_abs, Some(5.0));
+    assert_close(stored[2].delta_rel, None);
+    // Without a baseline neither delta exists.
+    assert_close(stored[3].delta_abs, None);
+    assert_close(stored[3].delta_rel, None);
+    // A failed record has no value, no deltas and its error.
+    assert_eq!((stored[4].value, stored[4].delta_abs), (None, None));
+    assert_eq!(stored[4].error.as_deref(), Some("timeout"));
+    // The store fills the contract version, the pass time and the window.
+    assert_eq!(stored[1].contract_version, 1);
+    assert_eq!(stored[1].at, ts(now()));
+    assert_eq!(stored[1].window_start, ts(now() - Duration::hours(1)));
+    assert_eq!(stored[1].window_end, ts(now()));
+}
+
+#[test]
+fn a_violating_guardrail_record_opens_one_incident_and_a_repeat_opens_none() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    // error_rate rose by 0.5pp against its baseline, and the limit is +0.1pp.
+    let first = apply(&t, case.id, pass(vec![observed("error_rate", CriterionKind::Guardrail, 1.0, Some(0.5), TrustLevel::Measured)]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.new_incidents.len(), 1);
+    let incident = &first.new_incidents[0];
+    assert_eq!((incident.key.as_str(), incident.case_key.as_str(), incident.guardrail.as_str()), ("I-1", "O-1", "error_rate"));
+    assert_eq!(incident.status, IncidentStatus::Open);
+    assert_eq!(incident.summary, "change +0.5pp exceeds +0.1pp");
+    assert_eq!(incident.evidence, Some(first.evidence[0].id));
+
+    // The same violation again: the open incident is kept and the record is still stored.
+    let second = apply(&t, case.id, pass(vec![observed("error_rate", CriterionKind::Guardrail, 1.2, Some(0.5), TrustLevel::Measured)]))
+        .unwrap()
+        .unwrap();
+    assert!(second.new_incidents.is_empty());
+    assert_eq!(second.evidence.len(), 1);
+    assert_eq!(o.case_incidents(case.id).unwrap().len(), 1);
+    assert_eq!(events_of(&t, case.id, "guardrail.violated").len(), 1);
+    assert_eq!(events_of(&t, case.id, "incident.created").len(), 1);
+
+    // Another guardrail gets its own incident.
+    let third = apply(&t, case.id, pass(vec![observed("checkout_errors", CriterionKind::Guardrail, 61.0, None, TrustLevel::Measured)]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(third.new_incidents.len(), 1);
+    assert_eq!(third.new_incidents[0].key, "I-2");
+    assert_eq!(third.new_incidents[0].summary, "value 61 exceeds max 50");
+    let violated = events_of(&t, case.id, "guardrail.violated");
+    assert_eq!(violated.len(), 2);
+    assert_eq!(violated[0].payload["guardrail"], "error_rate");
+    assert_eq!(violated[0].payload["message"], "change +0.5pp exceeds +0.1pp");
+    assert_eq!(events_of(&t, case.id, "incident.created")[1].payload["incidentKey"], "I-2");
+    assert_eq!(o.violated_guardrails(case.id).unwrap(), ["checkout_errors", "error_rate"]);
+}
+
+#[test]
+fn an_agent_record_never_opens_an_incident_while_a_reported_one_does() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let agent = apply(
+        &t,
+        case.id,
+        pass(vec![
+            observed("error_rate", CriterionKind::Guardrail, 1.0, Some(0.5), TrustLevel::Agent),
+            observed("checkout_errors", CriterionKind::Guardrail, 61.0, None, TrustLevel::Agent),
+        ]),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(agent.new_incidents.is_empty());
+    assert_eq!(agent.evidence.len(), 2);
+    assert!(agent.evidence.iter().all(|e| e.trust == TrustLevel::Agent));
+    assert!(o.incidents(None).unwrap().is_empty());
+    assert!(o.violated_guardrails(case.id).unwrap().is_empty());
+    assert!(events_of(&t, case.id, "guardrail.violated").is_empty());
+
+    // A person's report of a violation is usable and opens the incident at once (§7.5).
+    let reported = apply(&t, case.id, pass(vec![observed("checkout_errors", CriterionKind::Guardrail, 61.0, None, TrustLevel::Reported)]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(reported.new_incidents.len(), 1);
+    assert_eq!(reported.new_incidents[0].summary, "value 61 exceeds max 50");
+}
+
+#[test]
+fn failed_passes_count_up_and_a_clean_pass_resets_them() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let failing = |message: &str| CollectionInput {
+        records: vec![failed_record("error_rate", CriterionKind::Guardrail, message)],
+        now: now(),
+        next_guardrail_at: None,
+        failed: Some(message.into()),
+    };
+    let first = apply(&t, case.id, failing("prometheus: timeout")).unwrap().unwrap();
+    assert_eq!(first.failures, 1);
+    assert_eq!(first.evidence[0].error.as_deref(), Some("prometheus: timeout"));
+    let stored = o.get(case.id).unwrap();
+    assert_eq!((stored.failures, stored.last_error.as_deref()), (1, Some("prometheus: timeout")));
+
+    let second = apply(&t, case.id, failing("sentry: unauthorized")).unwrap().unwrap();
+    assert_eq!(second.failures, 2);
+    assert_eq!(o.get(case.id).unwrap().last_error.as_deref(), Some("sentry: unauthorized"));
+
+    // A pass in which every measurement succeeded resets the count and the error.
+    let clean = apply(&t, case.id, pass(vec![observed("error_rate", CriterionKind::Guardrail, 0.4, Some(0.5), TrustLevel::Measured)]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(clean.failures, 0);
+    let stored = o.get(case.id).unwrap();
+    assert_eq!((stored.failures, stored.last_error), (0, None));
+}
+
+#[test]
+fn each_pass_writes_one_evidence_collected_event_and_moves_the_schedule_only_when_given() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let next = now() + Duration::minutes(15);
+    let applied = apply(
+        &t,
+        case.id,
+        CollectionInput {
+            records: vec![
+                observed("p95", CriterionKind::Hypothesis, 80.0, Some(100.0), TrustLevel::Measured),
+                failed_record("error_rate", CriterionKind::Guardrail, "timeout"),
+                observed("checkout_errors", CriterionKind::Guardrail, 10.0, None, TrustLevel::Measured),
+            ],
+            now: now(),
+            next_guardrail_at: Some(next),
+            failed: Some("timeout".into()),
+        },
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(applied.evidence.len(), 3);
+    assert_eq!(applied.failures, 1);
+    let collected = events_of(&t, case.id, "evidence.collected");
+    assert_eq!(collected.len(), 1);
+    assert_eq!(collected[0].payload["records"], 3);
+    assert_eq!(collected[0].payload["errors"], 1);
+    assert_eq!(collected[0].payload["key"], "O-1");
+    assert_eq!(collected[0].subject.as_deref(), Some("observation:1"));
+    assert_eq!(collected[0].actor, "genie");
+    assert_eq!(o.get(case.id).unwrap().next_guardrail_at.as_deref(), Some(ts(next).as_str()));
+
+    // A pass with no records writes no event and, with no schedule given, keeps the old one.
+    let quiet = apply(&t, case.id, pass(vec![])).unwrap().unwrap();
+    assert!(quiet.evidence.is_empty());
+    assert_eq!(events_of(&t, case.id, "evidence.collected").len(), 1);
+    assert_eq!(o.get(case.id).unwrap().next_guardrail_at.as_deref(), Some(ts(next).as_str()));
+}
+
+#[test]
+fn an_insufficient_evaluation_reschedules_to_the_earlier_of_one_interval_and_the_preferred_window() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let insufficient = EvalOutcome {
+        verdict: Verdict::Insufficient,
+        confidence: None,
+        summary: "insufficient: no usable evidence".into(),
+        details: vec![],
+    };
+
+    assert!(o.begin_evaluation(case.id).unwrap());
+    let at = now() + Duration::hours(25);
+    let after =
+        o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Window, at).unwrap().expect("the case was evaluating");
+    assert_eq!(after.status, CaseStatus::Observing);
+    assert_eq!(after.next_evaluation_at.as_deref(), Some(ts(at + Duration::hours(6)).as_str()), "one interval after the pass");
+
+    // Close to the preferred window (72h after the anchor), the window is the earlier one.
+    assert!(o.begin_evaluation(case.id).unwrap());
+    let late = now() + Duration::hours(70);
+    let after = o.finish_evaluation(&scheduler(), case.id, &insufficient, EvalTrigger::Manual, late).unwrap().unwrap();
+    assert_eq!(after.next_evaluation_at.as_deref(), Some(ts(now() + Duration::hours(72)).as_str()));
+
+    let evaluations = o.evaluations(case.id, None).unwrap();
+    assert_eq!(evaluations.len(), 2, "newest first");
+    assert_eq!((evaluations[0].trigger, evaluations[0].verdict), (EvalTrigger::Manual, Verdict::Insufficient));
+    assert_eq!(evaluations[0].at, ts(late));
+    assert_eq!(evaluations[0].actor, "genie");
+    assert_eq!(evaluations[0].contract_version, 1);
+    assert_eq!(evaluations[1].trigger, EvalTrigger::Window);
+    let events = events_of(&t, case.id, "outcome.evaluated");
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].payload["verdict"], "insufficient");
+    assert_eq!(events[0].payload["nextEvaluationAt"], ts(at + Duration::hours(6)).as_str());
+    assert_eq!(events[0].payload["evaluation"], evaluations[1].id);
+}
+
+#[test]
+fn a_confirmed_evaluation_concludes_the_case_clears_its_schedule_and_writes_its_event() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let requested = o.request_evaluation(&me(), case.id, false).unwrap();
+    assert_eq!(requested.evaluation_requested, Some(EvalTrigger::Manual));
+
+    assert!(o.begin_evaluation(case.id).unwrap());
+    let outcome = EvalOutcome {
+        verdict: Verdict::Confirmed,
+        confidence: Some(Confidence::High),
+        summary: "confirmed: 1/1 hypotheses met; guardrails: 2/2 ok, 0 violated; attribution: not assessed".into(),
+        details: vec![],
+    };
+    let at = now() + Duration::hours(72);
+    let concluded = o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, at).unwrap().unwrap();
+    assert_eq!(concluded.status, CaseStatus::Concluded);
+    assert_eq!(concluded.result, Some(CaseResult::Confirmed));
+    assert_eq!(concluded.confidence, Some(Confidence::High));
+    assert_eq!(concluded.conclusion, outcome.summary);
+    assert_eq!(concluded.observation_completed_at.as_deref(), Some(ts(at).as_str()));
+    assert_eq!((concluded.next_evaluation_at, concluded.next_guardrail_at, concluded.evaluation_requested), (None, None, None));
+
+    let evaluations = o.evaluations(case.id, Some(10)).unwrap();
+    assert_eq!(evaluations.len(), 1);
+    assert_eq!(
+        (evaluations[0].verdict, evaluations[0].trigger, evaluations[0].contract_version),
+        (Verdict::Confirmed, EvalTrigger::Final, 1)
+    );
+    let event = events_of(&t, case.id, "outcome.confirmed");
+    assert_eq!(event.len(), 1);
+    assert_eq!(event[0].payload["evaluation"], evaluations[0].id);
+    assert_eq!(event[0].payload["confidence"], "high");
+    assert_eq!(event[0].payload["summary"], outcome.summary.as_str());
+    assert_eq!(event[0].payload["tasks"], json!([task]));
+
+    // A concluded case is neither evaluated nor due.
+    assert!(!o.begin_evaluation(case.id).unwrap());
+    assert!(o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, at).unwrap().is_none());
+    assert!(o.due(at + Duration::days(30)).unwrap().is_empty());
+}
+
+#[test]
+fn each_conclusion_maps_to_its_result_confidence_and_event() {
+    let (_dir, t) = fresh();
+    let o = t.observation();
+    let cases = [
+        (Verdict::Negative, CaseResult::Negative, Confidence::High, "outcome.negative"),
+        (Verdict::Inconclusive, CaseResult::Inconclusive, Confidence::Low, "outcome.inconclusive"),
+    ];
+    for (verdict, result, confidence, kind) in cases {
+        let task = new_task(&t, "Ship");
+        let case = observing_mixed(&t, &task);
+        assert!(o.begin_evaluation(case.id).unwrap());
+        let outcome = EvalOutcome { verdict, confidence: Some(confidence), summary: format!("{verdict}: test"), details: vec![] };
+        let done = o.finish_evaluation(&scheduler(), case.id, &outcome, EvalTrigger::Final, now() + Duration::hours(72)).unwrap().unwrap();
+        assert_eq!((done.status, done.result, done.confidence), (CaseStatus::Concluded, Some(result), Some(confidence)));
+        assert_eq!(events_of(&t, case.id, kind).len(), 1, "{kind} is written once");
+    }
+}
+
+#[test]
+fn a_finished_evaluation_after_a_cancel_or_without_a_begin_writes_nothing() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let o = t.observation();
+    let cancelled = observing_mixed(&t, &task);
+    assert!(o.begin_evaluation(cancelled.id).unwrap());
+    o.cancel(&me(), cancelled.id, "the change was reverted", now()).unwrap();
+    assert!(o.finish_evaluation(&scheduler(), cancelled.id, &confirmed(), EvalTrigger::Final, now()).unwrap().is_none());
+    assert!(o.evaluations(cancelled.id, None).unwrap().is_empty());
+    assert!(events_of(&t, cancelled.id, "outcome.confirmed").is_empty());
+
+    // Without a begin the case is still observing, so there is nothing to finish.
+    let observing = observing_mixed(&t, &task);
+    assert!(o.finish_evaluation(&scheduler(), observing.id, &confirmed(), EvalTrigger::Final, now()).unwrap().is_none());
+    assert!(o.evaluations(observing.id, None).unwrap().is_empty());
+    assert_eq!(o.get(observing.id).unwrap().status, CaseStatus::Observing);
+}
+
+#[test]
+fn begin_evaluation_is_true_only_for_observing_and_evaluating_cases() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let o = t.observation();
+    let proposed = o
+        .create(
+            &me(),
+            NewCase { title: "Draft".into(), policy: ObservationPolicy::Verify, tasks: vec![], contract: Some(mixed_contract()) },
+        )
+        .unwrap();
+    let waiting = armed_case(&t, &task);
+    let observing = observing_mixed(&t, &new_task(&t, "Other"));
+    let cancelled = observing_mixed(&t, &task);
+    o.cancel(&me(), cancelled.id, "dropped", now()).unwrap();
+    let concluded = observing_mixed(&t, &new_task(&t, "Done"));
+    assert!(o.begin_evaluation(concluded.id).unwrap());
+    o.finish_evaluation(&scheduler(), concluded.id, &confirmed(), EvalTrigger::Final, now() + Duration::hours(72)).unwrap();
+
+    assert!(!o.begin_evaluation(proposed.id).unwrap());
+    assert!(!o.begin_evaluation(waiting.id).unwrap());
+    assert!(!o.begin_evaluation(cancelled.id).unwrap());
+    assert!(!o.begin_evaluation(concluded.id).unwrap());
+    assert!(o.begin_evaluation(observing.id).unwrap());
+    assert_eq!(o.get(observing.id).unwrap().status, CaseStatus::Evaluating);
+    assert!(o.begin_evaluation(observing.id).unwrap(), "an evaluating case is taken again after a crash");
+    // An evaluating case still collects evidence.
+    assert!(
+        apply(&t, observing.id, pass(vec![observed("p95", CriterionKind::Hypothesis, 80.0, Some(100.0), TrustLevel::Measured)]))
+            .unwrap()
+            .is_some()
+    );
+    match o.begin_evaluation(99) {
+        Err(GenieError::NotFound(m)) => assert_eq!(m, "observation O-99 not found"),
+        other => panic!("expected not found, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_incident_resolves_once_and_is_dismissed_only_by_a_person_with_a_note() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let (opened, created) = o.open_incident(&scheduler(), case.id, "error_rate", None, "change +0.5pp exceeds +0.1pp").unwrap();
+    assert!(created);
+    assert_eq!(opened.id, 1);
+
+    let resolved = o.resolve_incident(&scheduler(), 1, "rollout paused").unwrap();
+    assert_eq!(resolved.status, IncidentStatus::Resolved);
+    assert_eq!(resolved.closed_by.as_deref(), Some("genie"));
+    assert!(resolved.closed.is_some());
+    assert_eq!(resolved.note, "rollout paused");
+    expect_err(o.resolve_incident(&scheduler(), 1, ""), "I-1 is resolved; only an open incident can be resolved");
+
+    // Dismissal is for people only, and needs a reason.
+    expect_denied(
+        o.dismiss_incident(&scheduler(), 1, "false alarm"),
+        "only a person may dismiss an incident; resolve it instead, or ask a person to dismiss it",
+    );
+    expect_err(o.dismiss_incident(&me(), 1, "   "), "dismissing an incident needs a note that says why the violation is a false positive");
+    let dismissed = o.dismiss_incident(&me(), 1, "  scrape gap, not a regression ").unwrap();
+    assert_eq!(
+        (dismissed.status, dismissed.closed_by.as_deref(), dismissed.note.as_str()),
+        (IncidentStatus::Dismissed, Some("me"), "scrape gap, not a regression")
+    );
+    expect_err(o.dismiss_incident(&me(), 1, "again"), "I-1 is dismissed; only an open or resolved incident can be dismissed");
+    expect_err(o.resolve_incident(&scheduler(), 1, ""), "I-1 is dismissed; only an open incident can be resolved");
+
+    assert_eq!(events_of(&t, case.id, "incident.resolved").len(), 1);
+    let dismissals = events_of(&t, case.id, "incident.dismissed");
+    assert_eq!(dismissals.len(), 1);
+    assert_eq!(dismissals[0].payload["incident"], 1);
+    assert_eq!(dismissals[0].payload["note"], "scrape gap, not a regression");
+    match o.incident(9) {
+        Err(GenieError::NotFound(m)) => assert_eq!(m, "incident I-9 not found"),
+        other => panic!("expected not found, got {other:?}"),
+    }
+}
+
+#[test]
+fn violated_guardrails_count_open_and_resolved_incidents_but_not_dismissed_ones() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let (first, _) = o.open_incident(&scheduler(), case.id, "error_rate", None, "error rate rose").unwrap();
+    let (second, _) = o.open_incident(&scheduler(), case.id, "checkout_errors", None, "61 errors").unwrap();
+
+    // Opening the same violation again returns the open incident and writes nothing.
+    let (again, created) = o.open_incident(&scheduler(), case.id, "error_rate", None, "rose again").unwrap();
+    assert!(!created);
+    assert_eq!((again.id, again.summary.as_str()), (first.id, "error rate rose"));
+    assert_eq!(events_of(&t, case.id, "incident.created").len(), 2);
+    assert_eq!(o.violated_guardrails(case.id).unwrap(), ["checkout_errors", "error_rate"]);
+
+    o.resolve_incident(&scheduler(), first.id, "").unwrap();
+    assert_eq!(o.violated_guardrails(case.id).unwrap(), ["checkout_errors", "error_rate"], "a resolved violation still counts");
+    o.dismiss_incident(&me(), first.id, "false positive from a scrape gap").unwrap();
+    assert_eq!(o.violated_guardrails(case.id).unwrap(), ["checkout_errors"]);
+    o.dismiss_incident(&me(), second.id, "false positive from a scrape gap").unwrap();
+    assert!(o.violated_guardrails(case.id).unwrap().is_empty());
+
+    // After a dismissal the same guardrail can be violated again and opens a new incident.
+    let (third, created) = o.open_incident(&scheduler(), case.id, "error_rate", None, "rose once more").unwrap();
+    assert!(created);
+    assert_eq!(third.key, "I-3");
+    assert_eq!(o.violated_guardrails(case.id).unwrap(), ["error_rate"]);
+    assert_eq!(o.incidents(Some(IncidentStatus::Open)).unwrap().iter().map(|i| i.key.as_str()).collect::<Vec<_>>(), ["I-3"]);
+    assert_eq!(o.case_incidents(case.id).unwrap().iter().map(|i| i.key.as_str()).collect::<Vec<_>>(), ["I-3", "I-2", "I-1"]);
+}
+
+#[test]
+fn a_follow_up_task_is_recorded_once_and_listed_on_its_incident() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let fix = new_task(&t, "Fix the error rate");
+    let docs = new_task(&t, "Docs");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let (incident, _) = o.open_incident(&scheduler(), case.id, "error_rate", None, "error rate rose").unwrap();
+
+    let followup = o.add_followup(&me(), case.id, Some(incident.id), &fix.to_lowercase()).unwrap();
+    assert_eq!(
+        (followup.id, followup.case_id, followup.incident, followup.task.as_str(), followup.actor.as_str()),
+        (1, case.id, Some(incident.id), fix.as_str(), "me")
+    );
+    assert_eq!(o.incident(incident.id).unwrap().followups, [fix.as_str()]);
+
+    // Adding the same task again returns the same follow-up and writes no second event.
+    let again = o.add_followup(&me(), case.id, Some(incident.id), &fix).unwrap();
+    assert_eq!(again.id, followup.id);
+    assert_eq!(events_of(&t, case.id, "followup_task.created").len(), 1);
+
+    let plain = o.add_followup(&me(), case.id, None, &docs).unwrap();
+    assert_eq!(plain.incident, None);
+    assert_eq!(o.followups(case.id).unwrap().iter().map(|f| f.task.as_str()).collect::<Vec<_>>(), [fix.as_str(), docs.as_str()]);
+    let created = events_of(&t, case.id, "followup_task.created");
+    assert_eq!(created[0].payload["task"], fix.as_str());
+    assert_eq!(created[0].payload["incident"], 1);
+    assert!(created[1].payload["incident"].is_null());
+
+    // Unknown tasks, unknown incidents and incidents of another case are refused by name.
+    expect_err(o.add_followup(&me(), case.id, None, "G-99"), "task G-99 not found");
+    expect_err(o.add_followup(&me(), case.id, Some(9), &docs), "incident I-9 not found");
+    let other = observing_mixed(&t, &new_task(&t, "Other"));
+    expect_err(o.add_followup(&me(), other.id, Some(incident.id), &docs), "I-1 belongs to O-1, not O-2");
+    assert!(o.followups(other.id).unwrap().is_empty());
+}
+
+#[test]
+fn due_lists_the_cases_with_a_check_an_evaluation_or_a_request_due_and_next_due_is_the_earliest() {
+    let (_dir, t) = fresh();
+    let o = t.observation();
+    let anchor = now();
+    // X's first guardrail check is due at the anchor, when observation started.
+    let x = observing_mixed(&t, &new_task(&t, "X"));
+    // Y and Z push their next check half a day later, and Z also has an evaluation requested.
+    let y = observing_mixed(&t, &new_task(&t, "Y"));
+    let z = observing_mixed(&t, &new_task(&t, "Z"));
+    for case in [&y, &z] {
+        apply(
+            &t,
+            case.id,
+            CollectionInput { records: vec![], now: now(), next_guardrail_at: Some(anchor + Duration::hours(30)), failed: None },
+        )
+        .unwrap();
+    }
+    o.request_evaluation(&me(), z.id, false).unwrap();
+    // W is waiting and C is cancelled: neither is ever due.
+    let waiting = armed_case(&t, &new_task(&t, "W"));
+    let cancelled = observing_mixed(&t, &new_task(&t, "C"));
+    o.cancel(&me(), cancelled.id, "dropped", anchor).unwrap();
+
+    let due = |at: DateTime<Utc>| -> Vec<i64> { o.due(at).unwrap().iter().map(|c| c.id).collect() };
+    // Before the anchor only the requested case is due.
+    assert_eq!(due(anchor - Duration::minutes(1)), [z.id]);
+    // At the anchor X's check is due, with Z's request.
+    assert_eq!(due(anchor), [x.id, z.id]);
+    assert_eq!(o.next_due().unwrap().as_deref(), Some(ts(anchor).as_str()));
+
+    // Once X's next check is 15 minutes later, the earliest scheduled time moves to it.
+    apply(
+        &t,
+        x.id,
+        CollectionInput { records: vec![], now: anchor, next_guardrail_at: Some(anchor + Duration::minutes(15)), failed: None },
+    )
+    .unwrap();
+    assert_eq!(o.next_due().unwrap().as_deref(), Some(ts(anchor + Duration::minutes(15)).as_str()));
+    assert_eq!(due(anchor + Duration::minutes(15)), [x.id, z.id]);
+    // At 24 hours every observing case has its evaluation due, and the waiting and cancelled ones never do.
+    assert_eq!(due(anchor + Duration::hours(24)), [x.id, y.id, z.id]);
+    assert!(!due(anchor + Duration::hours(24)).contains(&waiting.id));
+    assert!(!due(anchor + Duration::hours(24)).contains(&cancelled.id));
+
+    // Once nothing is observing, nothing is scheduled.
+    for case in [&x, &y, &z] {
+        o.cancel(&me(), case.id, "end of the test", anchor).unwrap();
+    }
+    assert!(due(anchor + Duration::days(30)).is_empty());
+    assert_eq!(o.next_due().unwrap(), None);
+}
+
+#[test]
+fn evidence_is_filtered_and_paged_and_the_current_queries_see_only_the_current_contract_version() {
+    let (_dir, t) = fresh();
+    let task = new_task(&t, "Ship");
+    let case = observing_mixed(&t, &task);
+    let o = t.observation();
+    let applied = apply(
+        &t,
+        case.id,
+        pass(vec![
+            NewEvidence { phase: EvidencePhase::Baseline, ..observed("p95", CriterionKind::Hypothesis, 100.0, None, TrustLevel::Measured) },
+            NewEvidence {
+                phase: EvidencePhase::Baseline,
+                ..observed("error_rate", CriterionKind::Guardrail, 0.5, None, TrustLevel::Measured)
+            },
+            NewEvidence { phase: EvidencePhase::Baseline, ..failed_record("error_rate", CriterionKind::Guardrail, "timeout") },
+            observed("p95", CriterionKind::Hypothesis, 80.0, Some(100.0), TrustLevel::Measured),
+            observed("checkout_errors", CriterionKind::Guardrail, 10.0, None, TrustLevel::Measured),
+        ]),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(applied.evidence.iter().map(|e| e.id).collect::<Vec<_>>(), [1, 2, 3, 4, 5]);
+
+    let listed = |filter: EvidenceFilter| -> Vec<i64> { o.evidence(case.id, &filter).unwrap().iter().map(|e| e.id).collect() };
+    assert_eq!(listed(EvidenceFilter::default()), [1, 2, 3, 4, 5]);
+    assert_eq!(listed(EvidenceFilter { criterion: Some("p95".into()), ..Default::default() }), [1, 4]);
+    assert_eq!(listed(EvidenceFilter { after: Some(2), limit: Some(2), ..Default::default() }), [3, 4]);
+    assert_eq!(listed(EvidenceFilter { newest_first: true, limit: Some(2), ..Default::default() }), [5, 4]);
+    assert_eq!(listed(EvidenceFilter { newest_first: true, after: Some(4), ..Default::default() }), [3, 2, 1]);
+    expect_err(o.evidence(case.id, &EvidenceFilter { limit: Some(0), ..Default::default() }), "limit must be between 1 and 200");
+
+    // The newest usable baseline: the failed record (3) is skipped.
+    assert_eq!(o.latest_baseline(case.id, "error_rate").unwrap().map(|e| e.id), Some(2));
+    assert_eq!(o.latest_baseline(case.id, "p95").unwrap().map(|e| e.id), Some(1));
+    apply(
+        &t,
+        case.id,
+        pass(vec![NewEvidence {
+            phase: EvidencePhase::Baseline,
+            ..observed("p95", CriterionKind::Hypothesis, 90.0, None, TrustLevel::Reported)
+        }]),
+    )
+    .unwrap();
+    assert_eq!(o.latest_baseline(case.id, "p95").unwrap().map(|e| e.id), Some(6), "a reported baseline is usable");
+    apply(
+        &t,
+        case.id,
+        pass(vec![NewEvidence {
+            phase: EvidencePhase::Baseline,
+            ..observed("p95", CriterionKind::Hypothesis, 1.0, None, TrustLevel::Agent)
+        }]),
+    )
+    .unwrap();
+    assert_eq!(o.latest_baseline(case.id, "p95").unwrap().map(|e| e.id), Some(6), "an agent baseline never counts");
+    assert!(o.latest_baseline(case.id, "checkout_errors").unwrap().is_none());
+
+    // A person revises the contract after the start: records of version 1 stop being current.
+    let mut revised = mixed_contract();
+    revised.guardrails[0].max_change = Some("+0.2pp".into());
+    o.set_contract(&me(), case.id, &revised, "loosen error_rate after the release notes").unwrap();
+    assert!(o.current_evidence(case.id).unwrap().is_empty());
+    assert!(o.latest_baseline(case.id, "p95").unwrap().is_none(), "baselines of version 1 do not count");
+    assert_eq!(listed(EvidenceFilter::default()), [1, 2, 3, 4, 5, 6, 7], "history keeps every version");
+    assert_eq!(o.evidence(case.id, &EvidenceFilter::default()).unwrap()[3].contract_version, 1);
+
+    apply(&t, case.id, pass(vec![observed("p95", CriterionKind::Hypothesis, 85.0, Some(100.0), TrustLevel::Measured)])).unwrap();
+    let current = o.current_evidence(case.id).unwrap();
+    assert_eq!(current.iter().map(|e| e.id).collect::<Vec<_>>(), [8]);
+    assert_eq!(current[0].contract_version, 2);
 }
