@@ -14,6 +14,9 @@ pub struct Prepared {
     pub records: Vec<Decision>,
     pub notice: Vec<String>,
     pub policy: Policy,
+    pub snapshot: Option<genie_core::intelligence::Snapshot>,
+    pub eligible_templates: Vec<String>,
+    pub fallback: bool,
 }
 
 fn plan(r: &Roster) -> Value {
@@ -54,6 +57,16 @@ pub fn prepare(
     let p = policy(app, project)?;
     let mut records = Vec::new();
     let mut notice = Vec::new();
+    let delivery = !matches!(task.status, Status::Inbox | Status::Draft | Status::Refining);
+    if delivery && app.with_tracker(project, |t| t.has_unresolved_safety(&task.id))? {
+        return Err(AppError::Conflict("resolve the task's runtime safety constraint explicitly before dispatch".into()));
+    }
+    let snapshot = if delivery { Some(crate::intelligence::dispatch_snapshot(app, project, &req.by, task, &p)?) } else { None };
+    let eligible_templates = if let Some(s) = &snapshot { crate::intelligence::eligible(app, project, &p, s, &roster)? } else { vec![] };
+    if let Some(s) = &snapshot {
+        crate::intelligence::enforce(agents, &roster, &p, s)?;
+    }
+    let mut fallback = false;
     // Manual choices are pinned. Refinement and the idea conversation keep their
     // own workflow; automatic participation covers new delivery teams only.
     if (!preview && req.by.role == Role::Human)
@@ -62,7 +75,7 @@ pub fn prepare(
         || matches!(task.status, Status::Inbox | Status::Draft | Status::Refining)
         || [p.team, p.model, p.thinking].iter().all(|m| *m == Mode::Off)
     {
-        return Ok(Prepared { roster, records, notice, policy: p });
+        return Ok(Prepared { roster, records, notice, policy: p, snapshot, eligible_templates, fallback });
     }
     let original = plan(&roster);
     let original_roster = roster.clone();
@@ -92,7 +105,8 @@ pub fn prepare(
             .collect();
         for (i, id) in p.templates.iter().enumerate() {
             let candidate = agents.team_for(project, id)?;
-            if candidate.workspace != workspace
+            if !eligible_templates.contains(id)
+                || candidate.workspace != workspace
                 || candidate.stage != Stage::Delivery
                 || candidate.members.len() > app.cfg.limits.max_members_per_team
                 || required
@@ -132,7 +146,15 @@ pub fn prepare(
                     criteria,
                 ),
             )]);
-            match judge(app, project, req, task, &p, json!({"task":task_state,"proposed":original}), questions) {
+            match judge(
+                app,
+                project,
+                req,
+                task,
+                &p,
+                json!({"task":task_state,"signals":snapshot.as_ref().map(|s| &s.profile),"proposed":original}),
+                questions,
+            ) {
                 Ok(record) => {
                     if let Some(id) = selected(&record, "team").and_then(|key| alternatives.get(key)) {
                         if p.team == Mode::Joint {
@@ -145,13 +167,33 @@ pub fn prepare(
                             roster = asked_roster(agents, project, req)?;
                         }
                     }
+                    if selected(&record, "team").is_none_or(|key| key == "need_evidence") {
+                        fallback = true;
+                        if p.team == Mode::Select
+                            && let Some(id) = p.intelligence.fallback_template.as_ref().filter(|id| eligible_templates.contains(id))
+                        {
+                            req.template = Some(id.clone());
+                            req.members.clear();
+                            req.models.clear();
+                            roster = asked_roster(agents, project, req)?;
+                        }
+                    }
                     if p.team != Mode::Observe {
                         notice.push(format!("Jev team decision #{}: {}", record.id, record.result));
                     }
                     records.push(record);
                 }
                 Err(error) if p.team != Mode::Observe => {
-                    notice.push(format!("Jev team evaluation unavailable; keeping the proposal: {error}"))
+                    fallback = true;
+                    if p.team == Mode::Select
+                        && let Some(id) = p.intelligence.fallback_template.as_ref().filter(|id| eligible_templates.contains(id))
+                    {
+                        req.template = Some(id.clone());
+                        req.members.clear();
+                        req.models.clear();
+                        roster = asked_roster(agents, project, req)?;
+                    }
+                    notice.push(format!("Jev team evaluation unavailable; using safe fallback: {error}"))
                 }
                 Err(_) => {}
             }
@@ -200,7 +242,7 @@ pub fn prepare(
         }
     }
     if !questions.is_empty() {
-        let mut state = json!({"task":task_state,"team":roster_before_profiles});
+        let mut state = json!({"task":task_state,"signals":snapshot.as_ref().map(|s| &s.profile),"team":roster_before_profiles});
         state["roleDefaults"] = json!(
             roster
                 .asked
@@ -238,6 +280,7 @@ pub fn prepare(
                 records.push(record);
             }
             Err(error) if [p.model, p.thinking].iter().any(|m| matches!(m, Mode::Advise | Mode::Joint | Mode::Select)) => {
+                fallback = true;
                 notice.push(format!("Jev profile evaluation unavailable; keeping the proposal: {error}"))
             }
             Err(_) => {}
@@ -267,12 +310,15 @@ pub fn prepare(
         *req = original_request;
         roster = original_roster;
     }
+    if let Some(s) = &snapshot {
+        crate::intelligence::enforce(agents, &roster, &p, s)?;
+    }
     for record in &records {
         app.with_server(|db|db.apply_decision(project,record.id,&json!({"state":if preview {"preview"}else{"prepared"},"proposed":original,"plan":plan(&roster),"override":req.decision_override,"by":req.by.name})))?;
     }
-    Ok(Prepared { roster, records, notice, policy: p })
+    Ok(Prepared { roster, records, notice, policy: p, snapshot, eligible_templates, fallback })
 }
 
 pub fn view(prepared: &Prepared) -> Value {
-    json!({"plan":plan(&prepared.roster),"decisions":prepared.records,"notices":prepared.notice,"preview":true})
+    json!({"plan":plan(&prepared.roster),"decisions":prepared.records,"notices":prepared.notice,"preview":true,"snapshot":prepared.snapshot,"eligibleTemplates":prepared.eligible_templates})
 }

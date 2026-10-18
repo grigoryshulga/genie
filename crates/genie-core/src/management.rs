@@ -157,7 +157,7 @@ impl Management<'_> {
         let t = self.0.get(task)?;
         Ok(json!({ "title": t.title, "type": t.task_type, "description": t.description,
             "acceptance": t.acceptance.iter().map(|a| &a.text).collect::<Vec<_>>(), "deps": t.deps,
-            "parent": t.parent, "mergeStrategy": t.merge_strategy, "assignee": t.assignee }))
+            "parent": t.parent, "mergeStrategy": t.merge_strategy, "assignee": t.assignee, "plan":t.plan,"labels":t.labels }))
     }
 
     pub fn sync_brief(&self, actor: &Actor, task: &str) -> Result<()> {
@@ -177,6 +177,38 @@ impl Management<'_> {
                 self.notify(&manager_name(&m.task), &actor.name, &format!("Task brief changed to version {version}. Re-read the requirements before continuing; older pending clarifications are obsolete."), Some(&m.task))?;
             }
             self.event("manager.brief_changed", &m.task, actor, json!({ "version": version }))
+        })
+    }
+
+    /// Intelligence also needs a canonical immutable brief for manually managed
+    /// tasks, without creating or dispatching a task manager.
+    pub fn capture_brief(&self, actor: &Actor, task: &str) -> Result<i64> {
+        if self.manager(task)?.is_some() {
+            self.sync_brief(actor, task)?;
+            return Ok(self.brief(task, None)?["version"].as_i64().unwrap_or(0));
+        }
+        self.0.tx(|| {
+            let task = self.0.get(task)?.id;
+            let content = self.snapshot(&task)?.to_string();
+            let last: Option<(i64, String)> = self
+                .0
+                .conn()
+                .query_row("SELECT version,content FROM task_briefs WHERE task=?1 ORDER BY version DESC LIMIT 1", [&task], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })
+                .optional()?;
+            if let Some((version, old)) = &last
+                && old == &content
+            {
+                return Ok(*version);
+            }
+            let version = last.map_or(1, |(v, _)| v + 1);
+            self.0.conn().execute(
+                "INSERT INTO task_briefs(task,version,content,author,created) VALUES (?1,?2,?3,?4,?5)",
+                params![task, version, content, actor.name, now()],
+            )?;
+            self.event("task.brief_changed", &task, actor, json!({"version":version}))?;
+            Ok(version)
         })
     }
 

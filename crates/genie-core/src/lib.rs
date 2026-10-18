@@ -9,6 +9,7 @@ pub mod decisions;
 pub mod error;
 pub mod events;
 pub mod inbox;
+pub mod intelligence;
 pub mod management;
 pub mod migrate;
 pub mod model;
