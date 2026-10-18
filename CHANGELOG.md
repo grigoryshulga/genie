@@ -32,7 +32,7 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 
 ### Added
 
-- Observation plane, Phase 1: outcome cases that watch delivered tasks with guardrails or hypothesis checks, versioned contracts, Prometheus- and Sentry-compatible sources, guardrail incidents, follow-up tasks, and deterministic conclusions. Includes `genie observe` CLI and MCP operations, HTTP routes, journal events, web pages and a task section, project settings for sources, the project manager's observation guidance, and additive tracker and server schema 7.
+- Observation plane, Phase 1: outcome cases that watch delivered tasks with guardrails or hypothesis checks, versioned contracts, Prometheus- and Sentry-compatible sources, guardrail incidents, follow-up tasks, and deterministic conclusions. Includes `genie observe` CLI and MCP operations, HTTP routes, journal events, web pages and a task section, project settings for sources, the project manager's observation guidance, and additive tracker schema 8 and server schema 7.
 
 ## [0.5.1] — 2026-10-17
 

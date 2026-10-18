@@ -70,7 +70,7 @@ Taken from the proposal (§16) plus implementation limits:
 | ID | Decision | Reason |
 | --- | --- | --- |
 | D1 | Module name `observation` in both crates; tables prefixed `observation_`. | `outcome` is taken (§2.2). |
-| D2 | Cases, contracts, evidence, evaluations, incidents, deployments, and follow-ups live in the **project tracker** (`genie.db`, schema 6 → 7). Sources and their secrets live in **`server.db`** (schema 6 → 7). | Case state and journal events must commit together; secrets must stay out of tracker backups, like `repo_secrets`. |
+| D2 | Cases, contracts, evidence, evaluations, incidents, deployments, and follow-ups live in the **project tracker** (`genie.db`, schema 7 → 8; schema 7 is task intelligence). Sources and their secrets live in **`server.db`** (schema 6 → 7). | Case state and journal events must commit together; secrets must stay out of tracker backups, like `repo_secrets`. |
 | D3 | Policy is a property of the case. `none` is represented by the absence of a case; no task column is added. | Keeps the delivery lifecycle untouched (proposal §16). Per-task-class defaults are Phase 2. |
 | D4 | Phase 1 policies: `guardrails`, `verify`. `outcome` and `experiment` are not accepted yet. | Proposal §15. The enum is extended in Phase 2/3. |
 | D5 | `status` and `result` are separate fields: status `concluded` carries result `confirmed`, `negative`, or `inconclusive`. | Smaller state machine; result stays first-class. |
@@ -552,9 +552,9 @@ The proposal's `task.delivered` is the existing `task.status_changed` to `done`;
 
 ## 13. Persistence
 
-### 13.1 Tracker schema 7
+### 13.1 Tracker schema 8
 
-Append to `SCHEMA` in `crates/genie-core/src/db.rs` and set `SCHEMA_VERSION = 7`. Only new tables: no column migrations and no row changes, so the existing migration rehearsal applies unchanged.
+Append to `SCHEMA` in `crates/genie-core/src/db.rs` and set `SCHEMA_VERSION = 8` (schema 7 added task intelligence). Only new tables: no column migrations and no row changes, so the existing migration rehearsal applies unchanged.
 
 ```sql
 CREATE TABLE IF NOT EXISTS observation_cases (

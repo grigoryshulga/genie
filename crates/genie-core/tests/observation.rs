@@ -127,11 +127,11 @@ fn kinds(t: &Tracker, id: i64) -> Vec<String> {
 }
 
 #[test]
-fn a_fresh_tracker_records_schema_7_with_every_observation_table() {
+fn a_fresh_tracker_records_schema_8_with_every_observation_table() {
     let (_dir, t) = fresh();
-    assert_eq!(SCHEMA_VERSION, 7);
+    assert_eq!(SCHEMA_VERSION, 8);
     let recorded: String = t.conn().query_row("SELECT value FROM meta WHERE key = 'schema'", [], |r| r.get(0)).unwrap();
-    assert_eq!(recorded, "7");
+    assert_eq!(recorded, "8");
     assert_eq!(
         names(&t, "table"),
         [
@@ -902,12 +902,12 @@ fn a_revision_after_the_start_moves_the_first_evaluation_to_the_revised_minimum_
 }
 
 #[test]
-fn a_schema_6_tracker_upgrades_to_schema_7_with_every_observation_table() {
+fn a_schema_7_tracker_upgrades_to_schema_8_with_every_observation_table() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join(".genie");
     let t = Tracker::init(&root, None, None).unwrap();
     let task = new_task(&t, "Legacy");
-    // Shape a schema-6 tracker: no observation tables or indexes, and the old version recorded.
+    // Shape a schema-7 tracker: no observation tables or indexes, and the old version recorded.
     for table in [
         "observation_followups",
         "observation_incidents",
@@ -920,12 +920,12 @@ fn a_schema_6_tracker_upgrades_to_schema_7_with_every_observation_table() {
     ] {
         t.conn().execute_batch(&format!("DROP TABLE {table};")).unwrap();
     }
-    t.conn().execute("UPDATE meta SET value = '6' WHERE key = 'schema'", []).unwrap();
+    t.conn().execute("UPDATE meta SET value = '7' WHERE key = 'schema'", []).unwrap();
     assert_eq!(names(&t, "table"), Vec::<String>::new());
     drop(t);
 
     let t = Tracker::open(&root).unwrap();
-    assert_eq!(migrate::version(&root.join("genie.db")).unwrap(), Some(7), "the upgrade records schema 7");
+    assert_eq!(migrate::version(&root.join("genie.db")).unwrap(), Some(8), "the upgrade records schema 8");
     assert_eq!(
         names(&t, "table"),
         [
