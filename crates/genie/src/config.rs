@@ -369,6 +369,8 @@ pub struct EnvironmentsConfig {
 #[serde(rename_all = "camelCase", default)]
 pub struct EnvironmentsPodman {
     pub binary: String,
+    /// The network containers with full network join: `auto` (pasta on podman 5 and later, slirp4netns
+    /// before), or an explicit `--network` value used as it is.
     pub network: String,
     /// The address containers use to reach the server's host (`GENIE_HOST_ADDRESS`).
     pub host_address: String,
@@ -423,11 +425,7 @@ impl Default for EnvironmentsConfig {
 
 impl Default for EnvironmentsPodman {
     fn default() -> Self {
-        EnvironmentsPodman {
-            binary: "podman".into(),
-            network: "slirp4netns:allow_host_loopback=true".into(),
-            host_address: "10.0.2.2".into(),
-        }
+        EnvironmentsPodman { binary: "podman".into(), network: "auto".into(), host_address: "10.0.2.2".into() }
     }
 }
 
@@ -458,6 +456,9 @@ impl EnvironmentsConfig {
         }
         if self.podman.binary.trim().is_empty() {
             return Err("environments.podman.binary: the Podman program must not be empty".into());
+        }
+        if self.podman.network.trim().is_empty() {
+            return Err("environments.podman.network: use auto or a Podman --network value, not an empty string".into());
         }
         let size = |key: &str, text: &str| parse_size(text).map_err(|e| format!("environments.{key}: {e}"));
         let (d, m) = (&self.policy.defaults, &self.policy.max);
@@ -688,11 +689,24 @@ mod tests {
                 "above environments.policy.max.memory",
             ),
             (r#"{"environments": {"prepareTimeoutSecs": 0}}"#, "prepareTimeoutSecs"),
+            (r#"{"environments": {"podman": {"network": "  "}}}"#, "environments.podman.network"),
         ] {
             std::fs::write(&file, text).unwrap();
             let err = Config::load(dir.path()).unwrap_err();
             assert!(err.contains(key), "{text}: {err}");
         }
+    }
+
+    #[test]
+    fn the_podman_network_is_auto_by_default_or_an_explicit_value() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().environments.podman.network, "auto");
+        std::fs::write(
+            dir.path().join("config.json"),
+            r#"{"environments": {"podman": {"network": "pasta:--map-host-loopback,10.0.2.2"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().environments.podman.network, "pasta:--map-host-loopback,10.0.2.2");
     }
 
     #[test]

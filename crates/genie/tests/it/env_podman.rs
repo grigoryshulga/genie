@@ -9,6 +9,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -165,6 +166,24 @@ fn step(base: &BaseRef, ws: &str, command: &str, mounts: Vec<Mount>, network: Ne
 
 fn mount(source: &Path, target: &str, mode: MountMode) -> Mount {
     Mount { source: source.to_path_buf(), target: target.into(), mode }
+}
+
+/// A server on the host's loopback that answers the next `requests` connections with `BODY`. It runs
+/// on its own thread and is not joined: a test that fails early leaves it blocked, which ends with the process.
+const BODY: &str = "genie-host-ok\n";
+
+fn host_server(requests: usize) -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let port = listener.local_addr().expect("the port").port();
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().take(requests).flatten() {
+            let mut head = [0u8; 4096];
+            let _ = stream.read(&mut head);
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{BODY}", BODY.len());
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+    port
 }
 
 /// The interface names listed in `/proc/net/dev`: two header lines, then one line per interface.
@@ -469,4 +488,33 @@ fn the_harness_command_forwards_named_variables_and_no_values_on_its_command_lin
     let status = Command::new(&program).args(&args).env(name, value).stdin(Stdio::null()).status().expect("running the harness");
     assert!(status.success(), "the harness command exits 0");
     assert_eq!(run_ok(&lab.runner, &ws, "cat /tmp/forwarded").output.trim(), value);
+}
+
+#[test]
+fn full_network_steps_and_workspaces_reach_the_host_loopback_through_the_host_address() {
+    if !enabled() {
+        return;
+    }
+    let lab = Lab::new();
+    let base = lab.pulled(BUSYBOX);
+    let port = host_server(2);
+    // The address comes from GENIE_HOST_ADDRESS inside the container, so the test does not assume it.
+    let url = format!("http://$GENIE_HOST_ADDRESS:{port}/");
+
+    let out = lab.path("out");
+    fs::create_dir_all(&out).unwrap();
+    let step_ws = lab.workspace("host-step");
+    let command = format!("wget -q -O /out/body {url}");
+    let mounts = vec![mount(&out, "/out", MountMode::ReadWrite)];
+    let log = lab.path("logs/host-step.log");
+    let r = lab
+        .runner
+        .run_step(&step(&base, &step_ws, &command, mounts, NetworkMode::Full, &log, Duration::from_secs(120)))
+        .expect("the step runs");
+    assert_eq!(r.code, 0, "a full-network step reaches the host loopback: {}", r.output);
+    assert_eq!(fs::read_to_string(out.join("body")).unwrap(), BODY, "the body came from the host server");
+
+    let ws = lab.workspace("host-exec");
+    lab.runner.create(&lab.spec(&ws, &base, Vec::new(), NetworkMode::Full)).expect("creating a full-network workspace");
+    assert_eq!(run_ok(&lab.runner, &ws, &format!("wget -q -O - {url}")).output, BODY, "an exec reaches the host loopback too");
 }

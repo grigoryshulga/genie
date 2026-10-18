@@ -19,6 +19,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -59,13 +60,19 @@ struct Options {
     user: (u32, u32),
 }
 
-/// The rootless Podman runner. Construction reads no state: each method asks Podman when it needs to.
+/// The configured network value that asks for the network to be chosen from the Podman version.
+const AUTO_NETWORK: &str = "auto";
+
+/// The rootless Podman runner. Construction runs nothing: each method asks Podman when it needs to.
 #[derive(Debug)]
 pub struct PodmanRunner {
     binary: String,
+    /// `environments.podman.network` as configured: `auto` or a `--network` value.
     network: String,
     host_address: String,
     user: Option<(u32, u32)>,
+    /// The network `auto` resolved to, found once from `podman info` and kept for the runner's life.
+    resolved: OnceLock<String>,
 }
 
 impl PodmanRunner {
@@ -76,12 +83,29 @@ impl PodmanRunner {
             network: cfg.podman.network.clone(),
             host_address: cfg.podman.host_address.clone(),
             user: current_user(),
+            resolved: OnceLock::new(),
         }
+    }
+
+    /// The `--network` value of full-network containers: the configured one, or for `auto` the one
+    /// the Podman version needs. `auto` asks Podman once; a failed query is not cached, so it is retried.
+    fn full_network(&self) -> Result<String, String> {
+        if self.network != AUTO_NETWORK {
+            return Ok(self.network.clone());
+        }
+        if let Some(network) = self.resolved.get() {
+            return Ok(network.clone());
+        }
+        let version = info_version(&self.checked(["info", "--format", "json"])?)?;
+        let network = auto_network(&version, &self.host_address)?;
+        // A concurrent caller may have set it first; both answers are the same function of the version.
+        let _ = self.resolved.set(network.clone());
+        Ok(network)
     }
 
     fn options(&self) -> Result<Options, String> {
         let user = self.user.ok_or("cannot read this process's user id from /proc/self/status")?;
-        Ok(Options { network: self.network.clone(), host_address: self.host_address.clone(), user })
+        Ok(Options { network: self.full_network()?, host_address: self.host_address.clone(), user })
     }
 
     fn podman(&self, args: &[String]) -> Result<Output, String> {
@@ -234,6 +258,7 @@ impl PodmanRunner {
     /// Run a step's container and return its result; the step's own timeout removes the container.
     fn run_step_with(&self, step: &StepRun, log: Option<&Path>) -> Result<ExecResult, String> {
         let opts = self.options()?;
+        create_overlay_dirs(&step.mounts)?;
         let name = step_name(&step.labels);
         let args = run_args(step, &name, &opts)?;
         let cleanup = ["rm".to_string(), "-f".to_string(), name.clone()];
@@ -308,6 +333,7 @@ impl Runner for PodmanRunner {
     fn create(&self, ws: &WorkspaceSpec) -> Result<(), String> {
         let opts = self.options()?;
         fs::create_dir_all(&ws.run_dir).map_err(|e| format!("cannot create the run directory {}: {e}", ws.run_dir.display()))?;
+        create_overlay_dirs(&ws.mounts)?;
         let pod = pod_name(&ws.id);
         if !self.exists(["pod", "exists", pod.as_str()])? {
             self.checked(pod_create_args(&ws.id, ws.network, &opts)?)?;
@@ -429,6 +455,21 @@ enum Source<'a> {
 /// The name a locally built base is stored under: a bare tag becomes `localhost/<tag>`, the name Podman gives a local build.
 fn local_name(tag: &str) -> String {
     if tag.contains('/') { tag.to_string() } else { format!("localhost/{tag}") }
+}
+
+/// The `--network` value for full network from a Podman version. Podman 5 and later have no
+/// slirp4netns (it fails with "slirp4netns support has been removed"), so they use pasta, which maps
+/// the host's loopback to `host_address`. Earlier versions keep slirp4netns, whose default gateway
+/// is `10.0.2.2`, the host address by default.
+fn auto_network(version: &str, host_address: &str) -> Result<String, String> {
+    let major = major(version).ok_or_else(|| format!("podman version {version:?} is not a version number"))?;
+    if major >= 5 { Ok(format!("pasta:--map-host-loopback,{host_address}")) } else { Ok("slirp4netns:allow_host_loopback=true".into()) }
+}
+
+/// The Podman server version from `podman info --format json`.
+fn info_version(text: &str) -> Result<String, String> {
+    let v: Value = serde_json::from_str(text).map_err(|e| format!("podman info did not print JSON: {e}"))?;
+    v["version"]["Version"].as_str().map(str::to_string).ok_or_else(|| "podman info has no version".to_string())
 }
 
 /// The uid and gid of this process, from its effective ids in `/proc/self/status`.
@@ -558,6 +599,19 @@ fn container_env(opts: &Options, network: NetworkMode, env: &BTreeMap<String, St
     }
     all.extend(env.clone());
     all
+}
+
+/// Creates the upper and work directories of the overlay views among `mounts`. Podman needs them to
+/// exist before it mounts a view, and a view's upper directory is the only place its writes go.
+fn create_overlay_dirs(mounts: &[Mount]) -> Result<(), String> {
+    for m in mounts {
+        if let MountMode::Overlay { upper, work } = &m.mode {
+            for dir in [upper, work] {
+                fs::create_dir_all(dir).map_err(|e| format!("cannot create the overlay directory {}: {e}", dir.display()))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Secrets as read-only bind mounts of their host files.
@@ -1623,7 +1677,8 @@ mod tests {
 
     #[test]
     fn a_runner_with_no_user_refuses_to_build_commands() {
-        let runner = PodmanRunner { binary: "podman".into(), network: "n".into(), host_address: "h".into(), user: None };
+        let runner =
+            PodmanRunner { binary: "podman".into(), network: "n".into(), host_address: "h".into(), user: None, resolved: OnceLock::new() };
         assert!(runner.options().unwrap_err().contains("user id"));
     }
 
@@ -1656,6 +1711,60 @@ mod tests {
         assert_eq!(probe_verdict("w", &tcp, 1, ""), Ok(false));
         let err = probe_verdict("w", &tcp, PROBE_CANNOT_RUN, "neither bash nor nc").unwrap_err();
         assert!(err.contains("neither bash nor nc"), "{err}");
+    }
+
+    #[test]
+    fn auto_picks_pasta_on_podman_five_and_later_and_slirp4netns_before() {
+        assert_eq!(auto_network("6.1.4", "10.0.2.2").unwrap(), "pasta:--map-host-loopback,10.0.2.2");
+        assert_eq!(auto_network("5.0.0", "10.0.2.2").unwrap(), "pasta:--map-host-loopback,10.0.2.2");
+        assert_eq!(auto_network("4.9.3", "10.0.2.2").unwrap(), "slirp4netns:allow_host_loopback=true");
+        assert_eq!(auto_network("3.4.4", "10.0.2.2").unwrap(), "slirp4netns:allow_host_loopback=true");
+    }
+
+    #[test]
+    fn the_pasta_mapping_uses_the_configured_host_address() {
+        assert_eq!(auto_network("5.1.0", "172.16.0.1").unwrap(), "pasta:--map-host-loopback,172.16.0.1");
+    }
+
+    #[test]
+    fn a_version_that_is_not_a_number_is_an_error_not_a_guess() {
+        assert!(auto_network("dev", "10.0.2.2").unwrap_err().contains("not a version number"));
+    }
+
+    #[test]
+    fn the_version_comes_from_podman_info() {
+        assert_eq!(info_version(INFO_V4).unwrap(), "4.9.3");
+        assert!(info_version("{}").unwrap_err().contains("no version"));
+        assert!(info_version("nope").unwrap_err().contains("did not print JSON"));
+    }
+
+    #[test]
+    fn an_explicit_network_is_used_verbatim_without_asking_podman() {
+        // The binary does not exist: an explicit value must not run it.
+        let runner = PodmanRunner {
+            binary: "/nonexistent/podman".into(),
+            network: "slirp4netns:allow_host_loopback=true".into(),
+            host_address: "10.0.2.2".into(),
+            user: Some((1000, 1000)),
+            resolved: OnceLock::new(),
+        };
+        assert_eq!(runner.options().unwrap().network, "slirp4netns:allow_host_loopback=true");
+        let custom = PodmanRunner { network: "pasta:--map-host-loopback,192.0.2.7".into(), ..runner };
+        assert_eq!(custom.options().unwrap().network, "pasta:--map-host-loopback,192.0.2.7");
+    }
+
+    #[test]
+    fn auto_asks_podman_and_a_failed_question_is_an_error_naming_the_binary() {
+        let runner = PodmanRunner {
+            binary: "/nonexistent/podman".into(),
+            network: AUTO_NETWORK.into(),
+            host_address: "10.0.2.2".into(),
+            user: Some((1000, 1000)),
+            resolved: OnceLock::new(),
+        };
+        let err = runner.options().unwrap_err();
+        assert!(err.contains("/nonexistent/podman"), "{err}");
+        assert!(runner.resolved.get().is_none(), "a failed query is not cached");
     }
 
     #[test]
