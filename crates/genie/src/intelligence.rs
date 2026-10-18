@@ -480,11 +480,7 @@ pub fn reassess(app: &App, caller: &Caller, id: &str, body: ReassessBody) -> App
     {
         return Err(AppError::Conflict("reassessment cooldown is active; required safety upgrades are still allowed immediately".into()));
     }
-    if team.members.len() + missing.len() > app.cfg.limits.max_members_per_team {
-        return Err(AppError::Conflict(
-            "required safety upgrade exceeds the team member limit; pause and request an owner decision".into(),
-        ));
-    }
+    let capacity_exceeded = team.members.len() + missing.len() > app.cfg.limits.max_members_per_team;
     let event = app.with_tracker(&caller.project, |t| {
         t.tx(|| {
             t.append_event(
@@ -523,7 +519,8 @@ pub fn reassess(app: &App, caller: &Caller, id: &str, body: ReassessBody) -> App
     {
         return Err(AppError::Conflict("task or policy changed during reassessment; retry against current facts".into()));
     }
-    let blocked = body.reason == "requirement_conflict"
+    let blocked = capacity_exceeded
+        || body.reason == "requirement_conflict"
         || (body.reason == "irreversible_change" && !checks.iter().any(|c| c == "recovery_plan"))
         || (body.reason == "sensitive_change" && checks.is_empty());
     let agents = app.agents();
@@ -556,6 +553,7 @@ pub fn reassess(app: &App, caller: &Caller, id: &str, body: ReassessBody) -> App
         let mut reasons = vec![key.clone(), input_key, body.reason.clone()];
         if !blocked && !missing.is_empty() { reasons.push("topology_upgrade".into()); }
         if blocked { reasons.push("owner_decision_required".into()); }
+        if capacity_exceeded { reasons.push("required_reviewer_capacity_exceeded".into()); }
         let plan = RoutingPlan {
             decision_kind: DecisionKind::Reassessment, router_provider: "server_policy".into(), router_version: EXTRACTOR.into(), policy_version: fingerprint(&p),
             eligible_templates: final_team.template.iter().cloned().collect(),
@@ -594,7 +592,7 @@ pub fn shadow(app: &App, caller: &Caller, id: &str, body: ShadowBody) -> AppResu
     let snapshot = app.with_tracker(&caller.project, |t| t.signal_snapshot(&task.id, body.snapshot_id))?;
     let history = app.with_tracker(&caller.project, |t| t.intelligence_history(&task.id))?;
     let baseline = history.routing.iter().rev().find(|r| r.snapshot_id == snapshot.id);
-    let checks = body.candidate.intelligence.required(&snapshot.profile.affected_paths);
+    let checks = required(&body.candidate.intelligence, &snapshot.profile);
     let definitions = baseline.map(|r| r.plan.template_evidence.as_slice()).unwrap_or(&[]);
     let eligible: Vec<_> = definitions
         .iter()
@@ -670,6 +668,33 @@ pub fn recommendations(history: &genie_core::intelligence::IntelligenceHistory) 
         proposals.push(json!({"proposal":"Investigate fallback/abstention evidence and evaluate a candidate policy in shadow mode before enabling it.","routingIds":fallback,"requiresHumanApproval":true}));
     }
     json!({"proposals":proposals,"snapshotIds":history.snapshots.iter().map(|s|s.id).collect::<Vec<_>>(),"attemptIds":history.attempts.iter().map(|a|a.id).collect::<Vec<_>>(),"evaluationIds":history.evaluations.iter().map(|e|e.id).collect::<Vec<_>>(),"limitations":["A single task is insufficient to establish a policy improvement.","No counterfactual or production outcome is inferred."],"policyChanged":false})
+}
+
+/// Human resolution clears a discovery, never the project's mandatory checks.
+/// Call inside the same tracker transaction as resuming or completing execution.
+pub(crate) fn validate_team_checks(
+    t: &genie_core::Tracker,
+    agents: &AgentConfig,
+    policy: &IntelligencePolicy,
+    team_id: &str,
+) -> genie_core::Result<()> {
+    if !policy.enabled {
+        return Ok(());
+    }
+    let team = t.bus().get(team_id)?;
+    let history = t.intelligence_history(&team.task)?;
+    let paths = history.snapshots.last().map(|s| s.profile.affected_paths.as_slice()).unwrap_or(&[]);
+    let checks = policy.required(paths);
+    if checks.iter().any(|check| {
+        !policy.checks.get(check).is_some_and(|role| {
+            agents.roles.get(role).is_some_and(|r| r.class == Role::Reviewer) && team.members.iter().any(|m| &m.role == role)
+        })
+    }) {
+        return Err(genie_core::GenieError::invalid(
+            "add the independent reviewers required by the current project policy before resuming or completing execution",
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn record_live_plan(

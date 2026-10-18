@@ -309,3 +309,69 @@ async fn intelligence_respects_read_only_membership_and_agent_task_scope() {
         403
     );
 }
+
+#[tokio::test]
+async fn full_team_discovery_durably_pauses_and_resolution_cannot_bypass_required_reviewers() {
+    let h = Harness::with_config(|cfg| cfg.limits.max_members_per_team = 1);
+    h.project("shop");
+    let id = ready(&h);
+    policy(&h, false);
+    let (status, team, _) = call(&h.router, "POST", "/api/teams?project=shop").json(json!({"task":id,"template":"solo"})).send().await;
+    assert_eq!(status, 201, "{team}");
+    policy(&h, true);
+    let uri = format!("/api/tasks/{id}/intelligence");
+    let body = json!({"requestId":"full-team","reason":"scope_expansion","affectedPaths":["src/auth/login.rs"],"evidenceRefs":["file:src/auth/login.rs"]});
+    let (status, result, _) = call(&h.router, "POST", &format!("{uri}/reassess?project=shop")).json(body).send().await;
+    assert_eq!(status, 200, "{result}");
+    assert_eq!(result["requiresOwner"], true);
+    assert_eq!(result["routing"]["plan"]["decisionStatus"], "abstained");
+    let team_id = team["id"].as_str().unwrap();
+    let member = team["members"][0]["name"].as_str().unwrap();
+    h.app
+        .with_tracker("shop", |t| {
+            assert_eq!(t.get(&id)?.status, Status::NeedsOwner);
+            assert!(t.has_unresolved_safety(&id)?);
+            assert!(t.bus().get(team_id)?.members.iter().all(|m| m.state == genie_core::MemberState::Paused));
+            assert!(
+                t.set_status(&Actor::new("owner", Role::Human), &id, Status::Done, StatusOptions { force: true, ..Default::default() })
+                    .is_err()
+            );
+            Ok(())
+        })
+        .unwrap();
+    let (status, resolved, _) = call(&h.router, "POST", &format!("{uri}/resolve?project=shop"))
+        .json(json!({"snapshotId":result["snapshot"]["id"],"reason":"Owner confirms the required independent security review","evidenceRefs":["owner:capacity-decision"]})).send().await;
+    assert_eq!(status, 200, "{resolved}");
+    let (status, error, _) = call(&h.router, "POST", &format!("/api/agents/{team_id}/{member}/resume?project=shop")).send().await;
+    assert_eq!(status, 422, "{error}");
+    assert!(error.to_string().contains("independent reviewers"));
+    let (status, error, _) =
+        call(&h.router, "POST", &format!("/api/tasks/{id}/status?project=shop")).json(json!({"status":"done"})).send().await;
+    assert_eq!(status, 422, "{error}");
+}
+
+#[tokio::test]
+async fn shadow_disabled_intelligence_keeps_configured_checks_inactive() {
+    let h = Harness::new();
+    h.project("shop");
+    let id = ready(&h);
+    policy(&h, false);
+    let (status, team, _) = call(&h.router, "POST", "/api/teams?project=shop").json(json!({"task":id,"template":"solo"})).send().await;
+    assert_eq!(status, 201, "{team}");
+    let history = history(&h, &id).await;
+    let mut candidate = Policy { templates: vec!["solo".into()], ..Default::default() };
+    candidate.intelligence.components.push(ProtectedComponent {
+        id: "auth".into(),
+        paths: vec!["src/auth".into()],
+        sensitivity: "security".into(),
+        required_checks: vec!["security_review".into()],
+    });
+    candidate.intelligence.checks.insert("security_review".into(), "reviewer".into());
+    let (status, result, _) = call(&h.router, "POST", &format!("/api/tasks/{id}/intelligence/shadow?project=shop"))
+        .json(json!({"snapshotId":history["routing"][0]["snapshotId"],"candidate":candidate}))
+        .send()
+        .await;
+    assert_eq!(status, 200, "{result}");
+    assert_eq!(result["evidence"]["frozenInput"]["requiredChecks"], json!([]));
+    assert_eq!(result["evidence"]["frozenInput"]["eligibleTemplates"], json!(["solo"]));
+}

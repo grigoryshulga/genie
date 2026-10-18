@@ -558,7 +558,7 @@ pub fn collect(conn: &Connection, since: &str, until: &str, prices: &Prices) -> 
             ("reason", &row.reason_codes),
         ] {
             for value in values {
-                if !value.starts_with("reassess:") {
+                if !value.starts_with("reassess:") && !value.starts_with("input:") {
                     dimensions.push((dimension.into(), value.clone()));
                 }
             }

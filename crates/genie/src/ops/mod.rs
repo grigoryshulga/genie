@@ -340,6 +340,7 @@ impl Entry {
 
 /// The groups of operations, in the order people read them.
 pub const GROUPS: &[(&str, &str)] = &[
+    ("intelligence", "Task signals, constrained routing history and shadow policy evaluation"),
     ("decision", "Jev judgements: evaluate alternatives, inspect uncertainty and read recorded decisions"),
     ("manager", "Project memory and task managers: dispatch, clarification, execution evidence and retrospectives"),
     ("task", "Tasks and epics: read, create, update, move through statuses, comment, attach artifacts"),

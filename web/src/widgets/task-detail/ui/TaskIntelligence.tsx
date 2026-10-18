@@ -19,7 +19,7 @@ export function TaskIntelligence({ task }: { task: string }) {
         {history.data.routing.filter((r) => r.snapshotId === s.id).map((r) => <div key={r.id}>
           <b>→ R-{r.id}: {r.plan.selectedTemplate ?? "custom"} · {r.plan.decisionStatus}</b>
           <p>Попытка {r.attemptId ?? "не начата"}; {r.plan.routerProvider} / {r.plan.routerVersion}</p>
-          <p>Проверки: {r.plan.requiredChecks.join(", ") || "Не заданы"}. Причины: {r.plan.reasonCodes.join(", ")}</p>
+          <p>Проверки: {r.plan.requiredChecks.join(", ") || "Не заданы"}. Причины: {r.plan.reasonCodes.filter((code) => !code.startsWith("input:") && !code.startsWith("reassess:")).join(", ")}</p>
           {r.plan.overrideReason && <p>Обоснование: {r.plan.overrideReason}</p>}
           <ul>{r.plan.selectedModels.map((m, i) => <li key={i}>{m.role}: {m.model ?? "неизвестно"} / {m.thinking ?? "по умолчанию"}</li>)}</ul>
         </div>)}

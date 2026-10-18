@@ -2,7 +2,7 @@
 title: Task Intelligence and Factory Analytics implementation specification
 summary: GNE-16 implementation contracts extracted from the October 18 Task Intelligence RFC.
 type: specification
-status: proposed
+status: implemented
 tags: [Jev, routing, analytics, telemetry]
 ---
 
@@ -151,7 +151,10 @@ Do not label a review return as production failure or absent monitoring as no re
 Break down by initial/final topology (including custom), role/model, initial signals,
 router/policy/profile version and override/escalation reason. Apply identical metric
 definitions within each cohort. Show a small-sample notice; comparisons are descriptive,
-not causal rankings. Drill-down exposes task and attempt IDs, input/decision provenance,
+not causal rankings. The UI separates the grouping dimension from the selected group,
+uses readable team/signal names, and keeps raw policy/profile identifiers in audit details.
+Metrics explain their denominators and missing coverage; technical request keys are not
+analytics choices. Drill-down exposes task and attempt IDs, input/decision provenance,
 review history, human involvement and known/unpriced usage. Links use project scope.
 
 ## Phase 4: evaluation and learning

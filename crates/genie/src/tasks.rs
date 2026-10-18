@@ -409,7 +409,18 @@ pub fn set_status(app: &App, caller: &Caller, id: &str, body: StatusBody) -> App
     let force = caller.is_person() || (caller.is_orchestrator() && body.force == Some(true));
     let action = body.action.map(|a| owner_action(app, &caller.project, id, a)).transpose()?;
     let opts = StatusOptions { note: body.note.filter(|n| !n.is_empty()), force, action };
-    let task = app.with_tracker(&caller.project, |t| t.set_status(&caller.actor, id, to, opts))?;
+    let policy = crate::decisions::policy(app, &caller.project)?;
+    let agents = app.agents();
+    let task = app.with_tracker(&caller.project, |t| {
+        t.tx(|| {
+            if matches!(to, Status::InProgress | Status::Done)
+                && let Some(team) = t.get(id)?.team
+            {
+                crate::intelligence::validate_team_checks(t, &agents, &policy.intelligence, &team)?;
+            }
+            t.set_status(&caller.actor, id, to, opts)
+        })
+    })?;
     if CLOSED.contains(&to) {
         // The task is closed: its team stops, and what it no longer needs goes with
         // it — this task only (a full sweep is the server's start-up job, G-134).
