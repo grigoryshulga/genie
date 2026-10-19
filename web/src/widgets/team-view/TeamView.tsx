@@ -103,7 +103,7 @@ const EVENT_TEXT: Record<string, (e: Record<string, unknown>) => string> = {
 
 /**
  * A task's team: its stages, scheme, mail and members. It lives on the task page's
- * «Команда» tab; `/team/:teamId` only redirects there.
+ * team route and opens from the rail; `/team/:teamId` only redirects there.
  */
 export function TeamView({ teamId: embedded }: { teamId?: string }) {
   useTick(15_000);

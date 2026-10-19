@@ -36,7 +36,7 @@ import { SpendText, useTaskUsage } from "@/entities/usage";
 import { IDEA_TEMPLATE } from "@/features/shape-idea";
 import { OwnerDecision } from "@/features/owner-decision";
 import { SpawnTeamDialog } from "@/features/spawn-team";
-import { plural, timeAgo, useTick } from "@/shared/lib";
+import { plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
 import { ConfirmDialog, Icon, Markdown, useToast } from "@/shared/ui";
 import { FollowTask } from "@/features/follow-task";
 import { TaskDelivery } from "./TaskDelivery.tsx";
@@ -49,8 +49,9 @@ const KIND_NAME: Record<string, string> = { note: "заметка", progress: "�
 export type TaskTab = "about" | "team";
 
 /**
- * A task: the preview beside a list or board (`variant="panel"`), or its own page with
- * tabs (`variant="page"`) — the description with every property, and the team.
+ * A task: the preview beside a list or board (`variant="panel"`), or its own page
+ * (`variant="page"`) — the description with every property in a floating rail. The
+ * team keeps its own route and opens from the rail.
  */
 export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about", teamPane }: {
   id: string;
@@ -457,18 +458,14 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
       </header>
 
       <div className="tp-head">
-        {title}
-        <nav className="tp-tabs" aria-label="Разделы задачи">
-          <Link to={pageLink} className={tab === "about" ? "on" : ""} aria-current={tab === "about" ? "page" : undefined}>
-            {isEpic ? "Цель" : "Описание"}
-          </Link>
-          {!isEpic && (
-            <Link to={`${pageLink}/team`} className={tab === "team" ? "on" : ""} aria-current={tab === "team" ? "page" : undefined}>
-              Команда
-              <TeamState team={team} />
+        <div className="tp-title-row">
+          {tab === "team" && !isEpic && (
+            <Link className="icon-btn tp-back" to={pageLink} aria-label="К описанию задачи" title="К описанию задачи">
+              <Icon.back />
             </Link>
           )}
-        </nav>
+          {title}
+        </div>
       </div>
 
       {tab === "team" && !isEpic ? (
@@ -477,7 +474,6 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             <SadRobot />
             <b>Команда не собрана</b>
             <span className="muted">Соберите команду агентов: здесь появятся её почта, схема и участники.</span>
-            <Link className="btn" to={`${pageLink}/team`}>Перейти к команде <Icon.chevron size={12} /></Link>
             {canSpawn && (
               <button type="button" className="btn primary" onClick={() => setSpawning(true)}>
                 Собрать команду
@@ -570,12 +566,15 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             </CollapsibleSection>
           </div>
           <aside className="tp-rail" aria-label="Свойства задачи">
-            <section className="tp-card tp-properties">
-              <h3>Свойства</h3>
+            <RailCard id="properties" title="Свойства" className="tp-properties">
               {props}
-            </section>
+            </RailCard>
             <TeamCard task={t.id} team={team} canSpawn={canSpawn} onSpawn={() => setSpawning(true)} />
-            {epic && <div className="tp-card"><EpicBox id={epic.id} onArtifact={viewer.show} /></div>}
+            {epic && (
+              <RailCard id="epic" title="Эпик">
+                <EpicBox id={epic.id} onArtifact={viewer.show} />
+              </RailCard>
+            )}
           </aside>
         </div>
       )}
@@ -590,24 +589,36 @@ function teamLink(team: Team): string {
   return `/task/${encodeURIComponent(team.task)}/team`;
 }
 
-/** The team tab's quiet state: who works now, or that there is no team. */
-function TeamState({ team }: { team?: Team }) {
-  if (!team) return <span className="st">не собрана</span>;
-  if (team.state !== "active") return <span className="st">остановлена</span>;
-  const n = team.members.filter((m) => m.activity === "working").length;
-  if (!n) return <span className="st">ждёт</span>;
+/** A rail card that folds to its title; the choice is remembered per card. */
+function RailCard({ id, title, className, children }: { id: string; title: string; className?: string; children: ReactNode }) {
+  const key = `genie.railCard.${id}`;
+  const [open, setOpen] = useState(() => readPref(key, "open") === "open");
   return (
-    <span className="st on">
-      <span className="spin" style={{ width: 8, height: 8 }} />
-      {n} {plural(n, "работает", "работают", "работают")}
-    </span>
+    <section className={`tp-card${className ? ` ${className}` : ""}${open ? "" : " collapsed"}`}>
+      <button
+        type="button"
+        className="tp-card-toggle"
+        aria-expanded={open}
+        aria-controls={`rail-card-${id}`}
+        title={open ? `Свернуть «${title}»` : `Развернуть «${title}»`}
+        onClick={() => {
+          writePref(key, open ? "closed" : "open");
+          setOpen(!open);
+        }}
+      >
+        <span className="tp-card-title">{title}</span>
+        <Icon.chevron size={12} />
+      </button>
+      <div className="tp-card-body" id={`rail-card-${id}`} hidden={!open}>
+        {children}
+      </div>
+    </section>
   );
 }
 
 function TeamCard({ task, team, canSpawn, onSpawn }: { task: string; team?: Team; canSpawn: boolean; onSpawn: () => void }) {
   return (
-    <section className="tp-card tp-team-card">
-      <h3>Команда</h3>
+    <RailCard id="team" title="Команда" className="tp-team-card">
       {team?.members.length ? (
         <>
           <div className="tp-team-members">
@@ -631,7 +642,7 @@ function TeamCard({ task, team, canSpawn, onSpawn }: { task: string; team?: Team
           {canSpawn && <button type="button" className="btn primary" onClick={onSpawn}><Icon.userPlus size={12} />Собрать команду</button>}
         </div>
       )}
-    </section>
+    </RailCard>
   );
 }
 

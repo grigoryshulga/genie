@@ -71,6 +71,31 @@ test("the search narrows the task list and keeps the query in the address", asyn
   await expect(list.getByText(SEED_TASKS[3].title)).toBeVisible();
 });
 
+test("the task rail folds its cards and keeps the team reachable", async ({ page }) => {
+  await page.goto("/task/DM-2");
+  await expect(page.getByRole("heading", { name: SEED_TASKS[1].title })).toBeVisible();
+  await expect(page.locator(".tp-tabs")).toHaveCount(0);
+
+  // Folding is remembered across a reload; expanding brings the properties back.
+  const properties = page.locator(".tp-properties");
+  const toggle = properties.locator(".tp-card-toggle");
+  await expect(properties.getByText("Статус", { exact: true })).toBeVisible();
+  await toggle.click();
+  await expect(properties.getByText("Статус", { exact: true })).toBeHidden();
+  await page.reload();
+  await expect(properties.getByText("Статус", { exact: true })).toBeHidden();
+  await toggle.click();
+  await expect(properties.getByText("Статус", { exact: true })).toBeVisible();
+
+  // The team opens from the rail and comes back through the arrow beside the title.
+  await page.locator(".tp-team-card").getByRole("link", { name: /Перейти к команде/ }).click();
+  await expect(page).toHaveURL(/\/task\/DM-2\/team$/);
+  await expect(page.getByRole("link", { name: "Перейти к команде" })).toHaveCount(0);
+  await page.getByRole("link", { name: "К описанию задачи" }).click();
+  await expect(page).toHaveURL(/\/task\/DM-2$/);
+  await expect(page.getByRole("heading", { name: SEED_TASKS[1].title })).toBeVisible();
+});
+
 test("ticking a criterion and changing the status on the task page are saved", async ({ page }) => {
   await page.goto("/task/DM-2");
   await expect(page.getByRole("heading", { name: SEED_TASKS[1].title })).toBeVisible();
