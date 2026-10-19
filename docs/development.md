@@ -65,6 +65,24 @@ npm run build:web
 
 Rust tests regenerate `web/src/shared/api/generated/`. Commit generated type changes with their source structs. Set `GENIE_WEB_SOURCEMAP=1` when building the web client for browser debugging; source maps are not embedded in the binary.
 
+### Browser tests
+
+The browser tests in `test/ui/` click through the web UI and compare screenshots of key screens with committed baselines. They need Docker, a built server, and a built web client:
+
+```bash
+cargo build -p genie
+npm run build:web
+npm run test:ui
+```
+
+`test/ui/run.ts` seeds a disposable data directory through the CLI (`test/ui/seed.ts`), starts two servers from copies of it, and runs Playwright inside `mcr.microsoft.com/playwright` at the version of the installed `@playwright/test`. The screenshots use one server and the flows the other, so flows never change the screenshot data. Running Playwright only in that image keeps fonts and rendering identical locally and in CI. Set `GENIE_BIN` to test another server binary; arguments after `--` go to Playwright, for example `npm run test:ui -- --project flows`.
+
+- `*.flow.ts` files are user flows. Assert what the user sees and, through `test/ui/api.ts`, what the server stored.
+- `*.visual.ts` files take screenshots at desktop and mobile sizes. The page clock is fixed one hour after seeding, so relative times stay stable.
+- After an intended visual change, run `npm run test:ui -- --update-snapshots` and review the changed images in `test/ui/__screenshots__/` before committing them.
+
+Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. Open a trace with `npx playwright show-trace <path>/trace.zip`.
+
 The [agent benchmark](https://github.com/grigoryshulga/genie/tree/main/bench) compares task outcomes before and after changes to roles, prompts, skills, or team templates.
 
 ## Documentation site
