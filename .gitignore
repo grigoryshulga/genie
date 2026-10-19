@@ -2,6 +2,7 @@ node_modules
 .genie/
 .design/
 web/dist/
+test-results/
 docs/migration.md
 migration/
 /target/

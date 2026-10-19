@@ -35,6 +35,7 @@ Keep decisions here; keep instructions in their topic pages. Older implementatio
 | PD24 | Every runnable role names a model. Remove class defaults and `roleModels`. | [Role file](agent-roles-and-teams.md#role-file) |
 | PD25 | Keep task intelligence authoritative in project trackers; constrain Jev with server policy and evaluate changes without automatic policy updates. | [Task Intelligence](task-intelligence.md) |
 | PD26 | Observation is a separate plane with its own lifecycle; it consumes delivery events and creates work only through task services. | [Observation](observation.md) |
+| PD27 | Test the web UI in a real browser with Playwright against the real server on disposable seeded data; screenshots render only in the pinned Playwright image. Adopted October 19, 2026. | [Browser tests](../development.md#browser-tests) |
 
 ## Repository decisions
 
