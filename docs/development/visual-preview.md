@@ -91,7 +91,39 @@ The command discovers the machine's current MagicDNS name, publishes the loopbac
 
 When the tailnet or machine name changes, run the command again before requesting new candidates. The index reloads its host configuration on requests. Use the newly printed remote URL in the T3 Action. Existing candidate manifests retain the address used when they were created; after a DNS rename, restart and verify links rather than assuming an old hostname still resolves.
 
-No service binds to a public or LAN interface. The gateway forwards to the candidate's loopback backend and preserves separate local/Tailscale entry points. Connecting to an index through Tailscale yields Tailscale application links, so remote navigation does not fall back to loopback.
+Candidate backends and gateways bind only to loopback. The gateway forwards to the candidate's private backend and preserves separate local/Tailscale entry points. Connecting to an index through Tailscale yields Tailscale application links, so remote navigation does not fall back to loopback. The optional LAN router below adds explicitly selected listeners.
+
+## LAN names and baseline environments
+
+The optional machine-local `lan.py` helper publishes these mDNS names through the existing Avahi daemon:
+
+- `http://genie.local`: isolated snapshot of `origin/main`.
+- `http://dev.genie.local`: isolated snapshot of `origin/dev`.
+- `http://preview.genie.local`: latest successfully published integration candidate.
+- `http://<candidate-id>.preview.genie.local`: a fixed candidate for approval.
+- `http://preview.genie.local/__previews`: the environment index with fixed candidate links.
+
+The short environment names can advance to a new candidate. Use the candidate ID hostname or fixed Tailscale application URL for approval. No baseline reuses the live tracker's database. To queue a refreshed baseline after fetching its branch:
+
+```bash
+git fetch origin main dev
+preview channel main
+preview channel dev
+```
+
+The local `genie-mdns.service` user unit keeps aliases published and follows the selected LAN interface's IPv4 address. The `genie-local-proxy.socket` system unit owns port 80 on explicitly selected loopback, LAN and Tailscale addresses; its service runs the Python router as the ordinary user. The source units and `install-network.sh` are retained beside the local helper. Installing that socket requires host administrator authentication. Configure a DHCP reservation for the selected LAN address, or regenerate the socket listeners when the address changes. No existing Compose service or Tailscale listener is replaced.
+
+Some Linux clients using `nss-mdns` minimal reject names with more than two labels, such as `dev.genie.local`. The local installer adds the full `mdns4` resolver with `/etc/mdns.allow` restricted to Genie suffixes and preserves the previous configuration in backup files. Other Linux clients may need the same resolver adjustment. Validate with `avahi-resolve -4 -n preview.genie.local` and `getent ahostsv4 preview.genie.local`; publishing mDNS does not guarantee every client's resolver configuration or Wi-Fi multicast support. See the [nss-mdns documentation](https://github.com/avahi/nss-mdns#activation).
+
+mDNS is link-local and is not transported by Tailscale. For exactly the same HTTP names on remote devices, configure their `hosts` file or an appropriate private DNS server to map the three names to this host's Tailscale IP. On Linux, `files` must precede authoritative mDNS modules for `hosts` overrides to take effect. Fixed candidate hostnames also require explicit records when used remotely. The private HTTPS links printed by the helper work without these overrides.
+
+Tailscale's **Add an app** form configures App Connectors, which discover routes to already resolvable applications; it does not create the desired mDNS names. [Tailscale Services](https://tailscale.com/docs/features/tailscale-services) is a separate optional way to obtain named HTTPS endpoints such as `genie-preview.<tailnet>.ts.net`. It requires a tag-based Service host and an approved advertisement. The helper's current implementation uses Serve on the existing machine; it does not retag the machine or create Services.
+
+## Temporary public access
+
+[Tailscale Funnel](https://tailscale.com/docs/features/tailscale-funnel) can give people without Tailscale a public HTTPS URL in the tailnet's `ts.net` domain. It is separate from private Serve access and does not make `.local` names public. Supported public ports are 443, 8443 and 10000. Preserve existing private listeners; reserve 10000 for an explicitly requested public share of one fixed candidate, never the environment index or live tracker.
+
+Public sharing is not a worktree creation or settle action. Obtain the owner's requested candidate and expiry before enabling it. Keep application authentication enabled and provide access only to disposable preview data. A time limit must be enforced by a local gateway and cleanup timer; Funnel itself is not an expiring invitation. Public-share activation is not part of the installed automatic Actions, and no Funnel is enabled by this workflow.
 
 ## Owner approval and lifecycle
 
