@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use genie_core::env::spec::{NetworkMode, parse_size};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -344,6 +345,146 @@ pub struct Budgets {
     pub per_day: f64,
 }
 
+/// `environments`: the workspace environments of tasks (`genie::env`). `policy.defaults` is what a
+/// profile gets when it asks for nothing, `policy.max` the most it may ask for. Sizes are read by
+/// `parse_size` (`8GiB`, `512MiB`, or plain bytes).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EnvironmentsConfig {
+    /// The environment store. `null` is `<data>/env-store`; it must not be inside a Git working tree.
+    pub root: Option<PathBuf>,
+    /// `auto` (podman when rootless podman works, else host), `podman` or `host`.
+    pub runner: String,
+    pub podman: EnvironmentsPodman,
+    pub policy: EnvironmentsPolicy,
+    pub storage: EnvironmentsStorage,
+    /// How long to wait for another process to finish preparing a snapshot this one needs.
+    pub prepare_timeout_secs: u64,
+    /// How long a service or a process may take to report ready.
+    pub ready_timeout_secs: u64,
+}
+
+/// `environments.podman`: the rootless Podman program and the network containers join by default.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EnvironmentsPodman {
+    pub binary: String,
+    /// The network containers with full network join: `auto` (pasta on podman 5 and later, slirp4netns
+    /// before), or an explicit `--network` value used as it is.
+    pub network: String,
+    /// The address containers use to reach the server's host (`GENIE_HOST_ADDRESS`).
+    pub host_address: String,
+}
+
+/// `environments.policy`: which network modes and resources the server allows environments.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EnvironmentsPolicy {
+    /// The network modes a profile may use (`registries` is never supported in this release).
+    pub network: Vec<NetworkMode>,
+    /// A runner that cannot enforce cpu, memory and pids limits fails the check unless this is off.
+    pub require_limits: bool,
+    pub defaults: EnvironmentsLimits,
+    pub max: EnvironmentsLimits,
+    /// Capabilities a profile may require beyond the runner's own.
+    pub capabilities: Vec<String>,
+}
+
+/// Resource limits. `Config::load` deep-merges `<data>/config.json` over the repository's defaults, so
+/// an override may name only the fields it changes.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentsLimits {
+    pub memory: String,
+    pub cpus: f64,
+    pub pids: u64,
+    pub disk: String,
+}
+
+/// `environments.storage`: how much disk the snapshots and the download caches may take.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EnvironmentsStorage {
+    pub snapshots_max: String,
+    pub caches_max: String,
+}
+
+impl Default for EnvironmentsConfig {
+    fn default() -> Self {
+        EnvironmentsConfig {
+            root: None,
+            runner: "auto".into(),
+            podman: EnvironmentsPodman::default(),
+            policy: EnvironmentsPolicy::default(),
+            storage: EnvironmentsStorage::default(),
+            prepare_timeout_secs: 1800,
+            ready_timeout_secs: 300,
+        }
+    }
+}
+
+impl Default for EnvironmentsPodman {
+    fn default() -> Self {
+        EnvironmentsPodman { binary: "podman".into(), network: "auto".into(), host_address: "10.0.2.2".into() }
+    }
+}
+
+impl Default for EnvironmentsPolicy {
+    fn default() -> Self {
+        EnvironmentsPolicy {
+            network: vec![NetworkMode::None, NetworkMode::Full],
+            require_limits: true,
+            defaults: EnvironmentsLimits { memory: "8GiB".into(), cpus: 4.0, pids: 4096, disk: "50GiB".into() },
+            max: EnvironmentsLimits { memory: "32GiB".into(), cpus: 16.0, pids: 16384, disk: "200GiB".into() },
+            capabilities: Vec::new(),
+        }
+    }
+}
+
+impl Default for EnvironmentsStorage {
+    fn default() -> Self {
+        EnvironmentsStorage { snapshots_max: "100GiB".into(), caches_max: "50GiB".into() }
+    }
+}
+
+impl EnvironmentsConfig {
+    /// Refuse settings no runner could honour, naming the key: an unknown runner, a size that does
+    /// not parse, a default above its maximum, or a zero timeout.
+    pub fn validate(&self) -> Result<(), String> {
+        if !matches!(self.runner.as_str(), "auto" | "podman" | "host") {
+            return Err(format!("environments.runner: {} is not auto, podman or host", self.runner));
+        }
+        if self.podman.binary.trim().is_empty() {
+            return Err("environments.podman.binary: the Podman program must not be empty".into());
+        }
+        if self.podman.network.trim().is_empty() {
+            return Err("environments.podman.network: use auto or a Podman --network value, not an empty string".into());
+        }
+        let size = |key: &str, text: &str| parse_size(text).map_err(|e| format!("environments.{key}: {e}"));
+        let (d, m) = (&self.policy.defaults, &self.policy.max);
+        let (memory, memory_max) = (size("policy.defaults.memory", &d.memory)?, size("policy.max.memory", &m.memory)?);
+        let (disk, disk_max) = (size("policy.defaults.disk", &d.disk)?, size("policy.max.disk", &m.disk)?);
+        size("storage.snapshotsMax", &self.storage.snapshots_max)?;
+        size("storage.cachesMax", &self.storage.caches_max)?;
+        if memory > memory_max {
+            return Err("environments.policy.defaults.memory is above environments.policy.max.memory".into());
+        }
+        if disk > disk_max {
+            return Err("environments.policy.defaults.disk is above environments.policy.max.disk".into());
+        }
+        if !(d.cpus > 0.0 && d.cpus <= m.cpus) {
+            return Err("environments.policy: defaults.cpus must be above 0 and at most max.cpus".into());
+        }
+        if d.pids == 0 || d.pids > m.pids {
+            return Err("environments.policy: defaults.pids must be above 0 and at most max.pids".into());
+        }
+        if self.prepare_timeout_secs == 0 || self.ready_timeout_secs == 0 {
+            return Err("environments: prepareTimeoutSecs and readyTimeoutSecs must be at least 1".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SocialAuth {
@@ -382,6 +523,7 @@ pub struct Config {
     pub smtp: Option<SmtpConfig>,
     pub vault: VaultConfig,
     pub skills: SkillsConfig,
+    pub environments: EnvironmentsConfig,
 }
 
 impl Default for Config {
@@ -404,6 +546,7 @@ impl Default for Config {
             smtp: None,
             vault: VaultConfig::default(),
             skills: SkillsConfig::default(),
+            environments: EnvironmentsConfig::default(),
         }
     }
 }
@@ -429,7 +572,9 @@ impl Config {
             let over: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
             merge(&mut value, over);
         }
-        serde_json::from_value(value).map_err(|e| format!("config: {e}"))
+        let cfg: Config = serde_json::from_value(value).map_err(|e| format!("config: {e}"))?;
+        cfg.environments.validate().map_err(|e| format!("config: {e}"))?;
+        Ok(cfg)
     }
 
     pub fn public_url(&self) -> String {
@@ -508,6 +653,78 @@ mod tests {
         std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"ciRerunsPerRequest": 0}}"#).unwrap();
         let rt = Config::load(dir.path()).unwrap().runtime;
         assert_eq!((rt.ci_reruns_per_request, rt.ci_reruns_per_task), (0, 3), "0 switches reruns off");
+    }
+
+    #[test]
+    fn the_default_environments_section_is_the_one_the_code_defaults_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = Config::load(dir.path()).unwrap();
+        let json: Value = serde_json::from_str(DEFAULT_JSON).unwrap();
+        let from_json: EnvironmentsConfig = serde_json::from_value(json["environments"].clone()).unwrap();
+        assert_eq!(from_json, EnvironmentsConfig::default(), "config/default.json and the defaults in code agree");
+        assert_eq!(cfg.environments, EnvironmentsConfig::default());
+        assert_eq!((cfg.environments.runner.as_str(), cfg.environments.root.is_none()), ("auto", true));
+        assert_eq!(cfg.environments.policy.network, [NetworkMode::None, NetworkMode::Full]);
+        assert!(cfg.environments.policy.require_limits, "a runner without limits is refused unless configured otherwise");
+        assert_eq!((cfg.environments.policy.max.cpus, cfg.environments.policy.max.pids), (16.0, 16384));
+        assert_eq!(cfg.environments.podman.host_address, "10.0.2.2");
+        assert_eq!((cfg.environments.prepare_timeout_secs, cfg.environments.ready_timeout_secs), (1800, 300));
+        cfg.environments.validate().unwrap();
+    }
+
+    #[test]
+    fn a_partial_environments_section_fills_the_rest_with_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.json"),
+            r#"{"environments": {"runner": "host", "policy": {"requireLimits": false, "network": ["none"]}, "podman": {"binary": "/opt/podman"}}}"#,
+        )
+        .unwrap();
+        let env = Config::load(dir.path()).unwrap().environments;
+        assert_eq!(env.runner, "host");
+        assert!(!env.policy.require_limits);
+        assert_eq!(env.policy.network, [NetworkMode::None]);
+        assert_eq!(env.podman.binary, "/opt/podman");
+        assert_eq!(env.podman.host_address, "10.0.2.2", "unset fields keep defaults");
+        assert_eq!(env.policy.max, EnvironmentsConfig::default().policy.max, "an unset limits object keeps its default");
+        assert_eq!(env.storage.snapshots_max, "100GiB");
+        assert_eq!(env.ready_timeout_secs, 300);
+    }
+
+    #[test]
+    fn a_partial_limit_override_changes_only_its_fields_and_a_bad_setting_is_refused_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.json");
+        std::fs::write(&file, r#"{"environments": {"policy": {"max": {"memory": "64GiB"}}}}"#).unwrap();
+        let max = Config::load(dir.path()).unwrap().environments.policy.max;
+        assert_eq!((max.memory.as_str(), max.cpus, max.pids), ("64GiB", 16.0, 16384), "the other limits keep their defaults");
+
+        for (text, key) in [
+            (r#"{"environments": {"runner": "docker"}}"#, "environments.runner"),
+            (r#"{"environments": {"storage": {"snapshotsMax": "lots"}}}"#, "environments.storage.snapshotsMax"),
+            (
+                r#"{"environments": {"policy": {"defaults": {"memory": "64GiB", "cpus": 4, "pids": 4096, "disk": "50GiB"}}}}"#,
+                "above environments.policy.max.memory",
+            ),
+            (r#"{"environments": {"prepareTimeoutSecs": 0}}"#, "prepareTimeoutSecs"),
+            (r#"{"environments": {"podman": {"network": "  "}}}"#, "environments.podman.network"),
+        ] {
+            std::fs::write(&file, text).unwrap();
+            let err = Config::load(dir.path()).unwrap_err();
+            assert!(err.contains(key), "{text}: {err}");
+        }
+    }
+
+    #[test]
+    fn the_podman_network_is_auto_by_default_or_an_explicit_value() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().environments.podman.network, "auto");
+        std::fs::write(
+            dir.path().join("config.json"),
+            r#"{"environments": {"podman": {"network": "pasta:--map-host-loopback,10.0.2.2"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().environments.podman.network, "pasta:--map-host-loopback,10.0.2.2");
     }
 
     #[test]

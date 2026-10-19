@@ -70,7 +70,7 @@ Taken from the proposal (§16) plus implementation limits:
 | ID | Decision | Reason |
 | --- | --- | --- |
 | D1 | Module name `observation` in both crates; tables prefixed `observation_`. | `outcome` is taken (§2.2). |
-| D2 | Cases, contracts, evidence, evaluations, incidents, deployments, and follow-ups live in the **project tracker** (`genie.db`, schema 7 → 8; schema 7 is task intelligence). Sources and their secrets live in **`server.db`** (schema 6 → 7). | Case state and journal events must commit together; secrets must stay out of tracker backups, like `repo_secrets`. |
+| D2 | Cases, contracts, evidence, evaluations, incidents, deployments, and follow-ups live in the **project tracker** (`genie.db`, schema 7 → 8; schema 7 is task intelligence). Sources and their secrets live in **`server.db`** (schema 6 → 7; workspace environments then made it 8). | Case state and journal events must commit together; secrets must stay out of tracker backups, like `repo_secrets`. |
 | D3 | Policy is a property of the case. `none` is represented by the absence of a case; no task column is added. | Keeps the delivery lifecycle untouched (proposal §16). Per-task-class defaults are Phase 2. |
 | D4 | Phase 1 policies: `guardrails`, `verify`. `outcome` and `experiment` are not accepted yet. | Proposal §15. The enum is extended in Phase 2/3. |
 | D5 | `status` and `result` are separate fields: status `concluded` carries result `confirmed`, `negative`, or `inconclusive`. | Smaller state machine; result stays first-class. |
@@ -666,7 +666,7 @@ CREATE TABLE IF NOT EXISTS observation_followups (
 
 Deleting a task removes its links and follow-up rows by cascade; the case stays (it may then have zero tasks, which only blocks arming).
 
-### 13.2 Server schema 7
+### 13.2 Server schema 7 (now 8)
 
 Set `SERVER_SCHEMA_VERSION = 7`. Add `observation::sources::SCHEMA` (executed in `server_db::open_migrated` after `SECRETS_SCHEMA`) and a secrets table in `SECRETS_SCHEMA`:
 

@@ -2695,7 +2695,7 @@ fn main_branch(repo: &Path) -> Option<(String, Vec<String>)> {
 /// What would be lost with a workspace: every repository in it (the root and the
 /// ones mounted inside) with uncommitted or untracked changes, or with commits on
 /// no remote branch. Build directories are not searched for repositories.
-fn workspace_unsaved(root: &Path) -> Vec<String> {
+pub(crate) fn workspace_unsaved(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut dirs = vec![(root.to_path_buf(), 0)];
     while let Some((dir, depth)) = dirs.pop() {

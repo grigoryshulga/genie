@@ -155,7 +155,7 @@ pub(crate) fn unseal(key: &[u8; 32], name: &str, sealed: &str) -> Option<String>
     String::from_utf8(plain).ok()
 }
 
-fn hint(value: &str) -> String {
+pub(crate) fn hint(value: &str) -> String {
     let chars: Vec<char> = value.chars().collect();
     if chars.len() < 12 {
         return String::new();
@@ -163,7 +163,7 @@ fn hint(value: &str) -> String {
     format!("…{}", chars[chars.len() - 4..].iter().collect::<String>())
 }
 
-fn check_value(value: &str) -> Result<()> {
+pub(crate) fn check_value(value: &str) -> Result<()> {
     if value.len() > 4096 || value.chars().any(char::is_control) {
         return Err(GenieError::invalid("the secret must be one line of at most 4096 characters"));
     }
@@ -180,7 +180,7 @@ impl ServerDb {
     /// the provider keys shared with everyone, observation sources' credentials).
     pub fn has_sealed_secrets(&self) -> Result<bool> {
         let n: i64 = self.conn().query_row(
-            "SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets) + (SELECT COUNT(*) FROM global_secrets) + (SELECT COUNT(*) FROM project_telegram) + (SELECT COUNT(*) FROM observation_secrets)",
+            "SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets) + (SELECT COUNT(*) FROM global_secrets) + (SELECT COUNT(*) FROM project_telegram) + (SELECT COUNT(*) FROM env_secrets) + (SELECT COUNT(*) FROM observation_secrets)",
             [],
             |r| r.get(0),
         )?;

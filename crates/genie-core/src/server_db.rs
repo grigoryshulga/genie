@@ -348,6 +348,66 @@ CREATE TABLE IF NOT EXISTS mcp_tools (
   tools TEXT NOT NULL,
   checked TEXT NOT NULL
 );
+-- Workspace environments (`genie::env`, `env::db`): a task's prepared environment, the stages
+-- that built it, prepared snapshots with their leases, what keeps a snapshot or base alive,
+-- and the sealed secrets of a project's environments.
+CREATE TABLE IF NOT EXISTS env_workspaces (
+  id TEXT PRIMARY KEY,
+  project TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  task TEXT,
+  profile TEXT NOT NULL,
+  runner TEXT NOT NULL,
+  state TEXT NOT NULL,
+  failed_stage TEXT,
+  error TEXT,
+  lock TEXT,
+  view_mode TEXT,
+  size_exclusive INTEGER,
+  size_logical INTEGER,
+  created TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  UNIQUE(project, name)
+);
+CREATE TABLE IF NOT EXISTS env_stages (
+  workspace TEXT NOT NULL REFERENCES env_workspaces(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  owner TEXT NOT NULL DEFAULT '',
+  started TEXT NOT NULL,
+  finished TEXT,
+  PRIMARY KEY (workspace, stage)
+);
+CREATE TABLE IF NOT EXISTS env_snapshots (
+  key TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  label TEXT NOT NULL,
+  state TEXT NOT NULL,
+  lease_owner TEXT,
+  lease_until TEXT,
+  attempt INTEGER NOT NULL DEFAULT 0,
+  size INTEGER,
+  files INTEGER,
+  error TEXT,
+  created TEXT NOT NULL,
+  last_used TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS env_pins (
+  workspace TEXT NOT NULL REFERENCES env_workspaces(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  PRIMARY KEY (workspace, kind, ref)
+);
+CREATE TABLE IF NOT EXISTS env_secrets (
+  project TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  sealed TEXT NOT NULL,
+  hint TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  PRIMARY KEY (project, name)
+);
 "#;
 
 /// Columns added after the first server release; applied to existing databases on open.
@@ -378,7 +438,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 7;
+pub const SERVER_SCHEMA_VERSION: i64 = 8;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
