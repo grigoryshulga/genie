@@ -1,4 +1,4 @@
-//! Live agent sessions end to end: the real pi harness (`node_modules/.bin/pi`,
+//! Live agent sessions end to end: the real pi harness (`pi` from PATH, Pi-Bolt on CI,
 //! RPC mode, the genie-bus extension) against a scripted OpenAI-compatible model
 //! served by the test. The model follows instructions found in the mail it gets:
 //! `RUN: <command>` runs a shell command; `MCPCALL: {"tool": …, "args": …}` calls the
@@ -135,8 +135,7 @@ async fn completions(State(log): State<Log>, body: Bytes) -> axum::response::Res
 }
 
 fn pi_bin() -> Option<PathBuf> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../node_modules/.bin/pi");
-    p.exists().then_some(p)
+    genie::doctor::pi_program(&Config::default())
 }
 
 struct Live {
@@ -317,8 +316,8 @@ fn session_state(app: &App, name: &str) -> Option<(String, Option<String>, u32)>
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn mail_reaches_live_agents_between_steps_and_on_interrupt() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
-        eprintln!("skipped: pi is not installed (npm ci)");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
         return;
     };
     let l = live(pi, |_| {}).await;
@@ -460,7 +459,7 @@ fn orchestrator_mail(app: &App, needle: &str) -> Option<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn watchdogs_stop_silent_steps_and_report_loops() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
     let l = live(pi, |cfg| cfg.runtime.turn_timeout_secs = 3).await;
@@ -521,7 +520,7 @@ async fn tool_result_of(log: &Log, model: &str, needle: &str) -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
     let pi_path = pi.to_string_lossy().into_owned();
@@ -675,7 +674,7 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_session_runs_under_a_heap_cap_its_commands_do_not_inherit() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
     let l = live(pi, |cfg| {
@@ -702,8 +701,8 @@ async fn a_session_runs_under_a_heap_cap_its_commands_do_not_inherit() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn at_the_console_mail_reaches_the_idle_session_by_itself() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
-        eprintln!("skipped: pi is not installed (npm ci)");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
         return;
     };
     let l = live(pi.clone(), |_| {}).await;
@@ -787,7 +786,7 @@ async fn at_the_console_mail_reaches_the_idle_session_by_itself() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn an_agent_whose_provider_refuses_stays_in_error_with_the_reason() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
     let l = live(pi, |cfg| cfg.runtime.max_attempts = 2).await;
@@ -816,8 +815,8 @@ async fn an_agent_whose_provider_refuses_stays_in_error_with_the_reason() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
-        eprintln!("skipped: pi is not installed (npm ci)");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
         return;
     };
     let l = live(pi, |_| {}).await;

@@ -35,6 +35,8 @@ jobs:
               - "docker/**"
               - ".github/workflows/**"
             rust:
+              - "docker/Dockerfile"
+              - ".github/scripts/install-pi-bolt.sh"
               - "crates/**"
               - "Cargo.*"
               - ".cargo/**"
@@ -88,10 +90,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-      # The live-session tests drive the real pi harness from node_modules.
-      # Browser tooling is not needed by the Rust suites.
-      - run: npm ci --omit=dev --workspaces=false
+      # Node runs the fake stdio MCP servers; live sessions use the shipped native harness.
+      - name: Pi-Bolt
+        run: |
+          bash .github/scripts/install-pi-bolt.sh "$RUNNER_TEMP/pi-bolt"
+          echo "$RUNNER_TEMP/pi-bolt" >> "$GITHUB_PATH"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:

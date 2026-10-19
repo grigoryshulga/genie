@@ -51,6 +51,18 @@ curl -fsS http://127.0.0.1:7422/api/health
 
 ## Checks
 
+Live-session Rust tests use `pi` from `PATH`. CI installs the same Pi-Bolt version and SHA-256
+as `docker/Dockerfile`; Node is still needed for the fake stdio MCP servers. On Linux x86_64,
+install that build locally without replacing your system's `pi`:
+
+```bash
+bash .github/scripts/install-pi-bolt.sh "$PWD/target/pi-bolt"
+export PATH="$PWD/target/pi-bolt:$PATH"
+pi --version
+```
+
+The live-session tests skip locally when `pi` is absent and fail on CI if it is missing.
+
 ```bash
 cargo test
 cargo clippy --all-targets -- -D warnings
