@@ -11,6 +11,8 @@ Requires stable Rust, Node 22.19+, Git, and bubblewrap for Linux sandbox tests. 
 
 Follow the [repository workflow](development/genie-cli.md) to track a task, isolate changes, and publish a PR with successful CI.
 
+Before publishing a task branch or opening its PR, prepare a [fixed integration preview](development/visual-preview.md) and obtain the owner's visual approval. That guide also documents machine-local T3 Project Actions, combined task candidates and private Tailscale access.
+
 ## Release flow
 
 Feature work enters the protected `dev` branch through pull requests. Releases go from `dev` to the protected `main` branch through a pull request; direct pushes and force pushes to either branch are blocked.
