@@ -52,6 +52,7 @@ export default defineConfig({
         { text: 'Documentation contract', link: '/reference/genie-docs-system' },
         { text: 'Development', link: '/development' },
         { text: 'Repository workflow', link: '/development/genie-cli' },
+        { text: 'Visual review before publishing', link: '/development/visual-preview' },
         { text: 'Design decisions', link: '/platform/decisions' },
         { text: 'Roadmap', link: '/platform/roadmap' },
         { text: 'Product proposals', link: '/platform/proposals' },
