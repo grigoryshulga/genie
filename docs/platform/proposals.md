@@ -17,7 +17,7 @@ Run an isolated pilot on the current orchestration model. Verify output quality,
 
 ## Phase 1: project manager and memory
 
-The implemented management lifecycle provides a persistent project manager responsible for planning and owner conversation. Keep durable project memory separate from a growing chat transcript. It should retain goals, constraints, decisions, and current work without reconstructing them from every task.
+The implemented management lifecycle provides a persistent project manager responsible for planning and owner conversation. Keep durable project memory separate from a growing chat transcript. It should retain goals, constraints, decisions, and current work without reconstructing them from every task. The draft design, with external evidence, is in [Project memory](memory.md).
 
 ## Phase 2: epic coordination
 
