@@ -41,7 +41,7 @@ Enable **Run automatically on worktree creation** and **Wait for it to finish be
 python3 "$(git rev-parse --path-format=absolute --git-common-dir)/genie-preview/preview.py" request
 ```
 
-Enable **Run in the thread's worktree when the thread settles** and **Open preview automatically when this action runs**. Leave creation-time execution disabled. Set **Preview URL** to `http://genie.localhost:7480`, or to the remote index URL printed by `preview enable-tailscale` when using T3 from another machine. This Action queues work and returns; compilation runs independently of the thread.
+Enable **Run in the thread's worktree when the thread settles** and **Open preview automatically when this action runs**. Leave creation-time execution disabled. Set **Preview URL** to `https://genie-preview.<tailnet>.ts.net/__previews` after the Services setup below, or use `http://genie.localhost:7480` for local-only use. The helper prints the current verified index URL; do not hardcode a previous tailnet name. This Action queues work and returns; compilation runs independently of the thread.
 
 An interruption, question or error can settle a thread. The request Action does nothing unless the worktree has explicitly marked its current clean commit ready. Configure the Actions manually; installing the helper does not modify T3 project settings.
 
@@ -117,7 +117,36 @@ Some Linux clients using `nss-mdns` minimal reject names with more than two labe
 
 mDNS is link-local and is not transported by Tailscale. For exactly the same HTTP names on remote devices, configure their `hosts` file or an appropriate private DNS server to map the three names to this host's Tailscale IP. On Linux, `files` must precede authoritative mDNS modules for `hosts` overrides to take effect. Fixed candidate hostnames also require explicit records when used remotely. The private HTTPS links printed by the helper work without these overrides.
 
-Tailscale's **Add an app** form configures App Connectors, which discover routes to already resolvable applications; it does not create the desired mDNS names. [Tailscale Services](https://tailscale.com/docs/features/tailscale-services) is a separate optional way to obtain named HTTPS endpoints such as `genie-preview.<tailnet>.ts.net`. It requires a tag-based Service host and an approved advertisement. The helper's current implementation uses Serve on the existing machine; it does not retag the machine or create Services.
+Tailscale's **Add an app** form configures App Connectors, which discover routes to already resolvable applications; it does not create the desired mDNS names. Use the named Services below for stable private HTTPS addresses instead of overriding an unowned public domain.
+
+## Named Tailscale Services
+
+The selected remote entry points are `https://genie.<tailnet>.ts.net` for main, `https://genie-dev.<tailnet>.ts.net` for dev, and `https://genie-preview.<tailnet>.ts.net` for the latest integration candidate. The preview service also serves the auto-refreshing index at `/__previews`. Index links open fixed candidates, retaining the exact source composition during approval.
+
+[Tailscale Services](https://tailscale.com/docs/features/tailscale-services) requires a tagged host identity. This installation uses a separate userspace `tailscaled` instance named `genie-service-host`, tagged `tag:genie-services`, with private state under the shared local helper directory and a socket at `$XDG_RUNTIME_DIR/genie-services/tailscaled.sock`. The existing user-owned machine and its T3 listener keep their identity, DNS settings and routes. The separate daemon sets `accept-dns=false` and `accept-routes=false` and advertises no subnet or exit-node routes.
+
+The machine-local `genie-tailscale-services.service` and `genie-service-router.service` user units start the dedicated node and its loopback router. The router listens on 7491 (main), 7492 (dev) and 7493 (preview), resolves the current channel manifest on each request, and forwards through the candidate gateway. Each Service advertises `tcp:443`, proxies HTTPS to its matching loopback port, and needs an approved host advertisement. A new candidate does not need another Service or another approval of the host advertisement.
+
+To provision another installation, first define the `genie-services` tag in **Access controls → Definitions → Tags** with the intended administrator as tag owner. Define `genie`, `genie-dev` and `genie-preview` in **Services**, each with endpoint `tcp:443`. Install the local units and router, authenticate only the separate socket with the requested tag, then configure its endpoints:
+
+```bash
+service_socket="$XDG_RUNTIME_DIR/genie-services/tailscaled.sock"
+tailscale --socket="$service_socket" login --hostname=genie-service-host \
+  --advertise-tags=tag:genie-services --accept-dns=false --accept-routes=false
+tailscale --socket="$service_socket" serve --service=svc:genie --https=443 http://127.0.0.1:7491
+tailscale --socket="$service_socket" serve --service=svc:genie-dev --https=443 http://127.0.0.1:7492
+tailscale --socket="$service_socket" serve --service=svc:genie-preview --https=443 http://127.0.0.1:7493
+```
+
+Approve that host on each Service's page and allow the intended clients to reach these Services under the tailnet's existing access policy. Preserve unrelated policy rules. Tailscale provisions HTTPS certificates; wait for actual successful HTTPS responses, not only an Online badge. Clients running Tailscale 1.94+ discover Service routes without enabling general subnet-route acceptance; consult the Tailscale guide for older clients.
+
+```bash
+preview enable-services
+```
+
+This verifies the separate node's identity/tag and all three application health responses against the expected channel candidate IDs before selecting the named preview index as the helper's default remote URL. Fixed candidate URLs still use their existing dedicated HTTPS ports on the original machine. Keep these two roles distinct: a stable channel name can advance; the fixed candidate identifies what the owner approved.
+
+Existing LAN mDNS aliases remain available for devices without Tailscale. The named `ts.net` addresses work on devices connected to the tailnet, including while on the same LAN. Renaming the tailnet requires updating and re-verifying Services/router configuration; no override of a third party's public domain is needed.
 
 ## Temporary public access
 
