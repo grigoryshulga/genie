@@ -485,9 +485,26 @@ impl EnvironmentsConfig {
     }
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SocialAuth {
+    pub allow_registration: bool,
+    pub github: Option<SocialClient>,
+    pub google: Option<SocialClient>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SocialClient {
+    pub client_id: String,
+    /// Name of a process environment variable; configuration never contains the secret.
+    pub client_secret_env: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
+    pub social_auth: SocialAuth,
     pub decisions: crate::decisions::Config,
     pub port: u16,
     pub bind: String,
@@ -512,6 +529,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            social_auth: Default::default(),
             decisions: crate::decisions::Config::default(),
             port: 7420,
             bind: "127.0.0.1".into(),

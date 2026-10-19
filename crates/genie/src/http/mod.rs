@@ -21,7 +21,9 @@ pub mod management;
 pub mod mcp_admin;
 pub mod mcp_gateway;
 pub mod mcp_server;
+mod observation;
 pub mod repos;
+pub mod social_auth;
 pub mod tasks;
 pub mod teams;
 pub mod telegram;
@@ -132,6 +134,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/health", get(|| async { Json(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") })) }))
         .route("/wake", post(wake))
         .merge(account::routes())
+        .merge(social_auth::routes())
         .merge(tasks::routes())
         .merge(ideas::routes())
         .merge(management::routes())
@@ -148,6 +151,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(mcp_admin::routes())
         .merge(mcp_gateway::routes())
         .merge(repos::routes())
+        .merge(observation::routes())
         .merge(live::routes())
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "not found") });
     let router = Router::new()

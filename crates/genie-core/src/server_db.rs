@@ -39,6 +39,13 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_type TEXT,
   avatar_at TEXT
 );
+CREATE TABLE IF NOT EXISTS social_identities (
+  provider TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (provider, subject),
+  UNIQUE (provider, user)
+);
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -431,7 +438,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 7;
+pub const SERVER_SCHEMA_VERSION: i64 = 8;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -697,6 +704,7 @@ pub struct ServerDb {
 pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
     let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
     db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
+    db.conn().execute_batch(crate::observation::sources::SCHEMA)?;
     db.conn().execute_batch(crate::decisions::SCHEMA)?;
     db.conn().execute_batch(crate::telegram::SCHEMA)?;
     db.add_columns(SERVER_COLUMN_MIGRATIONS)?;

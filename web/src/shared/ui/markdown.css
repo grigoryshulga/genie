@@ -12,24 +12,24 @@
   border-collapse: collapse;
   width: max-content;
   max-width: 100%;
-  font-size: 13px;
+  font-size: var(--font-size-body);
 }
 
 .md table.md-table th,
 .md table.md-table td {
-  border: 1px solid var(--line-strong, #2e3138);
-  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  padding: 5px var(--space-5);
   vertical-align: top;
   text-align: left;
 }
 
 .md table.md-table thead th {
-  background: var(--bg-raised, #17181c);
-  color: var(--text, #e8e9ec);
+  background: var(--bg-raised);
+  color: var(--text);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .md table.md-table tbody tr:nth-child(even) {
-  background: var(--bg-panel, #141518);
+  background: var(--bg-panel);
 }

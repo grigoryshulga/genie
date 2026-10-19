@@ -37,6 +37,7 @@ export default defineConfig({
         { text: 'Repositories and delivery', link: '/platform/git-repositories' },
         { text: 'Knowledge vault', link: '/platform/knowledge-vault' },
         { text: 'Automations', link: '/platform/automations' },
+        { text: 'Observation', link: '/platform/observation' },
         { text: 'CLI and MCP', link: '/reference/cli' },
       ] },
       { text: 'Run your server', items: [

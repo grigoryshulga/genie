@@ -1,5 +1,7 @@
 # Repository workflow
 
+For browser-to-Figma capture, offline plugin work or native import validation, use the separate private [genie-figma-tools repository](https://github.com/grigoryshulga/genie-figma-tools) and its [agent workflow](https://github.com/grigoryshulga/genie-figma-tools/blob/main/docs/agent-workflow.md). This repository owns the application's tokens and exporter; the toolkit owns capture/import code and tests.
+
 Follow this sequence for every repository task. Read [CODING_STANDARDS.md](CODING_STANDARDS.md) before changing code, and [the genie CLI guide](docs/development/genie-cli.md) before tracking work.
 
 For tasks that need a Compose-managed service started or updated, follow the [Compose service lifecycle](docs/agents/compose-service-lifecycle.md).

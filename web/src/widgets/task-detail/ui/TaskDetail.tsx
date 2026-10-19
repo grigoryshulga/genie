@@ -41,6 +41,8 @@ import { ConfirmDialog, Icon, Markdown, useToast } from "@/shared/ui";
 import { FollowTask } from "@/features/follow-task";
 import { TaskDelivery } from "./TaskDelivery.tsx";
 import { TaskManager } from "./TaskManager.tsx";
+import { TaskObservation } from "./TaskObservation.tsx";
+import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };
 
@@ -183,8 +185,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           </span>
         </>
       )}
-      <span className="k">Команда</span>
-      <span className="wide team-cell">
+      {!page && <><span className="k">Команда</span><span className="wide team-cell">
         {team ? (
           <>
             <Avatars members={team.members} max={6} />
@@ -199,7 +200,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             Собрать команду
           </button>
         )}
-      </span>
+      </span></>}
       {!isEpic && (
         <>
           <span className="k">Эпик</span>
@@ -276,15 +277,14 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   );
 
   const description = (
-    <section className="sec">
-      <h3>
-        {isEpic ? "Цель" : "Описание"}
-        {editDesc === undefined ? (
-          <button type="button" className="sec-edit" onClick={() => setEditDesc(t.description)} aria-label={isEpic ? "Изменить цель" : "Изменить описание"} title={isEpic ? "Изменить цель" : "Изменить описание"}>
+    <CollapsibleSection
+      title={isEpic ? "Цель" : "Описание"}
+      action={editDesc === undefined ? (
+        <button type="button" className="sec-edit" onClick={() => setEditDesc(t.description)} aria-label={isEpic ? "Изменить цель" : "Изменить описание"} title={isEpic ? "Изменить цель" : "Изменить описание"}>
             <Icon.pencil size={13} />
-          </button>
-        ) : null}
-      </h3>
+        </button>
+      ) : null}
+    >
       {editDesc === undefined ? (
         <Markdown text={t.description} empty="Описания нет" />
       ) : (
@@ -306,17 +306,15 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           </div>
         </div>
       )}
-    </section>
+    </CollapsibleSection>
   );
 
   const criteria = (
-    <section className="sec">
-      <h3>
-        {isEpic ? "Критерии успеха" : "Критерии приёмки"}
+    <CollapsibleSection title={isEpic ? "Критерии успеха" : "Критерии приёмки"} badge={
         <span className="n">
           {t.acceptance.filter((a) => a.done).length} из {t.acceptance.length}
         </span>
-      </h3>
+      }>
       {t.acceptance.length ? (
         <div className="criteria">
           {t.acceptance.map((a) => (
@@ -330,7 +328,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
       ) : (
         <span className="muted">Оркестратор сформулирует критерии при уточнении</span>
       )}
-    </section>
+    </CollapsibleSection>
   );
 
   const epicLink = isEpic && (
@@ -424,7 +422,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           {criteria}
           {!isEpic && <TaskDelivery task={t.id} />}
           {!isEpic && <TaskManager key={t.id} task={t} />}
-            {!isEpic && <TaskIntelligence task={t.id} />}
+          {!isEpic && <TaskObservation key={t.id} task={t} />}
+          {!isEpic && <TaskIntelligence task={t.id} />}
           <footer className="detail-more">
             {last && <span className="muted">Последнее: {last.kind === "event" ? `${last.h.actor} ${historyText(last.h, isEpic)}` : `${last.c.author}, ${KIND_NAME[last.c.kind] ?? last.c.kind}`} · {timeAgo(last.at)}</span>}
             <span className="grow" />
@@ -475,9 +474,10 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
       {tab === "team" && !isEpic ? (
         (teamPane ?? (
           <div className="tp-noteam">
-            <Icon.userPlus size={18} />
+            <SadRobot />
             <b>Команда не собрана</b>
             <span className="muted">Соберите команду агентов: здесь появятся её почта, схема и участники.</span>
+            <Link className="btn" to={`${pageLink}/team`}>Перейти к команде <Icon.chevron size={12} /></Link>
             {canSpawn && (
               <button type="button" className="btn primary" onClick={() => setSpawning(true)}>
                 Собрать команду
@@ -495,24 +495,20 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             {criteria}
             {!isEpic && <TaskDelivery task={t.id} />}
             {!isEpic && <TaskManager key={t.id} task={t} />}
+            {!isEpic && <TaskObservation key={t.id} task={t} />}
             {!isEpic && <TaskIntelligence task={t.id} />}
             {t.plan.trim() && (
-              <section className="sec">
-                <h3>{isEpic ? "Дорожная карта" : "План"}</h3>
+              <CollapsibleSection title={isEpic ? "Дорожная карта" : "План"}>
                 <Markdown text={t.plan} />
-              </section>
+              </CollapsibleSection>
             )}
             {t.notes.trim() && (
-              <section className="sec notes">
-                <h3>Заметки</h3>
+              <CollapsibleSection className="notes" title="Заметки">
                 <Markdown text={readableStamps(t.notes)} />
-              </section>
+              </CollapsibleSection>
             )}
             {t.artifacts.length > 0 && (
-              <section className="sec">
-                <h3>
-                  Артефакты <span className="n">{t.artifacts.length}</span>
-                </h3>
+              <CollapsibleSection title="Артефакты" badge={<span className="n">{t.artifacts.length}</span>}>
                 <div className="artifacts">
                   {t.artifacts.map((a) => (
                     <button type="button" key={a.id} className="artifact" onClick={() => viewer.show(t.id, a.id)}>
@@ -524,10 +520,9 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
                     </button>
                   ))}
                 </div>
-              </section>
+              </CollapsibleSection>
             )}
-            <section className="sec">
-              <h3>Активность</h3>
+            <CollapsibleSection className="tp-activity" title="Активность">
               {activity.map((a) =>
                 a.kind === "event" ? (
                   <div key={`h${a.at}${a.h.event}`} className="ev">
@@ -572,11 +567,15 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
                   </button>
                 </div>
               </div>
-            </section>
+            </CollapsibleSection>
           </div>
           <aside className="tp-rail" aria-label="Свойства задачи">
-            {props}
-            {epic && <EpicBox id={epic.id} onArtifact={viewer.show} />}
+            <section className="tp-card tp-properties">
+              <h3>Свойства</h3>
+              {props}
+            </section>
+            <TeamCard task={t.id} team={team} canSpawn={canSpawn} onSpawn={() => setSpawning(true)} />
+            {epic && <div className="tp-card"><EpicBox id={epic.id} onArtifact={viewer.show} /></div>}
           </aside>
         </div>
       )}
@@ -602,6 +601,48 @@ function TeamState({ team }: { team?: Team }) {
       <span className="spin" style={{ width: 8, height: 8 }} />
       {n} {plural(n, "работает", "работают", "работают")}
     </span>
+  );
+}
+
+function TeamCard({ task, team, canSpawn, onSpawn }: { task: string; team?: Team; canSpawn: boolean; onSpawn: () => void }) {
+  return (
+    <section className="tp-card tp-team-card">
+      <h3>Команда</h3>
+      {team?.members.length ? (
+        <>
+          <div className="tp-team-members">
+            <Avatars members={team.members} max={6} />
+            <span>{team.members.length} {plural(team.members.length, "участник", "участника", "участников")}</span>
+          </div>
+          <div className="tp-team-names">
+            {team.members.map((member) => <span key={member.name}>{member.name}</span>)}
+          </div>
+          <Link className="btn" to={`/task/${encodeURIComponent(task)}/team`}>
+            Перейти к команде <Icon.chevron size={12} />
+          </Link>
+        </>
+      ) : (
+        <div className="tp-team-empty">
+          <SadRobot />
+          <b>Команда не собрана</b>
+          <Link className="btn" to={`/task/${encodeURIComponent(task)}/team`}>
+            Перейти к команде <Icon.chevron size={12} />
+          </Link>
+          {canSpawn && <button type="button" className="btn primary" onClick={onSpawn}><Icon.userPlus size={12} />Собрать команду</button>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SadRobot() {
+  return (
+    <svg className="sad-robot" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M24 6v5M21 6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="24" cy="5" r="2" fill="currentColor" />
+      <rect x="7" y="12" width="34" height="27" rx="8" stroke="currentColor" strokeWidth="2" />
+      <path d="M13 19h-3M38 19h-3M17 24h.01M31 24h.01M18 33c1.7-2 3.7-3 6-3s4.3 1 6 3" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
   );
 }
 

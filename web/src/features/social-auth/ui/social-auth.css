@@ -1,0 +1,5 @@
+.social-auth { display: flex; flex-direction: column; gap: 10px; }
+.social-auth > .btn { min-height: 40px; height: auto; padding: 10px 12px; color: var(--text); white-space: normal; }
+.social-auth > p { margin: 0; }
+.login-card .social-auth > .btn { color: #d0ccda; border-color: #393749; background: #11121d; }
+.login-card .social-auth > .btn:hover { border-color: #a18aff; }
