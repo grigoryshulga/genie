@@ -326,14 +326,18 @@ async fn mail_reaches_live_agents_between_steps_and_on_interrupt() {
     install_dump(app, log);
 
     // A busy agent gets mail at its next step boundary, not after its run.
-    mail(app, "anna", "human", "bender", "RUN: sleep 3; echo slept", None);
+    // Hold the real bash step until the mail is queued, rather than guessing how long it needs.
+    let release = app.data.join("work/step-release");
+    mail(app, "anna", "human", "bender", "RUN: while [ ! -e step-release ]; do sleep 0.01; done; echo slept", None);
     until("bender to run the command", 30, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
     let sent = Instant::now();
     mail(app, "yoda", "reviewer", "bender", "PING-mid: use CSV", None);
+    assert!(request_with(log, "executor", "PING-mid").is_none(), "mail waits for the busy step's boundary");
+    std::fs::write(release, "go").unwrap();
     let req = until("the mid-run mail in a model request", 15, || request_with(log, "executor", "PING-mid")).await;
     let waited = req.at - sent;
-    eprintln!("latency: mail to a busy agent reached the model {waited:?} after sending (a 3s command was running)");
-    assert!(waited < Duration::from_secs(5), "delivered {waited:?} after sending, while a 3s command ran");
+    eprintln!("latency: mail to a busy agent reached the model {waited:?} after sending and releasing its command");
+    assert!(waited < Duration::from_secs(5), "delivered {waited:?} after sending and releasing the busy step");
     assert!(req.messages.iter().any(|(r, t)| r == "tool" && t.contains("slept")), "delivered right after the step's tool call");
     let runs = app.with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10)).unwrap();
     assert_eq!(runs.len(), 1, "the mail joined the running run instead of waiting for a new one: {runs:?}");

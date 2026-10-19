@@ -155,6 +155,21 @@ fn row(r: &Rig, task: &str) -> genie_core::repos::TaskRepo {
     r.h.app.with_server(|db| db.task_repo("shop", task, "api")).unwrap().unwrap()
 }
 
+fn expire_pending_checks(r: &Rig, task: &str) {
+    // The watch uses persisted wall-clock time, so age its fixture instead of sleeping.
+    assert_eq!(row(r, task).ci_state, Some(CheckState::Pending));
+    let changed =
+        r.h.app
+            .with_server(|db| {
+                Ok(db.conn().execute(
+                    "UPDATE task_repos SET ci_since = ?1 WHERE project = ?2 AND task = ?3 AND repo = ?4",
+                    rusqlite::params!["2020-01-01T00:00:00Z", "shop", task, "api"],
+                )?)
+            })
+            .unwrap();
+    assert_eq!(changed, 1);
+}
+
 fn journal(r: &Rig, kind: &str) -> Vec<genie_core::Event> {
     r.h.app.with_tracker("shop", |t| genie_core::events::latest_of(t.conn(), kind, 50)).unwrap()
 }
@@ -671,7 +686,7 @@ async fn checks_pending_too_long_are_reported_once() {
     assert!(journal(&r, "ci.stalled").is_empty());
 
     // Longer than `ciPendingSecs`: one event, one letter, and the state stops pretending.
-    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    expire_pending_checks(&r, &id);
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     let stalled = row(&r, &id);
     assert_eq!(stalled.ci_state, Some(CheckState::Stalled));
@@ -899,7 +914,7 @@ async fn a_rerun_needs_a_failed_check_and_a_watched_commit() {
     // them on the host, and a rerun is refused (nothing may restart a run nobody is waiting for).
     r.fake.lock().ci = "pending".into();
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    expire_pending_checks(&r, &id);
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     assert_eq!(row(&r, &id).ci_state, Some(CheckState::Stalled));
     let (s, b) = rerun(&r, &id, &t.executor).await;
