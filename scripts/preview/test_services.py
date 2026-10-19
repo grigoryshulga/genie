@@ -139,6 +139,25 @@ class ServiceRouterTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "expected tag"):
                 p.enable_services()
 
+    def test_real_tracker_service_is_direct_and_does_not_change_demo_channels(self):
+        p, status = self.setup_enable()
+        with patch.object(preview, "run", side_effect=[json.dumps(status), "{}", "ok"]) as run:
+            p.enable_tracker_service()
+        self.assertEqual(run.call_args.args[0][-3:], ["--service=svc:genie-self", "--https=443", "http://127.0.0.1:7422"])
+        saved = preview.read(self.home / "services/config.json")
+        self.assertTrue(saved["trackerService"])
+        self.assertEqual(saved["tailnetDomain"], "example.ts.net")
+        self.assertNotIn("self", service_router.CHANNELS)
+
+    def test_tracker_service_preserves_an_existing_other_destination(self):
+        p, status = self.setup_enable()
+        existing = {"Services": {"svc:genie-self": {"TCP": {"443": {"HTTPS": True}},
+                    "Web": {"genie-self.example.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:9999"}}}}}}}
+        with patch.object(preview, "run", side_effect=[json.dumps(status), json.dumps(existing)]) as run:
+            with self.assertRaisesRegex(RuntimeError, "Preserving unrelated"):
+                p.enable_tracker_service()
+        self.assertEqual(run.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

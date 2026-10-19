@@ -55,6 +55,7 @@ export default defineConfig({
         { text: 'Development', link: '/development' },
         { text: 'Repository workflow', link: '/development/genie-cli' },
         { text: 'Visual review before publishing', link: '/development/visual-preview' },
+        { text: 'Automatic tracker updates', link: '/development/tracker-auto-update' },
         { text: 'Design decisions', link: '/platform/decisions' },
         { text: 'Roadmap', link: '/platform/roadmap' },
         { text: 'Product proposals', link: '/platform/proposals' },

@@ -2,6 +2,8 @@
 
 Use this guide when a task needs a local Compose-managed service started or updated. Replace each placeholder with the values from the current checkout and Compose configuration.
 
+For automatic updates of the repository's `genie-tracker`, use the [verified-dev updater](../development/tracker-auto-update.md). Coordinate manual changes with its timer so two deployments do not replace the service concurrently.
+
 ## Start and verify
 
 Select the Compose file, project, and service explicitly. Start the service and its declared dependencies with:

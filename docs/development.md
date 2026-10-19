@@ -13,6 +13,8 @@ Follow the [repository workflow](development/genie-cli.md) to track a task, isol
 
 Before publishing a task branch or opening its PR, prepare a [fixed integration preview](development/visual-preview.md) and obtain the owner's visual approval. That guide also documents machine-local T3 Project Actions, combined task candidates and private Tailscale access.
 
+To keep the local Compose tracker on verified `dev` revisions, use the [automatic tracker updater](development/tracker-auto-update.md). It preserves the named data volumes and creates a recovery snapshot before recreation.
+
 ## Release flow
 
 Feature work enters the protected `dev` branch through pull requests. Releases go from `dev` to the protected `main` branch through a pull request; direct pushes and force pushes to either branch are blocked.

@@ -33,6 +33,8 @@ Create a personal token through the server's account settings, or during initial
 
 Docker is needed for server lifecycle and initial bootstrap only. From a checkout of this repository:
 
+When the [verified dev updater](tracker-auto-update.md) is enabled, it owns tracker deployments. Stop its timer before manual recovery or recreation, and resume it only after checking the deployed revision and retained volumes. Its private Tailscale Service opens the same persistent tracker; the native CLI can continue using loopback.
+
 ```bash
 docker compose -f docker/docker-compose.tracker.yml up -d
 curl --fail http://127.0.0.1:7422/api/health
