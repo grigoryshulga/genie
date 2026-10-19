@@ -10,6 +10,7 @@ docker/secrets/
 .env
 .pi/
 .claude/worktrees/
+__pycache__/
 docker/docker-compose.local.yml
 
 # Documentation build output

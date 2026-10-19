@@ -11,9 +11,35 @@ An agent prepares a committed, validated task and a fixed integration candidate,
 
 ## Local installation
 
-The preview helper is machine-local, not a tracked repository tool. On this installation it lives at `$(git rev-parse --path-format=absolute --git-common-dir)/genie-preview/preview.py`. All worktrees use that shared copy. The `prepare` action creates a `.genie-preview` symlink in its current worktree and adds `/.genie-preview` to the shared `info/exclude`, preserving existing exclusions. Scripts, tests, dependencies, logs, databases, credentials and build artifacts stay outside commits. No `.gitignore` change is needed.
+The portable code and tests live in `scripts/preview/`. Install a trusted, reviewed checkout as the ordinary preview owner:
 
-The helper requires Linux, Python 3.12+, Git, Node/npm and the repository's Rust toolchain. Tailscale is needed only for remote access. On another installation, obtain a trusted copy of the local helper and its tests; a clone does not contain them. If it is missing, report the missing installation rather than silently bypassing preview review.
+```bash
+python3 scripts/preview/install.py
+```
+
+The installer discovers the repository's shared Git directory and installs versioned code under `$(git rev-parse --path-format=absolute --git-common-dir)/genie-preview/`. Stable launchers there are shared by every worktree; running workers retain their installed code version when a newer version is installed. The `prepare` action creates an excluded `.genie-preview` symlink in the current worktree. Installing does not change T3 Actions, restart services, push a branch, or publish a PR.
+
+Only source code, tests and the safe [example configuration](https://github.com/grigoryshulga/genie/blob/dev/scripts/preview/config.example.json) enter Git. Machine settings, generated service units, dependencies, logs, databases, credentials, Tailscale identity and build artifacts stay in the shared Git directory. Never publish that runtime directory. The helper requires Linux, Python 3.12+, Git, Node/npm and the repository's Rust toolchain; optional LAN publishing requires systemd, Avahi and `iproute2`, and remote access requires Tailscale.
+
+### Minimal configuration
+
+Local previews need no configuration parameters. Installation creates `local.json` from `scripts/preview/config.example.json`:
+
+```json
+{
+  "lan": {
+    "interface": "auto"
+  }
+}
+```
+
+An empty object `{}` also uses all defaults. For optional LAN setup, automatic discovery accepts exactly one IPv4 default-route interface, excludes known tunnel/virtual interfaces, and requires exactly one private global IPv4 address. With a VPN, multiple default interfaces or multiple addresses, it stops with an actionable error. Set only `lan.interface` to the intended interface (for example `eth0`) when the interface choice is ambiguous; an interface with multiple IPv4 addresses needs its address configuration resolved before installation.
+
+The installer computes the username/group, absolute paths, executable locations, selected interface's IPv4 address, current user's runtime socket and the original Tailscale node's IPv4 address. `enable-tailscale` and `enable-services` discover their respective MagicDNS names from the running daemons. A copied config never supplies a username, UID, IP or tailnet domain.
+
+Optional advanced overrides in `local.json` are `baseRef`, `indexPort`, `httpsPort`, `candidatePortStart`, `candidatePortEnd`, `backendPortOffset` and `buildJobs`; defaults and validation live in `scripts/preview/config.py`. LAN names, Service names and router ports are shared project conventions. `config.json` and `services/config.json` hold discovered network state and are managed by the helper, rather than copied between machines. Existing installations retain discovered URLs and private state; legacy non-default settings migrate into `local.json` during installation.
+
+Reinstall after reviewing changes to the tracked helper. Start a fresh index process and restart routers to use the new code; existing candidate artifacts and URLs remain fixed. Changing listen ports or addresses requires regenerating/reinstalling units and matching Tailscale mappings, then checking real URLs. Old candidates retain their original ports.
 
 From a task worktree, define this convenience function for the examples below:
 
@@ -95,7 +121,7 @@ Candidate backends and gateways bind only to loopback. The gateway forwards to t
 
 ## LAN names and baseline environments
 
-The optional machine-local `lan.py` helper publishes these mDNS names through the existing Avahi daemon:
+The optional `lan.py` helper publishes these mDNS names through the existing Avahi daemon:
 
 - `http://genie.local`: isolated snapshot of `origin/main`.
 - `http://dev.genie.local`: isolated snapshot of `origin/dev`.
@@ -111,7 +137,26 @@ preview channel main
 preview channel dev
 ```
 
-The local `genie-mdns.service` user unit keeps aliases published and follows the selected LAN interface's IPv4 address. The `genie-local-proxy.socket` system unit owns port 80 on explicitly selected loopback, LAN and Tailscale addresses; its service runs the Python router as the ordinary user. The source units and `install-network.sh` are retained beside the local helper. Installing that socket requires host administrator authentication. Configure a DHCP reservation for the selected LAN address, or regenerate the socket listeners when the address changes. No existing Compose service or Tailscale listener is replaced.
+Generate the LAN service units from this machine's discovered settings:
+
+```bash
+python3 scripts/preview/install.py --lan --install-user-units
+preview_home="$(git rev-parse --path-format=absolute --git-common-dir)/genie-preview"
+```
+
+Review `"$preview_home/units/system/"` before the administrator step. Use `sudo` from an interactive terminal (`pkexec` when a graphical authentication prompt is needed):
+
+```bash
+sudo python3 "$preview_home/code-current/install_network.py" \
+  --units "$preview_home/units/system" --mdns
+sudo systemctl enable --now genie-local-proxy.socket
+sudo systemctl restart genie-local-proxy.service
+systemctl --user enable --now genie-mdns.service
+```
+
+The generated `genie-mdns.service` keeps aliases published and follows the selected LAN interface's IPv4 address. The `genie-local-proxy.socket` system unit owns port 80 on discovered loopback, LAN and original Tailscale IPv4 addresses; its service runs as the discovered ordinary user. A running Tailscale daemon is optional for LAN installation, but an installed, inaccessible daemon is an error to investigate. Installers preserve unrelated same-name units and back up replaced owned units. No existing Compose service or unrelated Tailscale listener is replaced.
+
+Configure a DHCP reservation for the LAN address, or rerun LAN generation/installation and restart the socket/service when the address changes. The publisher follows address changes, but systemd's explicit socket listeners require regeneration. When updating an active listener, restart `genie-local-proxy.socket` as well as its service. The optional `--mdns` step expects an existing nss-mdns resolver; omit it on systems whose resolver already supports the names.
 
 Some Linux clients using `nss-mdns` minimal reject names with more than two labels, such as `dev.genie.local`. The local installer adds the full `mdns4` resolver with `/etc/mdns.allow` restricted to Genie suffixes and preserves the previous configuration in backup files. Other Linux clients may need the same resolver adjustment. Validate with `avahi-resolve -4 -n preview.genie.local` and `getent ahostsv4 preview.genie.local`; publishing mDNS does not guarantee every client's resolver configuration or Wi-Fi multicast support. See the [nss-mdns documentation](https://github.com/avahi/nss-mdns#activation).
 
@@ -125,9 +170,16 @@ The selected remote entry points are `https://genie.<tailnet>.ts.net` for main, 
 
 [Tailscale Services](https://tailscale.com/docs/features/tailscale-services) requires a tagged host identity. This installation uses a separate userspace `tailscaled` instance named `genie-service-host`, tagged `tag:genie-services`, with private state under the shared local helper directory and a socket at `$XDG_RUNTIME_DIR/genie-services/tailscaled.sock`. The existing user-owned machine and its T3 listener keep their identity, DNS settings and routes. The separate daemon sets `accept-dns=false` and `accept-routes=false` and advertises no subnet or exit-node routes.
 
-The machine-local `genie-tailscale-services.service` and `genie-service-router.service` user units start the dedicated node and its loopback router. The router listens on 7491 (main), 7492 (dev) and 7493 (preview), resolves the current channel manifest on each request, and forwards through the candidate gateway. Each Service advertises `tcp:443`, proxies HTTPS to its matching loopback port, and needs an approved host advertisement. A new candidate does not need another Service or another approval of the host advertisement.
+The generated `genie-tailscale-services.service` and `genie-service-router.service` user units start the dedicated node and its loopback router. The router listens on 7491 (main), 7492 (dev) and 7493 (preview), resolves the current channel manifest on each request, and forwards through the candidate gateway. Each Service advertises `tcp:443`, proxies HTTPS to its matching loopback port, and needs an approved host advertisement. A new candidate does not need another Service or another approval of the host advertisement.
 
-To provision another installation, first define the `genie-services` tag in **Access controls → Definitions → Tags** with the intended administrator as tag owner. Define `genie`, `genie-dev` and `genie-preview` in **Services**, each with endpoint `tcp:443`. Install the local units and router, authenticate only the separate socket with the requested tag, then configure its endpoints:
+To provision another installation, first define the `genie-services` tag in **Access controls → Definitions → Tags** with the intended administrator as tag owner. Define `genie`, `genie-dev` and `genie-preview` in **Services**, each with endpoint `tcp:443`. Generate/install the dedicated node and router units (include `--lan` too when regenerating both sets), then start them:
+
+```bash
+python3 scripts/preview/install.py --services --install-user-units
+systemctl --user enable --now genie-tailscale-services.service genie-service-router.service
+```
+
+Authenticate only the separate socket with the requested tag, then configure its endpoints:
 
 ```bash
 service_socket="$XDG_RUNTIME_DIR/genie-services/tailscaled.sock"
@@ -144,9 +196,9 @@ Approve that host on each Service's page and allow the intended clients to reach
 preview enable-services
 ```
 
-This verifies the separate node's identity/tag and all three application health responses against the expected channel candidate IDs before selecting the named preview index as the helper's default remote URL. Fixed candidate URLs still use their existing dedicated HTTPS ports on the original machine. Keep these two roles distinct: a stable channel name can advance; the fixed candidate identifies what the owner approved.
+This verifies the dedicated node's identity/tag, discovers and saves its tailnet domain for the router, then checks all three application health responses against the expected channel candidate IDs before selecting the named preview index as the helper's default remote URL. Fixed candidate URLs still use their existing dedicated HTTPS ports on the original machine. Keep these two roles distinct: a stable channel name can advance; the fixed candidate identifies what the owner approved.
 
-Existing LAN mDNS aliases remain available for devices without Tailscale. The named `ts.net` addresses work on devices connected to the tailnet, including while on the same LAN. Renaming the tailnet requires updating and re-verifying Services/router configuration; no override of a third party's public domain is needed.
+Existing LAN mDNS aliases remain available for devices without Tailscale. The named `ts.net` addresses work on devices connected to the tailnet, including while on the same LAN. After renaming the tailnet, rerun both enable commands and verify the real HTTPS URLs; no override of a third party's public domain is needed.
 
 ## Temporary public access
 

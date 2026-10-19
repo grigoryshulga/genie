@@ -25,6 +25,7 @@ jobs:
       docker: ${{ steps.filter.outputs.docker }}
       rust: ${{ steps.filter.outputs.rust }}
       web: ${{ steps.filter.outputs.web }}
+      preview: ${{ steps.filter.outputs.preview }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -55,6 +56,21 @@ jobs:
               - "tsconfig.json"
               - "steiger.config.ts"
               - ".github/workflows/**"
+            preview:
+              - "scripts/preview/**"
+              - ".github/workflows/**"
+
+  preview:
+    name: Preview tools
+    needs: changes
+    if: needs.changes.outputs.preview == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s scripts/preview -p 'test_*.py'
 
   lint:
     name: Rust format and lint
@@ -179,7 +195,7 @@ jobs:
   quality-gate:
     name: Quality gate
     if: always()
-    needs: [changes, lint, test, web, docker, main-release-gate]
+    needs: [changes, lint, test, web, docker, preview, main-release-gate]
     runs-on: ubuntu-latest
     steps:
       - name: Require all applicable checks to pass
