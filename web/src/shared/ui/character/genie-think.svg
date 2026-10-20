@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="a-think" viewBox="0 0 880 780" fill="none">
+  <title>Thinking</title>
+  <desc>The character looks up and to the side, glances across, squints, and a trail of thought bubbles appears.</desc>
+  <style>
+.a-think { --g: #008f6b; --o: #ff873c; --p: #f4f1ea; }
+.a-think * { transform-box: view-box; }
+.a-think .sparks, .a-think .z1, .a-think .z2, .a-think .z3, .a-think .d1, .a-think .d2, .a-think .d3 { opacity: 0; }
+.a-think .lb { transform: scaleY(0); transform-origin: 295px 383px; }
+.a-think .all { transform-origin: 270px 750px; animation: think-all 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .head { transform-origin: 280px 550px; animation: think-head 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .handle { transform-origin: 432px 302px; animation: think-handle 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .eye { transform-origin: 295px 383px; animation: think-eye 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .lt { transform-origin: 295px 383px; animation: think-lt 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .lb { transform-origin: 295px 383px; animation: think-lb 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .d1 { transform-origin: 632px 238px; animation: think-d1 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .d2 { transform-origin: 692px 180px; animation: think-d2 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .d3 { transform-origin: 772px 112px; animation: think-d3 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .dot1 { animation: think-dot1 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .dot2 { animation: think-dot2 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+.a-think .dot3 { animation: think-dot3 6.5s cubic-bezier(.45,0,.25,1) infinite; }
+@keyframes think-all { 0% { transform: rotate(0deg) } 12% { transform: rotate(-1.5deg) } 40% { transform: rotate(-1.5deg) } 46% { transform: rotate(1deg) } 62% { transform: rotate(1deg) } 70% { transform: rotate(-1.5deg) } 86% { transform: rotate(-1.5deg) } 94% { transform: rotate(0deg) } 100% { transform: rotate(0deg) } }
+@keyframes think-head { 0% { transform: rotate(0deg) } 12% { transform: rotate(-5deg) } 40% { transform: rotate(-5deg) } 46% { transform: rotate(4deg) } 62% { transform: rotate(4deg) } 70% { transform: rotate(-5deg) } 86% { transform: rotate(-5deg) } 94% { transform: rotate(0deg) } 100% { transform: rotate(0deg) } }
+@keyframes think-handle { 0% { transform: rotate(0deg) } 12% { transform: rotate(-14deg) } 40% { transform: rotate(-14deg) } 46% { transform: rotate(8deg) } 62% { transform: rotate(8deg) } 70% { transform: rotate(-14deg) } 86% { transform: rotate(-14deg) } 94% { transform: rotate(0deg) } 100% { transform: rotate(0deg) } }
+@keyframes think-eye { 0% { transform: translate(0,0) rotate(0deg) } 12% { transform: translate(26px,-24px) rotate(-12deg) } 40% { transform: translate(26px,-24px) rotate(-12deg) } 46% { transform: translate(-26px,-18px) rotate(12deg) } 62% { transform: translate(-26px,-18px) rotate(12deg) } 70% { transform: translate(26px,-24px) rotate(-12deg) } 86% { transform: translate(26px,-24px) rotate(-12deg) } 94% { transform: translate(0,0) rotate(0deg) } 100% { transform: translate(0,0) rotate(0deg) } }
+@keyframes think-lt { 0% { transform: scaleY(1); stroke-width: 40px } 12% { transform: scaleY(.8); stroke-width: 40px } 76% { transform: scaleY(.8); stroke-width: 40px } 79% { transform: scaleY(.08); stroke-width: 40px } 82% { transform: scaleY(.8); stroke-width: 40px } 86% { transform: scaleY(.8); stroke-width: 40px } 94% { transform: scaleY(1); stroke-width: 40px } 100% { transform: scaleY(1); stroke-width: 40px } }
+@keyframes think-lb { 0% { transform: scaleY(0) } 100% { transform: scaleY(0) } }
+@keyframes think-d1 { 0% { opacity: 0; transform: scale(0) } 16% { opacity: 0; transform: scale(0) } 20% { opacity: 1; transform: scale(1.2) } 23% { opacity: 1; transform: scale(1) } 80% { opacity: 1; transform: scale(1) } 86% { opacity: 0; transform: scale(0) } 100% { opacity: 0; transform: scale(0) } }
+@keyframes think-d2 { 0% { opacity: 0; transform: scale(0) } 22% { opacity: 0; transform: scale(0) } 26% { opacity: 1; transform: scale(1.2) } 29% { opacity: 1; transform: scale(1) } 80% { opacity: 1; transform: scale(1) } 86% { opacity: 0; transform: scale(0) } 100% { opacity: 0; transform: scale(0) } }
+@keyframes think-d3 { 0% { opacity: 0; transform: scale(0) } 28% { opacity: 0; transform: scale(0) } 32% { opacity: 1; transform: scale(1.2) } 35% { opacity: 1; transform: scale(1) } 80% { opacity: 1; transform: scale(1) } 86% { opacity: 0; transform: scale(0) } 100% { opacity: 0; transform: scale(0) } }
+@keyframes think-dot1 { 0% { opacity: 0.25 } 36% { opacity: 0.25 } 39% { opacity: 1 } 45% { opacity: 1 } 48% { opacity: 0.25 } 100% { opacity: 0.25 } }
+@keyframes think-dot2 { 0% { opacity: 0.25 } 41% { opacity: 0.25 } 44% { opacity: 1 } 50% { opacity: 1 } 53% { opacity: 0.25 } 100% { opacity: 0.25 } }
+@keyframes think-dot3 { 0% { opacity: 0.25 } 46% { opacity: 0.25 } 49% { opacity: 1 } 55% { opacity: 1 } 58% { opacity: 0.25 } 100% { opacity: 0.25 } }
+.a-think.paused * { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .a-think * { animation: none !important; } }
+  </style>
+  <g class="all">
+    <g class="body" fill="none" stroke="var(--g)">
+      <rect x="72" y="568" width="390" height="144" rx="72" stroke-width="76"/>
+      <path d="M170 428C110 418 78 470 92 522C96 540 98 550 100 568" stroke-width="66"/>
+    </g>
+    <g class="head" fill="none" stroke="var(--g)">
+      <circle cx="294" cy="379" r="136" stroke-width="70"/>
+      <g class="handle"><path d="M436 304L560 253" stroke-width="56"/></g>
+      <g class="eye" stroke="var(--o)" stroke-width="40">
+        <path class="lt" d="M233 383.5A62 62 0 0 1 357 383.5"/>
+        <g class="lb">
+          <path d="M233 382.5A62 62 0 0 0 357 382.5"/>
+          <!-- Opaque patches over the join with the upper half, so the full ring has no antialiasing seam. -->
+          <path d="M213 378H253V388H213ZM337 378H377V388H337Z" fill="var(--o)" stroke="none"/>
+        </g>
+      </g>
+    </g>
+  </g>
+  <g class="d1"><circle cx="632" cy="238" r="12" fill="var(--o)"/></g>
+  <g class="d2"><circle cx="692" cy="180" r="19" fill="var(--o)"/></g>
+  <g class="d3"><circle cx="772" cy="112" r="60" fill="none" stroke="var(--o)" stroke-width="10"/><circle class="dot1" cx="746" cy="112" r="9" fill="var(--o)"/><circle class="dot2" cx="772" cy="112" r="9" fill="var(--o)"/><circle class="dot3" cx="798" cy="112" r="9" fill="var(--o)"/></g>
+</svg>

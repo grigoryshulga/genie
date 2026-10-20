@@ -27,7 +27,7 @@ import {
 import { useTeamMap } from "@/entities/team";
 import { isTyping } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
-import { ContextSearch, MobileNav, TeamsSummary } from "@/widgets/sidebar";
+import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 import { TaskList } from "@/widgets/task-list";
 import { FilterMenu, FilterOption } from "./FilterMenu.tsx";
 
@@ -92,7 +92,6 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main" aria-label="Задачи">
-      <MobileNav />
 
       <div className="filters page-toolbar" role="toolbar" aria-label="Фильтры и вид">
         <ContextSearch inputRef={searchRef} className="mobile-context-search" />

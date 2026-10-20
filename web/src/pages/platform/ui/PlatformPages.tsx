@@ -9,7 +9,7 @@ import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAut
 import { request } from "@/shared/api";
 import { matchesSearch, timeAgo, useTick } from "@/shared/lib";
 import { Icon, Markdown, Modal, useRefreshingAct, useToast } from "@/shared/ui";
-import { ContextSearch } from "@/widgets/sidebar";
+import { ContextSearch } from "@/widgets/topbar";
 import { Runs } from "@/widgets/runs";
 
 // ------------------------------------------------------------------ answer page (public)

@@ -20,7 +20,7 @@ import {
   useSaveDoc,
 } from "@/entities/doc";
 import { useSession } from "@/entities/session";
-import { ContextSearch } from "@/widgets/sidebar";
+import { ContextSearch } from "@/widgets/topbar";
 import { useToast, Icon } from "@/shared/ui";
 import { DocsOverview } from "./DocsOverview.tsx";
 import { DocSearchList } from "./DocSearchList.tsx";

@@ -4,7 +4,7 @@ import { EpicIcon, EpicProgress, PRIORITY_NAME, PriorityIcon, STATUS_NAME, Statu
 import { type Team, useTeamMap } from "@/entities/team";
 import type { NewTaskPreset } from "@/features/create-task";
 import { plural, timeAgo, useTick } from "@/shared/lib";
-import { ContextSearch } from "@/widgets/sidebar";
+import { ContextSearch } from "@/widgets/topbar";
 import { Icon } from "@/shared/ui";
 
 const closed = (t: TaskSummary) => t.status === "done" || t.status === "cancelled";
