@@ -8,6 +8,8 @@ export default defineConfig({
   base: '/genie/',
   appearance: 'force-dark',
   lastUpdated: false,
+  // Brand and design handoff files are repository material (they link to source files and static specimens), not site pages.
+  srcExclude: ['assets/brand/**'],
   sitemap: { hostname: 'https://grigoryshulga.github.io/genie/' },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/genie/logo.svg' }],

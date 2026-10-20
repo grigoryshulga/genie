@@ -92,6 +92,21 @@
   --g-ease: cubic-bezier(0.2, 0, 0, 1);
   --g-duration: 150ms;
 
+  /* Control and row heights; the "sm" step is for toolbars, filters, and list rows. */
+  --g-control: 40px;
+  --g-control-sm: 32px;
+  --g-row: 44px;
+
+  /* Layering, lowest to highest. Components use these names, never raw numbers. */
+  --g-z-sticky: 10;
+  --g-z-dropdown: 20;
+  --g-z-overlay: 30;
+  --g-z-modal: 40;
+  --g-z-toast: 50;
+
+  /* Breakpoints (media queries cannot read custom properties; keep these in step by hand):
+     phone <= 640px, tablet <= 900px, laptop <= 1100px, wide >= 1440px. */
+
   /* ---- layer 2: semantic, ink theme (default) ---- */
   --g-bg: var(--g-n-950);
   --g-surface: var(--g-n-900);
@@ -124,6 +139,14 @@
   --g-danger-text: var(--g-red-500);
   --g-danger-soft: #231115;
   --g-on-danger: var(--g-ink);
+
+  /* Chart series: at most four, always direct-labelled; beyond that use small multiples. Each needs 3:1 on the
+     surface (graphical objects, WCAG 1.4.11), which is why the paper theme darkens the orange. */
+  --g-viz-1: var(--g-green);
+  --g-viz-2: var(--g-orange);
+  --g-viz-3: var(--g-n-400);
+  --g-viz-4: var(--g-green-400);
+  --g-viz-grid: var(--g-n-800);
 
   --g-focus: var(--g-green-400);
   --g-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.55);
@@ -161,6 +184,12 @@
   --g-danger-text: var(--g-red-700);
   --g-danger-soft: #f2e7e1;
   --g-on-danger: var(--g-paper);
+
+  --g-viz-1: var(--g-green);
+  --g-viz-2: #d4611a;
+  --g-viz-3: #737170;
+  --g-viz-4: var(--g-green-800);
+  --g-viz-grid: var(--g-n-200);
 
   --g-focus: var(--g-green-700);
   --g-shadow-overlay: 0 20px 50px rgb(9 9 13 / 0.18);

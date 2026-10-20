@@ -1,13 +1,18 @@
 # Genie design system
 
-Status: **draft for review.** This is the first pass at turning the "ink and paper" visual language board into rules, tokens, and a specimen. It does not change the application yet.
+Status: **draft for review, ready for the redesign handoff.** This turns the "ink and paper" visual language board into rules, tokens, a component library, and concepts. It does not change the application yet; the [redesign handoff](handoff/README.md) describes how to apply it.
 
 - Tokens: [`web/src/shared/ui/tokens.css`](../../../web/src/shared/ui/tokens.css) (prefix `--g-`; two themes).
-- Specimen: [`design-system.html`](design-system.html). Open it from a checkout; it reads the real tokens and has a theme toggle.
-- Accessibility contract: `test/design-tokens.test.ts` fails when a documented text, control, or focus pairing drops below its WCAG ratio in either theme.
+- Components: [`web/src/shared/ui/components.css`](../../../web/src/shared/ui/components.css), shown with every state in [`components.html`](components.html).
+- Principles and review checklist: [principles.md](principles.md).
+- Brand specimen: [`design-system.html`](design-system.html). Open it from a checkout; it reads the real tokens and has a theme toggle.
+- Accessibility contract: `test/design-tokens.test.ts` fails when a documented text, control, focus, or chart pairing drops below its WCAG ratio in either theme.
 - Motif asset: [`arcs.svg`](arcs.svg).
+- Redesign handoff for the agent team: [handoff/README.md](handoff/README.md).
 
-## Principles
+## Principles in brief
+
+The full rules and the pull request checklist are in [principles.md](principles.md).
 
 1. **Flat and massive.** Solid colour fields, large geometric type, no gradients, no decorative shadows. Depth comes from a surface step plus a 1px border.
 2. **Two surfaces, two voices.** Ink (dark) and paper (light) are equals. Every component is specified for both.
@@ -84,7 +89,13 @@ Rules:
 - **Motion:** 150ms, `cubic-bezier(0.2, 0, 0, 1)`, on colour and border changes. Respect `prefers-reduced-motion`.
 - **Focus:** a 2px `--g-focus` ring with a 2-3px offset on every interactive element, never removed.
 
-## Components (first set)
+## Components
+
+The reference implementation is [`components.css`](../../../web/src/shared/ui/components.css), with every component, state, and both themes on one page in [`components.html`](components.html). It covers buttons, icon buttons, tabs and segmented controls, chips, tags, status and priority icons, inputs, selects, textareas, checkboxes, radios, switches, search, menus, tooltips, dialogs, toasts, banners, cards, sheets, rows, tables, breadcrumbs, key caps, avatars, progress, skeletons, empty states, the working arcs, rendered Markdown, and chart colours. The short notes below are the rules that are easy to get wrong.
+
+Status icons differ by shape as well as colour (the table is in the components page): dashed rings for pre-work states, a ring for ready, a half-filled ring for in progress, a return arrow for changes requested, a ring with a dot for review, filled marks for approved, needs owner, and done, and a slashed ring for cancelled. Priority uses ascending bars, with an orange square for urgent; an epic is the arcs in miniature.
+
+Chart colours are `--g-viz-1` to `--g-viz-4` (at most four series, direct labels); in the paper theme the orange darkens to meet 3:1 against the surface.
 
 - **Button.** Primary is an orange pill with an ink label, one per view. Secondary is a 1.5px green outline pill. Ghost is text on hover fill. Danger is a red pill. Heights 40px, or 32px dense.
 - **Chip.** Green outline pill with an icon; the selected state fills green with an ink label. Neutral chips use the strong border.

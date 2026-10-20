@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ru" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genie components</title>
+<!-- Reference for web/src/shared/ui/components.css. Every component in both themes, with its states. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@700;900&display=swap">
+<link rel="stylesheet" href="../../../web/src/shared/ui/tokens.css">
+<link rel="stylesheet" href="../../../web/src/shared/ui/components.css">
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 var(--g-space-5) var(--g-space-9); }
+header.top { display: flex; align-items: center; gap: var(--g-space-4); padding: var(--g-space-4) 0; border-bottom: 1px solid var(--g-border); }
+header.top strong { font: 900 20px var(--g-font-display); letter-spacing: var(--g-tracking-heading); }
+.grow { flex: 1; }
+section { padding-top: var(--g-space-8); }
+section > .g-h2 { margin: var(--g-space-2) 0 var(--g-space-5); }
+.demo { display: flex; flex-wrap: wrap; gap: var(--g-space-3); align-items: center; }
+.cols { display: grid; gap: var(--g-space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.label { margin: var(--g-space-5) 0 var(--g-space-3); }
+.stage { position: relative; padding: var(--g-space-6); border-radius: var(--g-radius-lg); background: var(--g-surface); display: grid; place-items: center; min-height: 220px; }
+.stage.canvas { background: var(--g-bg); box-shadow: inset 0 0 0 1px var(--g-border); }
+.status-grid { display: grid; gap: 2px var(--g-space-5); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.status-grid .g-row { justify-content: space-between; }
+.bars { display: grid; gap: var(--g-space-3); width: 100%; }
+.bar { display: grid; grid-template-columns: 120px 1fr 52px; align-items: center; gap: var(--g-space-3); font-size: var(--g-text-dense); font-weight: 600; }
+.bar i { display: block; height: 18px; border-radius: 6px; }
+.chart-legend { display: flex; gap: var(--g-space-4); flex-wrap: wrap; font-size: var(--g-text-caption); font-weight: 600; color: var(--g-text-2); }
+.chart-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 6px; vertical-align: -1px; }
+table.spec td:first-child { font-family: var(--g-font-mono); font-size: 12px; color: var(--g-text-2); }
+</style>
+</head>
+<body class="g-root">
+<!-- Icon sprite: 16px, 1.6 stroke, currentColor. Statuses differ by shape as well as colour, so they survive colour-blindness and the two-hue palette. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="s-inbox" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2 9h3l1 2h4l1-2h3"/><path d="M3.6 3h8.8L14 9v4H2V9z"/></symbol>
+  <symbol id="s-draft" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6" stroke-dasharray="2.4 2"/></symbol>
+  <symbol id="s-refining" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6" stroke-dasharray="2.4 2"/><circle cx="8" cy="8" r="1.8" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="s-ready" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/></symbol>
+  <symbol id="s-in_progress" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M8 4a4 4 0 0 1 0 8z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="s-changes_requested" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2a6 6 0 1 1-5.4 3.4"/><path d="M2 2v3.6h3.6"/></symbol>
+  <symbol id="s-review" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="s-approved" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="currentColor"/><path class="st-knock" d="M5 8.2l2.2 2.2L11 6.2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="s-needs_owner" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="currentColor"/><path class="st-knock" d="M8 4.4v4.2" stroke-width="1.9" stroke-linecap="round"/><circle cx="8" cy="11.4" r="1.05" fill="var(--g-bg)"/></symbol>
+  <symbol id="s-done" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="currentColor"/><path class="st-knock" d="M5 8.2l2.2 2.2L11 6.2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="s-cancelled" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M4.2 11.8l7.6-7.6"/></symbol>
+  <symbol id="p-0" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="4" fill="var(--g-orange)"/><path d="M8 4.6v4.2" stroke="var(--g-ink)" stroke-width="1.9" stroke-linecap="round"/><circle cx="8" cy="11.4" r="1.05" fill="var(--g-ink)"/></symbol>
+  <symbol id="p-1" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="9" width="3" height="5" rx="1"/><rect x="6.5" y="5.5" width="3" height="8.5" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></symbol>
+  <symbol id="p-2" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="9" width="3" height="5" rx="1"/><rect x="6.5" y="5.5" width="3" height="8.5" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1" opacity=".28"/></symbol>
+  <symbol id="p-3" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="9" width="3" height="5" rx="1"/><rect x="6.5" y="5.5" width="3" height="8.5" rx="1" opacity=".28"/><rect x="11" y="2" width="3" height="12" rx="1" opacity=".28"/></symbol>
+  <symbol id="p-4" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h2M7 8h2M11 8h2"/></symbol>
+  <!-- Epic: the brand arcs in miniature. -->
+  <symbol id="s-epic" viewBox="0 0 16 16" fill="currentColor"><path d="M1 15A14 14 0 0 1 15 1v3.2A10.8 10.8 0 0 0 4.2 15z"/><path d="M5.8 15A9.2 9.2 0 0 1 15 5.8V9a6 6 0 0 0-6 6z" opacity=".6"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header class="top"><strong>genie</strong><span class="g-caption">/ компоненты</span><span class="grow"></span>
+    <button class="g-btn secondary sm" id="theme" type="button">Светлая тема</button></header>
+
+  <section>
+    <p class="g-eyebrow">Кнопки</p><h2 class="g-h2">Одно главное действие на экран</h2>
+    <div class="demo">
+      <button class="g-btn primary" type="button">Принять →</button><button class="g-btn secondary" type="button">Ответить</button><button class="g-btn ghost" type="button">Отмена</button><button class="g-btn danger" type="button">Удалить</button><button class="g-btn primary" type="button" disabled>Недоступно</button><button class="g-btn secondary" type="button" aria-busy="true">Сохраняем</button>
+    </div>
+    <div class="demo label"><button class="g-btn primary sm" type="button">Принять</button><button class="g-btn secondary sm" type="button">Ответить</button><button class="g-btn ghost sm" type="button">Отмена</button>
+      <button class="g-icon-btn" type="button" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button></div>
+    <p class="g-caption">Оранжевая кнопка означает «ваш ход» и бывает одна на экран. Создание задачи, фильтры и переходы — secondary или ghost. Высота 40px, в панелях инструментов 32px.</p>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Переключатели</p><h2 class="g-h2">Вкладки, сегменты, чипы, метки</h2>
+    <div class="demo"><div class="g-tabs" role="tablist"><button role="tab" aria-selected="true">Роли</button><button role="tab" aria-selected="false">Шаблоны</button><button role="tab" aria-selected="false">Навыки</button><button role="tab" aria-selected="false">MCP</button></div>
+      <div class="g-seg" role="group"><button aria-pressed="true">Обновлены</button><button aria-pressed="false">Созданы</button></div></div>
+    <div class="demo label"><button class="g-chip" aria-pressed="true">Все задачи</button><button class="g-chip" aria-pressed="false">Мои</button><button class="g-chip" aria-pressed="false">Эпик · Дизайн-система <span class="g-x">×</span></button></div>
+    <div class="demo label"><span class="g-tag accent">в работе</span><span class="g-tag signal">ждёт вас</span><span class="g-tag danger">заблокировано</span><span class="g-tag">черновик</span><span class="g-tag solid-accent">одобрено</span><span class="g-tag solid-signal">срочно</span><span class="g-tag outline">PR #64 · CI идёт</span></div>
+    <p class="g-caption">Вкладки и сегменты — рельсы-пилюли; закрашена только выбранная. Чип — фильтр, который можно включить и снять. Метка сообщает состояние и не нажимается.</p>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Статусы</p><h2 class="g-h2">Одиннадцать статусов, форма важнее цвета</h2>
+    <div class="status-grid" id="statuses"></div>
+    <p class="g-caption" style="margin-top:16px">Зелёный — состояние системы, оранжевый — нужно ваше решение, нейтральный — тихие состояния. Статусы различаются формой, поэтому читаются без цвета. Приоритет — столбики, срочный — оранжевый квадрат. Эпик — миниатюра дуг.</p>
+    <div class="demo label" id="priorities"></div>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Поля</p><h2 class="g-h2">Формы</h2>
+    <div class="cols">
+      <div class="g-field"><label class="g-label" for="a">Название задачи</label><input id="a" class="g-input" placeholder="Что должно получиться"><span class="g-help">Коротко и по делу.</span></div>
+      <div class="g-field"><label class="g-label" for="b">Исполнитель</label><select id="b" class="g-select"><option>Я</option><option>Никто не назначен</option></select></div>
+      <div class="g-field"><label class="g-label" for="c">Ссылка на PR</label><input id="c" class="g-input" value="не ссылка" aria-invalid="true" aria-describedby="c-e"><span class="g-error" id="c-e">Нужна полная ссылка на PR.</span></div>
+      <div class="g-field"><label class="g-label" for="d">Отключено</label><input id="d" class="g-input" value="Нельзя изменить" disabled></div>
+      <div class="g-field" style="grid-column:1/-1"><label class="g-label" for="e">Описание</label><textarea id="e" class="g-textarea" placeholder="Цель, контекст, ограничения"></textarea></div>
+    </div>
+    <div class="demo label"><label class="g-check"><input type="checkbox" checked> Критерий выполнен</label><label class="g-check"><input type="checkbox"> Не выполнен</label><label class="g-radio"><input type="radio" name="r" checked> Срочно</label><label class="g-radio"><input type="radio" name="r"> Обычный</label>
+      <label class="g-switch"><input type="checkbox" role="switch" aria-label="Автоматические ревью" checked></label><label class="g-switch"><input type="checkbox" role="switch" aria-label="Выключено"></label>
+      <div class="g-search" style="width:260px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input placeholder="Поиск задач" aria-label="Поиск"><span class="g-kbd">⌘K</span></div></div>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Оверлеи</p><h2 class="g-h2">Меню, диалог, уведомления, баннеры</h2>
+    <div class="cols">
+      <div class="stage"><div class="g-menu" role="menu"><div class="g-menu-head">Статус</div>
+        <button class="g-menu-item" role="menuitemcheckbox" aria-checked="true"><svg width="16" height="16" class="st-accent"><use href="#s-in_progress"/></svg>В работе<span class="hint">4</span></button>
+        <button class="g-menu-item" role="menuitemcheckbox" aria-checked="false" data-active="true"><svg width="16" height="16" class="st-accent"><use href="#s-review"/></svg>На ревью<span class="hint">2</span></button>
+        <div class="g-menu-sep"></div><button class="g-menu-item" role="menuitem">Сбросить фильтры</button></div></div>
+      <div class="stage"><div class="g-modal" style="width:100%" role="dialog" aria-label="Новая задача"><header><h2>Новая задача</h2><button class="g-icon-btn" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button></header>
+        <div class="g-modal-body"><div class="g-field"><label class="g-label" for="m1">Название</label><input id="m1" class="g-input" placeholder="Что должно получиться"></div></div>
+        <footer><button class="g-btn ghost sm">Отмена</button><button class="g-btn primary sm">Создать</button></footer></div></div>
+    </div>
+    <div class="demo label"><span class="g-toast">Задача GNE-24 принята</span><span class="g-toast danger">Не удалось сохранить</span><span class="g-tip">Прервать шаг</span></div>
+    <div class="cols label">
+      <div class="g-banner accent"><div><strong>Всё идёт по плану</strong>Агент-исполнитель закончил шаг 3 из 5.</div></div>
+      <div class="g-banner signal"><div><strong>Нужно ваше решение</strong>GNE-24 ждёт ответа 2 часа.</div></div>
+      <div class="g-banner danger"><div><strong>CI красный</strong>Проверка lint упала на последнем коммите.</div></div>
+      <div class="g-banner"><div><strong>Нет изменений</strong>С прошлого просмотра ничего не обновилось.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Поверхности</p><h2 class="g-h2">Карточка, лист, оранжевая колонка</h2>
+    <div class="cols">
+      <div class="g-card"><h3 class="g-h4">Карточка</h3><p class="g-caption" style="margin:8px 0 0">Поверхность для панелей и форм. Тонкая рамка, радиус 20, без тени.</p></div>
+      <div class="stage canvas"><button class="g-sheet interactive" style="width:100%;text-align:left;display:grid;gap:10px"><span class="g-caption g-mono" style="color:var(--sh-m)">GNE-26 <span class="g-tag accent" style="margin-left:6px">в работе</span></span><span style="font-weight:700;font-size:16.5px;line-height:1.3">Колонки и карточки доски на новых токенах</span><span class="g-segs"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span><span class="g-avatars"><span class="g-avatar agent sm">Э</span><span class="g-avatar human sm">ГШ</span></span></button></div>
+      <div class="g-lane-signal"><p class="g-h4" style="margin:0 0 4px">Нужно решение</p><p class="g-caption" style="color:#3a2410;margin:0">Заливка оранжевым зарезервирована за «вашим ходом». Внутри листы.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Списки и таблицы</p><h2 class="g-h2">Строки, группы, таблицы</h2>
+    <div class="g-card flush"><div class="g-group-head">В работе <span class="n">3</span></div>
+      <div class="g-row"><span class="g-mono g-caption" style="width:56px">GNE-24</span><svg width="16" height="16" class="st-accent"><use href="#s-in_progress"/></svg><span style="flex:1;font-weight:600">Дизайн-система Genie</span><span class="g-tag accent">4/6</span></div>
+      <div class="g-row selected"><span class="g-mono g-caption" style="width:56px">GNE-26</span><svg width="16" height="16" class="st-accent"><use href="#s-in_progress"/></svg><span style="flex:1;font-weight:600">Токены доски</span><span class="g-tag accent">2/5</span></div>
+      <div class="g-row" data-focus="true"><span class="g-mono g-caption" style="width:56px">GNE-19</span><svg width="16" height="16" class="st-neutral"><use href="#s-draft"/></svg><span style="flex:1;font-weight:600">Экспорт заказов в CSV</span><span class="g-tag">ждёт GNE-18</span></div>
+      <table class="g-table"><thead><tr><th>Провайдер</th><th class="num">Токены</th><th class="num">Стоимость</th></tr></thead><tbody><tr><td>Claude</td><td class="num">1 240 000</td><td class="num">$18,40</td></tr><tr><td>Fable</td><td class="num">310 000</td><td class="num">$9,10</td></tr></tbody></table></div>
+    <div class="demo label"><nav class="g-crumbs" aria-label="Путь"><a href="#">Документация</a>/<a href="#">Платформа</a>/<span aria-current="page">Хранилище знаний</span></nav><span><span class="g-kbd">J</span> <span class="g-kbd">K</span></span></div>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Люди и ход работы</p><h2 class="g-h2">Аватары, прогресс, ожидание, пустота</h2>
+    <div class="demo"><span class="g-avatar agent">Э</span><span class="g-avatar human">ГШ</span><span class="g-avatars"><span class="g-avatar agent sm">Э</span><span class="g-avatar agent sm">Р</span><span class="g-avatar human sm">ГШ</span></span>
+      <div style="width:200px"><div class="g-progress"><i style="width:62%"></i></div></div><div style="width:200px"><div class="g-segs"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div></div>
+      <svg class="g-working" width="26" height="26" viewBox="0 0 26 26" aria-label="Агент работает"><g transform="translate(26 26)"><path fill="var(--g-green)" d="M-26 0A26 26 0 0 1 0-26V-19A19 19 0 0 0-19 0Z"/><path fill="var(--g-orange)" d="M-16 0A16 16 0 0 1 0-16V-10A10 10 0 0 0-10 0Z"/><path fill="var(--g-green)" d="M-7 0A7 7 0 0 1 0-7V0Z"/></g></svg></div>
+    <p class="g-caption" style="margin-top:12px">Квадрат — агент, круг — человек. Дуги — «агент работает здесь».</p>
+    <div class="cols label"><div class="g-card"><div class="g-skeleton" style="height:14px;width:40%"></div><div class="g-skeleton" style="height:20px;margin-top:14px"></div><div class="g-skeleton" style="height:20px;margin-top:8px;width:80%"></div></div>
+      <div class="g-card g-empty"><img src="character/genie-sleep.svg" alt="" width="180" height="160"><h3 class="g-h3">Пока ничего нет</h3><p>Создайте первую задачу, и Genie возьмётся за неё.</p><button class="g-btn secondary sm">＋ Новая задача</button></div></div>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Чтение</p><h2 class="g-h2">Документы и описания</h2>
+    <div class="g-card"><div class="g-prose"><h1>Опыт становится знанием</h1><p>После релиза агенты наблюдают за результатом и записывают выводы. Страница читается долго, поэтому текст опирается на <strong>Manrope</strong> и спокойный интерлиньяж, а <a href="#">ссылки</a> подчёркнуты.</p><h2>Что записывается</h2><ul><li>Метрики и наблюдения после выпуска</li><li>Решения и причины, по которым они приняты</li></ul><blockquote>Знание, не записанное в документе, пропадёт вместе с контекстом агента.</blockquote><pre><code>genie task status review --task GNE-24</code></pre><table><tr><th>Статус</th><th>Что дальше</th></tr><tr><td>review</td><td>Ревьюер одобряет или возвращает</td></tr></table></div></div>
+  </section>
+
+  <section>
+    <p class="g-eyebrow">Данные</p><h2 class="g-h2">Диаграммы</h2>
+    <div class="g-card"><div class="bars">
+      <div class="bar"><span>Claude</span><i style="width:88%;background:var(--g-viz-1)"></i><span class="g-num">$18,40</span></div>
+      <div class="bar"><span>Fable</span><i style="width:44%;background:var(--g-viz-2)"></i><span class="g-num">$9,10</span></div>
+      <div class="bar"><span>Другие</span><i style="width:18%;background:var(--g-viz-3)"></i><span class="g-num">$3,70</span></div></div>
+      <div class="chart-legend" style="margin-top:16px"><span><i style="background:var(--g-viz-1)"></i>серия 1</span><span><i style="background:var(--g-viz-2)"></i>серия 2</span><span><i style="background:var(--g-viz-3)"></i>серия 3</span><span><i style="background:var(--g-viz-4)"></i>серия 4</span></div></div>
+    <p class="g-caption" style="margin-top:12px">Не больше четырёх серий, подписи прямо у данных, сетка — <code>--g-viz-grid</code>. Если серий больше, делайте несколько маленьких диаграмм. Каждая серия имеет контраст 3:1 с поверхностью в обеих темах.</p>
+  </section>
+</div>
+<script>
+const ST = [['inbox','Входящие','neutral'],['draft','Черновик','neutral'],['refining','Уточнение','accent'],['ready','Готово к работе','accent'],['in_progress','В работе','accent'],['changes_requested','Доработка','accent'],['review','На ревью','accent'],['approved','Одобрено','accent'],['needs_owner','Нужно решение','signal'],['done','Принято','neutral'],['cancelled','Отменено','neutral']];
+document.getElementById('statuses').innerHTML = ST.map(([id, name, role]) => `<div class="g-row"><span class="g-status"><svg width="16" height="16" class="st-${role}"><use href="#s-${id}"/></svg>${name}</span><span class="g-caption g-mono">${id} · ${role}</span></div>`).join('');
+document.getElementById('priorities').innerHTML = ['Срочно','Высокий','Средний','Низкий','Без приоритета'].map((n, i) => `<span class="g-status"><svg width="16" height="16" class="st-neutral"><use href="#p-${i}"/></svg>${n}</span>`).join('') + `<span class="g-status"><svg width="16" height="16" class="st-accent"><use href="#s-epic"/></svg>Эпик</span>`;
+const t = document.getElementById('theme');
+t.addEventListener('click', () => { const p = document.documentElement.dataset.theme !== 'paper'; document.documentElement.dataset.theme = p ? 'paper' : 'ink'; t.textContent = p ? 'Тёмная тема' : 'Светлая тема'; });
+</script>
+</body>
+</html>

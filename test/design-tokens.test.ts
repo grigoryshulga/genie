@@ -70,6 +70,7 @@ const PAIRS: [string, string, number][] = [
   ["control-border", "surface", 3],
   ["focus", "bg", 3],
   ["focus", "surface", 3],
+  ...[1, 2, 3, 4].flatMap((n) => [[`viz-${n}`, "bg", 3], [`viz-${n}`, "surface", 3]] as [string, string, number][]),
 ];
 
 for (const [name, selector] of [["ink", ":root"], ["paper", '[data-theme="paper"]']] as const) {
