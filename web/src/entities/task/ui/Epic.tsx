@@ -2,12 +2,12 @@ import { Link } from "react-router";
 import { useEpicMap } from "../api.ts";
 import { PROGRESS, progressOf, type TaskSummary } from "../model.ts";
 
-/** Epic mark: a diamond, filled once the epic is closed. */
+/** Epic mark: the brand arcs in miniature; the closed epic is drawn solid, an empty one is outlined by its lighter inner arc. */
 export function EpicIcon({ size = 14, filled, empty }: { size?: number; filled?: boolean; empty?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flex: "none" }}>
-      <path d="M8 1.8L14.2 8 8 14.2 1.8 8z" stroke="var(--violet)" strokeWidth="1.5" strokeLinejoin="round" fill={filled ? "var(--violet)" : "none"} />
-      {!filled && !empty && <path d="M8 5.2L10.8 8 8 10.8 5.2 8z" fill="var(--violet)" />}
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="st-accent" style={{ flex: "none" }}>
+      <path d="M1 15A14 14 0 0 1 15 1v3.2A10.8 10.8 0 0 0 4.2 15z" />
+      {!empty && <path d="M5.8 15A9.2 9.2 0 0 1 15 5.8V9a6 6 0 0 0-6 6z" opacity={filled ? 1 : 0.6} />}
     </svg>
   );
 }

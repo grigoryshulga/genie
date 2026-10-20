@@ -2,6 +2,7 @@
 @import "../shared/ui/tokens.css";
 @import "../shared/ui/g-tokens.css";
 @import "../shared/ui/compat.css";
+@import "../shared/ui/components.css";
 
 @import "./styles/base.css";
 @import "./styles/shell.css";
