@@ -34,3 +34,6 @@
 .team-graph svg.connectable { touch-action: none; user-select: none; }
 .team-graph .drag-line { stroke: var(--accent-2); stroke-width: 1.6; stroke-dasharray: 4 4; pointer-events: none; }
 .team-graph-hint { font-size: 12px; color: var(--muted); text-align: center; }
+
+.team-graph a.node { cursor: pointer; text-decoration: none; }
+.team-graph a.node:hover rect, .team-graph a.node:focus-visible rect { stroke: var(--accent-2); stroke-width: 2; }

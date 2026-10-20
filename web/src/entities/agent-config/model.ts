@@ -494,63 +494,82 @@ export interface GraphEdge {
   ly: number;
 }
 
-export const NODE_H = 48;
+export const NODE_H = 88;
 const ORCH_W = 150;
 
-/**
- * Lay out a team: the orchestrator on top, members in a row. Relations to the
- * right arc above the row (work moves on), to the left below it (work comes
- * back, questions), reports go straight up. Nodes narrow as the team grows so
- * that five members fit a regular page.
- */
+/** Handoff columns run right to left; returns and consultations never advance a stage. */
 export function layoutTeam(
   members: { key: string; label: string; sub: string }[],
   relations: Relation[],
   problems: string[] = [],
-): { width: number; height: number; nodeW: number; nodes: GraphNode[]; edges: GraphEdge[] } {
-  const n = members.length;
-  const nodeW = n <= 3 ? 164 : n === 4 ? 160 : 140;
-  const step = nodeW + (n <= 4 ? 28 : 12);
-  const width = Math.max(420, n * step + 48);
-  const orchY = 12 + NODE_H / 2;
-  const rowY = orchY + NODE_H + 86;
-  const x0 = width / 2 - ((n - 1) * step) / 2;
-  const flagged = (key: string) => problems.some((p) => p.includes(`\`${key}\``));
-  const nodes: GraphNode[] = [
-    { key: "orchestrator", label: "Оркестратор", sub: "голос команды", x: width / 2, y: orchY, orchestrator: true },
-    ...members.map((m, i) => ({ ...m, x: x0 + i * step, y: rowY, flagged: flagged(m.key) })),
-  ];
-  const at = new Map(nodes.map((nd) => [nd.key, nd]));
-  const index = new Map(members.map((m, i) => [m.key, i]));
-  const edges: GraphEdge[] = [];
-  let below = 0;
-  for (const r of relations) {
-    for (const to of r.to) {
-      const a = at.get(r.from);
-      const b = at.get(to);
-      if (!a || !b || a === b) continue;
-      const base = { from: r.from, to, type: r.type, on: r.on, note: r.note };
-      if (a.orchestrator || b.orchestrator) {
-        const [m, o] = a.orchestrator ? [b, a] : [a, b];
-        const mx = m.x + (m.x < o.x ? 12 : m.x > o.x ? -12 : 0);
-        const ox = o.x + Math.max(-ORCH_W / 2 + 14, Math.min(ORCH_W / 2 - 14, (m.x - o.x) / 3));
-        const [my, oy] = [m.y - NODE_H / 2, o.y + NODE_H / 2 + 1];
-        const d = a.orchestrator ? `M ${ox} ${oy} L ${mx} ${my}` : `M ${mx} ${my} L ${ox} ${oy}`;
-        edges.push({ ...base, d, lx: (mx + ox) / 2, ly: (my + oy) / 2 });
-        continue;
-      }
-      const span = Math.abs((index.get(to) ?? 0) - (index.get(r.from) ?? 0));
-      const forward = b.x > a.x;
-      const shift = forward ? 10 : -10;
-      const [x1, x2] = [a.x + shift, b.x - shift];
-      const y = forward ? a.y - NODE_H / 2 : a.y + NODE_H / 2;
-      const lift = 26 + 28 * span;
-      const qy = forward ? y - lift : y + lift;
-      if (!forward) below = Math.max(below, lift / 2);
-      edges.push({ ...base, d: `M ${x1} ${y} Q ${(x1 + x2) / 2} ${qy} ${x2} ${y}`, lx: (x1 + x2) / 2, ly: (y + qy) / 2 });
+): { width: number; height: number; nodeW: number; nodes: GraphNode[]; edges: GraphEdge[]; stages: { x: number; label: string }[] } {
+  const nodeW = 240;
+  const keys = new Set(members.map((m) => m.key));
+  const incoming = (key: string) => relations.filter((r) => r.type === "handoff" && r.to.includes(key) && keys.has(r.from) && r.from !== key);
+  const ranks = new Map<string, number>();
+  let remaining = [...members];
+  while (remaining.length) {
+    const ready = remaining.filter((m) => incoming(m.key).every((r) => ranks.has(r.from)));
+    // A cycle has no first handoff: keep its unresolved participants together.
+    if (!ready.length) {
+      const next = ranks.size ? Math.max(...ranks.values()) + 1 : 0;
+      remaining.forEach((m) => ranks.set(m.key, next));
+      break;
     }
+    ready.forEach((m) => ranks.set(m.key, Math.max(0, ...incoming(m.key).map((r) => ranks.get(r.from)! + 1))));
+    remaining = remaining.filter((m) => !ranks.has(m.key));
   }
-  return { width, height: rowY + NODE_H / 2 + below + 22, nodeW, nodes, edges };
+  const count = Math.max(1, ...[...ranks.values()].map((r) => r + 1));
+  const width = Math.max(420, count * (nodeW + 100) + 40);
+  const x = (rank: number) => width - 20 - nodeW / 2 - rank * (nodeW + 100);
+  const rows = new Map<number, number>();
+  const nodes: GraphNode[] = [
+    { key: "orchestrator", label: "Оркестратор", sub: "голос команды", x: width / 2, y: 54, orchestrator: true },
+    ...members.map((m) => {
+      const rank = ranks.get(m.key)!;
+      const row = rows.get(rank) ?? 0;
+      rows.set(rank, row + 1);
+      return { ...m, x: x(rank), y: 200 + row * 140, flagged: problems.some((p) => p.includes(`\`${m.key}\``)) };
+    }),
+  ];
+  const stages = Array.from({ length: count }, (_, rank) => ({ x: x(rank), label: `Этап ${rank + 1}` }));
+  const at = new Map(nodes.map((n) => [n.key, n]));
+  const edges: GraphEdge[] = [];
+  for (const r of relations) for (const to of r.to) {
+    const a = at.get(r.from);
+    const b = at.get(to);
+    if (!a || !b || a === b) continue;
+    let d: string;
+    let lx: number;
+    let ly: number;
+    if (a.orchestrator || b.orchestrator || a.x === b.x) {
+      const direction = Math.sign(b.y - a.y);
+      const y1 = a.y + direction * NODE_H / 2;
+      const y2 = b.y - direction * NODE_H / 2;
+      const lane = r.type === "returns" ? 24 : -24;
+      const x1 = a.x + lane;
+      const x2 = b.x + lane;
+      ly = (y1 + y2) / 2;
+      lx = (x1 + x2) / 2;
+      d = `M ${x1} ${y1} V ${ly} H ${x2} V ${y2}`;
+    } else {
+      const direction = Math.sign(b.x - a.x);
+      const x1 = a.x + direction * (a.orchestrator ? ORCH_W : nodeW) / 2;
+      const x2 = b.x - direction * (b.orchestrator ? ORCH_W : nodeW) / 2;
+      const offset = r.type === "returns" ? 24 : -24;
+      const y1 = a.y + offset;
+      const y2 = b.y + offset;
+      lx = (x1 + x2) / 2;
+      ly = (y1 + y2) / 2;
+      // Route long links above the intervening cards.
+      if (Math.abs(a.x - b.x) > nodeW + 101) {
+        ly = 140;
+        d = `M ${x1} ${y1} H ${x1 + direction * 24} V ${ly} H ${x2 - direction * 24} V ${y2} H ${x2}`;
+      } else d = `M ${x1} ${y1} H ${lx} V ${y2} H ${x2}`;
+    }
+    edges.push({ from: r.from, to, type: r.type, on: r.on, note: r.note, d, lx, ly });
+  }
+  return { width, height: 270 + Math.max(0, ...[...rows.values()].map((r) => r - 1)) * 140, nodeW, nodes, edges, stages };
 }
 
 // ------------------------------------------------------------------ what a template needs

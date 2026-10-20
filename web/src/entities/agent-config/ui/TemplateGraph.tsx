@@ -1,4 +1,4 @@
-import { type PointerEvent, type ReactNode, useId, useRef, useState } from "react";
+import { type PointerEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import "./graph.css";
 import { capitalized, type LiveState, layoutTeam, type MemberDef, NODE_H, ON_TITLE, type Relation, RELATION_TITLE, type RoleDef } from "../model.ts";
 
@@ -66,7 +66,9 @@ export function TemplateGraph({
   done = [],
   head,
   onConnect,
+  cards = {},
 }: {
+  cards?: Record<string, { href: string; activity: string }>;
   members: MemberDef[];
   relations: Relation[];
   roles: RoleDef[];
@@ -79,6 +81,7 @@ export function TemplateGraph({
   onConnect?: (from: string, to: string) => void;
 }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const scrollRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ from: string; x: number; y: number }>();
   const role = (m: MemberDef) => roles.find((r) => r.id === m.role);
@@ -103,6 +106,15 @@ export function TemplateGraph({
     relations,
     problems,
   );
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const alignStart = () => { el.scrollLeft = el.scrollWidth; };
+    alignStart();
+    const observer = new ResizeObserver(alignStart);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [g.width]);
   const w = g.nodeW;
   const classOf = (key: string) => (key === "orchestrator" ? "orchestrator" : (role(members.find((m) => m.key === key)!)?.class ?? ""));
   const nameOf = (key: string) => g.nodes.find((n) => n.key === key)?.label ?? key;
@@ -131,14 +143,14 @@ export function TemplateGraph({
   return (
     <figure className="team-graph">
       {head && <div className="team-graph-head">{head}</div>}
-      <div className="team-graph-scroll">
+      <div className="team-graph-scroll" ref={scrollRef}>
         <svg
           ref={svgRef}
           width={g.width}
           height={g.height}
           viewBox={`0 0 ${g.width} ${g.height}`}
-          style={{ maxWidth: g.width, minWidth: Math.round(g.width * 0.75) }}
-          role="img"
+          style={{ maxWidth: g.width, minWidth: g.width }}
+          role="group"
           aria-label="Связи участников"
           className={onConnect ? "connectable" : undefined}
           onPointerMove={drag ? (e) => setDrag({ ...drag, ...at(e) }) : undefined}
@@ -161,6 +173,7 @@ export function TemplateGraph({
               </marker>
             ))}
           </defs>
+          {g.stages.map((stage) => <text key={stage.x} x={stage.x} y={145} textAnchor="middle" className="ns">{stage.label} · ←</text>)}
           {g.edges.map((e, i) => {
             const look = lookOf(e);
             // One relation to several members is labelled once.
@@ -185,14 +198,18 @@ export function TemplateGraph({
             const spin = state === "working";
             const room = nw - TEXT_X - 10;
             const label = lines(n.label, room, !n.sub);
+            const card = cards[n.key];
+            const Tag = card ? "a" : "g";
             return (
-              <g
+              <Tag
+                href={card?.href}
+                aria-label={card ? `${n.label}: ${card.activity}. Открыть разговор с агентом` : undefined}
                 key={n.key}
                 className={`node${n.orchestrator ? " orch" : ""}${n.flagged ? " flagged" : ""}${state ? ` live-${state}` : ""}`}
                 transform={`translate(${n.x - nw / 2} ${n.y - NODE_H / 2})`}
                 onPointerDown={start?.(n.key)}
               >
-                <title>{`${n.label}${n.sub ? ` — ${n.sub}` : ""}${state && state !== "waiting" && live?.[n.key].note ? `\n${live[n.key].note}` : ""}`}</title>
+                <title>{`${n.label}${n.sub ? ` — ${n.sub}` : ""}${card ? ` — ${card.activity}` : ""}${state && state !== "waiting" && live?.[n.key].note ? `\n${live[n.key].note}` : ""}`}</title>
                 <rect width={nw} height={NODE_H} rx={10} />
                 <circle cx={19} cy={NODE_H / 2} r={9.5} className={`dot c-${classOf(n.key)}`} />
                 <text x={19} y={NODE_H / 2 + 3.8} textAnchor="middle" className="dl">
@@ -217,7 +234,8 @@ export function TemplateGraph({
                     ))}
                   </text>
                 )}
-              </g>
+                {card && lines(card.activity, room, true).map((line, i) => <text key={i} x={TEXT_X} y={56 + i * 15} className="ns">{line}</text>)}
+              </Tag>
             );
           })}
         </svg>
