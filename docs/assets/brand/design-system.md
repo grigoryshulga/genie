@@ -111,6 +111,28 @@ They do not replace the current lettermark in [the brand README](README.md) yet;
 
 Clear space is at least the height of the arc on every side.
 
+## Character animations
+
+The logo mark doubles as a character. The orange arc is its eye (open "∩", closed line, sleeping "∪", full ring when startled) and the handle is an antenna that reacts on its own timing. Four looping actions ship as standalone SVGs with embedded CSS and no scripts or fonts, so they work in `<img>`, inline, or as background images:
+
+| File | Action | What happens |
+|---|---|---|
+| [`genie-surprise.svg`](character/genie-surprise.svg) | Surprise | Crouch, jump, eye becomes a full ring, antenna flicks, spark lines burst, then a tremble |
+| [`genie-wake.svg`](character/genie-wake.svg) | Waking up | Asleep with a drooping antenna and "z" marks, stirs, stretches, opens wide, blinks, drifts off again to loop |
+| [`genie-sleep.svg`](character/genie-sleep.svg) | Falling asleep | Heavy blinks, head and antenna droop, eye closes to a thin curve, soft breathing and "z" marks, startles awake to loop |
+| [`genie-think.svg`](character/genie-think.svg) | Thinking | Gaze moves up and to the side then across, squint and blink, a thought trail ends in a "..." bubble |
+
+Open [`character/animations.html`](character/animations.html) from a checkout to see all four with replay, pause, and a theme toggle. The files are generated: edit [`character/build.mjs`](character/build.mjs) (keyframes are tables per body part) and run `node docs/assets/brand/character/build.mjs`; do not edit the SVGs by hand.
+
+Rules:
+
+- Every action returns to the neutral logo pose, so a loop can be dropped in place of the static mark without a jump.
+- Under `prefers-reduced-motion: reduce` the SVGs show only the neutral pose. Extras that exist only during an action (sparks, "z" marks, thought trail) are hidden by default.
+- The SVGs default to the ink-theme colours. On paper the mark uses `--g-green-800` and the "z" marks use ink; the preview page shows this through two CSS variables, `--g` and `--p`.
+- The characters are built from the draft mark, so they inherit its approximations (see Logo) and should be regenerated when the final vector arrives.
+
+Suggested product mapping, not yet decided: thinking for an agent that is planning or running, sleeping for an idle project, waking for resuming work or a new assignment, surprise for something that needs the owner's attention. Keep the character out of dense lists and toolbars; it belongs in empty states, onboarding, loading screens, and status panels.
+
 ## Open decisions
 
 1. **Monospace.** The board defines no mono face. Task IDs and code keep Geist Mono for now. Alternatives: JetBrains Mono, or tabular Manrope for IDs only.

@@ -24,3 +24,6 @@ UI logo is unchanged.
 The broader visual language (colour, type, components, motif) is a draft in
 [design-system.md](design-system.md); it will supersede the periwinkle and indigo
 values above once the lettermark is redrawn for it.
+
+The lettermark also exists as an animated character (surprise, waking up, falling
+asleep, thinking); see [Character animations](design-system.md#character-animations).
