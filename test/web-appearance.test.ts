@@ -4,7 +4,7 @@ import { readAppearancePreferences, saveAppearancePreferences } from "../web/src
 
 test("appearance preferences default safely and persist changes", () => {
   const values = new Map<string, string>();
-  const themeColor = { content: "#0e0f11" };
+  const themeColor = { content: "#09090d" };
   const document = {
     documentElement: { dataset: {} as Record<string, string> },
     querySelector: () => themeColor,
@@ -21,14 +21,14 @@ test("appearance preferences default safely and persist changes", () => {
   Object.defineProperty(globalThis, "document", { configurable: true, value: document });
 
   try {
-    assert.deepEqual(readAppearancePreferences(), { theme: "dark", accent: "violet" });
+    assert.deepEqual(readAppearancePreferences(), { theme: "ink" });
 
-    const preferences = { theme: "light", accent: "teal" } as const;
+    const preferences = { theme: "paper" } as const;
     saveAppearancePreferences(preferences);
 
     assert.deepEqual(readAppearancePreferences(), preferences);
-    assert.deepEqual(document.documentElement.dataset, { theme: "light", themePreference: "light", accent: "teal" });
-    assert.equal(themeColor.content, "#f0f1f4");
+    assert.deepEqual(document.documentElement.dataset, { theme: "paper", themePreference: "paper" });
+    assert.equal(themeColor.content, "#f4f1ea");
   } finally {
     if (previousStorage) Object.defineProperty(globalThis, "localStorage", previousStorage);
     else Reflect.deleteProperty(globalThis, "localStorage");
@@ -39,7 +39,7 @@ test("appearance preferences default safely and persist changes", () => {
 
 test("system appearance follows operating system color scheme changes", () => {
   const values = new Map<string, string>();
-  const themeColor = { content: "#0e0f11" };
+  const themeColor = { content: "#09090d" };
   const document = {
     documentElement: { dataset: {} as Record<string, string> },
     querySelector: () => themeColor,
@@ -65,21 +65,21 @@ test("system appearance follows operating system color scheme changes", () => {
   Object.defineProperty(globalThis, "matchMedia", { configurable: true, value: () => mediaQuery });
 
   try {
-    const preferences = { theme: "system", accent: "rose" } as const;
+    const preferences = { theme: "system" } as const;
     saveAppearancePreferences(preferences);
 
     assert.deepEqual(readAppearancePreferences(), preferences);
     assert.equal(document.documentElement.dataset.themePreference, "system");
-    assert.equal(document.documentElement.dataset.theme, "dark");
-    assert.equal(themeColor.content, "#0e0f11");
+    assert.equal(document.documentElement.dataset.theme, "ink");
+    assert.equal(themeColor.content, "#09090d");
 
     onChange?.({ matches: false });
 
-    assert.equal(document.documentElement.dataset.theme, "light");
-    assert.equal(themeColor.content, "#f0f1f4");
+    assert.equal(document.documentElement.dataset.theme, "paper");
+    assert.equal(themeColor.content, "#f4f1ea");
   } finally {
     // Remove the test's media-query listener while the mocked document is still active.
-    saveAppearancePreferences({ theme: "dark", accent: "violet" });
+    saveAppearancePreferences({ theme: "ink" });
     if (previousStorage) Object.defineProperty(globalThis, "localStorage", previousStorage);
     else Reflect.deleteProperty(globalThis, "localStorage");
     if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
@@ -89,11 +89,8 @@ test("system appearance follows operating system color scheme changes", () => {
   }
 });
 
-test("unsupported stored appearance values fall back to dark violet", () => {
-  const values = new Map([
-    ["genie.appearance.theme", "sepia"],
-    ["genie.appearance.accent", "rainbow"],
-  ]);
+test("unsupported stored appearance values fall back to ink, and earlier names migrate", () => {
+  const values = new Map([["genie.appearance.theme", "sepia"]]);
   const previousStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
@@ -101,7 +98,11 @@ test("unsupported stored appearance values fall back to dark violet", () => {
   });
 
   try {
-    assert.deepEqual(readAppearancePreferences(), { theme: "dark", accent: "violet" });
+    assert.deepEqual(readAppearancePreferences(), { theme: "ink" });
+    values.set("genie.appearance.theme", "light");
+    assert.deepEqual(readAppearancePreferences(), { theme: "paper" });
+    values.set("genie.appearance.theme", "dark");
+    assert.deepEqual(readAppearancePreferences(), { theme: "ink" });
   } finally {
     if (previousStorage) Object.defineProperty(globalThis, "localStorage", previousStorage);
     else Reflect.deleteProperty(globalThis, "localStorage");

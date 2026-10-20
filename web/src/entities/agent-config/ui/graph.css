@@ -41,6 +41,6 @@
 .team-graph-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: 0 var(--space-8); }
 .team-graph-tools output { min-width: 4ch; text-align: center; font-size: var(--font-size-small); color: var(--muted); font-variant-numeric: tabular-nums; }
 .team-graph-modal { width: calc(100vw - 32px); height: calc(100dvh - 32px); max-width: none; max-height: none; padding: 0; border: 0; border-radius: var(--radius-lg); background: var(--bg-group); color: var(--text); }
-.team-graph-modal::backdrop { background: rgb(0 0 0 / 65%); }
+.team-graph-modal::backdrop { background: var(--scrim); }
 .team-graph-modal .team-graph { height: 100%; box-sizing: border-box; }
 .team-graph-modal .team-graph-scroll { flex: 1; min-height: 0; overflow: auto; }
