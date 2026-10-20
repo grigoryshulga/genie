@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ru" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genie board concept</title>
+<!-- Concept, not product code: a static page with sample data that exercises the design system on the task board. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@700;900&display=swap">
+<link rel="stylesheet" href="../../../../web/src/shared/ui/tokens.css">
+<style>
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--g-bg); color: var(--g-text); font: 400 var(--g-text-ui)/var(--g-leading-ui) var(--g-font-sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
+.num { font-feature-settings: "tnum"; }
+.mono { font-family: var(--g-font-mono); }
+
+/* ---- top bar: navigation lives in a pill rail, not a sidebar ---- */
+.top { display: flex; align-items: center; gap: var(--g-space-5); height: 72px; padding: 0 var(--g-space-6); }
+.top .logo { height: 34px; display: block; }
+.nav { display: flex; gap: var(--g-space-1); padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); }
+.nav button { height: 34px; padding: 0 var(--g-space-4); border: 0; border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font-weight: 600; font-size: var(--g-text-dense); }
+.nav button:hover { background: var(--g-surface-hover); color: var(--g-text); }
+.nav button[aria-current="page"] { background: var(--g-accent); color: var(--g-on-accent); }
+.grow { flex: 1; }
+.search { display: flex; align-items: center; gap: var(--g-space-2); height: 40px; width: 280px; padding: 0 var(--g-space-4); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-pill); color: var(--g-text-muted); font-weight: 500; font-size: var(--g-text-dense); background: transparent; }
+.search kbd { margin-left: auto; font: 500 11px var(--g-font-mono); color: var(--g-text-muted); }
+.btn { display: inline-flex; align-items: center; gap: var(--g-space-2); height: 40px; padding: 0 var(--g-space-5); border: 1.5px solid transparent; border-radius: var(--g-radius-pill); background: transparent; font-weight: 600; font-size: var(--g-text-ui); white-space: nowrap; }
+.btn.secondary { border-color: var(--g-accent); }
+.btn.secondary:hover { background: var(--g-accent-soft); }
+.btn.sm { height: 32px; padding: 0 var(--g-space-4); font-size: var(--g-text-dense); }
+[data-theme="paper"] .me { background: var(--g-ink); color: var(--g-paper); }
+[data-theme="paper"] .ci { background: var(--g-ink); }
+.theme { display: grid; place-items: center; color: var(--g-text); width: 40px; height: 40px; border: 1.5px solid var(--g-border-strong); border-radius: 50%; background: transparent; font-size: 16px; }
+.theme:hover { background: var(--g-surface-hover); }
+.me { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--g-paper); color: var(--g-ink); font-weight: 700; font-size: 13px; }
+
+.page { padding: 0 var(--g-space-6) var(--g-space-8); }
+
+/* ---- hero: the headline is the state of the project ---- */
+.hero { position: relative; overflow: hidden; display: grid; align-content: end; min-height: 300px; padding: var(--g-space-7); border-radius: var(--g-radius-xl); background: var(--g-surface); }
+.hero .arcs { position: absolute; right: 0; bottom: 0; width: 380px; aspect-ratio: 1; pointer-events: none; }
+.hero .arcs path:nth-child(odd) { fill: var(--g-green); }
+.hero .arcs path:nth-child(even) { fill: var(--g-orange); }
+.eyebrow { margin: 0 0 var(--g-space-4); font-size: 11px; font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
+.hero h1 { margin: 0; max-width: 11ch; font: 900 clamp(34px, 5.2vw, 64px)/0.98 var(--g-font-display); letter-spacing: var(--g-tracking-display); text-wrap: balance; }
+.stop { color: var(--g-orange); }
+.hero p.lead { margin: var(--g-space-5) 0 0; max-width: 44ch; color: var(--g-text-2); font-size: var(--g-text-body-lg); font-weight: 500; line-height: 1.55; }
+
+/* ---- Genie status strip: the character reports what the agents are doing ---- */
+.genie { display: flex; align-items: center; gap: var(--g-space-5); margin-top: var(--g-space-4); padding: var(--g-space-3) var(--g-space-5) var(--g-space-3) var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-xl); background: var(--g-surface); }
+.genie img { width: 132px; height: 117px; flex: none; margin: calc(var(--g-space-2) * -1) 0; }
+.genie .say { min-width: 0; }
+.genie .say strong { display: block; font-size: var(--g-text-h4); font-weight: 600; line-height: 1.3; }
+.genie .say span { color: var(--g-text-muted); font-size: var(--g-text-dense); font-weight: 500; }
+.states { display: flex; gap: var(--g-space-1); padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); }
+.states button { height: 30px; padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font-weight: 600; font-size: 12px; }
+.states button[aria-pressed="true"] { background: var(--g-surface-active); color: var(--g-text); }
+.states-label { font-size: 11px; font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
+
+/* ---- filter chips ---- */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--g-space-2); margin: var(--g-space-6) 0 var(--g-space-5); }
+.chip { display: inline-flex; align-items: center; gap: var(--g-space-2); height: 34px; padding: 0 var(--g-space-4); border: 1.5px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: transparent; font-weight: 600; font-size: var(--g-text-dense); color: var(--g-text-2); }
+.chip[aria-pressed="true"] { border-color: var(--g-accent); background: var(--g-accent); color: var(--g-on-accent); }
+.chip .n { font-feature-settings: "tnum"; opacity: .8; }
+.filters .grow { flex: 1; }
+.legend { display: flex; align-items: center; gap: var(--g-space-4); color: var(--g-text-muted); font-size: 12px; font-weight: 500; }
+.legend i { display: inline-block; vertical-align: -2px; margin-right: 6px; }
+.sq { width: 12px; height: 12px; border-radius: 4px; background: var(--g-green); }
+.ci { width: 12px; height: 12px; border-radius: 50%; background: var(--g-paper); }
+
+/* ---- board ---- */
+.board { display: grid; grid-template-columns: 340px repeat(3, minmax(270px, 1fr)) 76px; gap: var(--g-space-5); align-items: start; overflow-x: auto; padding-bottom: var(--g-space-4); scroll-snap-type: x proximity; }
+.lane { scroll-snap-align: start; min-width: 0; }
+.lane-head { display: flex; align-items: baseline; gap: var(--g-space-3); margin: 0 0 var(--g-space-4) var(--g-space-1); }
+.lane-head .count { font: 900 44px/1 var(--g-font-display); letter-spacing: var(--g-tracking-display); font-feature-settings: "tnum"; }
+.lane-head h2 { margin: 0; font-size: var(--g-text-h4); font-weight: 600; line-height: 1.2; }
+.lane-head small { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--g-text-muted); }
+.stack { display: grid; gap: var(--g-space-3); }
+
+/* The owner lane is orange: it is the only place the user is asked to move. */
+.lane.you { padding: var(--g-space-4); border-radius: var(--g-radius-xl); background: var(--g-orange); color: var(--g-ink); }
+.lane.you .lane-head { margin-left: var(--g-space-2); }
+.lane.you .lane-head small { color: #3a2410; }
+
+/* Done is a quiet strip, not a lane. */
+.strip { display: flex; flex-direction: column; align-items: center; gap: var(--g-space-4); padding: var(--g-space-5) 0; border: 1.5px solid var(--g-border-strong); border-radius: var(--g-radius-pill); color: var(--g-text-2); min-height: 280px; }
+.strip .count { font: 900 22px/1 var(--g-font-display); color: var(--g-text); font-feature-settings: "tnum"; }
+.strip span.v { writing-mode: vertical-rl; font-weight: 600; font-size: var(--g-text-dense); letter-spacing: .06em; }
+
+/* ---- card: a paper sheet on the ink canvas; in the paper theme it inverts to ink ---- */
+.card { --ct: var(--g-ink); --ct2: var(--g-n-600); --cm: #5f5e5c; --cat: var(--g-green-800); --csoft: #d7e5db; --cline: rgb(9 9 13 / 0.14);
+  position: relative; display: grid; gap: var(--g-space-3); padding: var(--g-space-4) var(--g-space-5) var(--g-space-4); border-radius: var(--g-radius-lg); background: var(--g-paper); color: var(--ct); text-align: left; border: 0; width: 100%; transition: transform var(--g-duration) var(--g-ease); }
+.card:hover { transform: translateY(-2px); }
+[data-theme="paper"] .card { --ct: var(--g-paper); --ct2: var(--g-n-300); --cm: var(--g-n-400); --cat: var(--g-green-400); --csoft: #07211e; --cline: rgb(244 241 234 / 0.2); background: var(--g-ink); }
+.card .row { display: flex; align-items: center; gap: var(--g-space-2); }
+.card .id { font: 500 11.5px var(--g-font-mono); color: var(--cm); }
+.card h3 { margin: 0; font-size: 16.5px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; }
+.card .note { margin: 0; font-size: 12.5px; font-weight: 500; color: var(--ct2); line-height: 1.45; }
+.card .epic { color: var(--cat); font-size: 12px; font-weight: 600; }
+.tag { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 var(--g-space-2); border-radius: var(--g-radius-pill); font-size: 11.5px; font-weight: 600; background: var(--csoft); color: var(--cat); white-space: nowrap; }
+.tag.neutral { background: transparent; box-shadow: inset 0 0 0 1.5px var(--cline); color: var(--ct2); }
+.tag.hot { background: var(--g-orange); color: var(--g-ink); }
+.tag.ok { background: var(--g-green); color: var(--g-ink); }
+.card .ac { display: flex; align-items: center; gap: var(--g-space-2); }
+.ac .seg { display: flex; flex: 1; gap: 3px; }
+.ac .seg i { flex: 1; height: 6px; border-radius: 3px; background: var(--cline); }
+.ac .seg i.on { background: var(--g-green); }
+.ac b { font-size: 11.5px; font-weight: 600; color: var(--ct2); font-feature-settings: "tnum"; }
+.card .foot { display: flex; align-items: center; gap: var(--g-space-2); }
+.who { display: flex; margin-left: auto; }
+/* Agents are rounded squares and people are circles, so who did what reads at a glance. */
+.who span { display: grid; place-items: center; width: 24px; height: 24px; margin-left: -6px; font-size: 10.5px; font-weight: 700; border: 2px solid var(--g-paper); }
+[data-theme="paper"] .who span { border-color: var(--g-ink); }
+.who .agent { border-radius: 8px; background: var(--g-green); color: var(--g-ink); }
+.who .human { border-radius: 50%; background: var(--g-ink); color: var(--g-paper); }
+[data-theme="paper"] .who .human { background: var(--g-paper); color: var(--g-ink); }
+/* Concentric arcs: an agent is working on this card. */
+.pulse { position: absolute; top: var(--g-space-4); right: var(--g-space-4); width: 26px; height: 26px; }
+.pulse path { fill: var(--g-green); opacity: .25; animation: ring 1.8s var(--g-ease) infinite; }
+.pulse path:nth-child(2) { animation-delay: .25s; fill: var(--g-orange); }
+.pulse path:nth-child(3) { animation-delay: .5s; }
+@keyframes ring { 0%, 100% { opacity: .2; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pulse path { animation: none; opacity: 1; } .card { transition: none; } }
+.card.has-pulse h3 { padding-right: 34px; }
+
+/* Owner-decision cards ask a question and carry the answer buttons. */
+.ask { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.actions { display: flex; gap: var(--g-space-2); }
+.pill { height: 34px; padding: 0 var(--g-space-4); border-radius: var(--g-radius-pill); border: 1.5px solid var(--ct); background: transparent; color: var(--ct); font-weight: 600; font-size: 13px; }
+.pill.solid { background: var(--ct); color: var(--g-paper); }
+[data-theme="paper"] .pill.solid { color: var(--g-ink); }
+
+@media (max-width: 760px) {
+  .top { padding: 0 var(--g-space-4); gap: var(--g-space-3); } .nav, .search { display: none; }
+  .page { padding: 0 var(--g-space-4) var(--g-space-7); } .hero { padding: var(--g-space-5); min-height: 240px; } .hero .arcs { width: 120px; }
+  .hero p.lead { max-width: none; padding-right: 96px; }
+  .genie { flex-wrap: wrap; } .legend { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <img class="logo" src="../logo-ink.svg" alt="genie" id="logo">
+  <nav class="nav" aria-label="Разделы">
+    <button aria-current="page">Доска</button><button>Список</button><button>Эпики</button><button>Команды</button><button>Документы</button>
+  </nav>
+  <span class="grow"></span>
+  <div class="search" role="search">Поиск задач <kbd>⌘K</kbd></div>
+  <button class="btn secondary" type="button">＋ Новая задача</button>
+  <button class="theme" id="theme" type="button" aria-label="Переключить тему" title="Тёмная / светлая тема"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 2a7 7 0 0 1 0 14Z" fill="currentColor"/></svg></button>
+  <div class="me" aria-label="Профиль">ГШ</div>
+</header>
+
+<main class="page">
+  <section class="hero" aria-labelledby="h">
+    <svg class="arcs" viewBox="0 0 500 500" aria-hidden="true"><g transform="translate(500 500)">
+      <path d="M-500 0A500 500 0 0 1 0-500V-360A360 360 0 0 0-360 0Z"/><path d="M-250 0A250 250 0 0 1 0-250V-140A140 140 0 0 0-140 0Z"/><path d="M-105 0A105 105 0 0 1 0-105V0Z"/>
+    </g></svg>
+    <p class="eyebrow">Проект genie · вторник</p>
+    <h1 id="h">3 решения ждут вас<span class="stop">.</span></h1>
+    <p class="lead">Остальное идёт само: 4 агента в работе, 2 PR на ревью, CI зелёный. Последнее обновление — 2 минуты назад.</p>
+  </section>
+
+  <section class="genie" aria-live="polite">
+    <img id="character" src="../character/genie-think.svg" alt="">
+    <div class="say"><strong id="say">Думает над GNE-24: план перехода на токены</strong><span id="sub">Агент-исполнитель · шаг 3 из 5 · 12 минут</span></div>
+    <span class="grow"></span>
+    <span class="states-label">Состояние (демо)</span>
+    <div class="states" id="states" role="group" aria-label="Состояние Genie">
+      <button aria-pressed="true" data-s="think">Думает</button><button aria-pressed="false" data-s="sleep">Спит</button><button aria-pressed="false" data-s="wake">Просыпается</button><button aria-pressed="false" data-s="surprise">Удивлён</button>
+    </div>
+  </section>
+
+  <div class="filters">
+    <button class="chip" aria-pressed="true">Все задачи <span class="n">15</span></button>
+    <button class="chip" aria-pressed="false">Мои <span class="n">4</span></button>
+    <button class="chip" aria-pressed="false">Эпик · Дизайн-система</button>
+    <button class="chip" aria-pressed="false">＋ Фильтр</button>
+    <span class="grow"></span>
+    <span class="legend"><span><i class="sq"></i>агент</span><span><i class="ci"></i>человек</span></span>
+  </div>
+
+  <div class="board" id="board" aria-label="Доска задач"></div>
+</main>
+
+<script>
+// Sample data. Statuses mirror the real lifecycle; the lanes group them into three stages for this concept.
+const T = (id, title, o = {}) => ({ id, title, ac: [0, 0], who: [], ...o });
+const lanes = [
+  { id: 'you', name: 'Нужно решение', sub: 'Ваш ход', cls: 'you', cards: [
+    T('GNE-24', 'Дизайн-система Genie', { ask: 'Оставляем Geist Mono для ID и кода или меняем?', epic: 'Дизайн-система', ac: [4, 6], who: ['A:Э'], hot: true }),
+    T('GNE-21', 'Утвердить вектор логотипа', { ask: 'Принять черновой вектор или ждём исходник от дизайнера?', epic: 'Дизайн-система', ac: [2, 3], who: ['A:Э', 'A:Р'] }),
+    T('GNE-31', 'Токены в карточках доски', { ask: 'PR готов, CI зелёный. Сливаем в main?', ac: [5, 5], who: ['A:Э'] }),
+  ] },
+  { id: 'prep', name: 'Подготовка', sub: 'Входящие · уточнение · готово к работе', cards: [
+    T('GNE-27', 'Перевести веб-интерфейс на токены', { status: ['ready', 'готово'], ac: [0, 4], epic: 'Дизайн-система' }),
+    T('GNE-29', 'Self-host шрифтов Unbounded и Manrope', { status: ['refining', 'уточнение'], ac: [1, 3], who: ['A:О'] }),
+    T('GNE-28', 'Персонаж в пустых состояниях', { status: ['refining', 'уточнение'], ac: [1, 3], epic: 'Дизайн-система', who: ['A:О'] }),
+    T('GNE-30', 'Тема по prefers-color-scheme', { status: ['inbox', 'входящие'], neutral: true }),
+  ] },
+  { id: 'work', name: 'В работе', sub: 'Исполнители работают', cards: [
+    T('GNE-26', 'Колонки и карточки доски на новых токенах', { status: ['in_progress', 'в работе'], ac: [2, 5], epic: 'Дизайн-система', who: ['A:Э', 'A:Э'], pulse: true }),
+    T('GNE-22', 'Сброс прокрутки в списке задач', { status: ['changes_requested', 'доработка'], hot: true, ac: [3, 4], who: ['A:Э'], pulse: true }),
+    T('GNE-19', 'Экспорт заказов в CSV', { status: ['in_progress', 'в работе'], ac: [1, 4], note: '🔒 Ждёт GNE-18', who: ['H:ГШ'] }),
+  ] },
+  { id: 'check', name: 'Проверка', sub: 'Ревью · одобрено', cards: [
+    T('GNE-20', 'Контракт frontmatter для docs', { status: ['review', 'ревью'], ac: [3, 3], pr: 'PR #64 · CI идёт', who: ['A:Р'], pulse: true }),
+    T('GNE-23', 'Перерисовать лого для README', { status: ['review', 'ревью'], ac: [2, 2], pr: 'PR #66 · CI ✓', who: ['A:Р', 'A:Э'] }),
+    T('GNE-17', 'Бенчмарк поиска контекста', { status: ['approved', 'одобрено'], ac: [4, 4], pr: 'PR #61 · CI ✓', note: 'Ждёт слияния', ok: true, who: ['H:ГШ'] }),
+  ] },
+];
+
+const arcs = '<svg class="pulse" viewBox="0 0 26 26" aria-label="Агент работает"><g transform="translate(26 26)"><path d="M-26 0A26 26 0 0 1 0-26V-19A19 19 0 0 0-19 0Z"/><path d="M-16 0A16 16 0 0 1 0-16V-10A10 10 0 0 0-10 0Z"/><path d="M-7 0A7 7 0 0 1 0-7V0Z"/></g></svg>';
+const who = (list) => list.length ? `<span class="who">${list.map((w) => { const [k, l] = w.split(':'); return `<span class="${k === 'A' ? 'agent' : 'human'}">${l}</span>`; }).join('')}</span>` : '';
+const ac = ([d, t]) => t ? `<div class="ac"><span class="seg">${Array.from({ length: t }, (_, i) => `<i class="${i < d ? 'on' : ''}"></i>`).join('')}</span><b>${d}/${t}</b></div>` : '';
+
+function card(c, lane) {
+  const tags = [];
+  if (c.hot) tags.push(`<span class="tag hot">срочно</span>`);
+  if (c.status) tags.push(`<span class="tag ${c.neutral ? 'neutral' : c.ok ? 'ok' : ''}">${c.status[1]}</span>`);
+  if (c.neutral && !c.status) tags.push('');
+  return `<button class="card ${c.pulse ? 'has-pulse' : ''}" type="button">
+    ${c.pulse ? arcs : ''}
+    <span class="row"><span class="id">${c.id}</span>${tags.join('')}</span>
+    <h3>${c.title}</h3>
+    ${c.ask ? `<p class="ask">${c.ask}</p><span class="actions"><span class="pill solid">Принять</span><span class="pill">Ответить</span></span>` : ''}
+    ${c.note ? `<p class="note">${c.note}</p>` : ''}
+    ${c.pr ? `<span class="row"><span class="tag neutral">${c.pr}</span></span>` : ''}
+    ${ac(c.ac)}
+    ${(c.epic || c.who.length) ? `<span class="foot">${c.epic ? `<span class="epic">↳ ${c.epic}</span>` : ''}${who(c.who)}</span>` : ''}
+  </button>`;
+}
+document.getElementById('board').innerHTML = lanes.map((l) => `<section class="lane ${l.cls || ''}" aria-label="${l.name}">
+    <div class="lane-head"><span class="count">${String(l.cards.length).padStart(2, '0')}</span><div><h2>${l.name}</h2><small>${l.sub}</small></div></div>
+    <div class="stack">${l.cards.map((c) => card(c, l)).join('')}</div>
+  </section>`).join('') + `<section class="lane strip" aria-label="Готово"><span class="count">38</span><span class="v">Готово</span></section>`;
+
+// Character states: which animation plays and what Genie says.
+const S = {
+  think: ['Думает над GNE-24: план перехода на токены', 'Агент-исполнитель · шаг 3 из 5 · 12 минут'],
+  sleep: ['Все спокойно. Genie ждёт новых задач', 'Нет активных агентов · последняя задача закрыта 3 часа назад'],
+  wake: ['Проснулся: взял GNE-27 из очереди', 'Запускаю исполнителя · рабочая область готова'],
+  surprise: ['Эй! GNE-22 вернули на доработку', 'Ревьюер оставил 2 замечания · нужна ваша помощь'],
+};
+const img = document.getElementById('character');
+document.getElementById('states').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#states button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  img.src = `../character/genie-${b.dataset.s}.svg`;
+  document.getElementById('say').textContent = S[b.dataset.s][0];
+  document.getElementById('sub').textContent = S[b.dataset.s][1];
+});
+const toggleTheme = () => { const p = document.documentElement.dataset.theme !== 'paper'; document.documentElement.dataset.theme = p ? 'paper' : 'ink'; document.getElementById('logo').src = p ? '../logo-paper.svg' : '../logo-ink.svg'; };
+document.getElementById('theme').addEventListener('click', toggleTheme);
+document.addEventListener('keydown', (e) => { if (e.key === 't' && !e.metaKey && !e.ctrlKey) toggleTheme(); });
+</script>
+</body>
+</html>

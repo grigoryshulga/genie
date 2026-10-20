@@ -133,6 +133,19 @@ Rules:
 
 Suggested product mapping, not yet decided: thinking for an agent that is planning or running, sleeping for an idle project, waking for resuming work or a new assignment, surprise for something that needs the owner's attention. Keep the character out of dense lists and toolbars; it belongs in empty states, onboarding, loading screens, and status panels.
 
+## Concept: task board
+
+[`concepts/board.html`](concepts/board.html) applies the system to the task board with sample data, deliberately without reusing the current layout. It is a concept for discussion, not product code. Open it from a checkout; the theme button switches ink and paper, and the demo control under the headline plays each character state.
+
+What it tries:
+
+- **The headline is the project's state.** An Unbounded slogan ("3 decisions are waiting for you") with the orange full stop, over the arcs motif, replaces a plain page title.
+- **Orange means "your move".** The owner-decision lane is pulled to the front and filled orange, with answer buttons on its cards. The create-task button is secondary on purpose, so orange stays reserved for the user's turn.
+- **Three stages instead of eight columns.** Preparation (inbox, draft, refining, ready), work (in progress, changes requested), and review (review, approved) are lanes; each card keeps its exact status as a tag. Done is a quiet pill strip. This is a proposal to confirm, since dragging between lanes would then have to pick a default status.
+- **Cards are paper sheets on the ink canvas** (ink sheets on paper in the light theme). Acceptance criteria are a segmented bar, agents are rounded squares and people are circles, and concentric arcs pulse on a card while an agent is working on it.
+- **The character reports status.** Thinking while an agent works, sleeping when idle, waking when a task is picked up, surprised when a task is sent back.
+- **Navigation is a top pill rail**, not a sidebar.
+
 ## Open decisions
 
 1. **Monospace.** The board defines no mono face. Task IDs and code keep Geist Mono for now. Alternatives: JetBrains Mono, or tabular Manrope for IDs only.
