@@ -24,3 +24,9 @@ all of them:
 - `docs/assets/hero.svg` — GitHub README hero, mark inside the 44-pixel tile.
 - `web/src/shared/ui/icons.tsx` — `Icon.mark` for the sidebar and public pages,
   stroked with `currentColor`.
+
+## Ink and paper design system
+
+The next visual language is specified in [design-system.md](design-system.md), with principles in [principles.md](principles.md), a component specimen in [components.html](components.html), and the redesign plan in [handoff/README.md](handoff/README.md). Its tokens and components live in `web/src/shared/ui/g-tokens.css` and `web/src/shared/ui/components.css`; they are not imported by the application until the redesign foundation tasks (epic GNE-40) wire them in.
+
+`web/src/shared/ui/tokens.css` is the current application token file (GNE-25) and stays in place until the redesign replaces it. The draft logo lockups (`logo-*.svg`) are exploratory; the current logo is `genie-mark.svg` until the owner supplies the final vector.
