@@ -1,5 +1,5 @@
 import { type LiveState, liveTeam, type TeamSpecView, TemplateGraph, useAgentConfig } from "@/entities/agent-config";
-import { displayName } from "@/entities/member";
+import { displayName, ROLE_TITLE_RU } from "@/entities/member";
 import type { TeamDetail } from "@/entities/team";
 
 /** What the team is busy with, in one line: who works, who waits for whom. */
@@ -47,6 +47,19 @@ export function TeamScheme({ team, open, onToggle }: { team: TeamDetail; open: b
           members={spec.members.map((m) => ({ key: m.key, role: m.role, name: displayName(m.name) }))}
           relations={spec.relations}
           roles={cfg?.roles ?? []}
+          cards={Object.fromEntries(spec.members.flatMap((sm) => {
+            const member = team.members.find((m) => m.name === sm.name);
+            if (!member) return [];
+            const state = live[sm.key]?.state;
+            const session = active ? team.sessions?.[member.name] : undefined;
+            const activity = state === "stopped" ? "Агент остановлен"
+              : member.state === "paused" ? "На паузе"
+              : state === "working" && session?.tool ? `${session.tool.name}: ${session.tool.args}`
+              : state === "waiting" ? live[sm.key].note ?? "Ожидает передачи работы"
+              : member.status && member.status !== "starting" ? member.status
+              : state === "working" ? "Выполняет задачу" : state === "error" ? "Ошибка агента" : "Ожидает поручения";
+            return [[sm.key, { href: `/team/${encodeURIComponent(team.id)}/${encodeURIComponent(member.name)}`, role: ROLE_TITLE_RU[sm.role] ?? cfg?.roles.find((r) => r.id === sm.role)?.title ?? sm.role, activity }]];
+          }))}
           live={live}
           pending={pending}
           done={done}
