@@ -1,0 +1,45 @@
+/* ------------------------------------------------------------ task list filters and board filters */
+.search.wide { width: 360px; }
+.filters { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); min-height: 44px; padding: var(--space-4) var(--space-14); box-sizing: border-box; border-bottom: 1px solid var(--line); }
+.filters:not(.board-filters) { flex-wrap: nowrap; overflow-x: auto; }
+.page-toolbar { height: auto; min-height: 56px; padding: var(--space-4) var(--space-14); box-sizing: border-box; }
+.fmenu { position: relative; flex: none; }
+.fbtn { display: inline-flex; align-items: center; gap: var(--space-3); height: 28px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: none; color: var(--text); font-size: var(--font-size-small); white-space: nowrap; }
+.fbtn .k { color: var(--muted); }
+.fbtn svg { color: var(--muted); flex: none; }
+.fbtn:hover, .fbtn.open { background: var(--bg-active); }
+.fbtn.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
+.fbtn.on svg { color: var(--accent-text); }
+.fbtn.select { position: relative; }
+.fbtn.select select { field-sizing: content; appearance: none; border: 0; background: none; color: inherit; font: inherit; padding: 0 var(--space-1); max-width: 220px; outline: 0; cursor: pointer; }
+.fbtn.select select option { background: var(--bg-card); color: var(--text); }
+/* Fixed, so the popover leaves the filter toolbar's horizontal scroll box, which
+   would otherwise clip it. FilterMenu sets --fpop-top/left/max from the button. */
+.fpop { position: fixed; top: var(--fpop-top, -9999px); left: var(--fpop-left, 8px); z-index: 20; min-width: 240px; max-width: 340px; max-height: var(--fpop-max, 60vh); overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: var(--space-3); border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-card); box-shadow: var(--shadow); }
+.fpop .fhead { padding: var(--space-3) var(--space-4) var(--space-2); font-size: var(--font-size-caption); color: var(--muted); }
+.fpop .seg.full { margin: 2px 2px 6px; }
+.fpop .seg.full button { flex: 1; justify-content: center; }
+.fopt { display: flex; align-items: center; gap: 9px; min-height: 30px; padding: 0 var(--space-4); border-radius: var(--radius-sm); font-size: var(--font-size-label); color: var(--text); cursor: pointer; }
+.fopt:hover { background: var(--bg-hover); }
+.fopt input { margin: 0; accent-color: var(--accent); }
+.fopt .grow { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fopt .hint { font-size: var(--font-size-small); color: var(--muted); white-space: nowrap; }
+.fsel { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--font-size-small); color: var(--muted); }
+.fsel select { field-sizing: content; height: 28px; padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: 7px; background: var(--bg-panel); color: var(--text); font-size: var(--font-size-small); }
+.btn.sm { height: var(--control-sm); padding: 0 var(--space-4); font-size: var(--font-size-small); }
+.row .tags .ac { font-size: var(--font-size-caption); color: var(--muted); white-space: nowrap; }
+.row .tags .ac.full { color: var(--green); }
+.m-nav a { flex: none; display: inline-flex; align-items: center; height: 34px; padding: 0 var(--space-6); border-radius: 17px; border: 1px solid var(--line); color: var(--text-2); font-size: var(--font-size-body); text-decoration: none; }
+.m-nav a.on { background: var(--bg-active); border-color: var(--bg-active); color: var(--text); }
+.m-nav a.amber { background: var(--amber-bg); border-color: var(--amber-line); color: var(--amber); }
+.app.with-detail .main .search.wide { width: 220px; }
+.app.with-detail .main .fsel { display: none; }
+@media (max-width: 900px) {
+  .search.wide { width: 100%; }
+  .m-nav { padding-top: 12px; }
+  .filters { flex-wrap: nowrap; overflow-x: auto; padding: var(--space-4) var(--space-8); }
+  .filters.board-filters { flex-wrap: wrap; }
+  .page-toolbar { padding: var(--space-4) var(--space-8); }
+  .fpop { position: fixed; top: auto; left: 0; right: 0; bottom: 0; max-width: none; max-height: 70vh; border-radius: 16px 16px 0 0; }
+  .fbtn { min-height: 36px; }
+}

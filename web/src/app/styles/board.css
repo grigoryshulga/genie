@@ -1,0 +1,50 @@
+/* ------------------------------------------------------------ board */
+.board { flex: 1; min-height: 0; display: flex; gap: var(--space-6); align-items: stretch; padding: var(--space-8) var(--space-14) var(--space-10); overflow-x: auto; overflow-y: hidden; }
+.col { width: 268px; flex: none; display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-sunken); border: 1px solid transparent; transition: width 180ms ease, padding 180ms ease, border-color 180ms ease, background-color 180ms ease; }
+.col[data-column="inbox"] { --column-tint: var(--status-inbox); }
+.col[data-column="prep"] { --column-tint: var(--status-refining); }
+.col[data-column="ready"] { --column-tint: var(--status-ready); }
+.col[data-column="in_progress"] { --column-tint: var(--status-in-progress); }
+.col[data-column="review"] { --column-tint: var(--status-review); }
+.col[data-column="approved"] { --column-tint: var(--status-approved); }
+.col[data-column="needs_owner"] { --column-tint: var(--status-needs-owner); }
+.col[data-column="done"] { --column-tint: var(--status-done); }
+.col.owner { background: var(--amber-bg); border-color: var(--amber-line); }
+.col.over { background: var(--accent-soft); border-color: var(--accent); }
+.col.collapsed { width: 48px; padding: var(--space-3); border-color: color-mix(in srgb, var(--column-tint) 24%, transparent); background: color-mix(in srgb, var(--column-tint) 7%, var(--bg-sunken)); }
+.col.collapsed.over { border-color: var(--column-tint); background: color-mix(in srgb, var(--column-tint) 16%, var(--bg-sunken)); }
+.col-head { display: flex; align-items: center; flex: none; width: 100%; height: 28px; gap: var(--space-4); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); text-align: left; font-size: var(--font-size-label); font-weight: 600; }
+.col-head:hover { color: var(--text); background: color-mix(in srgb, var(--column-tint) 7%, transparent); }
+.col-head .col-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-head .n { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.col-head .col-collapse { flex: none; margin-left: auto; color: var(--muted); transform: rotate(180deg); }
+.col-head:hover .col-collapse { color: var(--column-tint); }
+.col.collapsed .col-compact { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 9px; width: 100%; padding: var(--space-4) 0; border: 0; border-radius: var(--radius); background: color-mix(in srgb, var(--column-tint) 10%, var(--bg-sunken)); color: var(--column-tint); }
+.col.collapsed .col-compact:hover { background: color-mix(in srgb, var(--column-tint) 17%, var(--bg-sunken)); }
+.col-count { display: grid; place-items: center; min-width: 27px; height: 22px; padding: 0 5px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--column-tint) 22%, var(--bg-sunken)); font-size: var(--font-size-meta); font-weight: 600; font-variant-numeric: tabular-nums; }
+.col .v { writing-mode: vertical-rl; white-space: nowrap; font-size: var(--font-size-caption); line-height: 1; font-weight: 600; letter-spacing: 0.01em; }
+.col-compact .col-open { flex: none; color: color-mix(in srgb, var(--column-tint) 72%, var(--muted)); transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .col { transition: none; } }
+.col .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-4); }
+.col .drop-here { flex: 1; min-height: 80px; border: 1px dashed var(--line-strong); border-radius: 9px; display: grid; place-items: center; color: var(--muted); font-size: var(--font-size-small); }
+/* every card is the same height: the title and the note are cut to two lines, the full text is in the task */
+.card { display: flex; flex-direction: column; gap: var(--space-4); flex: none; width: 100%; height: 158px; overflow: hidden; padding: var(--space-6); border-radius: 10px; border: 1px solid var(--line); background: var(--bg-card); color: var(--text); text-align: left; cursor: grab; }
+.card:hover { border-color: var(--line-strong); }
+.card.sel { border-color: var(--accent); background: var(--accent-soft); }
+.card.owner { border-color: var(--amber-line); }
+.card.dragging { opacity: 0.4; }
+.card .meta { display: flex; align-items: center; gap: 7px; flex: none; height: 16px; font-size: var(--font-size-meta); color: var(--muted); white-space: nowrap; }
+.card .t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: none; height: 36px; font-size: var(--font-size-body); line-height: 18px; }
+.card .note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: none; height: 34px; font-size: var(--font-size-small); line-height: 17px; color: var(--muted); }
+.card .note.q { color: var(--amber); }
+.card .foot { display: flex; align-items: center; gap: var(--space-3); flex: none; height: 22px; margin-top: auto; }
+.card .foot > * { flex-shrink: 0; }
+.card .foot .labels { flex-wrap: nowrap; flex-shrink: 1; min-width: 0; overflow: hidden; }
+.card .foot .more, .card .foot .ac { font-size: var(--font-size-caption); color: var(--muted); white-space: nowrap; }
+.urgent-tag { font-size: 10.5px; font-weight: 600; line-height: 16px; padding: 0 var(--space-3); border-radius: var(--radius-xs); background: var(--amber); color: var(--amber-foreground); }
+.field { display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--font-size-label); color: var(--text-2); }
+.field select, .field input, .field textarea { height: var(--control-input); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-panel); color: var(--text); padding: 0 var(--space-6); font-size: var(--font-size-body); outline: 0; }
+.field textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; line-height: 1.5; }
+.field select:focus, .field input:focus, .field textarea:focus { border-color: var(--accent); }
+.member-line { display: flex; align-items: center; gap: 9px; font-size: var(--font-size-label); }
+.member-line .st { margin-left: auto; color: var(--muted); }

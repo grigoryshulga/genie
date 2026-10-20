@@ -1,0 +1,100 @@
+/* ------------------------------------------------------------ epics */
+.epic-chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); font: 11px var(--mono); white-space: nowrap; text-decoration: none; }
+a.epic-chip:hover { border-color: var(--violet); color: var(--text); }
+.epic-mark { display: inline-flex; align-items: center; gap: var(--space-2); margin-right: 7px; font-size: var(--font-size-caption); color: var(--violet); vertical-align: -1px; }
+.row .tags { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.card .foot .epic-chip { height: 18px; }
+.filter-chip { display: inline-flex; align-items: center; gap: var(--space-3); height: 24px; padding: 0 3px 0 var(--space-4); border: 1px solid var(--accent-line); border-radius: var(--radius-lg); background: var(--accent-soft); font-size: var(--font-size-small); white-space: nowrap; }
+.filter-chip a { color: var(--accent-text); }
+.filter-chip button { width: 18px; height: 18px; border: 0; border-radius: 9px; background: none; color: var(--accent-text); display: grid; place-items: center; padding: 0; }
+.filter-chip button:hover { background: var(--bg-active); }
+
+.epic-progress { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.epic-progress .segs { display: flex; gap: 3px; }
+.epic-progress .segs span { flex: 1; height: 6px; border-radius: 3px; min-width: 3px; }
+.epic-progress.big .segs span { height: 8px; }
+.epic-progress .legend { display: flex; align-items: center; gap: var(--space-2) var(--space-6); flex-wrap: wrap; font-size: var(--font-size-small); color: var(--muted); }
+.epic-progress .legend b { font-weight: 400; color: var(--text); }
+.epic-progress .legend span, .epic-progress .legend-list > span { display: inline-flex; align-items: center; gap: var(--space-3); }
+.epic-progress i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.epic-progress .legend-list { display: flex; flex-direction: column; gap: var(--space-3); font-size: var(--font-size-small); color: var(--text-2); }
+
+.epic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: var(--space-8); padding: var(--space-12) var(--space-14); align-content: start; }
+.epic-card { display: flex; flex-direction: column; gap: var(--space-6); padding: 18px var(--space-10); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-panel); color: var(--text); text-decoration: none; min-width: 0; }
+.epic-card:hover { border-color: var(--line-strong); color: var(--text); }
+.epic-card.empty-epic { border-style: dashed; border-color: var(--line-strong); background: var(--bg-group); }
+.epic-card.closed { background: var(--bg-group); border-color: var(--line); color: var(--text-2); }
+.epic-card .meta { display: flex; align-items: center; gap: var(--space-4); font-size: var(--font-size-small); color: var(--muted); }
+.epic-card .meta .prio { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-3); }
+.epic-card .t { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.epic-card .goal { color: var(--text-2); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.epic-card .waiting { display: flex; align-items: center; gap: var(--space-5); padding: var(--space-5) var(--space-6); border-radius: var(--radius); background: var(--bg-raised); font-size: var(--font-size-small); color: var(--text-2); }
+.epic-card .foot { display: flex; align-items: center; gap: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: var(--font-size-small); color: var(--muted); }
+.epic-card .foot > span { display: inline-flex; align-items: center; gap: var(--space-3); }
+.epic-card.new { align-items: center; justify-content: center; gap: var(--space-4); min-height: 200px; border: 1px dashed var(--line-strong); background: transparent; color: var(--muted); font: inherit; text-align: center; cursor: pointer; }
+.epic-card.new b { font-weight: 400; color: var(--text-2); }
+.epic-card.new span { max-width: 320px; font-size: var(--font-size-small); line-height: 1.5; }
+.epic-card.new:hover { border-color: var(--accent); color: var(--text-2); }
+
+.epic-page .topbar .icon, .epic-page .topbar svg { flex: none; }
+.epic-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.epic-main { overflow-y: auto; padding: var(--space-14) 40px 56px; display: flex; flex-direction: column; gap: var(--space-12); }
+.epic-main .sec .criteria { max-width: var(--measure); }
+.epic-head { display: flex; flex-direction: column; gap: var(--space-4); }
+.epic-head .kind { display: flex; align-items: center; gap: 7px; font-size: var(--font-size-small); color: var(--violet); }
+.epic-head h2.title { margin: 0; font-size: var(--font-size-page); font-weight: 600; line-height: 1.25; outline: none; border-radius: var(--radius-xs); }
+.epic-head h2.title:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
+.epic-aside { border-left: 1px solid var(--line); background: var(--bg-sunken); padding: var(--space-14) var(--space-12) var(--space-16); display: flex; flex-direction: column; gap: 22px; overflow-y: auto; }
+.epic-props { grid-template-columns: 96px minmax(0, 1fr); }
+.epic-tasks { border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.etask { display: grid; grid-template-columns: 16px 48px minmax(0, 1fr) 64px 124px; align-items: center; gap: var(--space-6); width: 100%; min-height: 42px; padding: 0 14px; border: 0; border-bottom: 1px solid var(--line-soft); background: none; color: var(--text); font: inherit; text-align: left; }
+.etask:hover { background: var(--bg-hover); }
+.etask .id { font: 12px var(--mono); color: var(--muted); }
+.etask .tt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.etask .tt .q { color: var(--amber); margin-left: 8px; font-size: var(--font-size-small); }
+.etask .tt .w { color: var(--muted); margin-left: 8px; font-size: var(--font-size-small); }
+.etask .st { font-size: var(--font-size-small); color: var(--muted); text-align: right; }
+.etask .st.amber { color: var(--amber); }
+.etask.with-cost { grid-template-columns: 16px 48px minmax(0, 1fr) 64px 64px 124px; }
+.etask .cost { font-size: var(--font-size-small); color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+.etask.closed { color: var(--muted); }
+.etask.closed .tt { text-decoration: line-through; }
+.etask-add { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; padding: var(--space-3) var(--space-4); background: var(--bg-group); }
+.etask-add select { height: 30px; max-width: 100%; padding: 0 var(--space-4); border: 1px solid var(--line-strong); border-radius: 7px; background: var(--bg-panel); color: var(--text-2); font-size: var(--font-size-small); }
+.epic-artifacts { display: flex; flex-direction: column; gap: var(--space-4); }
+.artifact.tall { height: auto; min-height: 44px; padding: var(--space-3) var(--space-6); }
+.artifact .txt { display: flex; flex-direction: column; min-width: 0; }
+.artifact.tall .who { margin-left: 0; white-space: normal; }
+.artifact.small { height: 32px; padding: 0 var(--space-5); gap: var(--space-4); }
+.sec .hint { margin: 8px 0 0; font-size: var(--font-size-meta); line-height: 1.5; color: var(--muted); }
+
+.epic-box { border: 1px solid var(--line); background: var(--bg-panel); border-radius: 10px; padding: 14px var(--space-8); display: flex; flex-direction: column; gap: var(--space-5); }
+.epic-box.link { flex-direction: row; align-items: center; gap: var(--space-5); color: var(--text-2); font-size: var(--font-size-label); }
+.epic-box.link:hover { border-color: var(--violet); color: var(--text); }
+.epic-box .h { display: flex; align-items: center; gap: var(--space-4); font-size: var(--font-size-label); min-width: 0; }
+.epic-box .kind { color: var(--violet); }
+.epic-box .nm { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.epic-box .mini { margin-left: auto; display: flex; align-items: center; gap: var(--space-4); font-size: var(--font-size-small); color: var(--muted); white-space: nowrap; }
+.epic-box .mini .epic-progress { width: 72px; }
+.epic-box .mini .segs span { height: 4px; }
+.epic-box .md p:last-child { margin-bottom: 0; }
+.epic-box .shared { display: flex; flex-direction: column; gap: var(--space-3); }
+.epic-box .lbl { font-size: var(--font-size-small); font-weight: 500; color: var(--muted); }
+.epic-box .files { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.epic-box .files .artifact { border-color: var(--line); max-width: 100%; }
+
+@media (max-width: 900px) {
+  .row .tags { display: none; }
+  .epic-grid { grid-template-columns: 1fr; padding: var(--space-8); }
+  .epic-body { grid-template-columns: 1fr; }
+  .epic-main { padding: var(--space-8); overflow: visible; }
+  .epic-aside { border-left: 0; border-top: 1px solid var(--line); padding: var(--space-8); overflow: visible; }
+  .etask { grid-template-columns: 16px minmax(0, 1fr) auto; padding: var(--space-4) 14px; }
+  .etask.with-cost { grid-template-columns: 16px minmax(0, 1fr) auto auto; }
+  .etask .id, .etask .tm { display: none; }
+  .etask .tt { white-space: normal; }
+  .epic-box .mini { display: none; }
+}
+.props select { min-width: 0; text-overflow: ellipsis; }
+.props span:has(> select) { min-width: 0; }
+.props span:has(> select) select { flex: 1 1 auto; width: 0; max-width: max-content; }
