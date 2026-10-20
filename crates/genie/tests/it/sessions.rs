@@ -747,7 +747,7 @@ async fn at_the_console_mail_reaches_the_idle_session_by_itself() {
         .env("PI_OFFLINE", "1")
         .env("PI_SKIP_VERSION_CHECK", "1")
         .env("PI_TELEMETRY", "0")
-        .env("GENIE_BUS_POLL_MS", "300")
+        .env("GENIE_BUS_POLL_MS", "20")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()

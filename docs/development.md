@@ -66,7 +66,8 @@ pi --version
 The live-session tests skip locally when `pi` is absent and fail on CI if it is missing.
 
 With a warm build, `cargo nextest run --workspace --lib --bins --tests --test-threads 8` runs
-all Rust test binaries concurrently. `cargo test` remains the CI command. Timer-sensitive tests
+all Rust test binaries concurrently; CI uses nextest 0.9.146 to report individual test durations.
+`cargo test` remains available. Timer-sensitive tests
 use a per-application manual clock and completed scheduler/reconciliation passes; real Pi-Bolt,
 MCP, Git and sandbox checks remain in the full suite. Keep subprocess and HTTP I/O timeouts real:
 automatically advancing all Tokio timers can turn ordinary I/O into artificial timeouts.

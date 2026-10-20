@@ -23,6 +23,7 @@ use genie_core::env::caps::{Limits, ViewMode};
 use genie_core::env::spec::{NetworkMode, Probe};
 
 const BUSYBOX: &str = "docker.io/library/busybox:latest";
+const BUSYBOX_STATIC: &str = "docker.io/library/busybox:musl";
 const DEBIAN: &str = "docker.io/library/debian:bookworm-slim";
 
 /// Skips a test unless the Podman tests are enabled. The note goes to stderr, where skips are reported.
@@ -113,6 +114,13 @@ impl Lab {
 impl Drop for Lab {
     fn drop(&mut self) {
         for ws in self.workspaces.borrow().iter() {
+            // Tests assert normal stop/remove behavior before teardown. Leftover fixture
+            // processes need no shutdown grace period (pod rm otherwise allows 10 seconds).
+            let _ = Command::new("podman")
+                .args(["pod", "rm", "--force", "--ignore", "--time", "0", &format!("genie-{ws}")])
+                .stdin(Stdio::null())
+                .output();
+            // Also remove labelled step containers that are not part of the pod.
             let _ = self.runner.remove(ws);
         }
         for image in self.images.borrow().iter() {
@@ -370,20 +378,33 @@ fn a_started_process_becomes_ready_on_a_tcp_listener_and_its_pid_is_written() {
         return;
     }
     let lab = Lab::new();
-    // netcat gives the base a listener; bash in the base makes the tcp probe use /dev/tcp.
-    let base = lab
-        .runner
-        .ensure_base(&BaseSpec { image: Some(DEBIAN.into()), packages: vec!["netcat-openbsd".into()], containerfile: None, tag: lab.tag() })
-        .expect("building the base with netcat");
+    let base = lab.pulled(DEBIAN);
     let ws = lab.workspace("probes");
     let spec = lab.spec(&ws, &base, Vec::new(), NetworkMode::None);
     let run_dir = spec.run_dir.clone();
+    // Extract a static listener instead of building a Debian image through APT.
+    // Debian still supplies real bash for /dev/tcp, with no curl/wget for the HTTP fallback.
+    let tools = lab.pulled(BUSYBOX_STATIC);
+    fs::create_dir_all(&run_dir).unwrap();
+    let busybox = run_dir.join("busybox");
+    let copied = Command::new("podman")
+        .args(["run", "--rm", "--network", "none", &tools.reference, "cat", "/bin/busybox"])
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&busybox).unwrap())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("extracting the static listener");
+    assert!(copied.status.success(), "{}", String::from_utf8_lossy(&copied.stderr));
+    fs::set_permissions(&busybox, fs::Permissions::from_mode(0o755)).unwrap();
     lab.runner.create(&spec).expect("creating the workspace");
 
-    let tcp = Probe { command: None, http: None, tcp: Some("127.0.0.1:8080".into()), timeout_secs: Some(5) };
+    // These assertions check verdicts, not latency. Allow real Podman I/O under parallel
+    // storage load; the separate step-timeout test retains its real five-second deadline.
+    let tcp = Probe { command: None, http: None, tcp: Some("127.0.0.1:8080".into()), timeout_secs: Some(30) };
     assert!(!lab.runner.probe(&ws, &tcp).unwrap(), "nothing listens before the process starts");
 
-    let listener = "while true; do nc -l -p 8080 </dev/null >/dev/null 2>&1; done";
+    // Keep one listening socket across probes instead of repeatedly rebinding the port.
+    let listener = "/opt/genie-run/busybox nc -lk -p 8080 -e /opt/genie-run/busybox cat";
     lab.runner
         .start_process(&ws, "listener", &Exec { cwd: "/".into(), command: listener.into(), env: BTreeMap::new(), timeout: None, log: None })
         .expect("starting the listener");
@@ -392,11 +413,14 @@ fn a_started_process_becomes_ready_on_a_tcp_listener_and_its_pid_is_written() {
     assert!(pid.trim().parse::<u32>().is_ok(), "a pid: {pid:?}");
     eventually("the tcp probe", || lab.runner.probe(&ws, &tcp));
 
-    let command = Probe { command: Some("test -s /opt/genie-run/listener.pid".into()), http: None, tcp: None, timeout_secs: Some(5) };
-    assert!(lab.runner.probe(&ws, &command).unwrap(), "a command probe that passes is ready");
+    let command = Probe { command: Some("test -s /opt/genie-run/listener.pid".into()), http: None, tcp: None, timeout_secs: Some(30) };
+    let started = Instant::now();
+    assert!(lab.runner.probe(&ws, &command).unwrap(), "a command probe that passes is ready (I/O took {:?})", started.elapsed());
     let failing = Probe { command: Some("false".into()), http: None, tcp: None, timeout_secs: Some(5) };
     assert!(!lab.runner.probe(&ws, &failing).unwrap(), "a command that exits non-zero is not ready");
-    let http = Probe { command: None, http: Some("http://127.0.0.1:8080/".into()), tcp: None, timeout_secs: Some(5) };
+    let clients = Probe { command: Some("command -v curl || command -v wget".into()), ..failing };
+    assert!(!lab.runner.probe(&ws, &clients).unwrap(), "no HTTP client is available to bypass the TCP fallback");
+    let http = Probe { command: None, http: Some("http://127.0.0.1:8080/".into()), tcp: None, timeout_secs: Some(30) };
     assert!(lab.runner.probe(&ws, &http).unwrap(), "an http probe falls back to the tcp check where no curl or wget is");
 }
 

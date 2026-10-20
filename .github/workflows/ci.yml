@@ -118,6 +118,10 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # mold links the test binaries several times faster than the default linker.
       - uses: rui314/setup-mold@v1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.146
+          fallback: none
       # The agent sandbox: bubblewrap, with the unprivileged user namespaces Ubuntu restricts by default.
       # Rootless Podman for the environment runner tests.
       - name: Sandbox
@@ -133,11 +137,9 @@ jobs:
           GENIE_REQUIRE_SANDBOX: 1
           GENIE_TEST_SANDBOX: bwrap
           GENIE_TEST_PODMAN: 1
-          # Most tests wait on agent processes and timers, not the CPU: twice the runner's 4 cores
-          # (measured: 18 s → 15 s; 16 threads starts to starve the timing-sensitive tests).
-          RUST_TEST_THREADS: 8
-        run: cargo test --workspace --lib --bins --tests
-      # `cargo test` writes the API types for the web from the Rust structs (ts-rs).
+        # Run all binaries concurrently and report individual test durations.
+        run: cargo nextest run --workspace --lib --bins --tests --test-threads 8
+      # Rust tests write the API types for the web from the Rust structs (ts-rs).
       - name: API types for the web are committed
         run: |
           stale="$(git status --porcelain -- web/src/shared/api/generated)"
