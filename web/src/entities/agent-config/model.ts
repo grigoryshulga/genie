@@ -484,7 +484,7 @@ export interface GraphNode {
 export interface GraphEdge {
   from: string;
   to: string;
-  type: RelKind;
+  type: RelKind | "manages";
   on?: string;
   note?: string;
   /** SVG path. */
@@ -495,9 +495,9 @@ export interface GraphEdge {
 }
 
 export const NODE_H = 88;
-const ORCH_W = 150;
+const ORCH_W = 240;
 
-/** Handoff columns run right to left; returns and consultations never advance a stage. */
+/** Handoff columns run left to right; returns and consultations never advance a stage. */
 export function layoutTeam(
   members: { key: string; label: string; sub: string }[],
   relations: Relation[],
@@ -521,20 +521,21 @@ export function layoutTeam(
   }
   const count = Math.max(1, ...[...ranks.values()].map((r) => r + 1));
   const width = Math.max(420, count * (nodeW + 100) + 40);
-  const x = (rank: number) => width - 20 - nodeW / 2 - rank * (nodeW + 100);
+  const x = (rank: number) => 20 + nodeW / 2 + rank * (nodeW + 100);
   const rows = new Map<number, number>();
   const nodes: GraphNode[] = [
-    { key: "orchestrator", label: "Оркестратор", sub: "голос команды", x: width / 2, y: 54, orchestrator: true },
+    { key: "project-manager", label: "Менеджер проекта", sub: "цели, контекст и приоритеты", x: width / 2, y: 54, orchestrator: true },
+    { key: "orchestrator", label: "Менеджер задачи", sub: "команда, выполнение и приёмка", x: width / 2, y: 178, orchestrator: true },
     ...members.map((m) => {
       const rank = ranks.get(m.key)!;
       const row = rows.get(rank) ?? 0;
       rows.set(rank, row + 1);
-      return { ...m, x: x(rank), y: 200 + row * 140, flagged: problems.some((p) => p.includes(`\`${m.key}\``)) };
+      return { ...m, x: x(rank), y: 324 + row * 140, flagged: problems.some((p) => p.includes(`\`${m.key}\``)) };
     }),
   ];
   const stages = Array.from({ length: count }, (_, rank) => ({ x: x(rank), label: `Этап ${rank + 1}` }));
   const at = new Map(nodes.map((n) => [n.key, n]));
-  const edges: GraphEdge[] = [];
+  const edges: GraphEdge[] = [{ from: "project-manager", to: "orchestrator", type: "manages", d: `M ${width / 2} 98 V 134`, lx: width / 2, ly: 116 }];
   for (const r of relations) for (const to of r.to) {
     const a = at.get(r.from);
     const b = at.get(to);
@@ -563,13 +564,13 @@ export function layoutTeam(
       ly = (y1 + y2) / 2;
       // Route long links above the intervening cards.
       if (Math.abs(a.x - b.x) > nodeW + 101) {
-        ly = 140;
+        ly = 264;
         d = `M ${x1} ${y1} H ${x1 + direction * 24} V ${ly} H ${x2 - direction * 24} V ${y2} H ${x2}`;
       } else d = `M ${x1} ${y1} H ${lx} V ${y2} H ${x2}`;
     }
     edges.push({ from: r.from, to, type: r.type, on: r.on, note: r.note, d, lx, ly });
   }
-  return { width, height: 270 + Math.max(0, ...[...rows.values()].map((r) => r - 1)) * 140, nodeW, nodes, edges, stages };
+  return { width, height: 394 + Math.max(0, ...[...rows.values()].map((r) => r - 1)) * 140, nodeW, nodes, edges, stages };
 }
 
 // ------------------------------------------------------------------ what a template needs

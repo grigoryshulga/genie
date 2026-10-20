@@ -10,7 +10,7 @@
 .team-graph .dot { fill: currentColor; }
 .team-graph .dl { fill: var(--bg); font-size: 10.5px; font-weight: 600; }
 .team-graph .nl { fill: var(--text); font-size: var(--font-size-label); font-weight: 500; }
-.team-graph .ns { fill: var(--muted); font-size: var(--font-size-caption); }
+.team-graph .nr, .team-graph .ns { fill: var(--muted); font-size: var(--font-size-caption); }
 .team-graph .edge-label { font-size: var(--font-size-caption); paint-order: stroke; stroke: var(--bg-group); stroke-width: 5px; stroke-linejoin: round; }
 .team-graph-legend { display: flex; gap: var(--space-3) 18px; flex-wrap: wrap; justify-content: center; padding: 0 var(--space-8); font-size: var(--font-size-small); color: var(--muted); }
 .team-graph-legend span { display: inline-flex; align-items: center; gap: 7px; }
@@ -37,3 +37,10 @@
 
 .team-graph a.node { cursor: pointer; text-decoration: none; }
 .team-graph a.node:hover rect, .team-graph a.node:focus-visible rect { stroke: var(--accent-2); stroke-width: 2; }
+
+.team-graph-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: 0 var(--space-8); }
+.team-graph-tools output { min-width: 4ch; text-align: center; font-size: var(--font-size-small); color: var(--muted); font-variant-numeric: tabular-nums; }
+.team-graph-modal { width: calc(100vw - 32px); height: calc(100dvh - 32px); max-width: none; max-height: none; padding: 0; border: 0; border-radius: var(--radius-lg); background: var(--bg-group); color: var(--text); }
+.team-graph-modal::backdrop { background: rgb(0 0 0 / 65%); }
+.team-graph-modal .team-graph { height: 100%; box-sizing: border-box; }
+.team-graph-modal .team-graph-scroll { flex: 1; min-height: 0; overflow: auto; }

@@ -1,5 +1,5 @@
 import { type LiveState, liveTeam, type TeamSpecView, TemplateGraph, useAgentConfig } from "@/entities/agent-config";
-import { displayName } from "@/entities/member";
+import { displayName, ROLE_TITLE_RU } from "@/entities/member";
 import type { TeamDetail } from "@/entities/team";
 
 /** What the team is busy with, in one line: who works, who waits for whom. */
@@ -58,7 +58,7 @@ export function TeamScheme({ team, open, onToggle }: { team: TeamDetail; open: b
               : state === "waiting" ? live[sm.key].note ?? "Ожидает передачи работы"
               : member.status && member.status !== "starting" ? member.status
               : state === "working" ? "Выполняет задачу" : state === "error" ? "Ошибка агента" : "Ожидает поручения";
-            return [[sm.key, { href: `/team/${encodeURIComponent(team.id)}/${encodeURIComponent(member.name)}`, activity }]];
+            return [[sm.key, { href: `/team/${encodeURIComponent(team.id)}/${encodeURIComponent(member.name)}`, role: ROLE_TITLE_RU[sm.role] ?? cfg?.roles.find((r) => r.id === sm.role)?.title ?? sm.role, activity }]];
           }))}
           live={live}
           pending={pending}
