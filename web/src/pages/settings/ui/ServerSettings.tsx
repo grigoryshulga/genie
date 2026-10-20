@@ -33,7 +33,7 @@ import {
   useVaultSync,
 } from "@/entities/project";
 import { useSession } from "@/entities/session";
-import { ContextSearch } from "@/widgets/sidebar";
+import { ContextSearch } from "@/widgets/topbar";
 import { matchesSearch, settingsTabHref } from "@/shared/lib";
 import { request } from "@/shared/api";
 import { BarChart, ConfirmDialog, Icon, Menu, useAct, useToast } from "@/shared/ui";

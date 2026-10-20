@@ -7,7 +7,7 @@ import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { matchesSearch } from "@/shared/lib";
-import { ContextSearch } from "@/widgets/sidebar";
+import { ContextSearch } from "@/widgets/topbar";
 import { Icon } from "@/shared/ui";
 import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
 import "@/shared/ui/agents.css";

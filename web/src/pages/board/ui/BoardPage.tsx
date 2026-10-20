@@ -6,7 +6,7 @@ import { useTeamMap } from "@/entities/team";
 import { plural, readPref, writePref } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 import { Board } from "@/widgets/board";
-import { ContextSearch, TeamsSummary } from "@/widgets/sidebar";
+import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 
 /** «Доска»: the project's Kanban board, narrowed by filters («Мои задачи», an epic). */
 export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {

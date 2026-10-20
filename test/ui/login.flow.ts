@@ -19,5 +19,5 @@ test("a wrong password shows an error and keeps the form, the right one signs in
   await password.fill(OWNER.password);
   await page.getByRole("button", { name: "Войти" }).click();
   await expect(page.getByRole("list", { name: "Задачи" })).toBeVisible();
-  await expect(page.getByText(OWNER.name)).toBeVisible();
+  await expect(page.getByRole("button", { name: `Профиль: ${OWNER.name}` })).toBeVisible();
 });

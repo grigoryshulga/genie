@@ -6,7 +6,7 @@ import { nextIndex } from "./menu-nav.ts";
  * A dialog on the native <dialog> element: showModal() makes the page behind it inert, traps focus,
  * closes on Escape, and returns focus to the opener. Closing from any source calls onClose.
  */
-export function Dialog({ title, onClose, footer, children, wide }: { title: ReactNode; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean }) {
+export function Dialog({ title, onClose, footer, children, wide, sheet }: { title: ReactNode; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; /** A bottom sheet on phones. */ sheet?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useId();
   useEffect(() => {
@@ -15,7 +15,7 @@ export function Dialog({ title, onClose, footer, children, wide }: { title: Reac
     return () => dialog?.close();
   }, []);
   return (
-    <dialog ref={ref} className="g-dialog" aria-labelledby={heading} onClose={onClose} onClick={(e) => e.target === ref.current && onClose()}>
+    <dialog ref={ref} className={cx("g-dialog", sheet && "sheet")} aria-labelledby={heading} onClose={onClose} onClick={(e) => e.target === ref.current && onClose()}>
       <div className={cx("g-modal", wide && "wide")}>
         <header>
           <h2 id={heading}>{title}</h2>

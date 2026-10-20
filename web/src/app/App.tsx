@@ -8,8 +8,8 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
-import { canManageProject, managementDestination, isTyping, readPref, rememberWorkRoute, writePref } from "@/shared/lib";
-import { MobileHeader, Sidebar } from "@/widgets/sidebar";
+import { canManageProject, managementDestination, isTyping, rememberWorkRoute } from "@/shared/lib";
+import { TopBar } from "@/widgets/topbar";
 import { lazyPage } from "./lazyPage.ts";
 
 // Only the entry screen is eager: the gate (its login page and the shell) and the board,
@@ -52,17 +52,11 @@ function Shell() {
   const location = useLocation();
   const [sp, setSp] = useSearchParams();
   const [dialog, setDialog] = useState<"new" | "palette" | undefined>();
-  const [sidebarCompact, setSidebarCompact] = useState(() => readPref<string>("sidebar-compact", "false") === "true");
   const [preset, setPreset] = useState<NewTaskPreset | undefined>();
   const newTask = useCallback((p?: NewTaskPreset) => {
     setPreset(p);
     setDialog("new");
   }, []);
-  const toggleSidebar = useCallback(() => {
-    const next = !sidebarCompact;
-    setSidebarCompact(next);
-    writePref("sidebar-compact", String(next));
-  }, [sidebarCompact]);
   const searchRef = useRef<HTMLInputElement>(null);
   const mobileSearchRef = useRef<HTMLInputElement>(null);
   const focusSearch = useCallback(() => {
@@ -70,9 +64,7 @@ function Shell() {
       (mobileSearchRef.current ?? document.querySelector<HTMLInputElement>(".mobile-context-search input"))?.focus();
       return;
     }
-    setSidebarCompact(false);
-    writePref("sidebar-compact", "false");
-    requestAnimationFrame(() => searchRef.current?.focus());
+    searchRef.current?.focus();
   }, []);
   const teams = useTeamMap();
   const tasks = useTasks().data;
@@ -161,11 +153,10 @@ function Shell() {
   }, [dialog, openTaskId, closeTask, actions, navigate, newTask, focusSearch]);
 
   const agentRoute = /^\/team\/[^/]+\/[^/]+/.test(location.pathname);
-  const cls = `${agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app"}${sidebarCompact ? " sidebar-compact" : ""}`;
+  const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app";
   return (
     <div className={cls}>
-      <Sidebar onNew={() => newTask()} online={online} compact={sidebarCompact} onToggleCompact={toggleSidebar} searchRef={searchRef} onOpenSearch={focusSearch} />
-      <MobileHeader onNew={() => newTask()} online={online} compact={false} onToggleCompact={toggleSidebar} searchRef={searchRef} onOpenSearch={focusSearch} />
+      <TopBar onNew={() => newTask()} online={online} searchRef={searchRef} onOpenSearch={focusSearch} />
       <Suspense fallback={<PageFallback />}>
         <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
       </Suspense>
