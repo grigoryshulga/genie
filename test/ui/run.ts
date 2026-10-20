@@ -8,6 +8,8 @@
 // servers on 127.0.0.1.
 //
 // Usage: node test/ui/run.ts [playwright test arguments], e.g. --update-snapshots or --project flows.
+// `--capture` (npm run ui:capture) instead seeds all eleven statuses and writes a PNG of every route
+// in each theme at desktop and phone sizes to test-results/captures; it compares nothing.
 // GENIE_BIN selects the server binary (default: target/debug/genie); web/dist must be built.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -15,12 +17,14 @@ import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFile
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { OWNER, PROJECT, SEED_TASKS } from "./seed.ts";
+import { CAPTURE_TASKS, OWNER, PROJECT, SEED_TASKS } from "./seed.ts";
 
 const root = resolve(import.meta.dirname, "../..");
 const bin = resolve(root, process.env.GENIE_BIN ?? "target/debug/genie");
 const web = join(root, "web/dist");
 const results = join(root, "test-results");
+const capture = process.argv.includes("--capture");
+const passthrough = process.argv.slice(2).filter((a) => a !== "--capture");
 
 function fail(message: string): never {
   console.error(`ui tests: ${message}`);
@@ -56,7 +60,7 @@ function seed() {
   genie(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix]);
   genie(["member", PROJECT.id, OWNER.login, "owner"]);
   const ids: string[] = [];
-  for (const t of SEED_TASKS) {
+  for (const t of capture ? [...SEED_TASKS, ...CAPTURE_TASKS] : SEED_TASKS) {
     const args = ["--project", PROJECT.id, "task", "create", t.title, "--json"];
     if (t.description) args.push("--description", t.description);
     for (const ac of t.acceptance ?? []) args.push("--ac", ac);
@@ -66,7 +70,10 @@ function seed() {
     if (t.parent !== undefined) args.push("--parent", ids[t.parent]);
     const id: string = JSON.parse(genie(args)).id;
     ids.push(id);
-    for (const status of t.statuses ?? []) genie(["--project", PROJECT.id, "task", "status", status, "--task", id]);
+    for (const status of t.statuses ?? []) {
+      const note = status === "needs_owner" && t.note ? ["--note", t.note] : [];
+      genie(["--project", PROJECT.id, "task", "status", status, "--task", id, ...note]);
+    }
   }
 }
 
@@ -125,9 +132,9 @@ const docker = spawn(
     "run", "--rm", "--init", "--network", "host", "--ipc", "host",
     "--user", `${uid}:${gid}`,
     "--volume", `${root}:/work`, "--workdir", "/work",
-    "--env", "HOME=/tmp", "--env", "CI", "--env", `GENIE_UI_VISUAL_URL=${visualUrl}`, "--env", `GENIE_UI_FLOWS_URL=${flowsUrl}`, "--env", `GENIE_UI_SEEDED_AT=${seededAt}`,
+    "--env", "HOME=/tmp", "--env", "CI", "--env", `GENIE_UI_VISUAL_URL=${visualUrl}`, "--env", `GENIE_UI_FLOWS_URL=${flowsUrl}`, "--env", `GENIE_UI_SEEDED_AT=${seededAt}`, ...(capture ? ["--env", `GENIE_UI_CAPTURE=1`, "--env", `GENIE_UI_THEMES=${process.env.GENIE_UI_THEMES ?? "current"}`] : []),
     image,
-    "npx", "playwright", "test", "--config", "test/ui/playwright.config.ts", ...process.argv.slice(2),
+    "npx", "playwright", "test", "--config", "test/ui/playwright.config.ts", ...(capture ? ["--project", "capture-desktop", "--project", "capture-phone"] : []), ...passthrough,
   ],
   { stdio: "inherit" },
 );
