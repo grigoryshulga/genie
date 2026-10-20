@@ -30,3 +30,7 @@ all of them:
 The next visual language is specified in [design-system.md](design-system.md), with principles in [principles.md](principles.md), a component specimen in [components.html](components.html), and the redesign plan in [handoff/README.md](handoff/README.md). Its tokens and components live in `web/src/shared/ui/g-tokens.css` and `web/src/shared/ui/components.css`; they are not imported by the application until the redesign foundation tasks (epic GNE-40) wire them in.
 
 `web/src/shared/ui/tokens.css` is the current application token file (GNE-25) and stays in place until the redesign replaces it. The draft logo lockups (`logo-*.svg`) are exploratory; the current logo is `genie-mark.svg` until the owner supplies the final vector.
+
+## Where the logo is used (GNE-46)
+
+The ink tile with the green mark and orange eye (`#09090d`, `#2fbf94`, `#ff873c`) is the application icon (`web/public/logo.svg`), the documentation favicon and navbar logo (`docs/public/logo.svg`), and the mark in the README hero (`docs/assets/hero.svg`). All three are drawn from the geometry of [genie-mark.svg](genie-mark.svg), which stays the source until the owner supplies the final vector; update the three files together when it changes. The documentation site uses the ink and paper palette with self-hosted Manrope, Unbounded and Geist Mono (Latin subsets in `docs/public/fonts/`, SIL OFL), mirrored by hand in `docs/.vitepress/theme/style.css`.

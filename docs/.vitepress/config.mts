@@ -6,14 +6,14 @@ export default defineConfig({
   titleTemplate: ':title · Genie',
   description: 'Run tasks, knowledge, and AI agent teams on one self-hosted server.',
   base: '/genie/',
-  appearance: 'force-dark',
+  appearance: 'dark',
   lastUpdated: false,
   // Brand and design handoff files are repository material (they link to source files and static specimens), not site pages.
   srcExclude: ['assets/brand/**'],
   sitemap: { hostname: 'https://grigoryshulga.github.io/genie/' },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/genie/logo.svg' }],
-    ['meta', { name: 'theme-color', content: '#0c0d0f' }],
+    ['meta', { name: 'theme-color', content: '#09090d' }],
   ],
   themeConfig: {
     logo: { src: '/logo.svg', alt: '' },
