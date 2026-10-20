@@ -909,7 +909,10 @@ mod tests {
             serde_json::json!({
                 "budgets": { "perTask": 5.0 },
                 "modelPrices": { "manual/only": prices },
-                "runtime": { "command": [["definitely-not-an-agent"], ["{message}"]] }
+                "runtime": {
+                    "command": [["definitely-not-an-agent"], ["{message}"]],
+                    "sessionCommand": [["definitely-not-an-agent"]]
+                }
             })
         };
         let agents = |c: &Config| AgentConfig::load(data.path(), c, None);
@@ -931,7 +934,7 @@ mod tests {
     #[test]
     fn a_fresh_data_directory_is_ready_but_for_people_and_projects() {
         let data = tempfile::tempdir().unwrap();
-        let c = cfg(serde_json::json!({}));
+        let c = cfg(serde_json::json!({ "runtime": { "enabled": false } }));
         let web = tempfile::tempdir().unwrap();
         std::fs::write(web.path().join("index.html"), "<html>").unwrap();
         let mut out = Out(Vec::new());

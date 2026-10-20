@@ -34,20 +34,30 @@ pub fn try_sh(dir: &Path, envs: &[(&str, &str)], args: &[&str]) -> (bool, String
 
 /// A bare repository `<hosts>/<remote>.git` with one commit on `main` (files: name → content).
 pub fn upstream(hosts: &Path, remote: &str, files: &[(&str, &str)]) -> PathBuf {
+    use std::io::Write;
+    use std::process::Stdio;
+
     let bare = hosts.join(format!("{remote}.git"));
     std::fs::create_dir_all(&bare).unwrap();
     sh(&bare, &["init", "--bare", "-q", "-b", "main"]);
-    let work = hosts.join(format!("seed-{}", remote.replace('/', "-")));
-    std::fs::create_dir_all(&work).unwrap();
-    sh(&work, &["init", "-q", "-b", "main"]);
-    for (name, content) in files {
-        let p = work.join(name);
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(p, content).unwrap();
+    // Build a real initial commit directly: no disposable worktree, index, or setup push.
+    let mut input = String::from("commit refs/heads/main\ncommitter test <test@example.com> 0 +0000\ndata 5\ninit\n");
+    for (path, content) in files {
+        input.push_str(&format!("M 100644 inline {}\ndata {}\n{content}\n", serde_json::to_string(path).unwrap(), content.len()));
     }
-    sh(&work, &["add", "."]);
-    sh(&work, &["commit", "-q", "-m", "init"]);
-    sh(&work, &["push", "-q", &bare.to_string_lossy(), "HEAD:refs/heads/main"]);
+    input.push_str("\ndone\n");
+    let mut child = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&bare)
+        .args(["fast-import", "--quiet"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "git fast-import: {}", String::from_utf8_lossy(&output.stderr));
     bare
 }
 

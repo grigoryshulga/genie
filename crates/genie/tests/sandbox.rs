@@ -147,7 +147,7 @@ async fn a_sandboxed_agent_sees_only_its_own_work() {
             let turns = app.with_server(|db| db.turns("shop", None, 5)).unwrap();
             panic!("the job did not finish: {:?}", turns.iter().map(|t| (&t.status, &t.error, &t.log)).collect::<Vec<_>>());
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
     };
     assert_eq!(j.status, "succeeded", "{:?}", j.error);
 

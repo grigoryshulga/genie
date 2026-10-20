@@ -141,9 +141,10 @@ export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void })
               .map((h) => (
                 <div key={`${h.at}${h.event}${h.to ?? ""}`} className="ev">
                   <i />
-                  <span>
-                    <span style={{ color: "var(--text-2)" }}>{h.actor}</span> {historyText(h, true)} · {timeAgo(h.at)}
+                  <span className="txt">
+                    <span style={{ color: "var(--text-2)" }}>{h.actor}</span> {historyText(h, true)}
                   </span>
+                  <span className="when">{timeAgo(h.at)}</span>
                 </div>
               ))}
           </section>

@@ -37,6 +37,7 @@ These rules apply to new and changed code. Follow nearby conventions for details
 
 - Add behavioral coverage for changed domain rules, authorization, state transitions, API contracts, and regression fixes. Test observable outcomes, including relevant error paths. Keep tests independent of live providers and production data unless an explicitly configured integration test requires them.
 - Use the existing Rust unit/integration suites and Node `node:test` suites in `test/`. Avoid adding a test framework for cases these suites cover.
+- Cover rendering, interaction, and layout of the web UI with the Playwright browser tests in `test/ui/` when a change alters what a screen shows or what a control does; keep pure UI logic in `node:test`. Update screenshot baselines only for intended visual changes. See [browser tests](docs/development.md#browser-tests).
 - Run the checks relevant to the diff. The authoritative list and path filters are in [.github/workflows/ci.yml](.github/workflows/ci.yml); commands are also in [README.md](README.md#development) and `package.json`. Local success supports, but does not replace, successful PR CI.
 - Explain intent, invariants, and surprising constraints in comments; keep names aligned with the domain. Use English for code identifiers and technical comments, preserving established user-facing text. Write project documentation in concise English.
 - Update documentation and configuration examples when changing supported behavior. Keep secrets, local databases, generated build output, and machine-specific paths out of commits.

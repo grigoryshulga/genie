@@ -3,22 +3,22 @@
 // switches between the tree and the results.
 
 import { useEffect, useRef } from "react";
-import type { DocSearchResult } from "@/entities/doc";
-import { DocDiagBadge, DocStaleBadge, DocStatusBadge, DocTypeBadge, snippetParts } from "@/entities/doc";
+import type { DocSearchResult, DocSection } from "@/entities/doc";
+import { articleTitle, sectionTrail, DocDiagBadge, DocStaleBadge, DocStatusBadge, DocTypeBadge, snippetParts } from "@/entities/doc";
 import { plural } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 
-function Hit({ result, selected, onOpen }: { result: DocSearchResult; selected: boolean; onOpen: (path: string) => void }) {
+function Hit({ result, navigation, selected, onOpen }: { result: DocSearchResult; navigation: DocSection; selected: boolean; onOpen: (path: string) => void }) {
   return (
     <button type="button" className={`doc-hit${selected ? " on" : ""}`} onClick={() => onOpen(result.path)} title={result.path}>
       <span className="hit-top">
-        <span className="nm">{result.title}</span>
+        <span className="nm">{articleTitle(result)}</span>
         <DocTypeBadge type={result.type} />
         <DocStatusBadge status={result.status} />
         {result.stale && <DocStaleBadge count={result.staleReasons.length} />}
         {result.diagnostics.length > 0 && <DocDiagBadge count={result.diagnostics.length} />}
       </span>
-      <span className="hit-path mono">{result.path}</span>
+      <span className="hit-path">{sectionTrail(navigation, result.path).slice(1).map((section) => section.title).join(" › ") || "Статьи пространства"}</span>
       <span className="hit-snippet">
         {snippetParts(result.snippet).map((part, i) => (part.hit ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>))}
       </span>
@@ -27,6 +27,7 @@ function Hit({ result, selected, onOpen }: { result: DocSearchResult; selected: 
 }
 
 export function DocSearchList({
+  navigation,
   query,
   results,
   pending,
@@ -35,6 +36,7 @@ export function DocSearchList({
   onOpen,
   onCreate,
 }: {
+  navigation: DocSection;
   query: string;
   results: DocSearchResult[];
   pending: boolean;
@@ -58,7 +60,7 @@ export function DocSearchList({
         </span>
         <span className="grow" />
         <span className="doc-keys muted">
-          <kbd>↑↓</kbd> выбрать <kbd>↵</kbd> открыть <kbd>Esc</kbd> к дереву
+          <kbd>↑↓</kbd> выбрать <kbd>↵</kbd> открыть <kbd>Esc</kbd> к разделам
         </span>
       </div>
 
@@ -68,7 +70,7 @@ export function DocSearchList({
       {!pending && !error && results.length > 0 && (
         <div className="doc-hits" role="listbox">
           {results.map((result) => (
-            <Hit key={result.path} result={result} selected={result.path === selected} onOpen={onOpen} />
+            <Hit key={result.path} result={result} navigation={navigation} selected={result.path === selected} onOpen={onOpen} />
           ))}
         </div>
       )}

@@ -275,7 +275,9 @@ fn doctor_reports_the_schema_versions_and_survives_newer_data() {
     let data = tempfile::tempdir().unwrap();
     let server = data.path().join("server.db");
     drop(ServerDb::open(&server).unwrap());
-    let cfg = Config::load(data.path()).unwrap();
+    let mut cfg = Config::load(data.path()).unwrap();
+    // Schema diagnostics do not need to launch the host's agent harness.
+    cfg.runtime.enabled = false;
     let agents = genie::agent_config::AgentConfig::load(data.path(), &cfg, None);
 
     let (text, _) = genie::doctor::print(&genie::doctor::run(data.path(), &cfg, &agents, None));
@@ -291,4 +293,38 @@ fn doctor_reports_the_schema_versions_and_survives_newer_data() {
     assert!(failed > 0, "{text}");
     assert!(text.contains(&format!("records schema {}", SERVER_SCHEMA_VERSION + 1)), "{text}");
     assert!(text.contains("restore a backup made before the update"), "{text}");
+}
+
+#[test]
+fn a_version_six_server_db_gains_the_environment_tables_and_records_seven() {
+    let _serial = serial();
+    let data = tempfile::tempdir().unwrap();
+    let server = data.path().join("server.db");
+    let db = ServerDb::open(&server).unwrap();
+    db.create_project("shop", "Shop", "/tmp/shop-tracker", None, None).unwrap();
+    drop(db);
+    // A server database from before workspace environments: the same tables without the env_* ones.
+    Connection::open(&server)
+        .unwrap()
+        .execute_batch(
+            "DROP TABLE env_secrets; DROP TABLE env_pins; DROP TABLE env_stages; DROP TABLE env_snapshots; DROP TABLE env_workspaces;",
+        )
+        .unwrap();
+    set_version(&server, 6);
+
+    let report = migrate::check_server(&server).unwrap();
+    assert!(report.rehearsed, "the update is rehearsed on a copy: {report:?}");
+    assert_eq!((report.from, report.to), (6, SERVER_SCHEMA_VERSION));
+
+    let db = ServerDb::open(&server).unwrap();
+    assert_eq!(migrate::version(&server).unwrap(), Some(SERVER_SCHEMA_VERSION));
+    assert_eq!(count(&server, "SELECT COUNT(*) FROM projects WHERE slug = 'shop'"), 1, "the rows of the old schema are kept");
+    let env_tables = count(
+        &server,
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('env_workspaces', 'env_stages', 'env_snapshots', 'env_pins', 'env_secrets')",
+    );
+    assert_eq!(env_tables, 5);
+    // The new tables are usable at once, not just present.
+    let ws = db.env_workspace_ensure("shop", "api", None, "default", "podman").unwrap();
+    assert_eq!(ws.id, "shop--api");
 }

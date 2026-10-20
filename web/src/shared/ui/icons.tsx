@@ -114,11 +114,20 @@ export const Icon = {
       <path d="M8 1.5v4M8 10.5v4M1.5 8h4M10.5 8h4M3.4 3.4l2.2 2.2M10.4 10.4l2.2 2.2M12.6 3.4l-2.2 2.2M5.6 10.4l-2.2 2.2" />
     </svg>
   ),
-  /** genie mark: the logo in the sidebar and on public pages. */
-  mark: ({ size, ...p }: IconProps) => (
-    <svg {...stroke(size, p)}>
-      <path d="M8 2v3M8 11v3M2 8h3M11 8h3" />
-      <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none" />
+  /**
+   * genie mark: the logo in the sidebar and on public pages. Line art of the
+   * genie in docs/assets/brand/genie-mark.svg, stroked with the surrounding
+   * color (the tile behind it sets the periwinkle).
+   */
+  mark: ({ size = 16, ...p }: IconProps) => (
+    <svg width={size} height={size} viewBox="90 30 665 700" fill="none" stroke="currentColor" strokeWidth={44} aria-hidden="true" {...p}>
+      <path d="M 290 442 C 178 442 161 337 246 307" />
+      <rect x="122" y="442" width="536" height="256" rx="96" />
+      <g transform="translate(410 236)">
+        <circle r="176" />
+        <path d="M 162 -51 L 322 -109" strokeLinecap="butt" />
+        <path d="M -33 0 A 64 64 0 0 1 95 0" strokeWidth={34} strokeLinecap="butt" />
+      </g>
     </svg>
   ),
   bolt: ({ size, ...p }: IconProps) => (
@@ -198,6 +207,12 @@ export const Icon = {
       <circle cx="3.5" cy="8" r="1.3" />
       <circle cx="8" cy="8" r="1.3" />
       <circle cx="12.5" cy="8" r="1.3" />
+    </svg>
+  ),
+  pencil: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.5}>
+      <path d="M11 2.2a1.9 1.9 0 0 1 2.7 2.7l-8.2 8.2-3.4.7.7-3.4z" />
+      <path d="M10.2 3l2.7 2.7" />
     </svg>
   ),
 };

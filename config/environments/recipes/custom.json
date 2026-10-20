@@ -1,0 +1,5 @@
+{
+  "id": "custom",
+  "revision": 1,
+  "description": "No tools, caches or built-in steps. The profile's own prepare steps and commands make the component work; their inputs default to the whole repository."
+}

@@ -1,9 +1,9 @@
 //! Secrets the server keeps for others (`user_secrets`, `repo_secrets`, `mcp_secrets`,
-//! `global_secrets` of the server database): a person's LiteLLM key, which agents
-//! started on their behalf use, the access token of a project's repository on its
-//! git host, the values of the environment variables MCP connections refer to as
-//! `${env:NAME}`, and the provider keys the server's administrator shares with
-//! everyone.
+//! `global_secrets`, `observation_secrets` of the server database): a person's LiteLLM
+//! key, which agents started on their behalf use, the access token of a project's
+//! repository on its git host, the values of the environment variables MCP connections
+//! refer to as `${env:NAME}`, the provider keys the server's administrator shares with
+//! everyone, and the credentials of a project's observation sources.
 //!
 //! Unlike sessions and tokens these must be read back, so they are sealed with
 //! ChaCha20-Poly1305 under a key kept next to the database (`secrets.key`, 0600)
@@ -19,6 +19,7 @@ use serde::Serialize;
 
 use crate::db::now;
 use crate::error::{GenieError, Result};
+use crate::observation::sources;
 use crate::server_db::ServerDb;
 
 /// The LiteLLM key of a person (`LITELLM_API_KEY` of their agents).
@@ -58,6 +59,16 @@ CREATE TABLE IF NOT EXISTS global_secrets (
   sealed TEXT NOT NULL,
   hint TEXT NOT NULL DEFAULT '',
   updated TEXT NOT NULL
+);
+-- The bearer token or `user:password` of an observation source (§7.3). Sealed under the
+-- source's name and project, and removed together with the source.
+CREATE TABLE IF NOT EXISTS observation_secrets (
+  project TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  sealed TEXT NOT NULL,
+  hint TEXT NOT NULL DEFAULT '',
+  updated TEXT NOT NULL,
+  PRIMARY KEY (project, source)
 );
 "#;
 
@@ -144,7 +155,7 @@ pub(crate) fn unseal(key: &[u8; 32], name: &str, sealed: &str) -> Option<String>
     String::from_utf8(plain).ok()
 }
 
-fn hint(value: &str) -> String {
+pub(crate) fn hint(value: &str) -> String {
     let chars: Vec<char> = value.chars().collect();
     if chars.len() < 12 {
         return String::new();
@@ -152,7 +163,7 @@ fn hint(value: &str) -> String {
     format!("…{}", chars[chars.len() - 4..].iter().collect::<String>())
 }
 
-fn check_value(value: &str) -> Result<()> {
+pub(crate) fn check_value(value: &str) -> Result<()> {
     if value.len() > 4096 || value.chars().any(char::is_control) {
         return Err(GenieError::invalid("the secret must be one line of at most 4096 characters"));
     }
@@ -166,10 +177,10 @@ fn repo_aad(project: &str, repo: &str) -> String {
 
 impl ServerDb {
     /// Whether any token is stored sealed (people's keys, repositories' tokens,
-    /// the provider keys shared with everyone).
+    /// the provider keys shared with everyone, observation sources' credentials).
     pub fn has_sealed_secrets(&self) -> Result<bool> {
         let n: i64 = self.conn().query_row(
-            "SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets) + (SELECT COUNT(*) FROM global_secrets) + (SELECT COUNT(*) FROM project_telegram)",
+            "SELECT (SELECT COUNT(*) FROM user_secrets) + (SELECT COUNT(*) FROM repo_secrets) + (SELECT COUNT(*) FROM global_secrets) + (SELECT COUNT(*) FROM project_telegram) + (SELECT COUNT(*) FROM env_secrets) + (SELECT COUNT(*) FROM observation_secrets)",
             [],
             |r| r.get(0),
         )?;
@@ -422,6 +433,75 @@ impl ServerDb {
 /// What a sealed shared provider key is bound to: it cannot be moved to another table.
 fn global_aad(name: &str) -> String {
     format!("global-key:{name}")
+}
+
+/// What a sealed observation source secret is bound to: it cannot be moved to another source
+/// or project, and it does not open as a repository token (their prefixes differ).
+fn observation_aad(project: &str, source: &str) -> String {
+    format!("observation-source:{project}/{source}")
+}
+
+impl ServerDb {
+    /// Set the secret of an observation source: its bearer token, or the `user:password` its
+    /// auth needs. A blank value removes it. The source must exist.
+    pub fn set_observation_secret(&self, project: &str, source: &str, value: &str) -> Result<()> {
+        let value = value.trim();
+        if value.is_empty() {
+            return self.delete_observation_secret(project, source);
+        }
+        check_value(value)?;
+        self.tx(|| {
+            if self.observation_source(project, source)?.is_none() {
+                return Err(sources::not_found(source));
+            }
+            let key = load_key(&self.secrets_key, true)?.expect("created");
+            self.conn().execute(
+                "INSERT INTO observation_secrets(project, source, sealed, hint, updated) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(project, source) DO UPDATE SET sealed = excluded.sealed, hint = excluded.hint, updated = excluded.updated",
+                params![project, source, seal(&key, &observation_aad(project, source), value)?, hint(value), now()],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Remove the secret of an observation source. The source must exist.
+    pub fn delete_observation_secret(&self, project: &str, source: &str) -> Result<()> {
+        self.tx(|| {
+            if self.observation_source(project, source)?.is_none() {
+                return Err(sources::not_found(source));
+            }
+            self.conn().execute("DELETE FROM observation_secrets WHERE project = ?1 AND source = ?2", params![project, source])?;
+            Ok(())
+        })
+    }
+
+    /// An observation source's secret in the clear, for the server's own calls to the source;
+    /// `None` when it is unset or cannot be read back.
+    pub fn observation_secret(&self, project: &str, source: &str) -> Result<Option<String>> {
+        let sealed: Option<String> = self
+            .conn()
+            .query_row("SELECT sealed FROM observation_secrets WHERE project = ?1 AND source = ?2", params![project, source], |r| r.get(0))
+            .optional()?;
+        let Some(sealed) = sealed else { return Ok(None) };
+        let Some(key) = load_key(&self.secrets_key, false)? else { return Ok(None) };
+        Ok(unseal(&key, &observation_aad(project, source), &sealed))
+    }
+
+    /// What can be shown about an observation source's secret: a hint, never the value.
+    pub fn observation_secret_info(&self, project: &str, source: &str) -> Result<Option<SecretInfo>> {
+        let row: Option<(String, String, String)> = self
+            .conn()
+            .query_row(
+                "SELECT sealed, hint, updated FROM observation_secrets WHERE project = ?1 AND source = ?2",
+                params![project, source],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let Some((sealed, hint, updated)) = row else { return Ok(None) };
+        let aad = observation_aad(project, source);
+        let readable = load_key(&self.secrets_key, false)?.is_some_and(|k| unseal(&k, &aad, &sealed).is_some());
+        Ok(Some(SecretInfo { name: source.to_string(), hint, updated, unreadable: !readable }))
+    }
 }
 
 #[cfg(test)]

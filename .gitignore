@@ -2,6 +2,7 @@ node_modules
 .genie/
 .design/
 web/dist/
+test-results/
 docs/migration.md
 migration/
 /target/
@@ -10,6 +11,7 @@ docker/secrets/
 .env
 .pi/
 .claude/worktrees/
+__pycache__/
 docker/docker-compose.local.yml
 
 # Documentation build output

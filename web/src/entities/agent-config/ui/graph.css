@@ -1,25 +1,25 @@
 /* The team of a template as a graph (TemplateGraph). */
-.team-graph { flex: none; margin: 0; display: flex; flex-direction: column; gap: 6px; padding: 12px 0 10px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-group); min-width: 0; }
-.team-graph-head { display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 12.5px; color: var(--text-2); min-width: 0; }
-.team-graph-scroll { overflow-x: auto; padding: 0 12px; }
+.team-graph { flex: none; margin: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6) 0 var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-group); min-width: 0; }
+.team-graph-head { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-8); font-size: var(--font-size-label); color: var(--text-2); min-width: 0; }
+.team-graph-scroll { overflow-x: auto; padding: 0 var(--space-6); }
 .team-graph svg { display: block; width: 100%; height: auto; margin: 0 auto; }
 .team-graph .node { color: var(--muted); }
 .team-graph .node rect { fill: var(--bg-raised); stroke: var(--line-strong); stroke-width: 1; }
-.team-graph .node.orch rect { fill: #15172a; stroke: #2f3463; }
+.team-graph .node.orch rect { fill: var(--accent-soft); stroke: var(--accent-line); }
 .team-graph .node.flagged rect { stroke: var(--red); stroke-width: 1.5; }
 .team-graph .dot { fill: currentColor; }
 .team-graph .dl { fill: var(--bg); font-size: 10.5px; font-weight: 600; }
-.team-graph .nl { fill: var(--text); font-size: 12.5px; font-weight: 500; }
-.team-graph .ns { fill: var(--muted); font-size: 11px; }
-.team-graph .edge-label { font-size: 11px; paint-order: stroke; stroke: var(--bg-group); stroke-width: 5px; stroke-linejoin: round; }
-.team-graph-legend { display: flex; gap: 6px 18px; flex-wrap: wrap; justify-content: center; padding: 0 16px; font-size: 12px; color: var(--muted); }
+.team-graph .nl { fill: var(--text); font-size: var(--font-size-label); font-weight: 500; }
+.team-graph .ns { fill: var(--muted); font-size: var(--font-size-caption); }
+.team-graph .edge-label { font-size: var(--font-size-caption); paint-order: stroke; stroke: var(--bg-group); stroke-width: 5px; stroke-linejoin: round; }
+.team-graph-legend { display: flex; gap: var(--space-3) 18px; flex-wrap: wrap; justify-content: center; padding: 0 var(--space-8); font-size: var(--font-size-small); color: var(--muted); }
 .team-graph-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .team-graph-legend i { width: 16px; height: 0; }
 
 /* a running team */
-.team-graph .node.live-working rect { fill: #15172a; stroke: #3a3f7a; }
+.team-graph .node.live-working rect { fill: var(--accent-soft); stroke: var(--accent-line); }
 .team-graph .node.live-working .ns { fill: var(--accent-text); }
-.team-graph .node.live-waiting rect { stroke: #6b4a22; stroke-dasharray: 5 3; }
+.team-graph .node.live-waiting rect { stroke: var(--amber-line); stroke-dasharray: 5 3; }
 .team-graph .node.live-waiting .ns { fill: var(--amber); }
 .team-graph .node.live-error rect { stroke: var(--red); }
 .team-graph .node.live-error .ns { fill: var(--red); }
@@ -33,7 +33,7 @@
 .team-graph svg.connectable .node:not(.orch) { cursor: crosshair; }
 .team-graph svg.connectable { touch-action: none; user-select: none; }
 .team-graph .drag-line { stroke: var(--accent-2); stroke-width: 1.6; stroke-dasharray: 4 4; pointer-events: none; }
-.team-graph-hint { font-size: 12px; color: var(--muted); text-align: center; }
+.team-graph-hint { font-size: var(--font-size-small); color: var(--muted); text-align: center; }
 
 .team-graph a.node { cursor: pointer; text-decoration: none; }
 .team-graph a.node:hover rect, .team-graph a.node:focus-visible rect { stroke: var(--accent-2); stroke-width: 2; }

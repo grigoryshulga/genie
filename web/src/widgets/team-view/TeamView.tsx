@@ -103,7 +103,7 @@ const EVENT_TEXT: Record<string, (e: Record<string, unknown>) => string> = {
 
 /**
  * A task's team: its stages, scheme, mail and members. It lives on the task page's
- * «Команда» tab; `/team/:teamId` only redirects there.
+ * team route and opens from the rail; `/team/:teamId` only redirects there.
  */
 export function TeamView({ teamId: embedded }: { teamId?: string }) {
   useTick(15_000);
@@ -303,7 +303,7 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
               onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
             />
             <button type="submit" className="send" aria-label="Отправить" title="Отправить (⌘↵)" disabled={!draft.trim() || send.isPending}>
-              <Icon.send size={15} style={{ color: "#fff" }} />
+              <Icon.send size={15} style={{ color: "var(--on-accent)" }} />
             </button>
           </form>
         )}

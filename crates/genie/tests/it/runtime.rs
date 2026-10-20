@@ -23,10 +23,15 @@ async fn live(env: &[(&str, &str)]) -> Live {
 }
 
 async fn live_cfg(env: &[(&str, &str)], f: impl FnOnce(&mut Config)) -> Live {
+    live_with_clock(env, f, Arc::new(genie::clock::SystemClock)).await
+}
+
+async fn live_with_clock(env: &[(&str, &str)], f: impl FnOnce(&mut Config), clock: Arc<dyn genie::clock::Clock>) -> Live {
     let dir = tempfile::tempdir().unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let mut cfg = Config::load(dir.path()).unwrap();
+    cfg.vault.commit = Some(false);
     // Test files live in the data directory, which a sandboxed agent does not see.
     cfg.runtime.sandbox.mode = "off".into();
     cfg.port = port;
@@ -40,7 +45,7 @@ async fn live_cfg(env: &[(&str, &str)], f: impl FnOnce(&mut Config)) -> Live {
     }
     f(&mut cfg);
     crate::common::give_roles_models(dir.path());
-    let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+    let app = App::open_with_clock(dir.path(), cfg, PathBuf::from("/nonexistent"), clock).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     let a = app.clone();
@@ -61,7 +66,7 @@ async fn wait_for(app: &Arc<App>, what: &str, timeout: Duration, mut done: impl 
         if done(app) {
             return;
         }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
     let turns = app.with_server(|db| db.turns("shop", None, 50)).unwrap();
     let log: Vec<String> =
@@ -251,7 +256,8 @@ async fn inbox_to_done_through_the_orchestrator_and_a_team() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_crashed_turn_gives_its_mail_back_and_is_retried() {
-    let l = live(&[("FAIL_ONCE", "1")]).await;
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(&[("FAIL_ONCE", "1")], |_| {}, clock.clone()).await;
     l.app
         .with_tracker("shop", |t| {
             t.create(
@@ -261,7 +267,24 @@ async fn a_crashed_turn_gives_its_mail_back_and_is_retried() {
         })
         .unwrap();
     l.app.wake_runtime.notify_one();
-    wait_for(&l.app, "task done after a retry", Duration::from_secs(120), |app| status(app) == Status::Done).await;
+    let mut crashed = None;
+    wait_for(&l.app, "the simulated crash", Duration::from_secs(30), |app| {
+        crashed = app.with_server(|db| db.turns("shop", None, 100)).unwrap().into_iter().find(|turn| turn.status == "failed");
+        crashed.is_some()
+    })
+    .await;
+    let crashed = crashed.unwrap();
+    let key = genie::runtime::AgentKey::Member {
+        project: "shop".into(),
+        team: crashed.team.expect("the crashed executor belongs to a team"),
+        member: crashed.member.expect("the crashed turn belongs to the executor"),
+    };
+    wait_for(&l.app, "the failed turn's backoff", Duration::from_secs(30), |app| app.attempts.failures(&key) == 1).await;
+    genie::runtime::tick(&l.app).await.unwrap();
+    assert!(!l.app.attempts.may_start(&key), "failed turns wait for the retry deadline");
+    clock.advance(Duration::from_secs(1));
+    l.app.wake_runtime.notify_one();
+    wait_for(&l.app, "task done after a retry", Duration::from_secs(30), |app| status(app) == Status::Done).await;
     let turns = l.app.with_server(|db| db.turns("shop", None, 100)).unwrap();
     let failed: Vec<_> = turns.iter().filter(|t| t.status == "failed").collect();
     assert_eq!(failed.len(), 1, "exactly the simulated crash failed");
@@ -284,7 +307,13 @@ async fn the_servers_orchestrator_waits_while_a_person_holds_the_console() {
         })
         .unwrap();
     l.app.wake_runtime.notify_one();
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    genie::engine::tick(&l.app).unwrap();
+    genie::runtime::tick(&l.app).await.unwrap();
+    assert_eq!(
+        l.app.sched.snapshot(l.app.cfg.runtime.max_concurrent, l.app.slots.available_permits()).running,
+        0,
+        "no orchestrator scheduled while the console is held"
+    );
     let turns = l.app.with_server(|db| db.turns("shop", Some("orchestrator"), 10)).unwrap();
     assert!(turns.is_empty(), "no server orchestrator while the console is held: {turns:?}");
     assert_eq!(status(&l.app), Status::Inbox);

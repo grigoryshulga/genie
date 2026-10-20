@@ -1,159 +1,50 @@
-// DocsTree — the reusable docs navigation (mockup screen 13): folders from path
-// segments, page rows with type/status/diagnostic marks, an optional text filter
-// and the status legend. `flat` renders the mobile-drawer variant (screen 12).
-
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { DocPage } from "../model.ts";
-import { docStatusText, DocLegend, DocMarks } from "./DocBadges.tsx";
-import { CaretIcon, DocFileIcon, FolderIcon, FolderOpenIcon } from "./icons.tsx";
+import { articleTitle, buildDocNavigation, docSections, sectionTrail, type DocSection } from "../navigation.ts";
+import { DocMarks } from "./DocBadges.tsx";
+import { BookIcon, CaretIcon, DocFileIcon } from "./icons.tsx";
 
-interface Folder {
-  name: string;
-  path: string;
-  folders: Folder[];
-  pages: DocPage[];
+function Article({ page, selected, onSelect }: { page: DocPage; selected?: string; onSelect: (path: string) => void }) {
+  return <button type="button" className={`doc-row${page.path === selected ? " on" : ""}`} onClick={() => onSelect(page.path)} aria-current={page.path === selected ? "page" : undefined}>
+    <DocFileIcon size={13} className="doc-row-ic" />
+    <span className="nm">{articleTitle(page)}</span><DocMarks page={page} />
+  </button>;
 }
 
-function buildTree(pages: DocPage[]): Folder {
-  const root: Folder = { name: "", path: "", folders: [], pages: [] };
-  for (const page of pages) {
-    const segments = page.path.split("/").filter(Boolean);
-    let node = root;
-    for (let i = 0; i < segments.length - 1; i++) {
-      const path = `${segments.slice(0, i + 1).join("/")}/`;
-      let next = node.folders.find((f) => f.path === path);
-      if (!next) {
-        next = { name: segments[i], path, folders: [], pages: [] };
-        node.folders.push(next);
-      }
-      node = next;
-    }
-    node.pages.push(page);
-  }
-  const order = (node: Folder): void => {
-    node.folders.sort((a, b) => a.name.localeCompare(b.name, "ru"));
-    node.pages.sort((a, b) => a.title.localeCompare(b.title, "ru"));
-    node.folders.forEach(order);
-  };
-  order(root);
-  return root;
-}
-
-function countPages(node: Folder): number {
-  return node.pages.length + node.folders.reduce((n, f) => n + countPages(f), 0);
-}
-
-function flatByFolder(root: Folder): { folder: string; pages: DocPage[] }[] {
-  const groups: { folder: string; pages: DocPage[] }[] = [];
-  const walk = (node: Folder): void => {
-    if (node.path) groups.push({ folder: node.path, pages: node.pages });
-    node.folders.forEach(walk);
-    if (!node.path && node.pages.length) groups.push({ folder: "", pages: node.pages });
-  };
-  walk(root);
-  return groups;
-}
-
-function Row({ page, selected, onSelect, flat }: { page: DocPage; selected: string | undefined; onSelect: (path: string) => void; flat: boolean }) {
-  const status = flat ? docStatusText(page) : undefined;
-  return (
-    <button
-      type="button"
-      className={`doc-row${page.path === selected ? " on" : ""}`}
-      onClick={() => onSelect(page.path)}
-      title={page.path}
-    >
-      {!flat && <DocFileIcon size={13} className="doc-row-ic" />}
-      <span className="nm">{page.title || page.path}</span>
-      {flat ? <span className={`doc-flat-status ${status!.cls}`}>{status!.text}</span> : <DocMarks page={page} />}
-    </button>
-  );
-}
-
-function FolderNode({ folder, depth, selected, onSelect, forceOpen }: { folder: Folder; depth: number; selected: string | undefined; onSelect: (path: string) => void; forceOpen: boolean }) {
-  const [open, setOpen] = useState(true);
-  const expanded = forceOpen || open;
-  const count = countPages(folder);
-  return (
-    <div className="doc-folder">
-      <button type="button" className="doc-folder-head" style={{ paddingLeft: 6 + depth * 12 }} onClick={() => setOpen((v) => !v)} aria-expanded={expanded}>
-        <CaretIcon size={11} className={`doc-caret${expanded ? " open" : ""}`} />
-        {expanded ? <FolderOpenIcon size={13} /> : <FolderIcon size={13} />}
-        <span className="nm">{folder.name}/</span>
-        <span className="n">{count}</span>
-      </button>
-      {expanded && (
-        <div>
-          {folder.folders.map((f) => (
-            <FolderNode key={f.path} folder={f} depth={depth + 1} selected={selected} onSelect={onSelect} forceOpen={forceOpen} />
-          ))}
-          {folder.pages.map((p) => (
-            <div key={p.path} style={{ paddingLeft: depth * 12 }}>
-              <Row page={p} selected={selected} onSelect={onSelect} flat={false} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function DocsTree({
-  pages,
-  selected,
-  onSelect,
-  filter = "",
-  variant = "tree",
-  legend = true,
-}: {
-  pages: DocPage[];
-  selected?: string;
-  onSelect: (path: string) => void;
-  filter?: string;
-  variant?: "tree" | "flat";
-  legend?: boolean;
+function Section({ section, selected, activeSection, onSelect, onSection, filter }: {
+  section: DocSection; selected?: string; activeSection?: string; onSelect: (path: string) => void; onSection: (path: string) => void; filter: string;
 }) {
-  const query = filter.trim().toLowerCase();
-  const shown = useMemo(
-    () => (query ? pages.filter((p) => p.title.toLowerCase().includes(query) || p.path.toLowerCase().includes(query)) : pages),
-    [pages, query],
-  );
-  const root = useMemo(() => buildTree(shown), [shown]);
-
-  if (!shown.length) {
-    return (
-      <div className="doc-tree-empty">
-        <span className="muted">{pages.length ? "Ничего не найдено" : "Страниц пока нет"}</span>
-      </div>
-    );
-  }
-
-  if (variant === "flat") {
-    return (
-      <div className="doc-tree flat">
-        {flatByFolder(root).map((group) => (
-          <div key={group.folder || "/"} className="doc-flat-group">
-            {group.folder && <div className="doc-flat-folder">{group.folder}</div>}
-            {group.pages.map((p) => (
-              <Row key={p.path} page={p} selected={selected} onSelect={onSelect} flat />
-            ))}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="doc-tree">
-      <div className="doc-tree-body">
-        {root.folders.map((f) => (
-          <FolderNode key={f.path} folder={f} depth={0} selected={selected} onSelect={onSelect} forceOpen={!!query} />
-        ))}
-        {root.pages.map((p) => (
-          <Row key={p.path} page={p} selected={selected} onSelect={onSelect} flat={false} />
-        ))}
-      </div>
-      {legend && <DocLegend />}
+  const [open, setOpen] = useState(true);
+  const expanded = !!filter || open;
+  return <div className="doc-nav-section">
+    <div className="doc-section-row">
+      <button type="button" className="icon-btn" aria-label={`${expanded ? "Свернуть" : "Развернуть"}: ${section.title}`} aria-expanded={expanded} onClick={() => setOpen(!open)}><CaretIcon size={11} className={`doc-caret${expanded ? " open" : ""}`} /></button>
+      <button type="button" className={`doc-section-link${activeSection === section.path && !selected ? " on" : ""}`} onClick={() => onSection(section.path)}><span>{section.title}</span><span className="muted">{section.count}</span></button>
     </div>
-  );
+    {expanded && <div className="doc-section-children">
+      {section.landing && <Article page={section.landing} selected={selected} onSelect={onSelect} />}
+      {section.sections.map((child) => <Section key={child.path} section={child} selected={selected} activeSection={activeSection} onSelect={onSelect} onSection={onSection} filter={filter} />)}
+      {section.pages.map((page) => <Article key={page.path} page={page} selected={selected} onSelect={onSelect} />)}
+    </div>}
+  </div>;
+}
+
+export function DocsTree({ pages, roots, selected, section, onSelect, onSection, filter = "" }: {
+  pages: DocPage[]; roots: string[]; selected?: string; section?: string; onSelect: (path: string) => void; onSection: (path: string) => void; filter?: string;
+}) {
+  const query = filter.trim().toLocaleLowerCase("ru");
+  const full = buildDocNavigation(pages, roots);
+  const shown = query ? pages.filter((p) => `${articleTitle(p)} ${p.path} ${sectionTrail(full, p.path).map((s) => s.title).join(" ")}`.toLocaleLowerCase("ru").includes(query)) : pages;
+  const root = query ? buildDocNavigation(shown, roots) : full;
+  const titles = new Map(docSections(full).map((s) => [s.path, s.title]));
+  for (const section of docSections(root)) section.title = titles.get(section.path) ?? section.title;
+  return <nav className="doc-tree" aria-label="Разделы документации">
+    <div className="doc-tree-body">
+      <button type="button" className={`doc-row doc-space-home${!selected && (!section || section === root.path) ? " on" : ""}`} onClick={() => onSection(root.path)}><BookIcon size={15} /><span className="nm">Обзор пространства</span></button>
+      {query && !shown.length && <p className="doc-hint">Ничего не найдено</p>}
+      {root.landing && <Article page={root.landing} selected={selected} onSelect={onSelect} />}
+      {root.sections.map((child) => <Section key={child.path} section={child} selected={selected} activeSection={section} onSelect={onSelect} onSection={onSection} filter={query} />)}
+      {root.pages.map((page) => <Article key={page.path} page={page} selected={selected} onSelect={onSelect} />)}
+    </div>
+  </nav>;
 }

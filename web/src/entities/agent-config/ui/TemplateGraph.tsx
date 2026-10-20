@@ -8,7 +8,7 @@ type Look = "handoff" | "returns" | "reports" | "consults" | "done" | "pending" 
 const LOOK: Record<Look, { color: string; dash?: string; legend: string }> = {
   handoff: { color: "var(--accent-2)", legend: "передаёт работу" },
   returns: { color: "var(--amber)", legend: "возвращает" },
-  reports: { color: "#6b707a", dash: "4 4", legend: "докладывает оркестратору" },
+  reports: { color: "var(--muted)", dash: "4 4", legend: "докладывает оркестратору" },
   consults: { color: "var(--violet)", dash: "2 4", legend: "советуется" },
   done: { color: "var(--accent-2)", legend: "передача состоялась" },
   pending: { color: "var(--amber)", dash: "6 5", legend: "её ждут" },

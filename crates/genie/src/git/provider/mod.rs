@@ -173,6 +173,7 @@ pub(crate) struct Resp {
 
 /// A client of one host's API.
 pub struct Api {
+    clock: std::sync::Arc<dyn crate::clock::Clock>,
     pub(crate) host: Host,
     pub(crate) http: reqwest::Client,
     pub(crate) base: String,
@@ -182,6 +183,11 @@ pub struct Api {
 
 impl Api {
     pub fn new(host: &Host) -> ApiResult<Api> {
+        Self::with_clock(host, std::sync::Arc::new(crate::clock::SystemClock))
+    }
+
+    /// Select the retry clock independently of the HTTP client's real I/O timeouts.
+    pub fn with_clock(host: &Host, clock: std::sync::Arc<dyn crate::clock::Clock>) -> ApiResult<Api> {
         let Some(base) = host.api_base() else {
             return Err(ApiError::Unsupported(format!("host {} is a plain git server: it has no pull/merge request API", host.id)));
         };
@@ -202,7 +208,7 @@ impl Api {
             b = b.danger_accept_invalid_certs(true);
         }
         let http = b.build().map_err(|e| ApiError::Unavailable(e.to_string()))?;
-        Ok(Api { host: host.clone(), http, base, max_wait: Duration::from_secs(5) })
+        Ok(Api { clock, host: host.clone(), http, base, max_wait: Duration::from_secs(5) })
     }
 
     pub fn kind(&self) -> Kind {
@@ -256,9 +262,9 @@ impl Api {
                         if wait > self.max_wait {
                             return Err(e);
                         }
-                        tokio::time::sleep(wait).await;
+                        self.clock.sleep_until(self.clock.now() + wait).await;
                     }
-                    ApiError::Unavailable(_) => tokio::time::sleep(Duration::from_millis(200 * attempt)).await,
+                    ApiError::Unavailable(_) => self.clock.sleep_until(self.clock.now() + Duration::from_millis(200 * attempt)).await,
                     _ => return Err(e),
                 },
                 Err(e) => return Err(e),

@@ -107,8 +107,8 @@ fn load(app: &App, project: &str, task: &str, repo: &str, caller: &Caller) -> DR
     Ok(Target { record, host, row, eff })
 }
 
-fn api(t: &Target) -> DResult<Api> {
-    Ok(Api::new(&t.host)?)
+fn api(app: &App, t: &Target) -> DResult<Api> {
+    Ok(Api::with_clock(&t.host, app.clock.clone())?)
 }
 
 fn cr_json(row: &TaskRepo, cr: &ChangeRequest, ci: CheckState) -> Value {
@@ -171,7 +171,7 @@ pub async fn open_request(app: &Arc<App>, project: &str, task: &str, repo: &str,
         Ok((t, head, base, title, body))
     })
     .await?;
-    let api = api(&t)?;
+    let api = api(app, &t)?;
     let cr = api.open(&t.record.remote, &OpenRequest { head: head.clone(), base, title, body, draft: args.draft }).await?;
     let ci = api.ci(&t.record.remote, cr.head_sha.as_deref()).await.unwrap_or(Ci::None);
     // What is on the request already is not news later.
@@ -243,7 +243,7 @@ pub async fn comments(app: &Arc<App>, project: &str, task: &str, repo: &str, cal
     let (p, tk, rp, c) = (project.to_string(), task.to_string(), repo.to_string(), caller.clone());
     let t = app.blocking(move |app| load(app, &p, &tk, &rp, &c).map_err(to_app)).await?;
     let number = t.row.cr_number.ok_or_else(|| DeliveryError::Invalid("no request is open for this task yet".into()))?;
-    let list = api(&t)?.comments(&t.record.remote, number).await?;
+    let list = api(app, &t)?.comments(&t.record.remote, number).await?;
     Ok(json!(list))
 }
 
@@ -281,7 +281,7 @@ pub async fn rerun(app: &Arc<App>, project: &str, task: &str, repo: &str, caller
         .ok_or_else(|| DeliveryError::Invalid("no commit is watched yet: push the branch first".into()))?;
     // The host's live answer decides: restarting a running pipeline would be wrong, and a `stalled`
     // watch keeps its own letter (nothing may restart a run nobody is waiting for).
-    let api = api(&t)?;
+    let api = api(app, &t)?;
     let ci = CheckState::from(api.ci(&t.record.remote, Some(&sha)).await?);
     if ci != CheckState::Failed {
         return Err(DeliveryError::Invalid(format!(
@@ -342,7 +342,7 @@ pub async fn comment(app: &Arc<App>, project: &str, task: &str, repo: &str, call
     }
     let number = t.row.cr_number.ok_or_else(|| DeliveryError::Invalid("no request is open for this task yet".into()))?;
     let text = format!("{}\n\n— {} ({}) through genie", text.trim(), caller.name, caller.role.as_str());
-    api(&t)?.comment(&t.record.remote, number, &text).await?;
+    api(app, &t)?.comment(&t.record.remote, number, &text).await?;
     Ok(())
 }
 
@@ -383,7 +383,7 @@ pub async fn merge(app: &Arc<App>, project: &str, task: &str, repo: &str, caller
 
 async fn do_merge(app: &Arc<App>, project: &str, task: &str, t: &Target, strictness: Strictness) -> DResult<Value> {
     let number = t.row.cr_number.ok_or_else(|| DeliveryError::Invalid("no request is open for this task yet".into()))?;
-    let api = api(t)?;
+    let api = api(app, t)?;
     let cr = api.get(&t.record.remote, number).await?;
     if cr.state != CrState::Open {
         return Err(DeliveryError::Invalid(format!("#{number} is already {}", cr.state.as_str())));
@@ -430,7 +430,7 @@ pub async fn sync_row(app: &Arc<App>, row: &TaskRepo) -> DResult<(ChangeRequest,
             Ok((record, host))
         })
         .await?;
-    let api = Api::new(&host)?;
+    let api = Api::with_clock(&host, app.clock.clone())?;
     let cr = api.get(&record.remote, number).await?;
     let ci = if cr.state == CrState::Open {
         api.ci(&record.remote, cr.head_sha.as_deref()).await?.into()
@@ -676,7 +676,7 @@ fn failed_checks(app: &App, project: &str, row: &TaskRepo) -> Option<String> {
         let record = app.with_server(|db| db.repo(project, &row.repo)).ok()?;
         let host = store::host_of(app, &record).ok()?;
         let record = store::resolved(app, &record);
-        let api = Api::new(&host).ok()?;
+        let api = Api::with_clock(&host, app.clock.clone()).ok()?;
         crate::state::block_on(api.ci(&record.remote, Some(sha))).ok().map(CheckState::from)
     };
     let ci = row.ci_sha.as_deref().or(row.head_sha.as_deref()).and_then(live).unwrap_or_else(stored);
@@ -793,7 +793,7 @@ pub async fn watch_one(app: &Arc<App>, row: &TaskRepo) -> DResult<()> {
 pub async fn sync_ref_ci(app: &Arc<App>, row: &TaskRepo) -> DResult<()> {
     let Some(sha) = row.ci_sha.clone() else { return Ok(()) };
     let (record, host) = repo_and_host(app, &row.project, &row.repo).await.map_err(DeliveryError::Internal)?;
-    let api = match Api::new(&host) {
+    let api = match Api::with_clock(&host, app.clock.clone()) {
         Ok(api) => api,
         // A plain git server has no API to ask: stop watching instead of asking forever.
         Err(ApiError::Unsupported(_)) => {

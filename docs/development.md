@@ -11,6 +11,8 @@ Requires stable Rust, Node 22.19+, Git, and bubblewrap for Linux sandbox tests. 
 
 Follow the [repository workflow](development/genie-cli.md) to track a task, isolate changes, and publish a PR with successful CI.
 
+Before publishing a task branch or opening its PR, prepare a [fixed integration preview](development/visual-preview.md) and obtain the owner's visual approval. That guide also documents machine-local T3 Project Actions, combined task candidates and private Tailscale access.
+
 ## Release flow
 
 Feature work enters the protected `dev` branch through pull requests. Releases go from `dev` to the protected `main` branch through a pull request; direct pushes and force pushes to either branch are blocked.
@@ -51,6 +53,28 @@ curl -fsS http://127.0.0.1:7422/api/health
 
 ## Checks
 
+Live-session Rust tests use `pi` from `PATH`. CI installs the same Pi-Bolt version and SHA-256
+as `docker/Dockerfile`; Node is still needed for the fake stdio MCP servers. On Linux x86_64,
+install that build locally without replacing your system's `pi`:
+
+```bash
+bash .github/scripts/install-pi-bolt.sh "$PWD/target/pi-bolt"
+export PATH="$PWD/target/pi-bolt:$PATH"
+pi --version
+```
+
+The live-session tests skip locally when `pi` is absent and fail on CI if it is missing.
+
+With a warm build, `cargo nextest run --workspace --lib --bins --tests --test-threads 8` runs
+all Rust test binaries concurrently; CI uses nextest 0.9.146 to report individual test durations.
+`cargo test` remains available. Timer-sensitive tests
+use a per-application manual clock and completed scheduler/reconciliation passes; real Pi-Bolt,
+MCP, Git and sandbox checks remain in the full suite. Keep subprocess and HTTP I/O timeouts real:
+automatically advancing all Tokio timers can turn ordinary I/O into artificial timeouts.
+
+For a shorter unit/domain feedback loop, run `cargo test --workspace --lib`. Run the full
+suite below before publishing; the short command excludes the HTTP/process integration binaries.
+
 ```bash
 cargo test
 cargo clippy --all-targets -- -D warnings
@@ -62,6 +86,24 @@ npm run build:web
 ```
 
 Rust tests regenerate `web/src/shared/api/generated/`. Commit generated type changes with their source structs. Set `GENIE_WEB_SOURCEMAP=1` when building the web client for browser debugging; source maps are not embedded in the binary.
+
+### Browser tests
+
+The browser tests in `test/ui/` click through the web UI and compare screenshots of key screens with committed baselines. They need Docker, a built server, and a built web client:
+
+```bash
+cargo build -p genie
+npm run build:web
+npm run test:ui
+```
+
+`test/ui/run.ts` seeds a disposable data directory through the CLI (`test/ui/seed.ts`), starts two servers from copies of it, and runs Playwright inside `mcr.microsoft.com/playwright` at the version of the installed `@playwright/test`. The screenshots use one server and the flows the other, so flows never change the screenshot data. Running Playwright only in that image keeps fonts and rendering identical locally and in CI. Set `GENIE_BIN` to test another server binary; arguments after `--` go to Playwright, for example `npm run test:ui -- --project flows`.
+
+- `*.flow.ts` files are user flows. Assert what the user sees and, through `test/ui/api.ts`, what the server stored.
+- `*.visual.ts` files take screenshots at desktop and mobile sizes. The page clock is fixed one hour after seeding, so relative times stay stable.
+- After an intended visual change, run `npm run test:ui -- --update-snapshots` and review the changed images in `test/ui/__screenshots__/` before committing them.
+
+Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. Open a trace with `npx playwright show-trace <path>/trace.zip`.
 
 The [agent benchmark](https://github.com/grigoryshulga/genie/tree/main/bench) compares task outcomes before and after changes to roles, prompts, skills, or team templates.
 

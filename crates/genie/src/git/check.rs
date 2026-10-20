@@ -135,7 +135,7 @@ pub async fn repo(app: &Arc<App>, project: &str, name: &str, probe: bool) -> Vec
     }
     // The host's API: rights and protection.
     if host.kind != Kind::Plain && host.token.is_some() {
-        match Api::new(&host) {
+        match Api::with_clock(&host, app.clock.clone()) {
             Err(e) => out.push(line("fail", e.to_string())),
             Ok(api) => match api.repo(&record.remote).await {
                 Ok(info) => {

@@ -1,3 +1,4 @@
+import { IntelligencePolicyForm } from "./IntelligencePolicyForm.tsx";
 import { useState } from "react";
 import { Link } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
@@ -44,6 +45,7 @@ function PolicyForm({ slug, admin, settings }: { slug: string; admin: boolean; s
         <div className="st-row"><label className="lbl" htmlFor="jev-external"><b>Передавать контекст сервису решений</b><span>Разрешает внешние обращения для этого проекта.</span></label><div className="ctl"><input id="jev-external" type="checkbox" style={{ alignSelf: "flex-start" }} checked={p.allowExternal} onChange={(e) => field("allowExternal", e.target.checked)} /></div></div>
         <div className="st-row"><div className="lbl"><b>Подключённая модель</b><span>{settings.model} · ${settings.inputPrice} за миллион входных токенов.<br />{settings.endpoint ?? "Некорректный endpoint в конфигурации сервера"}</span></div><div className="ctl">{settings.serverKey ? <span className="muted">Ключ задан на сервере</span> : <Link to="/settings/me/keys">Ключ провайдера {settings.keyProvider}</Link>}</div></div>
       </section>
+      <IntelligencePolicyForm value={p.intelligence} onChange={(value) => field("intelligence", value)} />
       <section className="st-card" style={{ marginTop: 20 }}>
         <div className="st-card-head"><h3>Влияние на новую команду</h3><p>Применяется к delivery-командам, которые запускает менеджер или автоматизация. Выбор человека сохраняется.</p></div>
         {([ ["team", "Состав команды"], ["model", "Модель участника"], ["thinking", "Уровень усилий"] ] as const).map(([key, label]) => <div className="st-row" key={key}>

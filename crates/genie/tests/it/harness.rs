@@ -53,7 +53,7 @@ impl Live {
             if j.status == "succeeded" || j.status == "failed" {
                 return j;
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
         let turns = self.app.with_server(|db| db.turns("shop", None, 20)).unwrap();
         panic!("job {id} did not finish: {:?}", turns.iter().map(|t| (&t.agent, &t.status, &t.error, &t.log)).collect::<Vec<_>>());

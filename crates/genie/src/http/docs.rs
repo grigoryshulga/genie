@@ -16,7 +16,14 @@ use serde_json::{Value, json};
 use super::ctx::{Access, Ctx};
 use super::{ApiError, ApiResult};
 use crate::knowledge::{self, Author, DocWrite};
-use crate::state::App;
+use crate::state::{App, AppError};
+
+fn docs_error(error: AppError) -> ApiError {
+    match error {
+        AppError::Genie(GenieError::NotFound(message)) => ApiError::new(StatusCode::NOT_FOUND, message),
+        other => other.into(),
+    }
+}
 
 pub fn routes() -> Router<Arc<App>> {
     Router::new()
@@ -36,24 +43,27 @@ pub fn routes() -> Router<Arc<App>> {
 }
 
 async fn version(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
-    ctx.access(&app, None).await?;
-    let sig = app.blocking(|app| app.with_vault(|v| Ok(v.signature()))).await?;
+    let access = ctx.access(&app, None).await?;
+    access.can(Capability::DocsRead)?;
+    let sig = app.blocking(move |app| app.with_vault(|v| Ok(v.project_signature(&access.project)))).await.map_err(docs_error)?;
     Ok(Json(json!({ "version": sig })))
 }
 
 async fn tree(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
-    ctx.access(&app, None).await?.can(Capability::DocsRead)?;
-    let (sig, pages) = app
-        .blocking(|app| {
+    let access = ctx.access(&app, None).await?;
+    access.can(Capability::DocsRead)?;
+    let (sig, roots, pages) = app
+        .blocking(move |app| {
             app.with_vault(|v| {
                 v.refresh()?;
-                Ok((v.signature(), v.tree()?))
+                Ok((v.project_signature(&access.project), v.spaces_of(&access.project), v.project_tree(&access.project)?))
             })
         })
-        .await?;
+        .await
+        .map_err(docs_error)?;
     let diagnostics: Vec<Value> =
         pages.iter().filter(|p| !p.diagnostics.is_empty()).map(|p| json!({ "path": p.path, "diagnostics": p.diagnostics })).collect();
-    Ok(Json(json!({ "version": sig, "pages": pages, "diagnostics": diagnostics })))
+    Ok(Json(json!({ "version": sig, "roots": roots, "pages": pages, "diagnostics": diagnostics })))
 }
 
 #[derive(Deserialize, Default)]
@@ -63,8 +73,6 @@ struct SearchQuery {
     doc_type: Option<String>,
     status: Option<String>,
     limit: Option<usize>,
-    /// Restrict to the caller's project spaces (plus shared pages).
-    mine: Option<String>,
 }
 
 async fn search(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<SearchQuery>) -> ApiResult<Json<Value>> {
@@ -81,25 +89,25 @@ async fn search(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<SearchQue
     {
         return Err(ApiError::bad(format!("unknown docs status {s}")));
     }
-    let mine = q.mine.as_deref() == Some("1") || access.agent;
     let project = access.project.clone();
     let task = access.agent_team.clone();
     let query2 = query.clone();
     let results = app
         .blocking(move |app| {
             app.with_vault(|v| {
-                let spaces = if mine { v.spaces_of(&project) } else { Vec::new() };
                 let opts = SearchOptions {
                     limit: q.limit.unwrap_or(20),
                     doc_type: q.doc_type,
                     status: q.status,
-                    spaces,
+                    spaces: Vec::new(),
+                    project: Some(project),
                     related: task.into_iter().collect(),
                 };
                 v.search(&query2, &opts)
             })
         })
-        .await?;
+        .await
+        .map_err(docs_error)?;
     Ok(Json(json!({ "query": query, "results": results })))
 }
 
@@ -112,12 +120,13 @@ struct ReadQuery {
 }
 
 async fn read(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<ReadQuery>) -> ApiResult<Json<Value>> {
-    ctx.access(&app, None).await?.can(Capability::DocsRead)?;
+    let access = ctx.access(&app, None).await?;
+    access.can(Capability::DocsRead)?;
     let path = q.path.filter(|p| !p.trim().is_empty()).ok_or_else(|| ApiError::bad("missing docs path"))?;
-    let page = app.blocking(move |app| app.with_vault(|v| v.read(&path, q.heading.as_deref(), q.max_chars))).await.map_err(|e| {
-        let e: ApiError = e.into();
-        if e.message.contains("not found") { ApiError::new(StatusCode::NOT_FOUND, e.message) } else { e }
-    })?;
+    let page = app
+        .blocking(move |app| app.with_vault(|v| v.project_read(&access.project, &path, q.heading.as_deref(), q.max_chars)))
+        .await
+        .map_err(docs_error)?;
     Ok(Json(json!(page)))
 }
 
@@ -155,9 +164,11 @@ async fn write(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<WriteBody>) 
     }
     let (name, login, kind) = author_of(&access);
     let task = b.task.filter(|t| !t.is_empty());
+    let project = access.project.clone();
     let path = b.path.clone();
     let result = app
         .blocking(move |app| {
+            let path = app.with_vault(|v| Ok(v.resolve_for_project(&project, &path)?.0))?;
             let exists = app.with_vault(|v| Ok(v.current_hash(&path)?.is_some()))?;
             if mode == "create" && exists {
                 return Ok(Err(ApiError::new(StatusCode::CONFLICT, "documentation page already exists")));
@@ -169,7 +180,7 @@ async fn write(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<WriteBody>) 
             let out = knowledge::write_doc(app, &path, &content, Author { name: &name, login: &login, kind }, base.as_deref(), &b.note, task.as_deref())?;
             Ok(Ok(match out {
                 DocWrite::Saved { created, .. } => {
-                    let page = app.with_vault(|v| v.read(&path, None, None))?;
+                    let page = app.with_vault(|v| v.project_read(&project, &path, None, None))?;
                     (if created { StatusCode::CREATED } else { StatusCode::OK }, json!({ "page": page, "diagnostics": [] }))
                 }
                 DocWrite::Proposed(p) => (
@@ -180,7 +191,7 @@ async fn write(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<WriteBody>) 
         })
         .await
         .map_err(|e| {
-            let e: ApiError = e.into();
+            let e = docs_error(e);
             if e.message.starts_with("conflict") {
                 ApiError::new(StatusCode::CONFLICT, e.message)
             } else if e.message.contains("is locked") {
@@ -205,8 +216,7 @@ struct NoteBody {
     task: Option<String>,
 }
 
-/// A draft note in the inbox of the caller's project space (the vault's `inbox/`
-/// when the project has none); never replaces a page.
+/// A draft note in the inbox of the caller's project space; never replaces a page.
 async fn note(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<NoteBody>) -> ApiResult<impl IntoResponse> {
     let access = ctx.access(&app, None).await?;
     access.write()?;
@@ -224,7 +234,8 @@ async fn note(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<NoteBody>) ->
             let path = app.with_vault(|v| {
                 let mut spaces = v.spaces_of(&project);
                 spaces.sort();
-                let dir = spaces.first().map(|s| format!("{s}/inbox")).unwrap_or_else(|| "inbox".into());
+                let root = spaces.first().ok_or_else(|| GenieError::not_found("the project has no vault space"))?;
+                let dir = format!("{root}/inbox");
                 let base = format!("{dir}/{}-{}", chrono::Utc::now().format("%Y-%m-%d"), knowledge::slug(&title));
                 let mut path = format!("{base}.md");
                 let mut n = 2;
@@ -247,7 +258,7 @@ async fn note(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<NoteBody>) ->
                 ),
             })
         })
-        .await?;
+        .await.map_err(docs_error)?;
     Ok((status, Json(v)))
 }
 
@@ -257,9 +268,16 @@ struct ProposalsQuery {
 }
 
 async fn proposals(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<ProposalsQuery>) -> ApiResult<Json<Value>> {
-    ctx.access(&app, None).await?;
+    let access = ctx.access(&app, None).await?;
+    access.can(Capability::DocsRead)?;
     let status = q.status.unwrap_or_else(|| "open".into());
-    let list = app.blocking(move |app| app.with_server(|db| db.proposals(if status == "all" { None } else { Some(&status) }, 200))).await?;
+    let list = app
+        .blocking(move |app| {
+            let roots = app.with_vault(|v| Ok(v.spaces_of(&access.project)))?;
+            app.with_server(|db| db.proposals_in_roots(if status == "all" { None } else { Some(&status) }, &roots, 200))
+        })
+        .await
+        .map_err(docs_error)?;
     let out: Vec<Value> = list
         .into_iter()
         .map(|p| {
@@ -272,30 +290,34 @@ async fn proposals(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<Propos
 }
 
 async fn proposal(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
-    ctx.access(&app, None).await?;
+    let access = ctx.access(&app, None).await?;
+    access.can(Capability::DocsRead)?;
     let (p, current, owners) = app
         .blocking(move |app| {
             let p = app.with_server(|db| db.proposal(id))?;
             let (current, owners) = app.with_vault(|v| {
-                let (_, abs) = v.resolve(&p.path)?;
+                let (_, abs) = v.resolve_for_project(&access.project, &p.path)?;
                 Ok((std::fs::read_to_string(abs).ok(), v.owners_for(&p.path)))
             })?;
             Ok((p, current, owners))
         })
-        .await?;
+        .await
+        .map_err(docs_error)?;
     Ok(Json(json!({ "proposal": p, "current": current, "owners": owners })))
 }
 
 /// Server admins, the page's section/space owners and admins of the space's project decide.
 async fn can_decide(app: &Arc<App>, ctx: &Ctx, id: i64) -> ApiResult<String> {
+    let access = ctx.access(app, None).await?;
     let user = ctx.user()?.clone();
     let login = user.login.clone();
     let ok = app
         .blocking(move |app| {
+            let p = app.with_server(|db| db.proposal(id))?;
+            app.with_vault(|v| v.resolve_for_project(&access.project, &p.path))?;
             if user.is_admin {
                 return Ok(true);
             }
-            let p = app.with_server(|db| db.proposal(id))?;
             let (owners, project) = app.with_vault(|v| Ok((v.owners_for(&p.path), v.project_of(&p.path))))?;
             if owners.iter().any(|o| o == &user.login) {
                 return Ok(true);
@@ -305,7 +327,8 @@ async fn can_decide(app: &Arc<App>, ctx: &Ctx, id: i64) -> ApiResult<String> {
                 None => Ok(false),
             }
         })
-        .await?;
+        .await
+        .map_err(docs_error)?;
     if ok { Ok(login) } else { Err(ApiError::new(StatusCode::FORBIDDEN, "only the section owners or project admins decide on proposals")) }
 }
 
@@ -320,7 +343,7 @@ async fn approve(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>, bod
     let by = can_decide(&app, &ctx, id).await?;
     let b = body.map(|Json(b)| b).unwrap_or_default();
     let p = app.blocking(move |app| knowledge::decide(app, id, true, &by, b.note.as_deref(), b.force)).await.map_err(|e| {
-        let e: ApiError = e.into();
+        let e = docs_error(e);
         if e.message.starts_with("conflict") {
             ApiError::new(StatusCode::CONFLICT, format!("{} (approve with force to overwrite)", e.message))
         } else {
@@ -333,31 +356,49 @@ async fn approve(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>, bod
 async fn reject(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>, body: Option<Json<DecideBody>>) -> ApiResult<Json<Value>> {
     let by = can_decide(&app, &ctx, id).await?;
     let note = body.and_then(|Json(b)| b.note);
-    let p = app.blocking(move |app| knowledge::decide(app, id, false, &by, note.as_deref(), false)).await?;
+    let p = app.blocking(move |app| knowledge::decide(app, id, false, &by, note.as_deref(), false)).await.map_err(docs_error)?;
     Ok(Json(json!(p)))
 }
 
 async fn spaces(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
-    ctx.access(&app, None).await?;
-    let cfg = app.blocking(|app| app.with_vault(|v| Ok(v.config.clone()))).await?;
+    let access = ctx.access(&app, None).await?;
+    access.can(Capability::DocsRead)?;
+    let cfg = app
+        .blocking(move |app| {
+            app.with_vault(|v| {
+                let mut cfg = v.config.clone();
+                cfg.spaces.retain(|_, s| s.project.as_deref() == Some(&access.project));
+                Ok(cfg)
+            })
+        })
+        .await
+        .map_err(docs_error)?;
     Ok(Json(json!(cfg)))
 }
 
 async fn set_space(State(app): State<Arc<App>>, ctx: Ctx, Path(name): Path<String>, Json(space): Json<Space>) -> ApiResult<Json<Value>> {
-    let access = ctx.access(&app, space.project.as_deref()).await?;
+    let access = ctx.access(&app, None).await?;
     access.admin()?;
-    if name.is_empty() || name.contains('/') || name.starts_with('.') {
+    if name.is_empty() || name.contains(['/', '\\']) || name.starts_with('.') {
         return Err(ApiError::bad("invalid space name"));
     }
     let cfg = app
         .blocking(move |app| {
             app.with_vault(|v| {
+                if space.project.as_deref() != Some(&access.project)
+                    || v.config.spaces.get(&name).is_some_and(|s| s.project.as_deref() != Some(&access.project))
+                {
+                    return Err(GenieError::invalid("a documentation root must belong to the selected project"));
+                }
                 v.config.spaces.insert(name, space);
                 v.save_config()?;
-                Ok(v.config.clone())
+                let mut cfg = v.config.clone();
+                cfg.spaces.retain(|_, s| s.project.as_deref() == Some(&access.project));
+                Ok(cfg)
             })
         })
-        .await?;
+        .await
+        .map_err(docs_error)?;
     Ok(Json(json!(cfg)))
 }
 
@@ -374,7 +415,8 @@ async fn changelog(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Valu
                 Ok((rel, std::fs::read_to_string(abs).unwrap_or_default()))
             })
         })
-        .await?;
+        .await
+        .map_err(docs_error)?;
     Ok(Json(json!({ "path": path, "content": content })))
 }
 
@@ -390,6 +432,6 @@ async fn release(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<ReleaseBod
         return Err(ApiError::bad("version must be a single word such as 1.2.0"));
     }
     let (project, by) = (access.project.clone(), access.actor.name.clone());
-    let notes = app.blocking(move |app| crate::knowledge::release(app, &project, &b.version, &by)).await?;
+    let notes = app.blocking(move |app| crate::knowledge::release(app, &project, &b.version, &by)).await.map_err(docs_error)?;
     Ok(Json(json!({ "notes": notes })))
 }

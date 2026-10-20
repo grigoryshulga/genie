@@ -7,7 +7,7 @@
 //! mechanics: turn rows, mail leases, tokens, the process.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::runtime::{self, AgentKey};
@@ -38,12 +38,24 @@ pub struct Verdict {
 }
 
 /// Failures in a row of each agent, and when it may start again.
-#[derive(Default)]
-pub struct Attempts(Mutex<HashMap<AgentKey, (u32, Instant)>>);
+pub struct Attempts {
+    state: Mutex<HashMap<AgentKey, (u32, Instant)>>,
+    clock: Arc<dyn crate::clock::Clock>,
+}
+
+impl Default for Attempts {
+    fn default() -> Self {
+        Self::new(Arc::new(crate::clock::SystemClock))
+    }
+}
 
 impl Attempts {
+    pub(crate) fn new(clock: Arc<dyn crate::clock::Clock>) -> Self {
+        Self { state: Mutex::new(HashMap::new()), clock }
+    }
+
     fn with<T>(&self, f: impl FnOnce(&mut HashMap<AgentKey, (u32, Instant)>) -> T) -> T {
-        f(&mut self.0.lock().unwrap_or_else(|e| e.into_inner()))
+        f(&mut self.state.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     pub fn failures(&self, key: &AgentKey) -> u32 {
@@ -52,12 +64,12 @@ impl Attempts {
 
     /// Not waiting out a backoff.
     pub fn may_start(&self, key: &AgentKey) -> bool {
-        self.with(|m| m.get(key).is_none_or(|(_, until)| *until <= Instant::now()))
+        self.with(|m| m.get(key).is_none_or(|(_, until)| *until <= self.clock.now()))
     }
 
     /// How long until the agent may start again; `None` if it may now.
     pub fn wait_for(&self, key: &AgentKey) -> Option<Duration> {
-        self.with(|m| m.get(key).and_then(|(_, until)| until.checked_duration_since(Instant::now())))
+        self.with(|m| m.get(key).and_then(|(_, until)| until.checked_duration_since(self.clock.now())).filter(|d| !d.is_zero()))
     }
 
     /// A start that did not get as far as a run (no prepared turn, no process): it counts
@@ -70,7 +82,7 @@ impl Attempts {
     fn fail(&self, key: &AgentKey) -> u32 {
         self.with(|m| {
             let n = m.get(key).map(|x| x.0 + 1).unwrap_or(1);
-            m.insert(key.clone(), (n, Instant::now() + backoff(n)));
+            m.insert(key.clone(), (n, self.clock.now() + backoff(n)));
             n
         })
     }
@@ -81,7 +93,7 @@ impl Attempts {
 
     /// Agents waiting out a backoff may start at once; their failures still count.
     pub fn retry_now(&self) {
-        let now = Instant::now();
+        let now = self.clock.now();
         self.with(|m| m.values_mut().for_each(|b| b.1 = now));
     }
 }
