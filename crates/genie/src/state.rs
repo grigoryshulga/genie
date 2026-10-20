@@ -79,6 +79,7 @@ where
 }
 
 pub struct App {
+    pub clock: Arc<dyn crate::clock::Clock>,
     pub decision_gates: crate::decisions::Gates,
     pub data: PathBuf,
     pub cfg: Config,
@@ -127,6 +128,15 @@ pub struct App {
 
 impl App {
     pub fn open(data: &Path, cfg: Config, web_root: impl Into<Option<PathBuf>>) -> AppResult<Arc<App>> {
+        Self::open_with_clock(data, cfg, web_root, Arc::new(crate::clock::SystemClock))
+    }
+
+    pub fn open_with_clock(
+        data: &Path,
+        cfg: Config,
+        web_root: impl Into<Option<PathBuf>>,
+        clock: Arc<dyn crate::clock::Clock>,
+    ) -> AppResult<Arc<App>> {
         std::fs::create_dir_all(data).map_err(|e| AppError::Internal(format!("{}: {e}", data.display())))?;
         crate::llm_oauth::cleanup_stale(data);
         let server = ServerDb::open(&data.join("server.db"))?;
@@ -141,6 +151,8 @@ impl App {
         let prices = RwLock::new(crate::model_prices::State::load(&cfg, &server));
         let slots = Arc::new(tokio::sync::Semaphore::new(cfg.runtime.max_concurrent.max(1)));
         Ok(Arc::new(App {
+            attempts: crate::outcome::Attempts::new(clock.clone()),
+            clock,
             decision_gates: Default::default(),
             data: data.to_path_buf(),
             cfg,
@@ -157,7 +169,6 @@ impl App {
             llm_oauth: Default::default(),
             sched: Default::default(),
             slots,
-            attempts: Default::default(),
             agents: RwLock::new(Arc::new(agents)),
             prices,
             mcp: Default::default(),

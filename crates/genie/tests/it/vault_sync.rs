@@ -36,6 +36,7 @@ async fn the_vault_syncs_with_a_remote_both_ways() {
     std::process::Command::new("git").args(["init", "-q", "--bare", "-b", "main"]).arg(&remote).status().unwrap();
     let url = remote.to_string_lossy().into_owned();
     let h = Harness::with_config(|c| {
+        c.vault.commit = Some(true);
         c.vault.remote = Some(url.clone());
         c.vault.branch = Some("main".into());
     });

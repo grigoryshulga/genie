@@ -8,7 +8,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn people_write_agents_propose_owners_approve() {
-    let h = Harness::new();
+    let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
     h.project("shop");
     let r = &h.router;
     let page = "---\ntitle: Экспорт\ntype: guide\nstatus: current\n---\n# Экспорт\n\nЗаказы выгружаются в CSV.\n";
@@ -46,6 +46,9 @@ async fn people_write_agents_propose_owners_approve() {
     assert_eq!(s, StatusCode::OK, "{done}");
     let (_, read, _) = call(r, "GET", "/api/docs/page?path=shop/export.md").send().await;
     assert!(read["content"].as_str().unwrap().contains("XLSX"));
+    let vault = h.app.with_vault(|v| Ok(v.root().to_path_buf())).unwrap();
+    let committed = crate::common::githost::sh(&vault, &["show", "HEAD:shop/export.md"]);
+    assert!(committed.contains("CSV и XLSX."), "the approved document is committed to Git: {committed}");
 
     // A stale edit is a conflict, not a silent overwrite.
     let (s, e, _) =

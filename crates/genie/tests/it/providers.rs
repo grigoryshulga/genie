@@ -6,6 +6,7 @@
 use crate::common;
 
 use common::fakehost::{self, FakeHost};
+use genie::clock::Clock;
 use genie::git::hosts;
 use genie::git::provider::{Api, ApiError, Ci, CrState, OpenRequest};
 
@@ -28,7 +29,8 @@ fn req(head: &str, draft: bool) -> OpenRequest {
 async fn scenario(kind: &'static str) {
     let fake: FakeHost = fakehost::spawn(kind, "secret").await;
     let (_d, h) = host(kind, &fake.url, "secret");
-    let api = Api::new(&h).unwrap();
+    let clock = std::sync::Arc::new(common::ManualClock::default());
+    let api = Api::with_clock(&h, clock.clone()).unwrap();
 
     // Who the token is; the repository and what protects it.
     let who = api.whoami().await.unwrap();
@@ -108,12 +110,21 @@ async fn scenario(kind: &'static str) {
     assert!(matches!(Api::new(&bad).unwrap().whoami().await, Err(ApiError::Auth(_))), "{kind}");
     fake.lock().rate_limited = 1;
     let before = fake.lock().calls.len();
-    api.whoami().await.unwrap();
+    clock.run(api.whoami()).await.unwrap();
     assert!(fake.lock().calls.len() >= before + 2, "{kind}: a read is repeated after a rate limit");
     fake.lock().broken = 2;
-    api.repo("acme/api").await.unwrap();
+    let began = clock.now();
+    let before = fake.lock().calls.len();
+    clock.run(api.repo("acme/api")).await.unwrap();
+    assert_eq!(clock.now() - began, std::time::Duration::from_millis(600));
+    let calls = fake.lock().calls[before..].to_vec();
+    assert_eq!(calls.iter().filter(|call| **call == calls[0]).count(), 3, "two retries of the repository read: {calls:?}");
     fake.lock().broken = 5;
-    assert!(matches!(api.whoami().await, Err(ApiError::Unavailable(_))), "{kind}: three tries, then it gives up");
+    let began = clock.now();
+    let before = fake.lock().calls.len();
+    assert!(matches!(clock.run(api.whoami()).await, Err(ApiError::Unavailable(_))), "{kind}: three tries, then it gives up");
+    assert_eq!(clock.now() - began, std::time::Duration::from_millis(600));
+    assert_eq!(fake.lock().calls.len(), before + 3, "only three attempts on a persistent failure");
     fake.lock().broken = 0;
 }
 

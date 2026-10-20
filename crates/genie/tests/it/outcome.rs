@@ -13,11 +13,15 @@ use genie_core::team::{Member, NewMember, NewTeam, ORCHESTRATOR};
 use genie_core::{Activity, Actor, CreateInput, MemberState, Role};
 
 fn app() -> (tempfile::TempDir, Arc<App>) {
+    app_with_clock(Arc::new(genie::clock::SystemClock))
+}
+
+fn app_with_clock(clock: Arc<dyn genie::clock::Clock>) -> (tempfile::TempDir, Arc<App>) {
     let dir = tempfile::tempdir().unwrap();
     let mut cfg = Config::load(dir.path()).unwrap();
     cfg.runtime.enabled = false;
     cfg.runtime.max_attempts = 3;
-    let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+    let app = App::open_with_clock(dir.path(), cfg, PathBuf::from("/nonexistent"), clock).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();
     app.with_tracker("shop", |t| {
         t.create(&Actor::new("anna", Role::Human), CreateInput { title: "CSV export".into(), ..Default::default() })?;
@@ -36,6 +40,28 @@ fn app() -> (tempfile::TempDir, Arc<App>) {
     })
     .unwrap();
     (dir, app)
+}
+
+#[test]
+fn retries_start_at_the_deadline_and_keep_the_failure_streak() {
+    use std::time::Duration;
+
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let (_dir, app) = app_with_clock(clock.clone());
+    assert_eq!(failed(&app).retry_in, Duration::from_secs(1));
+    clock.advance(Duration::from_millis(999));
+    assert!(!app.attempts.may_start(&bender()));
+    assert_eq!(app.attempts.wait_for(&bender()), Some(Duration::from_millis(1)));
+    clock.advance(Duration::from_millis(1));
+    assert!(app.attempts.may_start(&bender()));
+    assert_eq!(app.attempts.wait_for(&bender()), None);
+
+    assert_eq!(failed(&app).retry_in, Duration::from_secs(10));
+    clock.advance(Duration::from_millis(9999));
+    assert!(!app.attempts.may_start(&bender()));
+    clock.advance(Duration::from_millis(1));
+    assert!(app.attempts.may_start(&bender()));
+    assert_eq!(app.attempts.failures(&bender()), 2);
 }
 
 fn bender() -> AgentKey {

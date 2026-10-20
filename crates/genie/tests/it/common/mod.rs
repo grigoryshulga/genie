@@ -7,7 +7,8 @@ pub mod githost;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::body::Body;
@@ -18,6 +19,98 @@ use genie::state::App;
 use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
+
+#[derive(Debug)]
+pub struct ManualClock {
+    now: Mutex<Instant>,
+    changed: tokio::sync::Notify,
+    sleep_started: tokio::sync::Notify,
+    sleepers: Mutex<std::collections::BTreeMap<u64, Instant>>,
+    sequence: std::sync::atomic::AtomicU64,
+}
+
+impl Default for ManualClock {
+    fn default() -> Self {
+        Self {
+            now: Mutex::new(Instant::now()),
+            changed: Default::default(),
+            sleep_started: Default::default(),
+            sleepers: Default::default(),
+            sequence: Default::default(),
+        }
+    }
+}
+
+impl ManualClock {
+    pub fn advance(&self, by: Duration) {
+        *self.now.lock().unwrap() += by;
+        self.changed.notify_waiters();
+    }
+
+    /// Run real I/O, advancing only when the operation requests a retry delay.
+    pub async fn run<F: std::future::Future>(&self, future: F) -> F::Output {
+        tokio::pin!(future);
+        loop {
+            tokio::select! {
+                biased;
+                result = &mut future => return result,
+                deadline = self.next_sleep() => {
+                    let now = *self.now.lock().unwrap();
+                    self.advance(deadline.saturating_duration_since(now));
+                }
+            }
+        }
+    }
+
+    async fn next_sleep(&self) -> Instant {
+        loop {
+            let started = self.sleep_started.notified();
+            tokio::pin!(started);
+            started.as_mut().enable();
+            let now = *self.now.lock().unwrap();
+            let next = self.sleepers.lock().unwrap().values().copied().filter(|deadline| *deadline > now).min();
+            if let Some(deadline) = next {
+                return deadline;
+            }
+            started.await;
+        }
+    }
+}
+
+struct ClockSleep<'a> {
+    clock: &'a ManualClock,
+    id: u64,
+}
+
+impl Drop for ClockSleep<'_> {
+    fn drop(&mut self) {
+        self.clock.sleepers.lock().unwrap().remove(&self.id);
+    }
+}
+
+impl genie::clock::Clock for ManualClock {
+    fn now(&self) -> Instant {
+        *self.now.lock().unwrap()
+    }
+
+    fn sleep_until(&self, deadline: Instant) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(async move {
+            let id = self.sequence.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.sleepers.lock().unwrap().insert(id, deadline);
+            let _sleep = ClockSleep { clock: self, id };
+            self.sleep_started.notify_one();
+            loop {
+                let changed = self.changed.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if self.now() >= deadline {
+                    return;
+                }
+                changed.await;
+            }
+        })
+    }
+}
 
 pub struct Harness {
     pub dir: tempfile::TempDir,
@@ -32,6 +125,10 @@ impl Harness {
     }
 
     pub fn with_config(f: impl FnOnce(&mut Config)) -> Harness {
+        Self::with_clock(f, Arc::new(genie::clock::SystemClock))
+    }
+
+    pub fn with_clock(f: impl FnOnce(&mut Config), clock: Arc<dyn genie::clock::Clock>) -> Harness {
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = Config::load(dir.path()).unwrap();
         // PD24: no default models anywhere — every role carries its own, like a real installation.
@@ -42,8 +139,11 @@ impl Harness {
         // Test files live in the data directory, which a sandboxed agent does not see.
         cfg.runtime.sandbox.mode = "off".into();
         cfg.runtime.enabled = false;
+        // Route tests need the real indexed vault, not a Git history for every fixture.
+        // The documentation publication and vault-sync tests enable history explicitly.
+        cfg.vault.commit = Some(false);
         f(&mut cfg);
-        let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent-web")).unwrap();
+        let app = App::open_with_clock(dir.path(), cfg, PathBuf::from("/nonexistent-web"), clock).unwrap();
         let router = genie::http::router(app.clone());
         let local = router.clone().layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))));
         let remote = router.layer(MockConnectInfo(SocketAddr::from(([10, 0, 0, 7], 50000))));
