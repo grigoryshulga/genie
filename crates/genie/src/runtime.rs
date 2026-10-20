@@ -74,7 +74,10 @@ impl AgentKey {
 
 /// The scheduler's own state: whose turn is running, and who waits after failures.
 #[derive(Default)]
-pub struct Sched(Mutex<SchedState>);
+pub struct Sched {
+    state: Mutex<SchedState>,
+    tick: tokio::sync::Mutex<()>,
+}
 
 #[derive(Default)]
 struct SchedState {
@@ -86,7 +89,7 @@ struct SchedState {
 
 impl Sched {
     fn with<T>(&self, f: impl FnOnce(&mut SchedState) -> T) -> T {
-        f(&mut self.0.lock().unwrap_or_else(|e| e.into_inner()))
+        f(&mut self.state.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     /// Whether a turn of any member of `team` is running now.
@@ -163,21 +166,28 @@ pub fn start(app: &Arc<App>) {
     }
     let app = app.clone();
     tokio::spawn(async move {
-        let slots = app.slots.clone();
         loop {
-            let next = match schedule(&app, &slots).await {
+            let next = match tick(&app).await {
                 Ok(next) => next,
                 Err(e) => {
                     eprintln!("genie runtime: {e}");
-                    Next(Some(Duration::from_secs(5)))
+                    Duration::from_secs(5)
                 }
             };
             tokio::select! {
                 _ = app.wake_runtime.notified() => {}
-                _ = tokio::time::sleep(next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET)).max(Duration::from_millis(50))) => {}
+                _ = app.clock.sleep_until(app.clock.now() + next) => {}
             }
         }
     });
+}
+
+/// Supervise agents and schedule ready work once, returning the next deadline's delay.
+/// Explicit and background passes share the same serialization and scheduling rules.
+pub async fn tick(app: &Arc<App>) -> AppResult<Duration> {
+    let _tick = app.sched.tick.lock().await;
+    let next = schedule(app, &app.slots).await?;
+    Ok(next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET)).max(Duration::from_millis(50)))
 }
 
 /// When the scheduler has to look again without being woken: the soonest of the deadlines it

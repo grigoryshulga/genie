@@ -43,6 +43,12 @@ The knowledge vault is a separate Git repository; its SQLite search index is dis
 
 Agents receive session or turn tokens. Durable mail lives in the core; the harness is a delivery client. Most teams use [live pi sessions](agent-bus.md), while one-shot jobs use turn execution.
 
+Agent supervision and retry deadlines use an application-owned monotonic clock. Production uses
+the system clock; tests can advance an independent clock without changing persisted UTC timestamps
+or real subprocess/network I/O timeouts. The scheduler's single-pass `runtime::tick` and Telegram's
+`Poller::reconcile` are also used by their background loops, so tests can await completed work
+instead of sleeping for a polling interval.
+
 ## Isolation
 
 Bubblewrap hides server databases, credentials, and unrelated projects while allowing an agent's workspace and selected tool caches. It shares the host network. Docker deployment is a separate layer; the default Compose configuration does not enable nested bubblewrap.

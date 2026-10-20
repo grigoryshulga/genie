@@ -1,4 +1,4 @@
-//! Live agent sessions end to end: the real pi harness (`node_modules/.bin/pi`,
+//! Live agent sessions end to end: the real pi harness (`pi` from PATH, Pi-Bolt on CI,
 //! RPC mode, the genie-bus extension) against a scripted OpenAI-compatible model
 //! served by the test. The model follows instructions found in the mail it gets:
 //! `RUN: <command>` runs a shell command; `MCPCALL: {"tool": …, "args": …}` calls the
@@ -135,8 +135,7 @@ async fn completions(State(log): State<Log>, body: Bytes) -> axum::response::Res
 }
 
 fn pi_bin() -> Option<PathBuf> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../node_modules/.bin/pi");
-    p.exists().then_some(p)
+    genie::doctor::pi_program(&Config::default())
 }
 
 struct Live {
@@ -147,6 +146,10 @@ struct Live {
 }
 
 async fn live(pi: PathBuf, tweak: impl FnOnce(&mut Config)) -> Live {
+    live_with_clock(pi, tweak, Arc::new(genie::clock::SystemClock)).await
+}
+
+async fn live_with_clock(pi: PathBuf, tweak: impl FnOnce(&mut Config), clock: Arc<dyn genie::clock::Clock>) -> Live {
     let dir = tempfile::tempdir().unwrap();
     // The fake model.
     let log: Log = Arc::default();
@@ -167,6 +170,7 @@ async fn live(pi: PathBuf, tweak: impl FnOnce(&mut Config)) -> Live {
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut cfg = Config::load(dir.path()).unwrap();
+    cfg.vault.commit = Some(false);
     // Real pi in the agent sandbox: GENIE_TEST_SANDBOX=bwrap (the fake model's files are in the data directory's pi dir).
     cfg.runtime.sandbox.mode = std::env::var("GENIE_TEST_SANDBOX").unwrap_or_else(|_| "off".into());
     cfg.port = listener.local_addr().unwrap().port();
@@ -200,7 +204,7 @@ async fn live(pi: PathBuf, tweak: impl FnOnce(&mut Config)) -> Live {
         std::fs::write(dir.path().join(format!("agents/{role}.md")), format!("---\nmodel: fake/{role}\n---\n")).unwrap();
     }
     tweak(&mut cfg);
-    let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+    let app = App::open_with_clock(dir.path(), cfg, PathBuf::from("/nonexistent"), clock).unwrap();
     app.create_project("shop", "Shop", None, None, Some("SHOP")).unwrap();
     app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
     let work = dir.path().join("work");
@@ -251,7 +255,7 @@ async fn until<T>(what: &str, secs: u64, mut f: impl FnMut() -> Option<T>) -> T 
         if let Some(v) = f() {
             return v;
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
     panic!("timed out after {secs}s waiting for {what}\n{}", DUMP.lock().unwrap().as_ref().map(|d| d()).unwrap_or_default());
 }
@@ -317,23 +321,28 @@ fn session_state(app: &App, name: &str) -> Option<(String, Option<String>, u32)>
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn mail_reaches_live_agents_between_steps_and_on_interrupt() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
-        eprintln!("skipped: pi is not installed (npm ci)");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
         return;
     };
-    let l = live(pi, |_| {}).await;
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(pi, |_| {}, clock.clone()).await;
     let (app, log) = (&l.app, &l.log);
     install_dump(app, log);
 
     // A busy agent gets mail at its next step boundary, not after its run.
-    mail(app, "anna", "human", "bender", "RUN: sleep 3; echo slept", None);
+    // Hold the real bash step until the mail is queued, rather than guessing how long it needs.
+    let release = app.data.join("work/step-release");
+    mail(app, "anna", "human", "bender", "RUN: while [ ! -e step-release ]; do sleep 0.01; done; echo slept", None);
     until("bender to run the command", 30, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
     let sent = Instant::now();
     mail(app, "yoda", "reviewer", "bender", "PING-mid: use CSV", None);
+    assert!(request_with(log, "executor", "PING-mid").is_none(), "mail waits for the busy step's boundary");
+    std::fs::write(release, "go").unwrap();
     let req = until("the mid-run mail in a model request", 15, || request_with(log, "executor", "PING-mid")).await;
     let waited = req.at - sent;
-    eprintln!("latency: mail to a busy agent reached the model {waited:?} after sending (a 3s command was running)");
-    assert!(waited < Duration::from_secs(5), "delivered {waited:?} after sending, while a 3s command ran");
+    eprintln!("latency: mail to a busy agent reached the model {waited:?} after sending and releasing its command");
+    assert!(waited < Duration::from_secs(5), "delivered {waited:?} after sending and releasing the busy step");
     assert!(req.messages.iter().any(|(r, t)| r == "tool" && t.contains("slept")), "delivered right after the step's tool call");
     let runs = app.with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10)).unwrap();
     assert_eq!(runs.len(), 1, "the mail joined the running run instead of waiting for a new one: {runs:?}");
@@ -366,7 +375,12 @@ async fn mail_reaches_live_agents_between_steps_and_on_interrupt() {
     let pid = session_state(app, "bender").unwrap().2;
     std::process::Command::new("kill").arg("-KILL").arg(pid.to_string()).status().unwrap();
     until("the crash noticed", 20, || session_state(app, "bender").is_none_or(|s| s.2 != pid).then_some(())).await;
+    until("the crash backoff recorded", 20, || (app.attempts.failures(&member("bender")) == 1).then_some(())).await;
     mail(app, "yoda", "reviewer", "bender", "PING-after-crash", None);
+    genie::runtime::tick(app).await.unwrap();
+    assert!(session_state(app, "bender").is_none(), "the crashed agent waits for its retry deadline");
+    clock.advance(Duration::from_secs(1));
+    genie::runtime::tick(app).await.unwrap();
     let sent = Instant::now();
     let req = until("mail after the crash", 60, || request_with(log, "executor", "PING-after-crash")).await;
     eprintln!("latency: after a crash, a restarted session saw new mail after {:?}", req.at - sent);
@@ -428,7 +442,7 @@ async fn mail_reaches_live_agents_between_steps_and_on_interrupt() {
     assert!(post("/agents/SHOP-1/bender/pause").await.unwrap().status().is_success());
     until("the paused session to stop", 20, || session_state(app, "bender").is_none().then_some(())).await;
     mail(app, "yoda", "reviewer", "bender", "PING-paused", None);
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    genie::runtime::tick(app).await.unwrap();
     assert!(session_state(app, "bender").is_none(), "a paused agent is not started");
     assert!(request_with(log, "executor", "PING-paused").is_none());
     assert!(post("/agents/SHOP-1/bender/resume").await.unwrap().status().is_success());
@@ -456,15 +470,27 @@ fn orchestrator_mail(app: &App, needle: &str) -> Option<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn watchdogs_stop_silent_steps_and_report_loops() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
-    let l = live(pi, |cfg| cfg.runtime.turn_timeout_secs = 3).await;
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(pi, |cfg| cfg.runtime.turn_timeout_secs = 3, clock.clone()).await;
     let (app, log) = (&l.app, &l.log);
 
     // A step with no sign of life for turnTimeoutSecs is aborted and the orchestrator is told.
     mail(app, "anna", "human", "bender", "RUN: sleep 120", None);
     until("the silent command", 30, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
+    // Drain startup/prompt responses before measuring silence: every RPC event is a heartbeat,
+    // and seeing tool_execution_start alone does not mean its trailing responses were read.
+    let session = app.sessions.get(&member("bender")).unwrap();
+    let state = session.request(json!({ "type": "get_state" }), Duration::from_secs(5)).await.expect("the RPC barrier answers");
+    assert_eq!(state["success"], true, "{state}");
+    clock.advance(Duration::from_millis(2999));
+    genie::runtime::tick(app).await.unwrap();
+    assert!(orchestrator_mail(app, "no sign of life").is_none(), "the watchdog does not fire before its deadline");
+    assert_eq!(session_state(app, "bender").unwrap().1.as_deref(), Some("bash"));
+    clock.advance(Duration::from_millis(1));
+    genie::runtime::tick(app).await.unwrap();
     until("the watchdog report", 20, || orchestrator_mail(app, "no sign of life")).await;
     until("the stuck step to be aborted", 20, || session_state(app, "bender").filter(|s| s.0 == "idle")).await;
     until("the agent told why its step stopped", 20, || request_with(log, "executor", "showed no sign of life")).await;
@@ -517,7 +543,7 @@ async fn tool_result_of(log: &Log, model: &str, needle: &str) -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
     let pi_path = pi.to_string_lossy().into_owned();
@@ -671,7 +697,7 @@ async fn a_role_gets_its_skills_and_the_guard_keeps_it_within_its_grants() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_session_runs_under_a_heap_cap_its_commands_do_not_inherit() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
     let l = live(pi, |cfg| {
@@ -698,8 +724,8 @@ async fn a_session_runs_under_a_heap_cap_its_commands_do_not_inherit() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn at_the_console_mail_reaches_the_idle_session_by_itself() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
-        eprintln!("skipped: pi is not installed (npm ci)");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
         return;
     };
     let l = live(pi.clone(), |_| {}).await;
@@ -721,7 +747,7 @@ async fn at_the_console_mail_reaches_the_idle_session_by_itself() {
         .env("PI_OFFLINE", "1")
         .env("PI_SKIP_VERSION_CHECK", "1")
         .env("PI_TELEMETRY", "0")
-        .env("GENIE_BUS_POLL_MS", "300")
+        .env("GENIE_BUS_POLL_MS", "20")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -783,13 +809,19 @@ async fn at_the_console_mail_reaches_the_idle_session_by_itself() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn an_agent_whose_provider_refuses_stays_in_error_with_the_reason() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
         return;
     };
-    let l = live(pi, |cfg| cfg.runtime.max_attempts = 2).await;
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(pi, |cfg| cfg.runtime.max_attempts = 2, clock.clone()).await;
     let app = &l.app;
 
     mail(app, "anna", "human", "bender", "PROVIDER-DOWN please work", None);
+    until("the first failed run", 20, || (app.attempts.failures(&member("bender")) == 1).then_some(())).await;
+    clock.advance(Duration::from_millis(999));
+    genie::runtime::tick(app).await.unwrap();
+    assert_eq!(app.attempts.failures(&member("bender")), 1, "no retry before its deadline");
+    clock.advance(Duration::from_millis(1));
     until("the orchestrator hears the agent gave up", 60, || orchestrator_mail(app, "failed 2 runs in a row")).await;
     until("the session to be stopped", 30, || app.sessions.get(&member("bender")).is_none().then_some(())).await;
 
@@ -812,11 +844,12 @@ async fn an_agent_whose_provider_refuses_stays_in_error_with_the_reason() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
     let Some(pi) = pi_bin() else {
-        assert!(std::env::var("CI").is_err(), "pi is not installed: run `npm ci` before `cargo test`");
-        eprintln!("skipped: pi is not installed (npm ci)");
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
         return;
     };
-    let l = live(pi, |_| {}).await;
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(pi, |_| {}, clock.clone()).await;
     let (app, log) = (&l.app, &l.log);
     install_dump(app, log);
     let work = app.data.join("work");
@@ -864,9 +897,15 @@ async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
 
     // Nobody writes to the agent: the note alone starts the run, and the letter it had
     // acknowledged is in the resumed conversation exactly once.
-    let req =
-        until("the restart note in a model request", 120, || request_with(log, "executor", "The genie server restarted after a crash"))
-            .await;
+    let req = until("the restart note in a model request", 30, || {
+        // The simulated shutdown may have recorded a crash backoff before recovery finishes.
+        if let Some(wait) = app.attempts.wait_for(&member("bender")) {
+            clock.advance(wait);
+            app.wake_runtime.notify_one();
+        }
+        request_with(log, "executor", "The genie server restarted after a crash")
+    })
+    .await;
     eprintln!("latency: after a server crash mid-turn, the agent was told to continue after {:?}", req.at - crashed);
     assert_eq!(req.count("RUN: echo first"), 1, "the acknowledged letter is not injected twice");
     until("the agent to continue its own work", 60, || work.join("a2").exists().then_some(())).await;

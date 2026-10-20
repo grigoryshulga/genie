@@ -22,27 +22,50 @@ pub async fn call(app: &App, token: &str, method: &str, body: Value) -> Result<V
     Ok(value["result"].clone())
 }
 
+/// Owns each configured bot's polling worker; reconciliation applies persisted changes once.
+pub struct Poller {
+    app: Arc<App>,
+    workers: HashMap<String, (String, tokio::task::JoinHandle<()>)>,
+}
+
+impl Poller {
+    pub fn new(app: Arc<App>) -> Self {
+        Self { app, workers: HashMap::new() }
+    }
+
+    pub async fn reconcile(&mut self) -> crate::state::AppResult<()> {
+        let bots = self.app.blocking(|app| app.with_server(|db| db.project_bots())).await?;
+        self.workers.retain(|scope, (token, worker)| {
+            let keep = bots.iter().any(|b| &b.scope == scope && &b.token.0 == token && !b.token.0.is_empty()) && !worker.is_finished();
+            if !keep {
+                worker.abort();
+            }
+            keep
+        });
+        for bot in bots.into_iter().filter(|b| !b.token.0.is_empty()) {
+            self.workers.entry(bot.scope.clone()).or_insert_with(|| {
+                let token = bot.token.0.clone();
+                let app = self.app.clone();
+                (token, tokio::spawn(async move { poll(app, bot).await }))
+            });
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Poller {
+    fn drop(&mut self) {
+        for (_, worker) in self.workers.values() {
+            worker.abort();
+        }
+    }
+}
+
 pub fn start(app: Arc<App>) {
     tokio::spawn(async move {
-        let mut workers: HashMap<String, (String, tokio::task::JoinHandle<()>)> = HashMap::new();
+        let mut poller = Poller::new(app);
         loop {
-            if let Ok(bots) = app.blocking(|app| app.with_server(|db| db.project_bots())).await {
-                workers.retain(|scope, (token, worker)| {
-                    let keep =
-                        bots.iter().any(|b| &b.scope == scope && &b.token.0 == token && !b.token.0.is_empty()) && !worker.is_finished();
-                    if !keep {
-                        worker.abort();
-                    }
-                    keep
-                });
-                for bot in bots.into_iter().filter(|b| !b.token.0.is_empty()) {
-                    workers.entry(bot.scope.clone()).or_insert_with(|| {
-                        let token = bot.token.0.clone();
-                        let a = app.clone();
-                        (token, tokio::spawn(async move { poll(a, bot).await }))
-                    });
-                }
-            }
+            let _ = poller.reconcile().await;
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     });

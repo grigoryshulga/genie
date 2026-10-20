@@ -275,7 +275,9 @@ fn doctor_reports_the_schema_versions_and_survives_newer_data() {
     let data = tempfile::tempdir().unwrap();
     let server = data.path().join("server.db");
     drop(ServerDb::open(&server).unwrap());
-    let cfg = Config::load(data.path()).unwrap();
+    let mut cfg = Config::load(data.path()).unwrap();
+    // Schema diagnostics do not need to launch the host's agent harness.
+    cfg.runtime.enabled = false;
     let agents = genie::agent_config::AgentConfig::load(data.path(), &cfg, None);
 
     let (text, _) = genie::doctor::print(&genie::doctor::run(data.path(), &cfg, &agents, None));
