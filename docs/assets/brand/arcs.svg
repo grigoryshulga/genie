@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="none">
+  <title>Genie arcs</title>
+  <desc>Concentric quarter rings anchored to the bottom-right corner of the frame: green outer band, orange inner band, solid green core.</desc>
+  <g transform="translate(500 500)">
+    <path fill="#008f6b" d="M-500 0A500 500 0 0 1 0-500V-360A360 360 0 0 0-360 0Z"/>
+    <path fill="#ff873c" d="M-250 0A250 250 0 0 1 0-250V-140A140 140 0 0 0-140 0Z"/>
+    <path fill="#008f6b" d="M-105 0A105 105 0 0 1 0-105V0Z"/>
+  </g>
+</svg>

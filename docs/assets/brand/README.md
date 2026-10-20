@@ -20,3 +20,7 @@ The same contour is embedded in `docs/public/logo.svg` for the documentation
 navbar and favicon, and in `docs/assets/hero.svg` for the GitHub README hero.
 When editing the lettermark, update those embedded paths as well. The application
 UI logo is unchanged.
+
+The broader visual language (colour, type, components, motif) is a draft in
+[design-system.md](design-system.md); it will supersede the periwinkle and indigo
+values above once the lettermark is redrawn for it.
