@@ -99,11 +99,17 @@ Concentric quarter rings anchored to a corner of the frame and cropped by it: a 
 
 ## Logo
 
-The board shows a new lockup (a green "g" with an orange arc, plus a lowercase wordmark) that differs from the lettermark currently in [the brand README](README.md). No vector source for it is in the repository, so this system does not redraw it. The board implies these rules, which carry over once the vector exists:
+The board's lockup (a green stroked "g" with an orange arc, plus a lowercase wordmark) is a draft vector rebuilt from the board raster, because no designer source exists in the repository:
 
-- On ink: green mark, paper wordmark, orange arc.
-- On paper: the mark steps down to the deep green (`--g-green-800`) and the wordmark is ink, for the same contrast reason as text.
-- Clear space of at least the height of the arc on every side.
+- [`logo-ink.svg`](logo-ink.svg): for dark surfaces. Green mark, orange arc, paper wordmark.
+- [`logo-paper.svg`](logo-paper.svg): for light surfaces. The mark steps down to the deep green (`--g-green-800`) and the wordmark is ink, for the same contrast reason as text.
+- [`logo-mark.svg`](logo-mark.svg): the mark alone, for avatars and favicons. Prefer 24px or larger.
+
+How they were made: the mark is clean geometry (a stroked circle, handle, stadium, and loop) overlaid on the board and corrected until it matched; the wordmark is a bitmap trace of the board lettering, so its curves and small corners are approximate. The files use no fonts or external resources. They are working drafts: replace them with the designer's originals when available, and do not treat the wordmark's exact letterforms as final.
+
+They do not replace the current lettermark in [the brand README](README.md) yet; the docs navbar, README hero, and app UI still use the old mark until the migration.
+
+Clear space is at least the height of the arc on every side.
 
 ## Open decisions
 
