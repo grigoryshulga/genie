@@ -14,6 +14,9 @@ const VISUAL_AUTH = resolve(results, "ui-auth-visual.json");
 const FLOWS_AUTH = resolve(results, "ui-auth-flows.json");
 const desktop = { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } };
 
+// `npm run ui:capture` swaps the test projects for the capture ones (test/ui/screens.capture.ts).
+const capturing = process.env.GENIE_UI_CAPTURE === "1";
+
 export default defineConfig({
   testDir: ".",
   outputDir: resolve(results, "ui"),
@@ -32,7 +35,7 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [
+  projects: capturing ? captureProjects() : [
     { name: "login-visual", testMatch: "auth.setup.ts", use: { ...desktop, baseURL: visualURL, storageState: undefined }, metadata: { auth: VISUAL_AUTH } },
     { name: "login-flows", testMatch: "auth.setup.ts", use: { ...desktop, baseURL: flowsURL, storageState: undefined }, metadata: { auth: FLOWS_AUTH } },
     {
@@ -55,3 +58,16 @@ export default defineConfig({
     },
   ],
 });
+
+function captureProjects() {
+  return [
+    { name: "login-visual", testMatch: "auth.setup.ts", use: { ...desktop, baseURL: visualURL, storageState: undefined }, metadata: { auth: VISUAL_AUTH } },
+    { name: "capture-desktop", testMatch: "*.capture.ts", dependencies: ["login-visual"], use: { ...desktop, baseURL: visualURL, storageState: VISUAL_AUTH } },
+    {
+      name: "capture-phone",
+      testMatch: "*.capture.ts",
+      dependencies: ["login-visual"],
+      use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 }, baseURL: visualURL, storageState: VISUAL_AUTH },
+    },
+  ];
+}

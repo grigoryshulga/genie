@@ -103,6 +103,17 @@ npm run test:ui
 - `*.visual.ts` files take screenshots at desktop and mobile sizes. The page clock is fixed one hour after seeding, so relative times stay stable.
 - After an intended visual change, run `npm run test:ui -- --update-snapshots` and review the changed images in `test/ui/__screenshots__/` before committing them.
 
+### Screenshot capture
+
+`npm run ui:capture` photographs every route in `test/ui/routes.ts` and compares nothing. It uses the same server, seed and image as the browser tests, plus extra tasks (`CAPTURE_TASKS` in `test/ui/seed.ts`) so that all eleven statuses, an owner question and an epic with children are present. The seed never touches a real tracker or data directory.
+
+```bash
+npm run ui:capture                                  # the application as it renders
+GENIE_UI_THEMES=ink,paper npm run ui:capture        # one set per data-theme value
+```
+
+PNGs land in `test-results/captures/<route>-<theme>-<1440|390>.png` (ignored by git), at 1440x900 and 390x844, with animations disabled and the clock fixed. Attach the before and after sets to the UI task that changed them. Known gaps: team and agent chat screens need running agents, so they are not captured; full-page shots do not include content scrolled inside a panel (the board's wide lanes are clipped to the viewport); the server health page shows the throwaway data path.
+
 Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. Open a trace with `npx playwright show-trace <path>/trace.zip`.
 
 The [agent benchmark](https://github.com/grigoryshulga/genie/tree/main/bench) compares task outcomes before and after changes to roles, prompts, skills, or team templates.
