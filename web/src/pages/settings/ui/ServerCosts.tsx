@@ -19,8 +19,8 @@ import {
 } from "@/entities/usage";
 import { BarChart, useAct } from "@/shared/ui";
 
-const COLORS = ["#7c84f0", "#3aa58a", "#d9a441", "#5ba7e0"];
-const OTHER = "#6b6f78";
+const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)"];
+const OTHER = "var(--chart-other)";
 
 type View = "projects" | "epics" | "tasks" | "chats";
 const VIEWS: { id: View; label: string; hint: string }[] = [

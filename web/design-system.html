@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="violet">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genie design system</title>
+<link rel="stylesheet" href="/src/app/styles.css">
+<link rel="stylesheet" href="/src/shared/ui/agents.css">
+<link rel="stylesheet" href="/src/shared/ui/ChipInput.css">
+<style>
+  body { overflow: auto; }
+  .catalog { max-width: 1000px; margin: auto; padding: 28px; }
+  .catalog h1 { margin: 0; font-size: var(--font-size-page); }
+  .catalog h2 { font-size: var(--font-size-heading); margin: 0 0 16px; }
+  .catalog section { margin: 20px 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-panel); }
+  .samples, .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .toolbar { margin: 16px 0; }
+  .toolbar select { background: var(--bg-panel); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px; }
+  .swatch { min-width: 125px; flex: 1; }
+  .swatch i { display: block; height: 44px; border: 1px solid var(--line-strong); border-radius: var(--radius); margin-bottom: 6px; }
+  .statuses > span { display: inline-flex; gap: 6px; align-items: center; }
+  .catalog .field { width: min(260px, 100%); }
+  .catalog .modal { max-width: 100%; }
+  .type-sample { margin: 8px 0; }
+  @media (max-width: 600px) { .catalog { padding: 16px; } .catalog section { padding: 16px; } }
+</style>
+<main class="catalog">
+  <h1>Genie design system</h1>
+  <p class="muted">Live specimens using the application's CSS and status components. Foundations and Figma import: design-system/README.md.</p>
+  <div class="toolbar">
+    <label>Theme <select id="theme"><option>dark</option><option>light</option></select></label>
+    <label>Accent <select id="accent"><option>violet</option><option>blue</option><option>teal</option><option>green</option><option>orange</option><option>rose</option></select></label>
+  </div>
+  <section><h2>Surfaces and semantic colors</h2><div id="swatches" class="samples"></div></section>
+  <section><h2>Buttons</h2><div class="samples">
+    <button class="btn">Default</button><button class="btn primary">Primary</button><button class="btn ghost">Ghost</button>
+    <button class="btn amber">Owner action</button><button class="btn danger">Delete</button><button class="btn primary" disabled>Disabled</button>
+    <button class="btn sm">Small</button><button class="icon-btn" aria-label="More actions">⋯</button>
+  </div></section>
+  <section><h2>Fields and chips</h2><div class="samples">
+    <label class="field">Name <input placeholder="Project name"></label>
+    <label class="field">Status <select><option>Ready for work</option><option>In progress</option></select></label>
+    <label class="field">Tags <span class="chips"><span class="chip">Design <button aria-label="Remove Design">×</button></span><input aria-label="New tag" placeholder="Add tag"></span></label>
+  </div></section>
+  <section><h2>Status and priority</h2><div id="statuses" class="samples statuses"></div></section>
+  <section><h2>Roles and badges</h2><div class="samples">
+    <span class="av md r-analyst">A</span><span class="c-analyst">Analyst</span>
+    <span class="av md r-executor">E</span><span class="c-executor">Executor</span>
+    <span class="av md r-reviewer">R</span><span class="c-reviewer">Reviewer</span>
+    <span class="av md r-tester">T</span><span class="c-tester">Tester</span>
+    <span class="ag-badge accent">Accent</span><span class="ag-badge green">Success</span><span class="ag-badge amber">Attention</span><span class="ag-badge red">Error</span>
+  </div></section>
+  <section><h2>Typography</h2>
+    <p class="type-sample" style="font-size:var(--font-size-page);font-weight:600">Page title · 24 / 600</p>
+    <p class="type-sample" style="font-size:var(--font-size-section);font-weight:600">Section title · 20 / 600</p>
+    <p class="type-sample" style="font-size:var(--font-size-heading);font-weight:600">Panel heading · 15 / 600</p>
+    <p class="type-sample">Body text · 13 / 400 · Geist</p>
+    <p class="type-sample muted" style="font-size:var(--font-size-small)">Secondary text · 12 / 400</p>
+    <p class="type-sample mono">GNE-25 · Geist Mono</p>
+  </section>
+  <section><h2>Dialog structure</h2><div class="modal" role="group" aria-label="Dialog specimen">
+    <div class="mh">Dialog heading</div><div class="mb"><label class="field">Title <input value="A shared design language"></label><p class="muted">Panel surface, strong border, large radius and overlay shadow.</p></div>
+    <div class="mf"><span class="grow"></span><button class="btn ghost">Cancel</button><button class="btn primary">Save</button></div>
+  </div></section>
+</main>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { StatusIcon, PriorityIcon } from "/src/entities/task/ui/StatusIcon.tsx";
+  for (const name of ["theme", "accent"]) document.getElementById(name).onchange = (event) => document.documentElement.dataset[name] = event.target.value;
+  const colors = ["bg", "bg-side", "bg-panel", "bg-raised", "line-strong", "accent", "amber", "green", "red", "yellow"];
+  for (const name of colors) {
+    const item = document.createElement("div"); item.className = "swatch";
+    const paint = document.createElement("i"); paint.style.background = `var(--${name})`;
+    const label = document.createElement("code"); label.textContent = `--${name}`;
+    item.append(paint, label); document.getElementById("swatches").append(item);
+  }
+  const statuses = ["inbox", "draft", "refining", "ready", "in_progress", "changes_requested", "review", "approved", "needs_owner", "done", "cancelled"];
+  createRoot(document.getElementById("statuses")).render(React.createElement(React.Fragment, null,
+    ...statuses.map(status => React.createElement("span", { key: status }, React.createElement(StatusIcon, { status, size: 16 }), status)),
+    ...[0,1,2,3,4].map(priority => React.createElement("span", { key: priority }, React.createElement(PriorityIcon, { priority, size: 16 }), `P${priority}`))));
+</script>
+</html>

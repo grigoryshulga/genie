@@ -17,7 +17,7 @@ Run an isolated pilot on the current orchestration model. Verify output quality,
 
 ## Phase 1: project manager and memory
 
-The implemented management lifecycle provides a persistent project manager responsible for planning and owner conversation. Keep durable project memory separate from a growing chat transcript. It should retain goals, constraints, decisions, and current work without reconstructing them from every task.
+The implemented management lifecycle provides a persistent project manager responsible for planning and owner conversation. Keep durable project memory separate from a growing chat transcript. It should retain goals, constraints, decisions, and current work without reconstructing them from every task. The draft design, with external evidence, is in [Project memory](memory.md).
 
 ## Phase 2: epic coordination
 
@@ -29,6 +29,10 @@ Build reusable workflows for logs, alerts, issue intake, knowledge cleanup, and 
 
 ## Phase 4: workspaces and richer interaction
 
-Evaluate reproducible project environments, reviewer-directed changes, documentation impact, additional content formats, wider provider integration, and per-person budgets using pilot evidence.
+Evaluate reproducible project environments ([design](environment-design.md)), reviewer-directed changes, documentation impact, additional content formats, wider provider integration, and per-person budgets using pilot evidence.
+
+## Observation plane
+
+The [observation plane proposal](observation-plane-proposal.md) adds a post-delivery feedback loop: outcome cases, contracts, evidence, guardrail incidents, and follow-up tasks, independent of the task lifecycle. Phase 1 is implemented; see the [user reference](observation.md). Its [Phase 1 specification](observation-plane.md) and [implementation plan](../development/observation-plane-plan.md) remain the design record.
 
 Further design questions include richer memory retrieval, project-wide planning interactions, scheduling overrides, and container-runner isolation guarantees.

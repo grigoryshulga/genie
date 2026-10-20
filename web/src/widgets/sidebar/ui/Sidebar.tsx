@@ -5,6 +5,7 @@ import { BookIcon, useDocsTree } from "@/entities/doc";
 import { initials, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
 import { useNotifications, useProposals } from "@/entities/platform";
+import { OBSERVATION_TEXT } from "@/entities/observation";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
 import { canManageProject, timeAgo, useTick } from "@/shared/lib";
@@ -39,7 +40,7 @@ export function Sidebar({ onNew, online, compact, onToggleCompact, searchRef, on
       <div className={`project${many ? " switch" : ""}`} title={project ? `${project.name} · ${project.hasRepo ? "проект с репозиторием кода" : "проект без кода"}` : "genie"}>
         <span className="sidebar-brand">
           <span className="logo-mark" aria-hidden="true">
-            <Icon.mark size={15} />
+            <Icon.mark size={22} />
           </span>
           <button
             type="button"
@@ -132,6 +133,10 @@ export function Sidebar({ onNew, online, compact, onToggleCompact, searchRef, on
         <NavLink to="/automations" title="Автоматизации" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
           <Icon.bolt size={15} />
           <span className="grow">Автоматизации</span>
+        </NavLink>
+        <NavLink to="/observations" title={OBSERVATION_TEXT.nav} className={({ isActive }) => `nav-item${isActive || pathname.startsWith("/observation/") ? " on" : ""}`}>
+          <Icon.spark size={15} />
+          <span className="grow">{OBSERVATION_TEXT.nav}</span>
         </NavLink>
         <NavLink to="/notifications" title="Уведомления" className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}>
           <Icon.bell size={15} />

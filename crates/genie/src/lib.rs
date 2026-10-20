@@ -13,8 +13,11 @@ pub mod context;
 pub mod decisions;
 pub mod doctor;
 pub mod engine;
+pub mod env;
+pub mod factory;
 pub mod git;
 pub mod http;
+pub mod intelligence;
 pub mod knowledge;
 pub mod llm_key;
 pub mod llm_oauth;
@@ -22,6 +25,7 @@ pub mod management;
 pub mod mcp_gateway;
 pub mod model_prices;
 pub mod notify;
+pub mod observation;
 pub mod ops;
 pub mod orchestrate;
 pub mod outcome;
@@ -60,6 +64,7 @@ pub async fn serve(app: Arc<App>) -> Result<(), String> {
     let addr: SocketAddr = format!("{}:{}", app.cfg.bind, app.cfg.port).parse().map_err(|e| format!("bind address: {e}"))?;
     let listener = bind_retry(addr).await?;
     println!("genie serve: http://{addr} (data {})", app.data.display());
+    reconcile_environments(app.clone());
     let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
     let server = serve_on(app, listener, async {
         let _ = stopped.await;
@@ -74,6 +79,27 @@ pub async fn serve(app: Arc<App>) -> Result<(), String> {
             tokio::time::timeout(SHUTDOWN_GRACE, &mut server).await.unwrap_or(Ok(()))
         }
     }
+}
+
+/// Reconcile the workspace environments with the runtime, once, in the background. A failure is
+/// logged and never stops the server: the runtime may be unavailable while everything else works.
+fn reconcile_environments(app: Arc<App>) {
+    tokio::task::spawn_blocking(move || match env::controller::reconcile(&app) {
+        Ok(report) => {
+            println!(
+                "genie serve: environments reconciled: {} stage(s) and {} snapshot(s) interrupted, {} runtime object(s) removed, {} workspace(s) stopped, {} deletion(s) finished",
+                report.stages_interrupted,
+                report.snapshots_interrupted,
+                report.resources_removed,
+                report.workspaces_stopped.len(),
+                report.deletions_finished.len()
+            );
+            for problem in &report.problems {
+                eprintln!("genie serve: environments: {problem}");
+            }
+        }
+        Err(e) => eprintln!("genie serve: environments not reconciled: {e}"),
+    });
 }
 
 /// Load the models' tariffs from LiteLLM once the server is up — the only

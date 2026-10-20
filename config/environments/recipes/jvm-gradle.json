@@ -1,0 +1,35 @@
+{
+  "id": "jvm-gradle",
+  "revision": 1,
+  "description": "JVM projects built with the Gradle wrapper. Fills the Gradle caches; the JDK comes from the base.",
+  "tools": {
+    "java": {
+      "probe": "java -version"
+    }
+  },
+  "caches": [
+    { "name": "gradle-caches", "path": "~/.gradle/caches", "integrity": "unverified" },
+    { "name": "gradle-wrapper", "path": "~/.gradle/wrapper", "integrity": "unverified" }
+  ],
+  "prepare": [
+    {
+      "id": "dependencies",
+      "run": "./gradlew --no-daemon dependencies",
+      "inputs": [
+        "gradlew",
+        "gradle/**",
+        "*.gradle",
+        "*.gradle.kts",
+        "**/*.gradle",
+        "**/*.gradle.kts",
+        "gradle.properties",
+        "settings.gradle*",
+        "buildSrc/**"
+      ]
+    }
+  ],
+  "commands": {
+    "build": "./gradlew --no-daemon build -x test",
+    "test": "./gradlew --no-daemon test"
+  }
+}

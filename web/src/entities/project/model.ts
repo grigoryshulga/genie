@@ -136,6 +136,7 @@ export function doctorSummary(checks: DoctorCheck[]): { level: DoctorCheck["leve
 
 /** What happened in a project over a period (`genie stats`). */
 export interface ProjectStats {
+  factory?: import("../../shared/api/generated/FactoryAnalytics.ts").FactoryAnalytics;
   project: string;
   name: string;
   created: number;

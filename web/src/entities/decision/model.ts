@@ -7,6 +7,7 @@ export interface DecisionProfile {
   roles: string[];
 }
 export interface DecisionPolicy {
+  intelligence: import("../../shared/api/generated/IntelligencePolicy.ts").IntelligencePolicy;
   allowExternal: boolean;
   toolEnabled: boolean;
   toolRoles: string[];

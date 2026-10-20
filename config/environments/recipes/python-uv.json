@@ -1,0 +1,44 @@
+{
+  "id": "python-uv",
+  "revision": 1,
+  "description": "Python projects synchronised with uv from uv.lock. Set dir to a subdirectory with a trailing slash (svc/) when the project is not at the repository root.",
+  "params": {
+    "python": {
+      "default": "",
+      "description": "Required Python version, such as 3.12. Empty accepts any version."
+    },
+    "dir": {
+      "default": "",
+      "description": "Subdirectory of the project with a trailing slash, such as svc/. Empty is the repository root."
+    }
+  },
+  "tools": {
+    "uv": {
+      "probe": "uv --version"
+    },
+    "python": {
+      "version": "{{python}}",
+      "probe": "python3 --version"
+    }
+  },
+  "caches": [
+    { "name": "uv", "path": "~/.cache/uv", "integrity": "verified" }
+  ],
+  "prepare": [
+    {
+      "id": "sync",
+      "run": "uv sync --frozen",
+      "cwd": "{{dir}}",
+      "outputs": ["{{dir}}.venv"],
+      "inputs": [
+        "{{dir}}pyproject.toml",
+        "{{dir}}uv.lock",
+        "{{dir}}.python-version"
+      ],
+      "verify": "uv run --frozen python -c \"import sys\""
+    }
+  ],
+  "commands": {
+    "test": "cd {{dir}}. && uv run --frozen pytest"
+  }
+}

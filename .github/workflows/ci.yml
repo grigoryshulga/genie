@@ -25,6 +25,7 @@ jobs:
       docker: ${{ steps.filter.outputs.docker }}
       rust: ${{ steps.filter.outputs.rust }}
       web: ${{ steps.filter.outputs.web }}
+      preview: ${{ steps.filter.outputs.preview }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -57,6 +58,21 @@ jobs:
               - "tsconfig.json"
               - "steiger.config.ts"
               - ".github/workflows/**"
+            preview:
+              - "scripts/preview/**"
+              - ".github/workflows/**"
+
+  preview:
+    name: Preview tools
+    needs: changes
+    if: needs.changes.outputs.preview == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s scripts/preview -p 'test_*.py'
 
   lint:
     name: Rust format and lint
@@ -103,17 +119,20 @@ jobs:
       # mold links the test binaries several times faster than the default linker.
       - uses: rui314/setup-mold@v1
       # The agent sandbox: bubblewrap, with the unprivileged user namespaces Ubuntu restricts by default.
+      # Rootless Podman for the environment runner tests.
       - name: Sandbox
         run: |
+          pkgs="bubblewrap podman slirp4netns uidmap fuse-overlayfs catatonit"
           # The runner's package lists are usually fresh enough; refresh them only when the install fails.
-          sudo apt-get install -y -q --no-install-recommends bubblewrap \
-            || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends bubblewrap; }
+          sudo apt-get install -y -q --no-install-recommends $pkgs \
+            || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends $pkgs; }
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Test
         # The live-session tests run the real pi harness inside the sandbox too. No doc tests: there are none.
         env:
           GENIE_REQUIRE_SANDBOX: 1
           GENIE_TEST_SANDBOX: bwrap
+          GENIE_TEST_PODMAN: 1
           # Most tests wait on agent processes and timers, not the CPU: twice the runner's 4 cores
           # (measured: 18 s → 15 s; 16 threads starts to starve the timing-sensitive tests).
           RUST_TEST_THREADS: 8
@@ -144,6 +163,40 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint:web
       - run: npm run build:web
+
+  ui:
+    name: Browser tests
+    needs: changes
+    # The screens depend on the web and on the server that answers them.
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: rui314/setup-mold@v1
+      # The server is built before web/dist exists, so it does not embed the UI and is not rebuilt
+      # by a web-only change: the tests serve the fresh web/dist with `serve --web`.
+      - run: cargo build --locked -p genie
+      - run: npm run build:web
+      # Seeds two servers and runs Playwright in the image pinned to the installed version.
+      - run: npm run test:ui
+      - name: Upload the report, traces and screenshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-tests
+          path: test-results/
+          retention-days: 14
 
   docker:
     name: Docker build definition
@@ -179,7 +232,7 @@ jobs:
   quality-gate:
     name: Quality gate
     if: always()
-    needs: [changes, lint, test, web, docker, main-release-gate]
+    needs: [changes, lint, test, web, ui, docker, preview, main-release-gate]
     runs-on: ubuntu-latest
     steps:
       - name: Require all applicable checks to pass

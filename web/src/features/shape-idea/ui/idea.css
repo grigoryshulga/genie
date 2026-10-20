@@ -1,47 +1,47 @@
 /* The plan of an idea next to the planner's chat (and the idea mode of «Новая задача»). */
 .app.agent-view:has(.idea-plan) { grid-template-columns: 232px minmax(0, 1fr) 380px; }
 .idea-plan { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.ip-hd { height: 56px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid var(--line); font-size: 12px; }
-.ip-hd b { font-size: 13px; font-weight: 600; }
-.ip-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; }
-.ip-note { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 10px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.ip-hd { height: 56px; flex: none; display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-10); border-bottom: 1px solid var(--line); font-size: var(--font-size-small); }
+.ip-hd b { font-size: var(--font-size-body); font-weight: 600; }
+.ip-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-8) var(--space-10); }
+.ip-note { display: flex; flex-direction: column; gap: var(--space-3); padding: 14px; border: 1px dashed var(--line-strong); border-radius: 10px; font-size: var(--font-size-label); line-height: 1.5; color: var(--muted); }
 .ip-note b { color: var(--text-2); font-weight: 500; }
-.ip-note.ok { border: 1px solid #1f3a2c; background: #0f1a14; }
+.ip-note.ok { border: 1px solid var(--green-line); background: var(--green-bg); }
 .ip-note.ok b { color: var(--green); }
-.ip-epic { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid #2e2a44; border-radius: 12px; background: #15131e; }
-.ip-epic .kind { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #c9b3f5; }
-.ip-epic b { font-size: 14px; font-weight: 600; }
-.ip-epic p, .ip-more p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; }
-.ip-epic ul, .ip-more ul, .ip-open ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
-.ip-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.ip-task { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.ip-epic { display: flex; flex-direction: column; gap: var(--space-3); padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-panel); }
+.ip-epic .kind { display: flex; align-items: center; gap: var(--space-3); font-size: var(--font-size-caption); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-text); }
+.ip-epic b { font-size: var(--font-size-emphasis); font-weight: 600; }
+.ip-epic p, .ip-more p { margin: 0; font-size: var(--font-size-label); line-height: 1.5; color: var(--text-2); white-space: pre-wrap; }
+.ip-epic ul, .ip-more ul, .ip-open ul { margin: 0; padding-left: 18px; font-size: var(--font-size-label); line-height: 1.5; color: var(--text-2); }
+.ip-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.ip-task { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: var(--space-5); padding: var(--space-6); border: 1px solid var(--line); border-radius: 10px; }
 .ip-task input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); }
 .ip-task.off { opacity: 0.5; }
 .ip-task.off .ip-title .t { text-decoration: line-through; }
-.ip-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.ip-title { display: flex; align-items: flex-start; gap: 8px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: 500; text-align: left; cursor: pointer; }
-.ip-title .n { font-family: var(--mono); font-size: 11px; line-height: 18px; color: var(--muted); }
+.ip-main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.ip-title { display: flex; align-items: flex-start; gap: var(--space-4); padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: 500; text-align: left; cursor: pointer; }
+.ip-title .n { font-family: var(--mono); font-size: var(--font-size-caption); line-height: 18px; color: var(--muted); }
 .ip-title .t { flex: 1; line-height: 1.4; }
 .ip-title svg { flex: none; margin-top: 4px; color: var(--muted); transition: transform 0.12s; }
 .ip-title[aria-expanded="true"] svg { transform: rotate(90deg); }
-.ip-desc { font-size: 12.5px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.ip-more { display: flex; flex-direction: column; gap: 6px; }
-.ip-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.ip-tags .tag { padding: 0 7px; border-radius: 9px; background: var(--bg-card); color: var(--text-2); font-size: 11px; line-height: 18px; }
-.ip-tags .tag.dep { background: var(--amber-bg); color: #f5b670; }
+.ip-desc { font-size: var(--font-size-label); line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ip-more { display: flex; flex-direction: column; gap: var(--space-3); }
+.ip-tags { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.ip-tags .tag { padding: 0 7px; border-radius: 9px; background: var(--bg-card); color: var(--text-2); font-size: var(--font-size-caption); line-height: 18px; }
+.ip-tags .tag.dep { background: var(--amber-bg); color: var(--amber-text); }
 .ip-tags .tag.dep.lost { text-decoration: line-through; }
-.ip-open { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px dashed var(--line-strong); border-radius: 10px; }
-.ip-open h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-2); }
-.ip-ft { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 20px 20px; border-top: 1px solid var(--line); }
-.ip-ft .btn.primary { height: 40px; font-size: 14px; }
+.ip-open { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6); border: 1px dashed var(--line-strong); border-radius: 10px; }
+.ip-open h3 { margin: 0; font-size: var(--font-size-small); font-weight: 600; color: var(--text-2); }
+.ip-ft { flex: none; display: flex; flex-direction: column; gap: var(--space-5); padding: 14px var(--space-10) var(--space-10); border-top: 1px solid var(--line); }
+.ip-ft .btn.primary { height: 40px; font-size: var(--font-size-emphasis); }
 
 /* «Новая задача»: how to file it. */
 .nt-mode { display: flex; padding: 3px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--bg-sunken); }
-.nt-mode button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
-.nt-mode button[aria-checked="true"] { background: #262a4a; color: var(--text); }
-.nt-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: nt; }
-.nt-steps li { padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--text-body); counter-increment: nt; }
-.nt-steps li::before { content: counter(nt); display: block; margin-bottom: 6px; font-family: var(--mono); font-size: 11px; color: var(--accent-text); }
+.nt-mode button { height: 26px; padding: 0 var(--space-5); border: 0; border-radius: var(--radius-sm); background: none; color: var(--muted); font-size: var(--font-size-small); display: flex; align-items: center; gap: var(--space-3); }
+.nt-mode button[aria-checked="true"] { background: var(--accent-soft); color: var(--text); }
+.nt-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); margin: 0; padding: 0; list-style: none; counter-reset: nt; }
+.nt-steps li { padding: var(--space-6); border: 1px solid var(--line); border-radius: 10px; font-size: var(--font-size-label); line-height: 1.45; color: var(--text-body); counter-increment: nt; }
+.nt-steps li::before { content: counter(nt); display: block; margin-bottom: 6px; font-family: var(--mono); font-size: var(--font-size-caption); color: var(--accent-text); }
 
 @media (max-width: 900px) {
   .app.agent-view:has(.idea-plan) { grid-template-columns: 1fr; }

@@ -45,6 +45,7 @@ const BUILTIN_ROLES: &[(&str, &str)] = &[
 
 const BUILTIN_TEAMS: &[(&str, &str)] = &[
     ("standard", include_str!("../../../config/teams/standard.json")),
+    ("solo", include_str!("../../../config/teams/solo.json")),
     ("pair", include_str!("../../../config/teams/pair.json")),
     ("full", include_str!("../../../config/teams/full.json")),
     ("abap", include_str!("../../../config/teams/abap.json")),

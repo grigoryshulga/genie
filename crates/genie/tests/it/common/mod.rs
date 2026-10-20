@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 pub mod fakehost;
+pub mod fakemetrics;
 pub mod githost;
 
 use std::net::SocketAddr;

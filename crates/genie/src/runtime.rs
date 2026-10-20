@@ -2102,6 +2102,34 @@ pub fn spawn_team(app: &App, slug: &str, mut req: SpawnRequest) -> AppResult<gen
             "task or agent/decision configuration changed during Jev evaluation; retry with current facts".into(),
         ));
     }
+    let frozen_templates = crate::intelligence::freeze_templates(&agents, slug, &prepared.eligible_templates)?;
+    let applied_routing = prepared.snapshot.as_ref().map(|snapshot| {
+        use genie_core::intelligence::{DecisionKind, RoutingPlan, RoutingStatus};
+        (
+            snapshot.id,
+            RoutingPlan {
+                decision_kind: DecisionKind::Initial,
+                router_provider: if prepared.records.is_empty() { "configured".into() } else { "jev".into() },
+                router_version: app.cfg.decisions.model.clone(),
+                policy_version: crate::intelligence::fingerprint(&prepared.policy),
+                eligible_templates: prepared.eligible_templates.clone(),
+                template_evidence: frozen_templates.clone(),
+                selected_template: prepared.roster.template.as_ref().map(|t| t.id.clone()),
+                selected_models: crate::intelligence::models(&agents, &prepared.roster),
+                required_checks: crate::intelligence::required(&prepared.policy.intelligence, &snapshot.profile),
+                decision_status: if req.decision_override.is_some() {
+                    RoutingStatus::Overridden
+                } else if prepared.fallback {
+                    RoutingStatus::Fallback
+                } else {
+                    RoutingStatus::Selected
+                },
+                override_reason: req.decision_override.clone(),
+                reason_codes: vec![if prepared.fallback { "router_unavailable_or_abstained".into() } else { "delivery_dispatch".into() }],
+                provider_decision_ids: prepared.records.iter().map(|r| r.id).collect(),
+            },
+        )
+    });
     let Roster { template, asked } = prepared.roster;
     let roles = checked_roles(app, slug, &agents, &ctx, &asked)?;
     let team_id = app.with_tracker(slug, |t| t.bus().free_id(&task.id))?;
@@ -2114,35 +2142,41 @@ pub fn spawn_team(app: &App, slug: &str, mut req: SpawnRequest) -> AppResult<gen
     spec.initiator = req.initiator.clone().or_else(|| crate::llm_key::initiator_of(app, slug, &req.by, Some(&task.id)));
     let system = Actor::new(req.by.name.clone(), if req.by.role == Role::Human { Role::Human } else { Role::Orchestrator });
     let created = app.with_tracker(slug, |t| {
-        let team = t.bus().create(
-            &req.by.name,
-            req.by.role.as_str(),
-            NewTeam {
-                id: team_id.clone(),
-                task: task.id.clone(),
-                template: spec.template.clone(),
-                cwd: cwd.clone(),
-                worktree: worktree.clone(),
-                members: members.clone(),
-                spec: Some(spec.to_value()),
-            },
-        )?;
-        assign_and_stage(t, &system, &team_id, worktree.as_ref(), &members, &ctx)?;
-        let epic = t.epic_context(&task.id)?.epic;
-        let k = Kickoff {
-            team: &team_id,
-            task: &task,
-            cwd: &cwd,
-            worktree: worktree.as_ref(),
-            spec: &spec,
-            agents: &agents,
-            note: req.note.as_deref(),
-            epic: epic.as_ref(),
-            joining: false,
-            docs: docs.as_deref(),
-        };
-        send_kickoffs(t, &team_id, &spec, &k)?;
-        Ok(team)
+        t.tx(|| {
+            let team = t.bus().create(
+                &req.by.name,
+                req.by.role.as_str(),
+                NewTeam {
+                    id: team_id.clone(),
+                    task: task.id.clone(),
+                    template: spec.template.clone(),
+                    cwd: cwd.clone(),
+                    worktree: worktree.clone(),
+                    members: members.clone(),
+                    spec: Some(spec.to_value()),
+                },
+            )?;
+            assign_and_stage(t, &system, &team_id, worktree.as_ref(), &members, &ctx)?;
+            if let Some((snapshot, plan)) = &applied_routing {
+                let attempt = t.begin_attempt(&req.by, &task.id)?;
+                t.append_routing(&req.by, &task.id, Some(attempt.id), *snapshot, &format!("dispatch:{team_id}"), plan)?;
+            }
+            let epic = t.epic_context(&task.id)?.epic;
+            let k = Kickoff {
+                team: &team_id,
+                task: &task,
+                cwd: &cwd,
+                worktree: worktree.as_ref(),
+                spec: &spec,
+                agents: &agents,
+                note: req.note.as_deref(),
+                epic: epic.as_ref(),
+                joining: false,
+                docs: docs.as_deref(),
+            };
+            send_kickoffs(t, &team_id, &spec, &k)?;
+            Ok(team)
+        })
     })?;
     app.wake_runtime.notify_one();
     for record in &prepared.records {
@@ -2176,109 +2210,123 @@ pub fn add_member(app: &App, slug: &str, team_id: &str, m: MemberSpec, by: &str)
     let max = app.cfg.limits.max_members_per_team;
     let task_id = app.with_tracker(slug, |t| Ok(t.bus().get(team_id)?.task))?;
     let docs = app.with_tracker(slug, |t| t.get(&task_id)).ok().and_then(|task| crate::context::l1(app, slug, &task));
-    app.with_tracker(slug, |t| {
-        let team = t.bus().get(team_id)?;
-        if team.state != TeamState::Active {
-            return Err(GenieError::invalid(format!("team {team_id} is stopped")));
+    let context = MemberAddition { agents: &agents, role: &role, max, docs: docs.as_deref() };
+    app.with_tracker(slug, |t| t.tx(|| add_member_in_tracker(t, team_id, &m, by, &context)))
+}
+
+/// Prepared configuration lets reassessment commit the member, kickoff mail,
+/// snapshot relations and routing evidence in a single tracker transaction.
+pub(crate) struct MemberAddition<'a> {
+    pub agents: &'a AgentConfig,
+    pub role: &'a RoleDef,
+    pub max: usize,
+    pub docs: Option<&'a str>,
+}
+pub(crate) fn add_member_in_tracker(
+    t: &genie_core::Tracker,
+    team_id: &str,
+    m: &MemberSpec,
+    by: &str,
+    context: &MemberAddition<'_>,
+) -> Result<SpecMember, GenieError> {
+    let agents = context.agents;
+    let role = context.role;
+    let max = context.max;
+    let docs = context.docs;
+    let team = t.bus().get(team_id)?;
+    if team.state != TeamState::Active {
+        return Err(GenieError::invalid(format!("team {team_id} is stopped")));
+    }
+    if team.members.len() >= max {
+        return Err(GenieError::invalid(format!("limit: at most {max} members per team")));
+    }
+    let task = t.get(&team.task)?;
+    let refinement = matches!(task.status, Status::Inbox | Status::Draft | Status::Refining);
+    if refinement && !role.stages.contains(&Stage::Refinement) {
+        return Err(GenieError::invalid(format!("{} is not ready ({}); role {} works only on ready tasks", task.id, task.status, role.id)));
+    }
+    // Teams assembled before relations were configurable get a derived spec now.
+    let mut spec = team.spec.as_ref().and_then(TeamSpec::from_value).unwrap_or_else(|| {
+        let mut members = Vec::new();
+        let mut classes = Vec::new();
+        for x in &team.members {
+            members.push(SpecMember { key: crate::agent_config::free_key(&members, &x.role), name: x.name.clone(), role: x.role.clone() });
+            classes.push(agents.roles.get(&x.role).map(|r| r.class).unwrap_or(Role::Analyst));
         }
-        if team.members.len() >= max {
-            return Err(GenieError::invalid(format!("limit: at most {max} members per team")));
-        }
-        let task = t.get(&team.task)?;
-        let refinement = matches!(task.status, Status::Inbox | Status::Draft | Status::Refining);
-        if refinement && !role.stages.contains(&Stage::Refinement) {
-            return Err(GenieError::invalid(format!(
-                "{} is not ready ({}); role {} works only on ready tasks",
-                task.id, task.status, role.id
-            )));
-        }
-        // Teams assembled before relations were configurable get a derived spec now.
-        let mut spec = team.spec.as_ref().and_then(TeamSpec::from_value).unwrap_or_else(|| {
-            let mut members = Vec::new();
-            let mut classes = Vec::new();
-            for x in &team.members {
-                members.push(SpecMember {
-                    key: crate::agent_config::free_key(&members, &x.role),
-                    name: x.name.clone(),
-                    role: x.role.clone(),
-                });
-                classes.push(agents.roles.get(&x.role).map(|r| r.class).unwrap_or(Role::Analyst));
-            }
-            TeamSpec { template: team.template.clone(), ..TeamSpec::derived(members, &classes, refinement) }
-        });
-        let mut taken = t.bus().taken_names()?;
-        let name = m.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| pick_name(&role, &mut taken));
-        let me = SpecMember { key: spec.free_key(&role.id), name: name.clone(), role: role.id.clone() };
-        // Relations the process implies for the newcomer, next to the current ones.
-        let mut keyed: Vec<(String, Role)> =
-            spec.members.iter().map(|x| (x.key.clone(), agents.roles.get(&x.role).map(|r| r.class).unwrap_or(Role::Analyst))).collect();
-        keyed.push((me.key.clone(), role.class));
-        // Only the newcomer's own edges: a relation it merely shares (the executor
-        // handing over to every reviewer) is narrowed to it, so nobody else is told twice.
-        for r in crate::agent_config::default_relations(&keyed, refinement) {
-            let r = if r.from == me.key {
-                r
-            } else if r.to.contains(&me.key) {
-                Relation { to: vec![me.key.clone()], ..r }
-            } else {
-                continue;
-            };
-            if !spec.relations.contains(&r) {
-                spec.relations.push(r);
-            }
-        }
-        spec.members.push(me.clone());
-        let updated = t.bus().add_member(
-            team_id,
-            NewMember {
-                name: name.clone(),
-                role: role.id.clone(),
-                model: m.model.clone(),
-                thinking: m.thinking.clone(),
-                instructions: m.instructions.clone(),
-            },
-        )?;
-        t.bus().set_spec(team_id, &spec.to_value())?;
-        let k = Kickoff {
-            team: team_id,
-            task: &task,
-            cwd: &team.cwd,
-            worktree: team.worktree.as_ref(),
-            spec: &spec,
-            agents: &agents,
-            note: None,
-            epic: None,
-            joining: true,
-            docs: docs.as_deref(),
+        TeamSpec { template: team.template.clone(), ..TeamSpec::derived(members, &classes, refinement) }
+    });
+    let mut taken = t.bus().taken_names()?;
+    let name = m.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| pick_name(role, &mut taken));
+    let me = SpecMember { key: spec.free_key(&role.id), name: name.clone(), role: role.id.clone() };
+    // Relations the process implies for the newcomer, next to the current ones.
+    let mut keyed: Vec<(String, Role)> =
+        spec.members.iter().map(|x| (x.key.clone(), agents.roles.get(&x.role).map(|r| r.class).unwrap_or(Role::Analyst))).collect();
+    keyed.push((me.key.clone(), role.class));
+    // Only the newcomer's own edges: a relation it merely shares (the executor
+    // handing over to every reviewer) is narrowed to it, so nobody else is told twice.
+    for r in crate::agent_config::default_relations(&keyed, refinement) {
+        let r = if r.from == me.key {
+            r
+        } else if r.to.contains(&me.key) {
+            Relation { to: vec![me.key.clone()], ..r }
+        } else {
+            continue;
         };
-        let bus = t.bus();
+        if !spec.relations.contains(&r) {
+            spec.relations.push(r);
+        }
+    }
+    spec.members.push(me.clone());
+    let updated = t.bus().add_member(
+        team_id,
+        NewMember {
+            name: name.clone(),
+            role: role.id.clone(),
+            model: m.model.clone(),
+            thinking: m.thinking.clone(),
+            instructions: m.instructions.clone(),
+        },
+    )?;
+    t.bus().set_spec(team_id, &spec.to_value())?;
+    let k = Kickoff {
+        team: team_id,
+        task: &task,
+        cwd: &team.cwd,
+        worktree: team.worktree.as_ref(),
+        spec: &spec,
+        agents,
+        note: None,
+        epic: None,
+        joining: true,
+        docs,
+    };
+    let bus = t.bus();
+    bus.send(team::SendMail {
+        team: team_id,
+        from: ORCHESTRATOR,
+        from_role: "orchestrator",
+        to: &name,
+        text: &k.text(&me),
+        level: None,
+        intent: None,
+        kind: "kickoff",
+        ..Default::default()
+    })?;
+    let note = format!("{} — {} joined the team (added by {by}).", team::display_name(&name), role.id);
+    for other in updated.members.iter().filter(|x| x.name != name) {
         bus.send(team::SendMail {
             team: team_id,
             from: ORCHESTRATOR,
             from_role: "orchestrator",
-            to: &name,
-            text: &k.text(&me),
-            level: None,
-            intent: None,
-            kind: "kickoff",
+            to: &other.name,
+            text: &note,
+            level: Some("low"),
+            intent: Some("fyi"),
+            kind: "system",
             ..Default::default()
         })?;
-        let note = format!("{} — {} joined the team (added by {by}).", team::display_name(&name), role.id);
-        for other in updated.members.iter().filter(|x| x.name != name) {
-            bus.send(team::SendMail {
-                team: team_id,
-                from: ORCHESTRATOR,
-                from_role: "orchestrator",
-                to: &other.name,
-                text: &note,
-                level: Some("low"),
-                intent: Some("fyi"),
-                kind: "system",
-                ..Default::default()
-            })?;
-        }
-        Ok(me)
-    })
+    }
+    Ok(me)
 }
 
 /// A member's first message, generated from the team's relations.
@@ -2657,7 +2705,7 @@ fn main_branch(repo: &Path) -> Option<(String, Vec<String>)> {
 /// What would be lost with a workspace: every repository in it (the root and the
 /// ones mounted inside) with uncommitted or untracked changes, or with commits on
 /// no remote branch. Build directories are not searched for repositories.
-fn workspace_unsaved(root: &Path) -> Vec<String> {
+pub(crate) fn workspace_unsaved(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut dirs = vec![(root.to_path_buf(), 0)];
     while let Some((dir, depth)) = dirs.pop() {

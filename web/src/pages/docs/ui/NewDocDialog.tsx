@@ -3,42 +3,42 @@
 // mirrors `genie docs note`: `inbox/<date>-<slug>.md`, type note, status draft.
 
 import { type KeyboardEvent, useMemo, useState } from "react";
-import { diagnosticText, DOC_TYPE_NAME, DOC_TYPES, DocSaveError, saveDoc, serializeDoc, slugify, todayIso, type DocType } from "@/entities/doc";
+import { articlePath, docSections, sectionTrail, type DocSection, diagnosticText, DOC_TYPE_NAME, DOC_TYPES, DocSaveError, useSaveDoc, serializeDoc, slugify, todayIso, type DocType } from "@/entities/doc";
 import { Icon } from "@/shared/ui";
 
 export function NewDocDialog({
+  navigation,
+  initialSection,
   initialKind = "page",
   initialTitle = "",
   onClose,
   onCreated,
 }: {
-  initialKind?: "page" | "note";
+  navigation: DocSection;
+  initialSection?: string;
+  initialKind?: "page" | "note" | "section";
   initialTitle?: string;
   onClose: () => void;
   onCreated: (path: string) => void;
 }) {
-  const [kind, setKind] = useState<"page" | "note">(initialKind);
+  const [kind, setKind] = useState<"page" | "note" | "section">(initialKind);
   const [title, setTitle] = useState(initialTitle);
-  const [folder, setFolder] = useState(initialKind === "note" ? "inbox" : "");
+  const [section, setSection] = useState(initialSection || navigation.path || navigation.sections[0]?.path || "");
+  const save = useSaveDoc();
+  const sections = docSections(navigation).filter((s) => s.path);
   const [type, setType] = useState<DocType | "">(initialKind === "note" ? "note" : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const docPath = useMemo(() => {
-    const slug = slugify(title || "page");
-    const file = kind === "note" ? `${todayIso()}-${slug}.md` : `${slug}.md`;
-    const clean = folder.trim().replace(/^\/+|\/+$/g, "");
-    return clean ? `${clean}/${file}` : file;
-  }, [title, folder, kind]);
+  const docPath = useMemo(() => articlePath(section, slugify(title || "page"), kind, todayIso()), [title, section, kind]);
 
-  const switchKind = (next: "page" | "note") => {
+  const switchKind = (next: "page" | "note" | "section") => {
     setKind(next);
-    setFolder(next === "note" ? "inbox" : "");
     setType(next === "note" ? "note" : "");
   };
 
   const create = async () => {
-    if (!title.trim() || busy) return;
+    if (!title.trim() || !sections.some((s) => s.path === section) || busy) return;
     setBusy(true);
     setError(null);
     const content = serializeDoc(
@@ -56,11 +56,11 @@ export function NewDocDialog({
       `# ${title.trim()}\n\n`,
     );
     try {
-      await saveDoc({ path: docPath, content, mode: "create" });
+      await save.mutateAsync({ path: docPath, content, mode: "create" });
       onCreated(docPath);
     } catch (cause) {
       if (cause instanceof DocSaveError) {
-        if (cause.status === 409) setError(`Страница docs/${docPath} уже существует — измените название или папку.`);
+        if (cause.status === 409) setError("Статья с таким названием уже существует в этом разделе — измените название или раздел.");
         else if (cause.status === 422) setError(`Frontmatter не принят сервером: ${cause.diagnostics.map(diagnosticText).join("; ")}`);
         else setError(cause.message);
       } else {
@@ -76,12 +76,13 @@ export function NewDocDialog({
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal doc-new" role="dialog" aria-modal="true" aria-label="Новая страница или заметка" onKeyDown={onKeyDown}>
+      <div className="modal doc-new" role="dialog" aria-modal="true" aria-label="Создание статьи или раздела" onKeyDown={onKeyDown}>
         <div className="mh">
           <div className="seg doc-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={kind === "page"} className={kind === "page" ? "on" : ""} onClick={() => switchKind("page")}>
-              Страница
+              Статья
             </button>
+            <button type="button" role="tab" aria-selected={kind === "section"} className={kind === "section" ? "on" : ""} onClick={() => switchKind("section")}>Раздел</button>
             <button type="button" role="tab" aria-selected={kind === "note"} className={kind === "note" ? "on" : ""} onClick={() => switchKind("note")}>
               Быстрая заметка
             </button>
@@ -99,16 +100,16 @@ export function NewDocDialog({
           </label>
           <div className="doc-new-row">
             <label className="doc-field">
-              <span>Папка</span>
-              <div className="doc-folder-in">
-                <Icon.file size={13} />
-                <input className="mono" value={folder} placeholder="docs/" onChange={(e) => setFolder(e.target.value)} />
-              </div>
+              <span>{kind === "section" ? "Родительский раздел" : "Раздел"}</span>
+              <select value={section} onChange={(e) => setSection(e.target.value)} aria-label="Раздел">
+                {!sections.length && <option value="">Нет доступных разделов</option>}
+                {sections.map((s) => <option key={s.path} value={s.path}>{sectionTrail(navigation, s.path).map((part, i) => i === 0 ? "Пространство" : part.title).join(" › ")}</option>)}
+              </select>
             </label>
             <label className="doc-field">
               <span>Тип</span>
               <select value={kind === "note" ? "note" : type} disabled={kind === "note"} onChange={(e) => setType(e.target.value as DocType | "")}>
-                {kind === "page" && <option value="">не указан</option>}
+                {kind !== "note" && <option value="">не указан</option>}
                 {DOC_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t} — {DOC_TYPE_NAME[t]}
@@ -120,13 +121,11 @@ export function NewDocDialog({
 
           <p className="doc-new-hint">
             {kind === "note"
-              ? "Черновик в inbox/."
-              : "Проверка изменений кода доступна после отметки «Проверено»."}
+              ? "Черновик заметки в выбранном разделе."
+              : kind === "section" ? "Раздел объединяет статьи и вложенные темы." : "Статья будет создана в выбранном разделе."}
           </p>
 
-          <p className="doc-new-file">
-            Файл: <span className="mono">docs/{docPath}</span>
-          </p>
+          {kind === "section" && <p className="doc-new-hint">Название обзорной статьи станет названием раздела в навигации.</p>}
           {error && <p className="doc-new-error">{error}</p>}
         </div>
 
@@ -136,7 +135,7 @@ export function NewDocDialog({
           <button type="button" className="btn" onClick={onClose}>
             Отмена
           </button>
-          <button type="button" className="btn primary" disabled={!title.trim() || busy} onClick={() => void create()}>
+          <button type="button" className="btn primary" disabled={!title.trim() || !sections.some((s) => s.path === section) || busy} onClick={() => void create()}>
             <Icon.check size={13} />
             {busy ? "Создаю…" : "Создать"}
           </button>

@@ -15,6 +15,8 @@ status: current
 | --- | --- | --- |
 | Domain core | `crates/genie-core/src/` | Task state machine, tracker, teams/mail, vault index, automations, server data. |
 | Server and CLI | `crates/genie/src/` | API, authentication, runtime, channels, operator commands. |
+| Observation domain | `crates/genie-core/src/observation/` | Outcome cases, contracts and change grammar, the pure evaluator, tracker and source persistence. |
+| Observation runtime | `crates/genie/src/observation/` | Application service and permissions, Prometheus- and Sentry-compatible adapters, the scheduler. |
 | Operation catalog | `crates/genie/src/ops/` | Typed operation arguments, permissions, handlers, CLI and MCP exposure. |
 | HTTP | `crates/genie/src/http/` | REST, SSE, MCP server, and web asset serving. |
 | Live sessions | `crates/genie/src/sessions.rs` | pi subprocess lifecycle, RPC, supervision, and recovery. |
@@ -33,6 +35,8 @@ A CLI invocation with `GENIE_TOKEN` calls the server. Without it, the CLI acts a
 
 ## Persistence and events
 
+[Task Intelligence and Factory Analytics](task-intelligence.md) extends the same tracker and Statistics page with immutable routing evidence and attempt-aware measurements.
+
 SQLite stores server-wide data in `server.db` and a tracker per project. Task mutations and their event entries share a transaction. Automation cursors, run/step state, mail leases, and notification delivery state persist across restarts.
 
 The knowledge vault is a separate Git repository; its SQLite search index is disposable. See [operations](operations.md#data-directory) for the directory layout.
@@ -50,6 +54,10 @@ instead of sleeping for a polling interval.
 Bubblewrap hides server databases, credentials, and unrelated projects while allowing an agent's workspace and selected tool caches. It shares the host network. Docker deployment is a separate layer; the default Compose configuration does not enable nested bubblewrap.
 
 Server permissions and the MCP gateway enforce access by token. Harness rules for file tools and shell patterns are weaker than filesystem isolation. Hosted repository writes pass through the [Git proxy](git-repositories.md).
+
+## Account authentication
+
+Password and invitation authentication share browser sessions with optional [GitHub and Google sign-in](../development/social-auth.md). Provider identities map stable provider subjects to users in server schema 7. Registration is closed by default; linking requires an existing browser session, and matching email addresses never merge users. New social accounts receive no administrative privileges or project memberships.
 
 ## Web contract
 
