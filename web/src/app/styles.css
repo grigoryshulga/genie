@@ -1,4 +1,7 @@
+@import "../shared/ui/fonts.css";
 @import "../shared/ui/tokens.css";
+@import "../shared/ui/g-tokens.css";
+@import "../shared/ui/compat.css";
 
 @import "./styles/base.css";
 @import "./styles/shell.css";

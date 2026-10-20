@@ -1,27 +1,16 @@
 import { readPref, writePref } from "./preferences.ts";
 
-export type AppearanceTheme = "dark" | "light" | "system";
+export type AppearanceTheme = "ink" | "paper" | "system";
 type ResolvedAppearanceTheme = Exclude<AppearanceTheme, "system">;
-
-export const ACCENT_OPTIONS = [
-  { id: "violet", label: "Фиолетовый", color: "var(--accent-choice-violet)" },
-  { id: "blue", label: "Синий", color: "var(--accent-choice-blue)" },
-  { id: "teal", label: "Бирюзовый", color: "var(--accent-choice-teal)" },
-  { id: "green", label: "Зелёный", color: "var(--accent-choice-green)" },
-  { id: "orange", label: "Оранжевый", color: "var(--accent-choice-orange)" },
-  { id: "rose", label: "Розовый", color: "var(--accent-choice-rose)" },
-] as const;
-
-export type AccentColor = (typeof ACCENT_OPTIONS)[number]["id"];
 
 export type AppearancePreferences = {
   theme: AppearanceTheme;
-  accent: AccentColor;
 };
 
 const THEME_KEY = "genie.appearance.theme";
-const ACCENT_KEY = "genie.appearance.accent";
-const DEFAULT_APPEARANCE: AppearancePreferences = { theme: "dark", accent: "violet" };
+const DEFAULT_APPEARANCE: AppearancePreferences = { theme: "ink" };
+// The color of the browser chrome (theme-color) for each resolved theme: ink and paper from the design tokens.
+const THEME_COLORS: Record<ResolvedAppearanceTheme, string> = { ink: "#09090d", paper: "#f4f1ea" };
 
 type MediaChange = { matches: boolean };
 type SystemThemeQuery = {
@@ -32,7 +21,7 @@ type SystemThemeQuery = {
   removeListener?: (listener: (event: MediaChange) => void) => void;
 };
 type AppearancePage = {
-  documentElement?: { dataset: { theme?: string; themePreference?: string; accent?: string } };
+  documentElement?: { dataset: { theme?: string; themePreference?: string } };
   querySelector?: (selector: string) => unknown;
 };
 
@@ -41,16 +30,14 @@ let activeSystemListener: ((event: MediaChange) => void) | undefined;
 
 export function readAppearancePreferences(): AppearancePreferences {
   const theme = readPref<string>(THEME_KEY, DEFAULT_APPEARANCE.theme);
-  const accent = readPref<string>(ACCENT_KEY, DEFAULT_APPEARANCE.accent);
-  return {
-    theme: theme === "light" || theme === "system" ? theme : "dark",
-    accent: ACCENT_OPTIONS.find((option) => option.id === accent)?.id ?? "violet",
-  };
+  // "dark" and "light" are the names the earlier appearance settings stored.
+  if (theme === "paper" || theme === "light") return { theme: "paper" };
+  if (theme === "system") return { theme: "system" };
+  return { theme: "ink" };
 }
 
 export function saveAppearancePreferences(preferences: AppearancePreferences): void {
   writePref(THEME_KEY, preferences.theme);
-  writePref(ACCENT_KEY, preferences.accent);
   applyAppearancePreferences(preferences);
 }
 
@@ -76,22 +63,21 @@ export function applyAppearancePreferences(preferences: AppearancePreferences): 
     }
   }
   const resolvedTheme: ResolvedAppearanceTheme = preferences.theme === "system"
-    ? (systemQuery?.matches ? "dark" : "light")
+    ? (systemQuery?.matches ? "ink" : "paper")
     : preferences.theme;
 
   root.dataset.themePreference = preferences.theme;
   root.dataset.theme = resolvedTheme;
-  root.dataset.accent = preferences.accent;
   const themeColor = page.querySelector?.('meta[name="theme-color"]') as { content: string } | null | undefined;
   const setResolvedTheme = (theme: ResolvedAppearanceTheme) => {
     root.dataset.theme = theme;
-    if (themeColor) themeColor.content = theme === "light" ? "#f0f1f4" : "#0e0f11";
+    if (themeColor) themeColor.content = THEME_COLORS[theme];
   };
   setResolvedTheme(resolvedTheme);
 
   if (systemQuery) {
     activeSystemQuery = systemQuery;
-    activeSystemListener = (event) => setResolvedTheme(event.matches ? "dark" : "light");
+    activeSystemListener = (event) => setResolvedTheme(event.matches ? "ink" : "paper");
     if (systemQuery.addEventListener) systemQuery.addEventListener("change", activeSystemListener);
     else systemQuery.addListener?.(activeSystemListener);
   }

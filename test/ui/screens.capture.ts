@@ -1,6 +1,6 @@
 // Photographs every route in CAPTURE_ROUTES for `npm run ui:capture`: one PNG per route, theme and
 // viewport in test-results/captures. Nothing is compared; the images are evidence for a redesign
-// task (before and after). GENIE_UI_THEMES lists the data-theme values to capture, comma
+// task (before and after). GENIE_UI_THEMES lists the data-theme values (ink, paper) to capture, comma
 // separated; "current" leaves the page as the application renders it.
 
 import { mkdirSync } from "node:fs";
@@ -24,8 +24,8 @@ for (const theme of themes) {
       await page.clock.setFixedTime(seededAt + 60 * 60 * 1000);
       if (theme !== "current") {
         await page.addInitScript((value) => {
-          document.documentElement.dataset.theme = value;
-          localStorage.setItem("genie.theme", value);
+          // The application reads this preference at start (shared/lib/appearance.ts).
+          localStorage.setItem("genie.appearance.theme", value);
         }, theme);
       }
       await page.goto(route.path);
