@@ -377,11 +377,30 @@ fn a_started_process_becomes_ready_on_a_tcp_listener_and_its_pid_is_written() {
     if !enabled() {
         return;
     }
-    let lab = Lab::new();
+    let mut lab = Lab::new();
     let base = lab.pulled(DEBIAN);
     let ws = lab.workspace("probes");
     let spec = lab.spec(&ws, &base, Vec::new(), NetworkMode::None);
     let run_dir = spec.run_dir.clone();
+    // Hold the detached shell before it writes its pid, reproducing a slow scheduling
+    // interleaving without depending on host load or delaying ordinary Podman commands.
+    let delayed_podman = lab.path("delayed-podman");
+    fs::write(
+        &delayed_podman,
+        r#"#!/bin/bash
+args=("$@")
+if [[ "${args[0]}" == exec && "${args[1]}" == -d ]]; then
+    last=$((${#args[@]} - 1))
+    args[last]="while [ ! -f /opt/genie-run/release-start ]; do sleep 0.01; done; ${args[last]}"
+fi
+exec podman "${args[@]}"
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&delayed_podman, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut cfg = EnvironmentsConfig::default();
+    cfg.podman.binary = delayed_podman.to_string_lossy().into_owned();
+    lab.runner = PodmanRunner::new(&cfg);
     // Extract a static listener instead of building a Debian image through APT.
     // Debian still supplies real bash for /dev/tcp, with no curl/wget for the HTTP fallback.
     let tools = lab.pulled(BUSYBOX_STATIC);
@@ -409,9 +428,13 @@ fn a_started_process_becomes_ready_on_a_tcp_listener_and_its_pid_is_written() {
         .start_process(&ws, "listener", &Exec { cwd: "/".into(), command: listener.into(), env: BTreeMap::new(), timeout: None, log: None })
         .expect("starting the listener");
 
+    assert!(!run_dir.join("listener.pid").exists(), "detached dispatch does not wait for the shell's pid write");
+    fs::write(run_dir.join("release-start"), "go").unwrap();
+    // The detached shell writes its pid before execing the listener. Wait for readiness
+    // before reading it, just as the controller does after dispatching a process.
+    eventually("the tcp probe", || lab.runner.probe(&ws, &tcp));
     let pid = fs::read_to_string(run_dir.join("listener.pid")).expect("the pid file");
     assert!(pid.trim().parse::<u32>().is_ok(), "a pid: {pid:?}");
-    eventually("the tcp probe", || lab.runner.probe(&ws, &tcp));
 
     let command = Probe { command: Some("test -s /opt/genie-run/listener.pid".into()), http: None, tcp: None, timeout_secs: Some(30) };
     let started = Instant::now();
