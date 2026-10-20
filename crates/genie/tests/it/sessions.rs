@@ -46,6 +46,18 @@ impl Req {
 
 type Log = Arc<Mutex<Vec<Req>>>;
 
+#[derive(Clone)]
+struct ReplyGate {
+    needle: &'static str,
+    release: Arc<tokio::sync::Semaphore>,
+}
+
+#[derive(Clone)]
+struct Model {
+    log: Log,
+    reply_gate: Option<ReplyGate>,
+}
+
 fn text_of(content: &Value) -> String {
     match content {
         Value::String(s) => s.clone(),
@@ -85,7 +97,7 @@ fn decide(messages: &[(String, String)]) -> Value {
     json!({ "content": "ok" })
 }
 
-async fn completions(State(log): State<Log>, body: Bytes) -> axum::response::Response {
+async fn completions(State(state): State<Model>, body: Bytes) -> axum::response::Response {
     let r: Value = serde_json::from_slice(&body).unwrap_or_default();
     let all = r["messages"].as_array().cloned().unwrap_or_default();
     let is_system = |m: &Value| m["role"] == "system" || m["role"] == "developer";
@@ -104,10 +116,16 @@ async fn completions(State(log): State<Log>, body: Bytes) -> axum::response::Res
         return (axum::http::StatusCode::BAD_REQUEST, [("content-type", "application/json")], body.to_string()).into_response();
     }
     let n = {
-        let mut l = log.lock().unwrap();
+        let mut l = state.log.lock().unwrap();
         l.push(Req { at: Instant::now(), model: model.clone(), system, tools, messages: messages.clone() });
         l.len()
     };
+    if let Some(gate) = &state.reply_gate
+        && messages.last().is_some_and(|(_, text)| text.contains(gate.needle))
+    {
+        // Hold a real provider response at a chosen boundary without a timed sleep.
+        gate.release.acquire().await.unwrap().forget();
+    }
     let out = decide(&messages);
     let chunk = |delta: Value, finish: Value| {
         format!(
@@ -150,12 +168,21 @@ async fn live(pi: PathBuf, tweak: impl FnOnce(&mut Config)) -> Live {
 }
 
 async fn live_with_clock(pi: PathBuf, tweak: impl FnOnce(&mut Config), clock: Arc<dyn genie::clock::Clock>) -> Live {
+    live_with_reply_gate(pi, tweak, clock, None).await
+}
+
+async fn live_with_reply_gate(
+    pi: PathBuf,
+    tweak: impl FnOnce(&mut Config),
+    clock: Arc<dyn genie::clock::Clock>,
+    reply_gate: Option<ReplyGate>,
+) -> Live {
     let dir = tempfile::tempdir().unwrap();
     // The fake model.
     let log: Log = Arc::default();
     let llm = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let llm_port = llm.local_addr().unwrap().port();
-    let router = Router::new().route("/v1/chat/completions", post(completions)).with_state(log.clone());
+    let router = Router::new().route("/v1/chat/completions", post(completions)).with_state(Model { log: log.clone(), reply_gate });
     tokio::spawn(async move { axum::serve(llm, router).await.unwrap() });
     let agent_dir = dir.path().join("pi-agent");
     std::fs::create_dir_all(&agent_dir).unwrap();
@@ -474,7 +501,9 @@ async fn watchdogs_stop_silent_steps_and_report_loops() {
         return;
     };
     let clock = Arc::new(crate::common::ManualClock::default());
-    let l = live_with_clock(pi, |cfg| cfg.runtime.turn_timeout_secs = 3, clock.clone()).await;
+    let reply = Arc::new(tokio::sync::Semaphore::new(0));
+    let gate = ReplyGate { needle: "showed no sign of life", release: reply.clone() };
+    let l = live_with_reply_gate(pi, |cfg| cfg.runtime.turn_timeout_secs = 3, clock.clone(), Some(gate)).await;
     let (app, log) = (&l.app, &l.log);
 
     // A step with no sign of life for turnTimeoutSecs is aborted and the orchestrator is told.
@@ -485,6 +514,13 @@ async fn watchdogs_stop_silent_steps_and_report_loops() {
     let session = app.sessions.get(&member("bender")).unwrap();
     let state = session.request(json!({ "type": "get_state" }), Duration::from_secs(5)).await.expect("the RPC barrier answers");
     assert_eq!(state["success"], true, "{state}");
+    let stalled_turn = app
+        .with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10))
+        .unwrap()
+        .into_iter()
+        .find(|r| r.status == "running")
+        .expect("the silent command has a running turn")
+        .id;
     clock.advance(Duration::from_millis(2999));
     genie::runtime::tick(app).await.unwrap();
     assert!(orchestrator_mail(app, "no sign of life").is_none(), "the watchdog does not fire before its deadline");
@@ -492,10 +528,25 @@ async fn watchdogs_stop_silent_steps_and_report_loops() {
     clock.advance(Duration::from_millis(1));
     genie::runtime::tick(app).await.unwrap();
     until("the watchdog report", 20, || orchestrator_mail(app, "no sign of life")).await;
-    until("the stuck step to be aborted", 20, || session_state(app, "bender").filter(|s| s.0 == "idle")).await;
     until("the agent told why its step stopped", 20, || request_with(log, "executor", "showed no sign of life")).await;
-    let runs = app.with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10)).unwrap();
-    assert!(runs.iter().all(|r| r.status == "succeeded"), "an abort we asked for is not a failed run: {runs:?}");
+    let runs = until("the watchdog continuation to start", 20, || {
+        let runs = app.with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10)).unwrap();
+        (runs.len() == 2 && runs.iter().any(|r| r.status == "running")).then_some(runs)
+    })
+    .await;
+    // The notification starts another turn. Hold its provider response so this check
+    // always exercises the CI interleaving: the abort is finished, its follow-up is not.
+    let aborted = runs.iter().find(|r| r.id == stalled_turn).expect("the aborted turn remains recorded");
+    assert_eq!(aborted.status, "succeeded", "an abort we asked for is not a failed run: {runs:?}");
+    reply.add_permits(1);
+    let runs = until("the watchdog continuation to finish", 20, || {
+        let runs = app.with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10)).unwrap();
+        // `idle` is set before the blocking finish_turn write; wait for both signals.
+        (runs.len() == 2 && runs.iter().all(|r| r.status != "running") && session_state(app, "bender").is_some_and(|s| s.0 == "idle"))
+            .then_some(runs)
+    })
+    .await;
+    assert!(runs.iter().all(|r| r.status == "succeeded"), "the abort and its continuation both succeed: {runs:?}");
 
     // The same call five times in a row: the orchestrator hears the agent may loop.
     for i in 0..5 {
