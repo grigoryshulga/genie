@@ -1,0 +1,557 @@
+{
+  "epic": {
+    "title": "Redesign the web UI in the ink-and-paper visual language",
+    "description": "Apply the Genie design system (docs/assets/brand/design-system.md, principles.md, components.html, handoff/) to every screen of the web UI. Redesign the board, task list, task detail, epics, team view and agent chat, authentication, the answer page and the shell; reskin documentation, the agents catalogue, other platform pages and Settings. Behaviour, routes, URLs, shortcuts and server contracts do not change.",
+    "ac": [
+      "Every screen in handoff/screens.md is implemented in both themes (ink and paper) at desktop and phone widths",
+      "No hard-coded colours, font families or legacy design variables remain outside g-tokens.css",
+      "All existing routes, URL parameters, keyboard shortcuts, drag and drop and live updates behave as before",
+      "Accessibility audit passes and the token contrast test covers every colour token",
+      "The documentation site and README use the new brand",
+      "A PR is published and CI passes for its latest head"
+    ],
+    "plan": "Phase 0 prepare (H00, H01); phase 1 foundation (H02-H07); phase 2 screens (H10-H19); phase 3 reskin (H20-H23); phase 4 close-out (H30-H33). See handoff/tasks.md for dependencies and parallel lanes."
+  },
+  "phases": {
+    "0": "Prepare",
+    "1": "Foundation",
+    "2": "Screens (redesign)",
+    "3": "Screens (reskin)",
+    "4": "Close-out"
+  },
+  "tasks": [
+    {
+      "key": "H00",
+      "phase": 0,
+      "title": "Build the verification harness: seeded throwaway server and screenshot script",
+      "priority": 1,
+      "hours": 3,
+      "ui": false,
+      "deps": [],
+      "description": "Agents cannot judge a redesign without seeing it. Build a repeatable way to run the web UI against realistic data and capture screenshots of every route in both themes. Start a throwaway Genie server (cargo run -p genie -- serve with a temporary data directory) and seed it through the genie CLI or the HTTP API with a project containing tasks in all eleven statuses, epics with children, tasks with acceptance criteria and PR/CI data, owner decisions, notifications, documents, and as many teams and mailboxes as can be created without live agents (record the gap if teams need fixtures). Capture screenshots with Playwright using the preinstalled Chromium (PLAYWRIGHT_BROWSERS_PATH, executablePath /opt/pw-browsers/chromium; do not run playwright install). Check whether npm ci passes on a clean checkout before adding any dependency; the lock file may be out of sync.",
+      "scope": ["web/scripts/ (new)", "package.json scripts", ".gitignore", "docs/development.md"],
+      "ac": [
+        "One documented command seeds a throwaway server and prints its URL; it never touches the local tracker or real data",
+        "One command captures PNGs for every route listed in handoff/screens.md in ink and paper at 1440x900 and 390x844, with animations disabled and a fixed clock, into an ignored output folder",
+        "The set of baseline screenshots of the current UI is captured and attached to the task before any redesign begins",
+        "The seed covers all eleven statuses, epics, owner decisions, notifications and documents; known gaps (for example teams) are listed in docs/development.md",
+        "docs/development.md explains how to run the harness"
+      ],
+      "plan": "Investigate server startup and seeding via the ops catalog; write the seed script; write the Playwright capture script; capture baselines; document."
+    },
+    {
+      "key": "H01",
+      "phase": 0,
+      "title": "Split app/styles.css by area with no visual change",
+      "priority": 1,
+      "hours": 1.5,
+      "ui": false,
+      "deps": ["H00"],
+      "description": "app/styles.css is one 1,144-line file shared by every screen, which would make parallel redesign work conflict. Split it by its own section markers (shell, list, board, detail, team, overlays, mobile, additions, epics, docs, filters, task preview) into per-area stylesheets next to the code that uses them (FSD layers), imported where used. Keep selectors, order-dependent cascade, and values identical.",
+      "scope": ["web/src/app/styles.css", "web/src/widgets/*/ui/*.css", "web/src/pages/*/ui/*.css", "web/src/app/main.tsx"],
+      "ac": [
+        "styles.css contains only the root variables, resets and genuinely global rules",
+        "Each area stylesheet is imported by the component that owns it",
+        "Screenshots before and after are pixel-identical for all routes and both viewports",
+        "npm run typecheck, npm run lint:web and npm run build:web pass"
+      ],
+      "plan": "Map every rule to an owner; move in small commits; diff screenshots after each move; fix cascade-order regressions."
+    },
+    {
+      "key": "H02",
+      "phase": 1,
+      "title": "Fonts, tokens, theme switch, and legacy compatibility layer",
+      "priority": 1,
+      "hours": 2,
+      "ui": true,
+      "deps": ["H00", "H01"],
+      "description": "Make the design tokens live in the app. Self-host Unbounded and Manrope (variable, Latin and Cyrillic subsets, OFL) through the build instead of Google Fonts, so a self-hosted or offline Genie renders correctly. Import g-tokens.css and components.css. Add a theme switch: data-theme on the html element with values system, ink and paper, persisted as a preference, with a matching theme-color meta. Add a compatibility block that maps every legacy variable (--bg, --text, --muted, --accent, --amber, --line, ...) to the new tokens so existing CSS adopts the palette immediately. See design-system.md and g-tokens.css.",
+      "scope": ["web/index.html", "web/package.json", "web/src/app/main.tsx", "web/src/app/styles.css", "web/src/shared/ui/g-tokens.css", "web/src/shared/lib (theme preference)"],
+      "ac": [
+        "No request to fonts.googleapis.com remains; fonts load from the bundle and work offline",
+        "The app renders in the new palette in both themes; no text is unreadable (verified with the harness screenshots)",
+        "A theme preference (system, ink, paper) persists and applies before first paint without a flash",
+        "Every legacy variable is aliased in one clearly marked compatibility block",
+        "test/design-tokens.test.ts passes; the legacy block is listed for removal in H33"
+      ],
+      "plan": "Add font packages; import styles; theme bootstrap script in index.html; write the alias block; verify with screenshots."
+    },
+    {
+      "key": "H03",
+      "phase": 1,
+      "title": "Replace hard-coded colours with tokens",
+      "priority": 1,
+      "hours": 3,
+      "ui": true,
+      "deps": ["H01", "H02"],
+      "description": "About 190 hard-coded hex values in CSS and about 30 in TSX (for example 20 in entities/task StatusIcon, plus agent-config graph, team view, settings) prevent the paper theme and the palette. Replace each with a semantic token; add tokens (with test pairs) where none fits. Colours set through inline style props move to classes.",
+      "scope": ["web/src/**/*.css", "web/src/**/*.tsx", "web/src/shared/ui/g-tokens.css", "test/design-tokens.test.ts"],
+      "ac": [
+        "A grep for hex colours outside g-tokens.css and the brand SVG assets returns nothing",
+        "No inline style sets a colour",
+        "New colour tokens add contrast pairs to test/design-tokens.test.ts and the test passes",
+        "Both themes show no regressions in the harness screenshots"
+      ],
+      "plan": "List all hex occurrences by area; map each to a token; convert area by area; run the screenshot diff."
+    },
+    {
+      "key": "H04",
+      "phase": 1,
+      "title": "Status, priority, and epic icon set",
+      "priority": 1,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H02"],
+      "description": "Replace the eleven status icons (a different hue per status today) with the shape-first set from components.html: dashed rings for pre-work, a ring for ready, a half-filled ring for in progress, a return arrow for changes requested, a ring with a dot for review, filled marks for approved, needs owner and done, a slashed ring for cancelled. Replace priority icons with the ascending bars and the orange urgent square, and the epic icon with the arcs miniature. Roles: neutral, accent (green), signal (orange). Keep aria labels and the StatusIcon, PriorityIcon, EpicIcon exports.",
+      "scope": ["web/src/entities/task/ui/StatusIcon.tsx", "web/src/entities/task/ui/Epic.tsx", "web/src/entities/task/model.ts", "web/src/shared/ui/icons.tsx", "test/ (new node:test for the status mapping)"],
+      "ac": [
+        "Every status and priority renders the specified shape and colour role in both themes",
+        "Statuses are distinguishable in greyscale",
+        "A node:test asserts the status to (shape, role) mapping so every Status variant is covered",
+        "Aria labels and sizes unchanged for all call sites"
+      ],
+      "plan": "Port the sprite to React; add the mapping and its test; update call sites; check greyscale."
+    },
+    {
+      "key": "H05a",
+      "phase": 1,
+      "title": "Core components: actions and navigation controls",
+      "priority": 1,
+      "hours": 2,
+      "ui": true,
+      "deps": ["H02", "H03"],
+      "description": "Implement React wrappers over components.css for Button (primary, secondary, ghost, danger, sm, busy), IconButton, Tabs, Segmented, Chip, Tag, Menu (checkbox and radio items, keyboard navigation, focus return), Tooltip, Kbd and Breadcrumbs in shared/ui. Replace the legacy .btn, .icon-btn, .seg, .pill, menu and tooltip usages across the app. Follow WAI-ARIA patterns inside the component, not at call sites.",
+      "scope": ["web/src/shared/ui/", "legacy class usages across web/src"],
+      "ac": [
+        "Each component matches components.html in both themes",
+        "Menus and tabs implement the ARIA pattern with full keyboard support and focus return",
+        "No legacy .btn, .icon-btn, .seg or .pill class remains in TSX",
+        "A node:test covers the pure logic (menu navigation or similar) where it exists",
+        "Screenshots show no layout regressions"
+      ],
+      "plan": "Build components; migrate usages area by area; review screenshots; remove the legacy rules."
+    },
+    {
+      "key": "H05b",
+      "phase": 1,
+      "title": "Core components: forms",
+      "priority": 1,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H05a"],
+      "description": "Field with label, help and error; Input, Select, Textarea, Checkbox, Radio, Switch and Search in shared/ui over components.css, using native elements. Replace the ad hoc form markup across dialogs, task detail, and settings with these.",
+      "scope": ["web/src/shared/ui/", "form markup across web/src"],
+      "ac": [
+        "Every state in components.html (default, hover, focus, invalid with message, disabled) works in both themes",
+        "Labels are associated with controls; errors are announced with aria-describedby",
+        "Form behaviour and validation are unchanged",
+        "No form control outside shared/ui sets its own border, radius or colour"
+      ],
+      "plan": "Build field components; migrate forms; verify keyboard and error announcements."
+    },
+    {
+      "key": "H05c",
+      "phase": 1,
+      "title": "Core components: overlays and feedback",
+      "priority": 1,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H05a"],
+      "description": "Modal (with the 20 existing uses), ConfirmDialog, Toast stack, Banner, Skeleton, EmptyState (title, line, optional action, optional character slot) and an ErrorBlock with retry. Modals trap and restore focus and close on Escape. Replace every bare \"Loading...\" with a skeleton or the working arcs.",
+      "scope": ["web/src/shared/ui/Modal.tsx", "web/src/shared/ui/ConfirmDialog.tsx", "web/src/shared/ui/toast.tsx", "new Banner, Skeleton, EmptyState, ErrorBlock", "PageFallback in web/src/app/App.tsx"],
+      "ac": [
+        "All 20 modal usages use the new Modal with correct focus trap and restore",
+        "Toasts live in one polite live region",
+        "No bare \"Loading...\" text remains; every page has a skeleton or arcs loading state",
+        "EmptyState and ErrorBlock are used by at least the board, task list and docs",
+        "Both themes verified"
+      ],
+      "plan": "Build and migrate Modal first; then feedback components; then replace loading and empty states."
+    },
+    {
+      "key": "H05d",
+      "phase": 1,
+      "title": "Core components: data display and reading",
+      "priority": 1,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H05a"],
+      "description": "Card and Sheet, Row and GroupHead, Table, Avatar and Avatars (agent square, human circle), Progress and Segments, the working arcs indicator, and Prose (rendered Markdown: restyle shared/ui/Markdown.tsx and markdown.css on g-prose, including code and tables). BarChart takes its colours from the viz tokens and prints values.",
+      "scope": ["web/src/shared/ui/", "web/src/entities/member (Avatars)", "web/src/shared/ui/Markdown.tsx", "web/src/shared/ui/markdown.css", "web/src/shared/ui/BarChart.tsx"],
+      "ac": [
+        "Components match components.html in both themes",
+        "Markdown output uses g-prose with Unbounded h1 and h2, 70ch measure, and scrollable code and tables",
+        "Avatars distinguish agents from people by shape everywhere they appear",
+        "BarChart uses --g-viz-* and prints a value at every bar"
+      ],
+      "plan": "Build components; restyle Markdown and charts; migrate avatar usages."
+    },
+    {
+      "key": "H06",
+      "phase": 1,
+      "title": "Shell: top bar, navigation, status dock, profile menu",
+      "priority": 1,
+      "hours": 3,
+      "ui": true,
+      "deps": ["H05a", "H05c"],
+      "description": "Replace the left sidebar with the top bar specified in handoff/screens.md section 0: logo and project switcher, five primary pills, More menu, search pill, New task, bell, theme, profile menu (settings, management, statistics, logout by role), the Working-now status dock with its popover, an offline banner, and a phone bottom-sheet menu. Rebuild the Settings and Management shell with a section rail and a back-to-work action. Keep every route, redirect and shortcut.",
+      "scope": ["web/src/widgets/sidebar/", "web/src/widgets/settings-shell/", "web/src/app/App.tsx", "web/src/app/styles (shell rules)"],
+      "ac": [
+        "All navigation destinations from the old sidebar are reachable per the mapping table",
+        "Every shortcut (C, /, Cmd+K, G then B/T/E/S, G then M/I/D/A/P/C, Esc) still works",
+        "Role rules for management items are unchanged",
+        "The waiting-decision counter and unread dot show on the right items",
+        "The Working-now dock lists the same teams as before with their state",
+        "Phone layout uses the bottom sheet; the offline banner appears when the live stream drops",
+        "Both themes verified at 1440 and 390"
+      ],
+      "plan": "Build the bar; port the data hooks from Sidebar; build the dock popover; rebuild the settings shell; remove the grid classes; verify routes and shortcuts."
+    },
+    {
+      "key": "H07",
+      "phase": 1,
+      "title": "Character component and state hook",
+      "priority": 2,
+      "hours": 2.5,
+      "ui": true,
+      "deps": ["H05c", "H06"],
+      "description": "Bring the character into the app. Make the four animated SVGs from docs/assets/brand/character/ available to the bundle (import as assets), add a Genie component (state, size, alt) that respects reduced motion, and a pure function plus hook that derives the state from teams and tasks: thinking when any member is working, sleeping when nothing is active, waking transiently when a team becomes active, surprised when a task returns to changes requested, CI fails, or a decision arrives. Use it in the status dock and the shared EmptyState. If the live event stream lacks a needed signal, degrade to thinking and sleeping and document the gap; do not change server contracts in this task.",
+      "scope": ["web/src/shared/ui/ (Genie)", "web/src/entities/team or session (state derivation)", "test/ (node:test for the pure function)"],
+      "ac": [
+        "A pure function maps (teams, tasks, recent events) to a state and has node:test coverage for each state and for precedence",
+        "The component shows the static neutral pose under prefers-reduced-motion",
+        "The dock and EmptyState show the character in the right state",
+        "No more than one character per view; never inside lists or toolbars",
+        "Documented list of signals used and any missing"
+      ],
+      "plan": "Asset import; component; pure mapping with tests; hook over query data; integrate dock and empty state."
+    },
+    {
+      "key": "H10",
+      "phase": 2,
+      "title": "Board: lanes, owner lane, state headline",
+      "priority": 1,
+      "hours": 3,
+      "ui": true,
+      "deps": ["H04", "H05d", "H06", "H07"],
+      "description": "Build the board from concepts/board.html on the real data: state headline, arcs motif, status strip with the character, filter chips, the orange needs-decision lane, three stage lanes with sheets, and the Done strip. Keep dnd-kit drag and drop and add drop chips for the exact statuses of a lane while dragging (see screens.md section 1). Cards show exact status tags, acceptance segments, agent and human avatars, and working arcs. Phone: one lane per screen with a lane switcher and a Move-to menu.",
+      "scope": ["web/src/pages/board/", "web/src/widgets/board/", "web/src/entities/task (COLUMNS to lanes mapping, with tests)"],
+      "ac": [
+        "The board matches the concept in both themes and shows live data",
+        "Dragging to a lane offers the exact statuses; every move the old board allowed is still possible, with the same server rules and note prompts",
+        "Keyboard dragging works; a Move-to menu exists for phones and keyboards",
+        "URL parameters, mine and show-done preferences, and live invalidation behave as before",
+        "A node:test covers the lane to status mapping",
+        "Loading, empty, error, filtered-empty, and offline states are designed and seen"
+      ],
+      "plan": "Lane model and mapping with tests; layout; cards; drag semantics; states; phone layout."
+    },
+    {
+      "key": "H11",
+      "phase": 2,
+      "title": "Task list",
+      "priority": 2,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H04", "H05a", "H05d", "H06"],
+      "description": "Redesign the task list per screens.md section 2: filter chips opening menus, the result headline, g-row rows with status icon, acceptance segments, assignee, and age, grouped by status. Keep the filter model, URL format and keyboard navigation.",
+      "scope": ["web/src/pages/tasks/", "web/src/widgets/task-list/"],
+      "ac": [
+        "Existing web-task-filter and view tests pass unchanged",
+        "j, k, arrows, Enter, / and the focus ring work as before",
+        "Filters, order, groups and reset behave as before; state stays in the URL",
+        "Loading, empty, filtered-empty, and error states exist",
+        "Phone filters open as a bottom sheet"
+      ],
+      "plan": "Restyle toolbar and rows; headline; states; phone sheet."
+    },
+    {
+      "key": "H12",
+      "phase": 2,
+      "title": "Task detail: panel and full page",
+      "priority": 1,
+      "hours": 4.5,
+      "ui": true,
+      "deps": ["H05b", "H05c", "H05d", "H06"],
+      "description": "Redesign the task panel and the task page per screens.md section 3: headline row, property rail, g-prose description, plan and notes, the owner-decision block as the page's orange region, acceptance criteria with a progress header, delivery with PR and CI states, activity timeline, artifacts grid, and the comment composer. Keep both variants, tabs, and the team tab.",
+      "scope": ["web/src/widgets/task-detail/", "web/src/pages/task/", "web/src/features/owner-decision/", "web/src/features/follow-task/"],
+      "ac": [
+        "Panel and page work with all permission levels; read-only users see text, not controls",
+        "Owner-decision flows, questionnaires, and clarification tasks behave as before",
+        "CI failure is shown as a banner; waiting on dependencies and cancelled states are shown",
+        "Comment shortcut, follow, delete with confirmation, and artifact viewing work",
+        "No team shows the empty state with the spawn action",
+        "Phone shows a full-screen page with an accordion of properties"
+      ],
+      "plan": "Header and rail; main column; owner decision; delivery; activity; composer; states; phone."
+    },
+    {
+      "key": "H13",
+      "phase": 2,
+      "title": "Epics list and epic page",
+      "priority": 2,
+      "hours": 2,
+      "ui": true,
+      "deps": ["H04", "H05d", "H06"],
+      "description": "Redesign per screens.md section 4: epics as cards with the arcs progress motif and an Unbounded open count; the epic page with a headline, goal as the lede, children grouped by status, the aside as a property rail, artifacts, and activity.",
+      "scope": ["web/src/pages/epics/", "web/src/pages/epic/"],
+      "ac": [
+        "Moving tasks between epics and adding artifacts work as before",
+        "Empty, no-children, and ready-to-close states exist",
+        "The owner-decision box uses the signal treatment",
+        "Both themes and phone verified"
+      ],
+      "plan": "Cards; page layout; states."
+    },
+    {
+      "key": "H14",
+      "phase": 2,
+      "title": "Team view and agent chat",
+      "priority": 2,
+      "hours": 5,
+      "ui": true,
+      "deps": ["H05b", "H05c", "H05d", "H07"],
+      "description": "Redesign per screens.md section 5: the team mail log and composer, member cards with state and working arcs, the journal aside, the agent conversation feed with collapsible tool steps and the quote-a-step action, the correction composer, pause and idea-plan asides, and the scheme graph in viz colours. The character shows the agent's state in the chat header.",
+      "scope": ["web/src/widgets/team-view/", "web/src/pages/agent/", "web/src/pages/team/", "web/src/features/manage-team/", "web/src/features/spawn-team/"],
+      "ac": [
+        "Streaming, auto-scroll sticking, mail levels including interrupt, quoting, pause and resume behave as before",
+        "Tool steps are collapsed by default with status and duration and expand to code blocks",
+        "Long outputs collapse behind a Show more control; images use the existing preview",
+        "Aria roles and labels (log, tablist, radiogroup) are preserved",
+        "Phone uses a bottom sheet for the aside and a pinned composer"
+      ],
+      "plan": "Team view; member cards; agent feed and steps; composers; asides; scheme; phone."
+    },
+    {
+      "key": "H15",
+      "phase": 2,
+      "title": "Documentation: tree, reader, editor, search",
+      "priority": 2,
+      "hours": 3.5,
+      "ui": true,
+      "deps": ["H05b", "H05d", "H06"],
+      "description": "Reskin and retype per screens.md section 6: the tree as dense rows with type icons, the reader in g-prose, meta as tags, diagnostics as banners, the editor with a preview toggle, the search list, the new-document dialog, the phone tree drawer, and the Proposals segment in the header. Move the docs rules out of app/styles.css (after H01).",
+      "scope": ["web/src/pages/docs/", "web/src/entities/doc/", "web/src/shared/ui/Markdown.tsx"],
+      "ac": [
+        "Wiki-links, backlinks, search modes and the page, q, new, title parameters work as before",
+        "Edit routes and proposals are reachable; the drawer works on phones",
+        "Reading measure is at most 70 characters and tables and code scroll inside their block",
+        "Empty vault, loading, failed, no results, and deprecated-page states exist"
+      ],
+      "plan": "Tree; reader typography; meta and banners; editor; search; drawer; states."
+    },
+    {
+      "key": "H16",
+      "phase": 2,
+      "title": "Agents catalogue",
+      "priority": 3,
+      "hours": 3,
+      "ui": true,
+      "deps": ["H05a", "H05b", "H05d", "H06"],
+      "description": "Reskin per screens.md section 7: tabs, list and detail panes, forms and dialogs, the template graph in viz colours, read-only presentation. Move agents.css onto the shared components.",
+      "scope": ["web/src/pages/agents/", "web/src/widgets/agents-kit/", "web/src/entities/agent-config/", "web/src/shared/ui/agents.css"],
+      "ac": [
+        "Editing rules (administrator only), file editing, history and permission fields behave as before",
+        "The template graph uses viz tokens and agent shapes and is legible in both themes",
+        "Query parameters tab, id and q work",
+        "Read-only mode is visibly read-only"
+      ],
+      "plan": "Shell and tabs; panes; forms and dialogs; graph; read-only mode."
+    },
+    {
+      "key": "H17",
+      "phase": 2,
+      "title": "Platform pages: answer, notifications, automations, proposals",
+      "priority": 2,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H05c", "H05d", "H07"],
+      "description": "Per screens.md section 8. The Answer page (outside the shell) becomes a brand moment with the surprised character, one sheet per question, and a single orange submit. Notifications get day groups with unread dots and an empty state. Automations and Proposals are split views.",
+      "scope": ["web/src/pages/platform/"],
+      "ac": [
+        "The Answer page works from a cold link, handles the closed state, and submits as before",
+        "Notifications mark-read behaviour is unchanged",
+        "Each page has loading, empty and error states",
+        "Both themes and phone verified"
+      ],
+      "plan": "Answer page; notifications; automations; proposals."
+    },
+    {
+      "key": "H18",
+      "phase": 2,
+      "title": "Authentication, invitation, and first project",
+      "priority": 2,
+      "hours": 1,
+      "ui": true,
+      "deps": ["H05b", "H07"],
+      "description": "Per screens.md section 9: a full-bleed brand layout with the display slogan and orange stop, the arcs motif cropped at the corner, the form in a card, and the character. Login, invite, and first-project pages share the layout.",
+      "scope": ["web/src/pages/auth/", "web/src/pages/settings/ui (FirstProjectPage)"],
+      "ac": [
+        "All existing notes and errors are shown, including server unavailable and no project access",
+        "Both themes and phone verified; the form is fully keyboard operable",
+        "The slogan is a single Unbounded headline of at most six words with the orange stop"
+      ],
+      "plan": "Layout; login; invite; first project."
+    },
+    {
+      "key": "H19",
+      "phase": 2,
+      "title": "Dialogs: palette, new task, owner decision, ideas, teams, artifacts, model menu",
+      "priority": 2,
+      "hours": 3.5,
+      "ui": true,
+      "deps": ["H05a", "H05b", "H05c"],
+      "description": "Per screens.md section 10, apply the shared overlay components to every dialog and menu and finish their content: command palette with grouped results, new task with presets and idea mode, owner decision with questionnaires, idea shaping, spawn and manage team, add artifact, model menu and picker, artifact modal and confirmations.",
+      "scope": ["web/src/features/*/", "web/src/entities/task/ui/ArtifactModal.tsx", "web/src/shared/ui/ConfirmDialog.tsx"],
+      "ac": [
+        "Each dialog traps and restores focus, closes on Escape, and has a labelled title",
+        "The palette navigates by arrow keys and supports every action it had",
+        "The single orange button in each dialog is the confirming action",
+        "Existing web-idea-plan and web-owner-decision tests pass"
+      ],
+      "plan": "Palette; new task; owner decision; the rest; verify keyboard."
+    },
+    {
+      "key": "H20",
+      "phase": 3,
+      "title": "Settings: personal (account, sign-in, Telegram, keys, tokens)",
+      "priority": 3,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H05a", "H05b", "H05d", "H06"],
+      "description": "Reskin the Me section per screens.md section 11 on the shared components. Secrets are shown in a monospace block with a copy action. No layout redesign.",
+      "scope": ["web/src/pages/settings/ui (MeSettings, TelegramSettings, TokensTab, ProviderConnectDialog)", "web/src/shared/ui/settings.css"],
+      "ac": [
+        "Every section reachable and functional as before",
+        "Secret masking and token creation flows unchanged",
+        "Both themes and phone verified"
+      ],
+      "plan": "Section rail; forms; token and key lists; dialogs."
+    },
+    {
+      "key": "H21",
+      "phase": 3,
+      "title": "Settings: project (general, repositories, tools, people, channels, knowledge)",
+      "priority": 3,
+      "hours": 2,
+      "ui": true,
+      "deps": ["H20"],
+      "description": "Reskin the project management sections: general, repositories and environment, tools (skills, MCP, Jev, automations), access and roles, channels, knowledge base. Keep role gating and the legacy redirects.",
+      "scope": ["web/src/pages/settings/ui (ProjectSettings, RepositoriesSection, AutomationsSettings)", "web/src/shared/ui/project.css"],
+      "ac": [
+        "Role gating (project administrators and server administrators) unchanged",
+        "Repository connection flows and Git token management unchanged",
+        "All tabs from SETTINGS_TABS render and work",
+        "Both themes and phone verified"
+      ],
+      "plan": "Rail and tabs; forms; repository section; tables; dialogs."
+    },
+    {
+      "key": "H22",
+      "phase": 3,
+      "title": "Settings: server (projects, accounts, providers, tools, health, vault)",
+      "priority": 3,
+      "hours": 3.5,
+      "ui": true,
+      "deps": ["H20"],
+      "description": "Reskin the server administration sections, including the large McpAdmin (about 880 lines), ServerSettings (about 700), ProvidersAdmin, and the agent administration routes (roles, templates, skills, history).",
+      "scope": ["web/src/pages/settings/ui (McpAdmin, ServerSettings, ProvidersAdmin, AgentsAdminPage)", "web/src/widgets/agents-kit/"],
+      "ac": [
+        "Server administrator gating unchanged",
+        "MCP editing, provider connection, account creation and role assignment unchanged",
+        "Every section and tab renders and works",
+        "Both themes and phone verified"
+      ],
+      "plan": "Projects and accounts; providers; tools and MCP; health and vault; agent administration."
+    },
+    {
+      "key": "H23",
+      "phase": 3,
+      "title": "Statistics and costs",
+      "priority": 3,
+      "hours": 1.5,
+      "ui": true,
+      "deps": ["H05d"],
+      "description": "Per screens.md section 12: headline numerals, charts on the viz tokens with direct value labels, tables for breakdowns, and a time-range segment. Administrator only, as today.",
+      "scope": ["web/src/pages/settings/ui/ServerCosts.tsx", "web/src/pages/settings (ServerStatisticsPage)", "web/src/entities/usage/", "web/src/shared/ui/BarChart.tsx"],
+      "ac": [
+        "At most four series per chart, direct-labelled, with 3:1 contrast in both themes",
+        "web-stats test passes unchanged",
+        "Empty and loading states exist"
+      ],
+      "plan": "Numerals; charts; tables; range control; states."
+    },
+    {
+      "key": "H30",
+      "phase": 4,
+      "title": "Phone and tablet pass",
+      "priority": 2,
+      "hours": 3,
+      "ui": true,
+      "deps": ["H10", "H11", "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19"],
+      "description": "Audit every redesigned screen at 390 and 768 widths and fix what the per-screen tasks missed: overflow, touch target sizes, bottom sheets, safe-area insets, horizontal scroll of the board, long text, and keyboard overlap. Record before and after screenshots.",
+      "scope": ["web/src (responsive rules)"],
+      "ac": [
+        "No horizontal page scroll at 390 and 768 on any route",
+        "All phone controls are at least 40px high and rows at least 44px",
+        "The board, task panel, team view, docs tree, and palette work on a touch device",
+        "Screenshots for every route are attached"
+      ],
+      "plan": "Capture; list defects; fix by area; recapture."
+    },
+    {
+      "key": "H31",
+      "phase": 4,
+      "title": "Accessibility audit",
+      "priority": 2,
+      "hours": 3,
+      "ui": true,
+      "deps": ["H10", "H11", "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19", "H20", "H21", "H22", "H23"],
+      "description": "Audit all screens for keyboard operation, focus visibility and order, roles and labels, live regions, reduced motion, and colour independence. Add an automated check to the harness (axe-core through Playwright) if it can be added without a heavy dependency. Fix findings. Confirm every colour token has contrast pairs in test/design-tokens.test.ts.",
+      "scope": ["web/src (fixes)", "web/scripts (a11y check)", "test/design-tokens.test.ts"],
+      "ac": [
+        "A documented keyboard-only walkthrough of the main flows (create task, answer a decision, move a card, read a doc) succeeds",
+        "No critical or serious automated findings remain",
+        "prefers-reduced-motion removes all non-essential motion, verified per screen",
+        "Every colour token is covered by a contrast pair"
+      ],
+      "plan": "Manual walkthroughs; automated scan; fix; document results."
+    },
+    {
+      "key": "H32",
+      "phase": 4,
+      "title": "Documentation site, README hero, and app icon",
+      "priority": 3,
+      "hours": 3,
+      "ui": true,
+      "deps": ["H02"],
+      "description": "Apply the brand outside the app: the VitePress theme (colours, Unbounded display headings, Manrope body, the new logo lockups, favicon), the README hero SVG, and the application favicon and theme colour. Replace the old periwinkle lettermark usages with the new logo after confirming the draft vector with the owner; update docs/assets/brand/README.md.",
+      "scope": ["docs/.vitepress/theme/", "docs/public/", "docs/assets/hero.svg", "README.md", "web/index.html (icon)"],
+      "ac": [
+        "The docs site builds (npm run docs:check and docs:build) and renders in the new palette",
+        "The README hero and favicon use the new logo",
+        "The brand README states which logo is current and where the vector source lives",
+        "Docs remain English and links check"
+      ],
+      "plan": "Theme variables; fonts; logo swap; hero; checks."
+    },
+    {
+      "key": "H33",
+      "phase": 4,
+      "title": "Cleanup, standards, and release notes",
+      "priority": 3,
+      "hours": 2,
+      "ui": false,
+      "deps": ["H30", "H31", "H32", "H21", "H22", "H23"],
+      "description": "Remove the legacy compatibility variables and unused classes and CSS, Geist, and the sidebar remnants; update CODING_STANDARDS.md Web UI section with the design-system rules (tokens only, g- components, themes, density); update docs and the changelog; produce the final before and after screenshot set.",
+      "scope": ["web/src (dead code)", "CODING_STANDARDS.md", "CHANGELOG.md", "docs/"],
+      "ac": [
+        "No legacy design variable, class, or font remains; a grep proves it",
+        "CODING_STANDARDS.md points to the design system and principles",
+        "CHANGELOG.md has an entry for the redesign",
+        "Typecheck, lint, tests, and build pass"
+      ],
+      "plan": "Grep for leftovers; delete; update documents; final screenshots."
+    }
+  ]
+}

@@ -1,0 +1,197 @@
+/*
+ * Genie design tokens ("ink and paper" visual language).
+ * Specification: docs/assets/brand/design-system.md. Contrast pairs are enforced by test/design-tokens.test.ts.
+ *
+ * Layer 1 holds raw brand values and never changes between themes. Layer 2 is semantic; components consume
+ * only layer 2. `:root` is the ink (dark) theme to match the current app; `[data-theme="paper"]` is light.
+ * The `--g-` prefix keeps these names apart from the legacy `--bg`/`--text`/`--accent` set in app/styles.css
+ * until that file migrates.
+ */
+
+:root {
+  /* ---- layer 1: brand palette ---- */
+  --g-ink: #09090d;
+  --g-paper: #f4f1ea;
+  --g-green: #008f6b;
+  --g-orange: #ff873c;
+
+  /* Brand green and orange fail 4.5:1 as text on paper (3.62 and 2.12); these are the text-safe steps. */
+  --g-green-400: #2fbf94;
+  --g-green-700: #007a5b;
+  --g-green-800: #00604a;
+  --g-orange-700: #a64600;
+  --g-red-500: #e5484d;
+  --g-red-700: #c62a2f;
+
+  /* Neutral ramp interpolated from ink to paper; keeps both themes warm-tinted instead of pure grey. */
+  --g-n-950: #09090d;
+  --g-n-900: #121216;
+  --g-n-850: #19191c;
+  --g-n-800: #232325;
+  --g-n-700: #2f2e30;
+  --g-n-600: #414142;
+  --g-n-500: #737170;
+  --g-n-400: #9b9996;
+  --g-n-300: #c0beb9;
+  --g-n-200: #dcdad4;
+  --g-n-100: #ebe8e1;
+  --g-n-50: #f4f1ea;
+  --g-n-0: #fbf9f7;
+
+  /* ---- type ---- */
+  /* Unbounded is for display sizes only (>= 24px). Manrope carries everything smaller; see the spec. */
+  --g-font-display: Unbounded, Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --g-font-sans: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --g-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --g-weight-regular: 400;
+  --g-weight-medium: 500;
+  --g-weight-semibold: 600;
+  --g-weight-bold: 700;
+  --g-weight-black: 900;
+
+  --g-text-display-xl: clamp(32px, 8vw, 96px);
+  --g-text-display: clamp(28px, 5.5vw, 64px);
+  --g-text-h1: clamp(26px, 4vw, 44px);
+  --g-text-h2: clamp(24px, 3vw, 30px);
+  --g-text-h3: 22px;
+  --g-text-h4: 17px;
+  --g-text-body-lg: 17px;
+  --g-text-body: 15px;
+  --g-text-ui: 14px;
+  --g-text-dense: 13px;
+  --g-text-caption: 12px;
+  --g-text-eyebrow: 11px;
+
+  --g-leading-display: 0.95;
+  --g-leading-heading: 1.12;
+  --g-leading-ui: 1.45;
+  --g-leading-prose: 1.65;
+
+  --g-tracking-display: -0.04em;
+  --g-tracking-heading: -0.025em;
+  --g-tracking-eyebrow: 0.14em;
+
+  /* ---- shape, space, motion ---- */
+  --g-radius-sm: 8px;
+  --g-radius-md: 12px;
+  --g-radius-lg: 20px;
+  --g-radius-xl: 28px;
+  --g-radius-pill: 999px;
+
+  --g-space-1: 4px;
+  --g-space-2: 8px;
+  --g-space-3: 12px;
+  --g-space-4: 16px;
+  --g-space-5: 24px;
+  --g-space-6: 32px;
+  --g-space-7: 48px;
+  --g-space-8: 64px;
+  --g-space-9: 96px;
+
+  --g-ease: cubic-bezier(0.2, 0, 0, 1);
+  --g-duration: 150ms;
+
+  /* Control and row heights; the "sm" step is for toolbars, filters, and list rows. */
+  --g-control: 40px;
+  --g-control-sm: 32px;
+  --g-row: 44px;
+
+  /* Layering, lowest to highest. Components use these names, never raw numbers. */
+  --g-z-sticky: 10;
+  --g-z-dropdown: 20;
+  --g-z-overlay: 30;
+  --g-z-modal: 40;
+  --g-z-toast: 50;
+
+  /* Breakpoints (media queries cannot read custom properties; keep these in step by hand):
+     phone <= 640px, tablet <= 900px, laptop <= 1100px, wide >= 1440px. */
+
+  /* ---- layer 2: semantic, ink theme (default) ---- */
+  --g-bg: var(--g-n-950);
+  --g-surface: var(--g-n-900);
+  --g-surface-raised: var(--g-n-850);
+  --g-surface-hover: var(--g-n-850);
+  --g-surface-active: var(--g-n-800);
+  --g-border: var(--g-n-800);
+  --g-border-strong: var(--g-n-700);
+  /* Input and control outlines need 3:1 against the surface (WCAG 1.4.11); decorative dividers do not. */
+  --g-control-border: var(--g-n-500);
+
+  --g-text: var(--g-paper);
+  --g-text-2: var(--g-n-300);
+  --g-text-muted: var(--g-n-400);
+
+  --g-accent: var(--g-green);
+  --g-accent-hover: var(--g-green-400);
+  --g-accent-text: var(--g-green);
+  --g-accent-soft: #07211e;
+  --g-accent-soft-text: var(--g-green-400);
+  --g-on-accent: var(--g-ink);
+
+  --g-signal: var(--g-orange);
+  --g-signal-hover: #ff9a5c;
+  --g-signal-text: var(--g-orange);
+  --g-signal-soft: #352015;
+  --g-on-signal: var(--g-ink);
+
+  --g-danger: var(--g-red-500);
+  --g-danger-text: var(--g-red-500);
+  --g-danger-soft: #231115;
+  --g-on-danger: var(--g-ink);
+
+  /* Chart series: at most four, always direct-labelled; beyond that use small multiples. Each needs 3:1 on the
+     surface (graphical objects, WCAG 1.4.11), which is why the paper theme darkens the orange. */
+  --g-viz-1: var(--g-green);
+  --g-viz-2: var(--g-orange);
+  --g-viz-3: var(--g-n-400);
+  --g-viz-4: var(--g-green-400);
+  --g-viz-grid: var(--g-n-800);
+
+  --g-focus: var(--g-green-400);
+  --g-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.55);
+  color-scheme: dark;
+}
+
+[data-theme="paper"] {
+  --g-bg: var(--g-paper);
+  --g-surface: var(--g-n-0);
+  --g-surface-raised: var(--g-n-0);
+  --g-surface-hover: var(--g-n-100);
+  --g-surface-active: var(--g-n-200);
+  --g-border: var(--g-n-200);
+  --g-border-strong: var(--g-n-300);
+  --g-control-border: #807f7c;
+
+  --g-text: var(--g-ink);
+  --g-text-2: var(--g-n-600);
+  --g-text-muted: #5f5e5c;
+
+  --g-accent: var(--g-green);
+  --g-accent-hover: var(--g-green-700);
+  --g-accent-text: var(--g-green-700);
+  --g-accent-soft: #d7e5db;
+  --g-accent-soft-text: var(--g-green-800);
+  --g-on-accent: var(--g-ink);
+
+  --g-signal: var(--g-orange);
+  --g-signal-hover: #ff9a5c;
+  --g-signal-text: var(--g-orange-700);
+  --g-signal-soft: #f5e4d5;
+  --g-on-signal: var(--g-ink);
+
+  --g-danger: var(--g-red-700);
+  --g-danger-text: var(--g-red-700);
+  --g-danger-soft: #f2e7e1;
+  --g-on-danger: var(--g-paper);
+
+  --g-viz-1: var(--g-green);
+  --g-viz-2: #d4611a;
+  --g-viz-3: #737170;
+  --g-viz-4: var(--g-green-800);
+  --g-viz-grid: var(--g-n-200);
+
+  --g-focus: var(--g-green-700);
+  --g-shadow-overlay: 0 20px 50px rgb(9 9 13 / 0.18);
+  color-scheme: light;
+}
