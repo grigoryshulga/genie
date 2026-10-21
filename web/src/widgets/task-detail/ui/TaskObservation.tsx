@@ -13,7 +13,7 @@ import {
 } from "@/entities/observation";
 import { canWriteProject, useSession } from "@/entities/session";
 import type { Task } from "@/entities/task";
-import { useToast } from "@/shared/ui";
+import { Button, Skeleton, useToast } from "@/shared/ui";
 import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
 const POLICIES = Object.keys(POLICY_LABEL) as ObservationPolicy[];
@@ -70,22 +70,23 @@ export function TaskObservation({ task }: { task: Task }) {
       title={OBSERVATION_TEXT.section}
       badge={query.isSuccess && cases.length > 0 ? <span className="n">{cases.length}</span> : undefined}
       action={writable && !formOpen ? (
-          <button type="button" className="btn ghost" style={{ height: 24 }} onClick={startForm}>
+          <Button variant="ghost" sm onClick={startForm}>
             {OBSERVATION_TEXT.create}
-          </button>
+          </Button>
         ) : undefined}
     >
-      {query.isPending && <div className="muted">Загрузка…</div>}
+      {query.isPending && <Skeleton height={32} />}
       {query.isError && <p role="alert">{query.error.message}</p>}
       {formOpen && (
-        <form aria-label={OBSERVATION_TEXT.create} onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
-          <label className="field">
+        <form aria-label={OBSERVATION_TEXT.create} onSubmit={submit} className="td-form">
+          <label className="td-field">
             Название
-            <input required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input className="g-input" required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
-          <label className="field">
+          <label className="td-field">
             Политика
             <select
+              className="g-select"
               value={policy}
               onChange={(e) => {
                 const next = POLICIES.find((p) => p === e.target.value);
@@ -99,22 +100,22 @@ export function TaskObservation({ task }: { task: Task }) {
               ))}
             </select>
           </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" className="btn ghost" disabled={create.isPending} onClick={() => setFormOpen(false)}>
+          <div className="td-form-actions">
+            <Button variant="ghost" sm disabled={create.isPending} onClick={() => setFormOpen(false)}>
               Отмена
-            </button>
-            <button type="submit" className="btn primary" disabled={create.isPending || !title.trim()}>
+            </Button>
+            <Button type="submit" variant="secondary" sm disabled={create.isPending || !title.trim()}>
               {OBSERVATION_TEXT.create}
-            </button>
+            </Button>
           </div>
         </form>
       )}
       {query.isSuccess && cases.length === 0 && !formOpen && <div className="muted">{OBSERVATION_TEXT.empty}</div>}
       {cases.length > 0 && (
-        <ul style={{ display: "flex", flexDirection: "column", gap: 8, listStyle: "none", margin: 0, padding: 0 }}>
+        <ul className="td-cases">
           {cases.map((c) => (
             <li key={c.id}>
-              <Link className="artifact" to={`/observation/${c.id}`}>
+              <Link className="artifact line" to={`/observation/${c.id}`}>
                 <span className="mono">{c.key}</span>
                 <span className="nm">{c.title}</span>
                 <span className="who">{caseState(c)}</span>

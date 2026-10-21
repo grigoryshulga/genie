@@ -81,3 +81,44 @@
   .tp-main { padding: var(--space-8) var(--space-8) 40px; overflow: visible; }
   .tp-rail .epic-box .goal { display: none; }
 }
+
+/* ------------------------------------- task page in ink and paper (GNE-56) */
+/* The page is a reading column with the properties rail floating over the right
+   gutter; the two share one headline and one set of tokens with the panel. */
+.task-page .td-bar { padding-inline: var(--g-space-3); }
+.tp-head { gap: var(--g-space-3); padding: var(--g-space-5) var(--g-space-5) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
+.tp-title-row { gap: var(--g-space-3); }
+.task-page .td-headline { gap: var(--g-space-2); }
+.task-page .td-headline h2.title { font-size: var(--g-text-h2); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); }
+.task-page .td-meta { font-size: var(--g-text-dense); }
+.task-page .td-states { margin-top: var(--g-space-2); }
+.task-page .td-states .g-banner { max-width: var(--measure); }
+.tp-body { grid-template-columns: minmax(0, 1fr); }
+.tp-main { gap: var(--g-space-5); padding: var(--g-space-5) var(--g-space-5) var(--g-space-7); }
+.tp-main > * { max-width: var(--measure); }
+.tp-rail { width: calc(var(--rail) + var(--g-space-5)); padding: var(--g-space-5) var(--g-space-3) var(--g-space-5) 0; gap: var(--g-space-2); }
+.tp-card { padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); box-shadow: none; }
+.tp-card-title { font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); }
+.tp-card-toggle { min-height: var(--g-control-sm); color: var(--g-text-2); }
+.tp-card-toggle > svg { color: var(--g-text-muted); }
+.tp-card-body { margin-top: var(--g-space-2); }
+.props.rail { grid-template-columns: 88px minmax(0, 1fr); gap: var(--g-space-2) var(--g-space-2); font-size: var(--g-text-dense); }
+.props.rail .wide { grid-column: auto; }
+.props.rail select, .props.rail input { margin-left: 0; }
+.tp-rail .epic-box { padding: 0; }
+.tp-rail .epic-box .goal { color: var(--g-text-2); line-height: var(--g-leading-ui); }
+.tp-team-members, .tp-team-names { font-size: var(--g-text-dense); }
+.tp-team-empty { gap: var(--g-space-3); font-size: var(--g-text-dense); color: var(--g-text-muted); }
+.tp-team-empty b { color: var(--g-text); font-weight: var(--g-weight-semibold); }
+.tp-team-empty .g-btn, .tp-team-card .g-btn { width: 100%; }
+.tp-noteam { gap: var(--g-space-3); padding: var(--g-space-8) var(--g-space-5); }
+.tp-noteam .g-empty { width: 100%; max-width: 420px; }
+.task-page .tp-back { flex: none; }
+.task-page .sec h3 { min-height: var(--g-control-sm); }
+
+@media (max-width: 900px) {
+  .tp-head { padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); }
+  .task-page .td-headline h2.title { font-size: var(--g-text-h3); }
+  .tp-rail { order: -1; padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); border-bottom: 1px solid var(--g-border); }
+  .tp-main { padding: var(--g-space-4) var(--g-space-4) var(--g-space-6); }
+}

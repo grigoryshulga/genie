@@ -3,11 +3,12 @@
 
 import { useState } from "react";
 import { CI_NAME, CR_NAME, type TaskRepo, useMergeRequest, useTaskRepos } from "@/entities/repo";
-import { ConfirmDialog, useToast } from "@/shared/ui";
+import { Banner, Button, ConfirmDialog, Tag, useToast } from "@/shared/ui";
+import { canWriteProject, useSession } from "@/entities/session";
 import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
-function ciLevel(ci: TaskRepo["ciState"]): "ok" | "warn" | "fail" | "" {
-  return ci === "passed" ? "ok" : ci === "failed" ? "fail" : ci === "pending" || ci === "stalled" ? "warn" : "";
+function ciTone(ci: TaskRepo["ciState"]): "accent" | "signal" | "danger" | "neutral" {
+  return ci === "passed" ? "accent" : ci === "failed" ? "danger" : ci === "pending" || ci === "stalled" ? "signal" : "neutral";
 }
 
 // The checks of a delivery, whenever they mean something: any recorded state (with or without a
@@ -18,9 +19,9 @@ function ciPill(r: TaskRepo) {
   if (!known) return null;
   const of = r.ciRef && r.ciRef !== r.branch ? ` ${r.ciRef}` : "";
   return (
-    <span className={`pill ${ciLevel(known)}`} title={`проверки${of}`}>
+    <Tag tone={ciTone(known)} title={`проверки${of}`}>
       {CI_NAME[known]}
-    </span>
+    </Tag>
   );
 }
 
@@ -29,14 +30,21 @@ export function TaskDelivery({ task }: { task: string }) {
   const merge = useMergeRequest();
   const toast = useToast();
   const [merging, setMerging] = useState<TaskRepo>();
+  const writable = canWriteProject(useSession().data);
   if (!rows.length) return null;
   return (
     <CollapsibleSection title="Репозитории" badge={<span className="n">{rows.length}</span>}>
       <div className="td-delivery">
         {rows.map((r) => (
-          <div key={r.repo} className="td-repo">
+          <div key={r.repo} className={`td-repo${r.ciState === "failed" ? " failed" : ""}`}>
+            {r.ciState === "failed" && (
+              <Banner tone="danger" title="Проверки упали">
+                В {r.repo}{r.crNumber ? `, запрос #${r.crNumber}` : r.branch ? `, ветка ${r.branch}` : ""}: слияние не пройдёт, пока проверки красные.
+              </Banner>
+            )}
+            <div className="line">
             <b>{r.repo}</b>
-            <span className="pill">{r.access === "write" ? "запись" : "чтение"}</span>
+            <Tag tone="outline">{r.access === "write" ? "запись" : "чтение"}</Tag>
             {r.branch && <span className="mono">{r.branch}</span>}
             {r.crNumber ? (
               <>
@@ -47,12 +55,14 @@ export function TaskDelivery({ task }: { task: string }) {
                 ) : (
                   <span>запрос #{r.crNumber}</span>
                 )}
-                <span className={`pill ${r.crState === "merged" ? "ok" : r.crState === "closed" ? "warn" : ""}`}>{CR_NAME[r.crState ?? "open"]}</span>
+                <Tag tone={r.crState === "merged" ? "accent" : r.crState === "closed" ? "signal" : "outline"}>{CR_NAME[r.crState ?? "open"]}</Tag>
                 {ciPill(r)}
                 {r.crState === "open" && (
-                  <button type="button" className="btn ghost" style={{ height: 24 }} onClick={() => setMerging(r)}>
-                    Слить
-                  </button>
+                  writable && (
+                    <Button variant="secondary" sm onClick={() => setMerging(r)}>
+                      Слить
+                    </Button>
+                  )
                 )}
               </>
             ) : r.state === "published" ? (
@@ -63,6 +73,7 @@ export function TaskDelivery({ task }: { task: string }) {
             ) : r.access === "write" ? (
               <span className="muted">пока без изменений на хостинге</span>
             ) : null}
+            </div>
           </div>
         ))}
       </div>

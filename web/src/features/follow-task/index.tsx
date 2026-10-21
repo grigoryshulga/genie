@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import type { TaskWatch } from "@/shared/api/generated/TaskWatch.ts";
-import { useToast } from "@/shared/ui";
+import { Button, useToast } from "@/shared/ui";
 
 export function FollowTask({ task }: { task: string }) {
   const session = useSession().data;
@@ -29,15 +29,14 @@ export function FollowTask({ task }: { task: string }) {
       </span>
     );
   return (
-    <button
-      type="button"
-      className="btn"
+    <Button
+      sm
       aria-pressed={state.data?.watching ?? false}
       disabled={!state.data || mutation.isPending}
       title={state.error?.message ?? "Новые комментарии и смена статуса"}
       onClick={() => mutation.mutate()}
     >
       {state.data?.watching ? "Слежу за задачей" : "Следить"}
-    </button>
+    </Button>
   );
 }
