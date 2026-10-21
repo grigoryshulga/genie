@@ -292,12 +292,16 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
               sm
               aria-label="Эпик"
               value={epic ? epic.id : ""}
-              onChange={(e) =>
+              onChange={(e) => {
+                // Read the chosen parent once, before the request: the controlled select keeps showing the
+                // saved epic until the refetch lands, so the callback would name the previous epic.
+                const parent = e.target.value || null;
+                const taskId = t.id;
                 patch.mutate(
-                  { id: t.id, patch: { parent: e.target.value || null } },
-                  { onSuccess: () => toast(e.target.value ? `${t.id} теперь в эпике ${e.target.value}` : `${t.id} больше не в эпике`), onError: fail },
-                )
-              }
+                  { id: taskId, patch: { parent } },
+                  { onSuccess: () => toast(parent ? `${taskId} теперь в эпике ${parent}` : `${taskId} больше не в эпике`), onError: fail },
+                );
+              }}
             >
               <option value="">Без эпика</option>
               {epicChoices.map((e) => (
