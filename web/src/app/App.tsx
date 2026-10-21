@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
 import { LEGACY_VIEWS, type PresetId, PRESETS, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
@@ -9,8 +9,10 @@ import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
 import { canManageProject, managementDestination, isTyping, rememberWorkRoute } from "@/shared/lib";
+import { Dialog } from "@/shared/ui";
 import { TopBar } from "@/widgets/topbar";
 import { lazyPage } from "./lazyPage.ts";
+import "./task-modal.css";
 
 // Only the entry screen is eager: the gate (its login page and the shell) and the board,
 // which is what `/` redirects to. Every other page is a chunk fetched when its route is
@@ -76,6 +78,19 @@ function Shell() {
   const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
   const openTask = tasks?.find((t) => t.id === openTaskId);
+  const taskModalOpen = !!openTaskId;
+
+  // Capture the opener before Dialog.showModal() moves focus. Restore after React removes the
+  // dialog, unless navigation removed the opener or another modal has taken over.
+  useLayoutEffect(() => {
+    if (!taskModalOpen) return;
+    const opener = document.activeElement;
+    return () => {
+      requestAnimationFrame(() => {
+        if (opener instanceof HTMLElement && opener.isConnected && !document.querySelector("dialog:modal")) opener.focus();
+      });
+    };
+  }, [taskModalOpen]);
 
   // The settings mode's «← к работе» returns here (PD21).
   useEffect(() => {
@@ -118,11 +133,8 @@ function Shell() {
         setDialog("palette");
         return;
       }
-      if (dialog) return;
-      if (e.key === "Escape" && openTaskId && !isTyping(e)) {
-        closeTask();
-        return;
-      }
+      // Native dialogs own Escape and focus; background shortcuts must not act on the covered page.
+      if (dialog || openTaskId) return;
       if (isTyping(e)) return;
       if (Date.now() - gPending.current < 1200) {
         const sections: Record<string, "board" | "tasks" | "epics" | "settings"> = { b: "board", t: "tasks", e: "epics", s: "settings" };
@@ -153,7 +165,7 @@ function Shell() {
   }, [dialog, openTaskId, closeTask, actions, navigate, newTask, focusSearch]);
 
   const agentRoute = /^\/team\/[^/]+\/[^/]+/.test(location.pathname);
-  const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app";
+  const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : "app";
   return (
     <div className={cls}>
       <TopBar onNew={() => newTask()} online={online} searchRef={searchRef} onOpenSearch={focusSearch} />
@@ -161,9 +173,11 @@ function Shell() {
         <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
       </Suspense>
       {openTaskId && (
-        <Suspense fallback={null}>
-          <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />
-        </Suspense>
+        <Dialog bare className="task-modal" title={`Задача ${openTaskId}`} onClose={closeTask}>
+          <Suspense fallback={<PageFallback />}>
+            <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />
+          </Suspense>
+        </Dialog>
       )}
       {dialog === "new" && (
         <Suspense fallback={null}>
