@@ -17,7 +17,7 @@ import { type Team, useTeamMap } from "@/entities/team";
 import type { NewTaskPreset } from "@/features/create-task";
 import { plural, timeAgo, useTick } from "@/shared/lib";
 import { ContextSearch } from "@/widgets/topbar";
-import { Button, Character, EmptyState, ErrorState, Icon, Skeleton, Tag, Tabs } from "@/shared/ui";
+import { Button, EmptyState, ErrorState, Icon, Skeleton, Tag, Tabs } from "@/shared/ui";
 
 const closed = (t: TaskSummary) => t.status === "done" || t.status === "cancelled";
 
@@ -78,6 +78,9 @@ export function EpicsPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
             {empty && !q && (
               <EmptyState
                 title={tab === "open" ? "Эпиков пока нет" : "Завершённых эпиков пока нет"}
+                character="sleep"
+                characterSize={72}
+                characterLabel="Эпики спят"
                 action={
                   tab === "open" ? (
                     <Button variant="primary" onClick={() => onNew({ type: "epic" })}>
@@ -87,7 +90,6 @@ export function EpicsPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
                   ) : undefined
                 }
               >
-                <Character state="sleep" size={72} label="Эпики спят" />
                 {tab === "open" ? "Первая веха задаёт цель и критерии успеха; задачи к ней соберутся сами." : "Закрытый эпик оставит здесь свою историю и общие материалы."}
               </EmptyState>
             )}

@@ -29,7 +29,7 @@ import { moneyText, SpendText, type SpendItem, spendTitle, useTaskUsage } from "
 import { AddArtifactDialog } from "@/features/add-artifact";
 import type { NewTaskPreset } from "@/features/create-task";
 import { timeAgo, useTick } from "@/shared/lib";
-import { Banner, Button, Character, EmptyState, ErrorState, GroupHead, Icon, IconButton, Markdown, Segments, Skeleton, Tag, useToast } from "@/shared/ui";
+import { Banner, Button, EmptyState, ErrorState, GroupHead, Icon, IconButton, Markdown, Segments, Skeleton, Tag, useToast } from "@/shared/ui";
 
 export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }) {
   useTick();
@@ -421,6 +421,8 @@ function EpicTasks({
       ) : (
         <EmptyState
           title="Задач пока нет"
+          character="sleep"
+          characterLabel="Задачи ещё не заведены"
           action={
             <Button variant="secondary" onClick={onNew}>
               <Icon.plus size={13} />
@@ -428,7 +430,6 @@ function EpicTasks({
             </Button>
           }
         >
-          <Character state="sleep" size={64} label="Задачи ещё не заведены" />
           Оркестратор разобьёт эпик на задачи; можно завести первую вручную.
         </EmptyState>
       )}

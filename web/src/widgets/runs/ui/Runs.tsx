@@ -6,7 +6,7 @@ import { useState } from "react";
 import { RUN_STATUS, useRun, useRuns } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
-import { useRefreshingAct } from "@/shared/ui";
+import { LoadingState, useRefreshingAct } from "@/shared/ui";
 
 export function Runs({ automation }: { automation?: number }) {
   useTick();
@@ -18,9 +18,13 @@ export function Runs({ automation }: { automation?: number }) {
     <section>
       <h3>{automation ? "Последние запуски" : "Запуски всех правил"}</h3>
       {!runs.data?.length ? (
-        <p className="muted" style={{ margin: 0 }}>
-          {runs.isPending ? "Загрузка…" : "Запусков пока не было."}
-        </p>
+        runs.isPending ? (
+          <LoadingState label="Загрузка запусков" lines={2} />
+        ) : (
+          <p className="muted" style={{ margin: 0 }}>
+            Запусков пока не было.
+          </p>
+        )
       ) : (
         <div className="runs">
           {runs.data.map((r) => (
