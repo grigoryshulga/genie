@@ -97,6 +97,11 @@
   --g-control-sm: 32px;
   --g-row: 44px;
 
+  /* Board geometry is independent of the viewport and the number of expanded lanes. */
+  --g-board-lane-width: 344px;
+  --g-board-card-width: 288px;
+  --g-board-card-height: 224px;
+
   /* Layering, lowest to highest. Components use these names, never raw numbers. */
   --g-z-sticky: 10;
   --g-z-dropdown: 20;
