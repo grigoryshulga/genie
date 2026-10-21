@@ -301,6 +301,12 @@ fieldset:disabled .ag-perm { cursor: default; }
 .ag-settings .ag-perm { display: grid; grid-template-columns: 16px minmax(0, 1fr); padding: var(--g-space-2) 0; }
 @media (max-width: 900px) {
   .ag-roles-layout { grid-template-columns: minmax(0, 1fr); }
+  /* A member row, a relation row, a permission row and a checked option are tapped, not read: each
+     gets a thumb of height, and the role link inside a member row fills it. */
+  .ag-members li, .ag-relations li, .ag-file-list li, .ag-perm, .ag-checks label, .ag-choice label, .ag-inline label { min-height: var(--g-row); }
+  .ag-members li a, .ag-relations li a, .ag-file-list li a { display: inline-flex; align-items: center; min-height: var(--g-control); }
+  .ag-perm, .ag-checks label { align-items: center; }
+  .ag-perm input, .ag-checks label input, .ag-choice label input, .ag-inline input { width: var(--g-space-5); height: var(--g-space-5); }
 }
 
 @media (max-width: 640px) {

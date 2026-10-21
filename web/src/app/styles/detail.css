@@ -230,3 +230,18 @@
 .md { color: var(--g-text-2); line-height: var(--g-leading-prose); }
 .md code { background: var(--g-surface-raised); }
 .md pre { background: var(--g-surface); border: 1px solid var(--g-border); }
+
+/* ------------------------------------- the detail on a phone and a tablet (H30) */
+/* Folding a section and editing it are the two taps a document view gets; both need a
+   full thumb, and the metadata line's links ride at the same height as the id. */
+@media (max-width: 900px) {
+  .sec-head { min-height: var(--g-control); }
+  .sec-toggle { flex: 1 1 auto; min-height: var(--g-control); gap: var(--g-space-2); }
+  .sec .sec-edit { width: var(--g-control); height: var(--g-control); border-radius: var(--g-radius-pill); }
+  .td-meta a, .td-meta-more a { display: inline-flex; align-items: center; min-height: var(--g-control); }
+  .criteria label.g-check { min-height: var(--g-row); }
+  .owner-box .actions .g-btn { min-height: var(--g-control); }
+  .td-cases .artifact, .td-repo .line a { min-height: var(--g-control); }
+  /* A bar link, a rail link, an epic link and the footer link are all one thumb each. */
+  .td-bar .crumbs a, .td-link, .epic-box .h, .detail .detail-more a { display: inline-flex; align-items: center; min-height: var(--g-control); }
+}

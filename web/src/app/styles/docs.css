@@ -222,7 +222,14 @@
   .docs-aside { border-left: 0; border-top: 1px solid var(--g-border); padding: var(--g-space-5) var(--g-space-4) var(--g-space-7); overflow: visible; }
   .doc-banner { flex-wrap: wrap; }
   .doc-banner .btn { flex: none; }
-  .docs-topbar { padding: var(--g-space-2) var(--g-space-4); }
+  .docs-topbar { padding: var(--g-space-2) var(--g-space-4); flex-wrap: wrap; row-gap: var(--g-space-2); }
+  .docs-topbar > .g-btn { flex: none; }
+  .doc-crumbs button, .doc-crumbs a, .doc-toc a, .doc-toc button { min-height: var(--g-control); }
+  /* A crumb is a link: inline boxes ignore min-height, so it has to become a flex target. */
+  .doc-crumbs a, .doc-toc a { display: inline-flex; align-items: center; }
+  /* A chip's remove button fills the chip, so the target is the chip height, not the glyph. */
+  .doc-chip { height: var(--g-control); }
+  .doc-chip button { width: var(--g-control); height: var(--g-control); }
   .docs-view { padding: var(--g-space-5) var(--g-space-4) var(--g-space-7); }
   .doc-title { font-size: var(--g-text-h2); }
   .doc-form { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--g-space-4); gap: var(--g-space-3); }

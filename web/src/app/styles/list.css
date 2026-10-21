@@ -86,12 +86,12 @@
   .g-tasks-h1 .g-num { font-size: var(--g-text-display); }
   .g-tasks-scroll { padding: 0 0 var(--g-space-6); }
   .tl-group-head { padding: 0 var(--g-space-3); }
-  .tl-row { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "st main age" "id id who"; align-items: start; column-gap: var(--g-space-2); row-gap: var(--g-space-1); min-height: 0; padding: var(--g-space-3); border-radius: 0; }
+  .tl-row { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "st main age" "id id who"; align-items: start; column-gap: var(--g-space-2); row-gap: var(--g-space-1); min-height: var(--g-row); padding: var(--g-space-3); border-radius: 0; }
   .tl-row > svg:first-child { grid-area: st; margin-top: 3px; }
   .tl-id { grid-area: id; }
   .tl-main { grid-area: main; }
   .tl-who { grid-area: who; }
   .tl-age { grid-area: age; }
-  .tl-title { -webkit-line-clamp: 2; }
+  .tl-title { -webkit-line-clamp: 2; min-height: var(--g-control); padding-block: var(--g-space-1); }
   .tl-tags, .tl-ac, .tl-none { display: none; }
 }

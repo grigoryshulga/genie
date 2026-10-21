@@ -224,3 +224,29 @@
 .g-dialog { padding: 0; border: 0; background: transparent; max-width: none; max-height: none; color: inherit; }
 .g-dialog::backdrop { background: rgb(9 9 13 / 0.6); }
 .g-modal.wide { width: min(880px, calc(100vw - 32px)); }
+
+/* ---- phone and tablet: a thumb needs room (H30) ---- */
+/* Below the shell's one-column breakpoint every tappable thing keeps --g-control height
+   and --g-row rows, while widths stay compact so the bar still fits a 390px screen.
+   Page-level rules may still set a larger size; none may set a smaller one. */
+@media (max-width: 900px) {
+  .g-btn.sm,
+  .g-chip,
+  .g-icon-btn,
+  .g-menu-item,
+  .g-input.sm,
+  .g-select.sm,
+  .g-tabs > button,
+  .g-tabs > [role="tab"],
+  .g-tabs > a,
+  .g-seg > button,
+  .g-sheet-nav a,
+  .g-fchip,
+  .fchip {
+    min-height: var(--g-control);
+  }
+  .g-icon-btn, .g-avatar-btn { width: var(--g-control); height: var(--g-control); }
+  .g-row, .g-menu-item { min-height: var(--g-row); }
+  .g-check, .g-radio { min-height: var(--g-row); }
+  .g-check input, .g-radio input { width: var(--g-space-5); height: var(--g-space-5); }
+}

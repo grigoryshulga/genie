@@ -183,7 +183,11 @@ details.st-card > .st-roles { padding: 0 var(--g-space-5) var(--g-space-4); }
   .st-rail-switch { width: 150px; flex: none; margin-left: auto; }
   .st-rail-nav { display: flex; gap: var(--g-space-1); overflow-x: auto; scrollbar-width: none; }
   .settings-mode .main > .st-tabs-band { padding: var(--g-space-2) var(--g-space-4); }
-  .st-rail-nav a, .st-rail-back { width: auto; min-height: var(--g-control-sm); padding: 0 var(--g-space-3); margin: 0; white-space: nowrap; }
+  .st-rail-nav a, .st-rail-back { width: auto; min-height: var(--g-control); padding: 0 var(--g-space-3); margin: 0; white-space: nowrap; }
+  /* A phone tab rail is a touch target strip, not a dense desktop band. */
+  .st-tabs-band a, .st-tabs-row a { min-height: var(--g-control); }
+  /* A "Открыть" or "Настроить во вкладке" link sits at the end of a settings row: full thumb height. */
+  .st-row .ctl a, .st-row .lbl a, .st-facts a { display: inline-flex; align-items: center; min-height: var(--g-control); }
   .st-rail-back .grow { display: none; }
 }
 
