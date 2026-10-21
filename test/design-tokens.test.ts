@@ -48,15 +48,26 @@ const PAIRS: [string, string, number][] = [
   ["text", "surface", 7],
   ["text", "surface-raised", 7],
   ["text", "accent-soft", 7],
+  ["text", "surface-hover", 7],
+  ["text", "surface-active", 7],
   ["text-2", "bg", 4.5],
   ["text-2", "surface", 4.5],
+  ["text-2", "surface-raised", 4.5],
+  ["text-2", "surface-hover", 4.5],
+  ["text-2", "surface-active", 4.5],
   ["text-muted", "bg", 4.5],
   ["text-muted", "surface", 4.5],
   ["text-muted", "surface-hover", 4.5],
   ["text-muted", "surface-active", 4.5],
   ["accent-text", "bg", 4.5],
   ["accent-text", "surface", 4.5],
+  // accent-text is the plain-background step: on a raised or soft field it drops to 4.29:1 (ink) and
+  // 4.36:1 (paper), so text there uses accent-soft-text instead.
   ["accent-soft-text", "accent-soft", 4.5],
+  ["accent-soft-text", "surface-raised", 4.5],
+  ["accent-soft-text", "surface-hover", 4.5],
+  ["accent-hover", "bg", 4.5],
+  ["accent-hover", "surface", 4.5],
   ["signal-text", "bg", 4.5],
   ["signal-text", "surface", 4.5],
   ["signal-text", "signal-soft", 4.5],
@@ -65,12 +76,15 @@ const PAIRS: [string, string, number][] = [
   ["danger-text", "danger-soft", 4.5],
   ["on-accent", "accent", 4.5],
   ["on-signal", "signal", 4.5],
+  ["on-signal", "signal-hover", 4.5],
   ["on-danger", "danger", 4.5],
   ["control-border", "bg", 3],
   ["control-border", "surface", 3],
+  ["control-border", "surface-raised", 3],
   ["focus", "bg", 3],
   ["focus", "surface", 3],
-  ...[1, 2, 3, 4].flatMap((n) => [[`viz-${n}`, "bg", 3], [`viz-${n}`, "surface", 3]] as [string, string, number][]),
+  ["focus", "surface-raised", 3],
+  ...[1, 2, 3, 4].flatMap((n) => [[`viz-${n}`, "bg", 3], [`viz-${n}`, "surface", 3], [`viz-${n}`, "surface-raised", 3]] as [string, string, number][]),
 ];
 
 for (const [name, selector] of [["ink", ":root"], ["paper", '[data-theme="paper"]']] as const) {
@@ -97,4 +111,28 @@ test("the paper theme sets every colour the pairs above depend on", () => {
   const used = new Set(PAIRS.flat().filter((v): v is string => typeof v === "string").map((name) => `--g-${name}`));
   const inherited = [...used].filter((name) => !paper.has(name));
   assert.deepEqual(inherited, []);
+});
+
+// The raw palette (ink, paper, green-400 …) is not paired directly: it is what the semantic layer above
+// names. A divider is decorative by definition — it separates, it does not carry meaning — so it owes no
+// ratio. Every other colour token must appear in a pair, or nothing would notice it drifting below its
+// ratio: a token nobody checks is a token that silently breaks.
+const PALETTE = /^--g-(ink|paper|green|orange|red|n-)/;
+const DECORATIVE = new Set(["--g-border", "--g-border-strong", "--g-viz-grid"]);
+
+test("every colour token is covered by a contrast pair", () => {
+  const root = theme(":root");
+  const colour = [...declarations(":root").keys()]
+    .filter((name) => name.startsWith("--g-") && !PALETTE.test(name) && !DECORATIVE.has(name))
+    .filter((name) => {
+      try {
+        root(name.slice(4));
+        return true;
+      } catch {
+        // Not a colour (spacing, type, shadows): the pairs say nothing about it.
+        return false;
+      }
+    });
+  const used = new Set(PAIRS.flatMap(([fg, bg]) => [`--g-${fg}`, `--g-${bg}`]));
+  assert.deepEqual(colour.filter((name) => !used.has(name)), [], "a colour token no contrast pair covers: add a pair for it");
 });

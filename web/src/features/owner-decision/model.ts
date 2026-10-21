@@ -1,5 +1,6 @@
 // What the decision box says and sends, apart from how it looks.
 
+import { nextIndex } from "../../shared/ui/kit/menu-nav.ts";
 import type { OwnerAction } from "../../shared/api/generated/OwnerAction.ts";
 
 export type Kind = OwnerAction["kind"];
@@ -29,4 +30,13 @@ export function mergeHeld(repo: string, crState: string | undefined, ci: string 
   if (requireCi && ci === "failed") return `Слить пока нельзя: политика ${repo} ждёт зелёных проверок, а они упали.`;
   if (requireCi && ci === "pending") return `Слить пока нельзя: политика ${repo} ждёт зелёных проверок, а они ещё идут.`;
   return undefined;
+}
+
+/**
+ * Where an arrow key moves the roving focus of the answer radiogroup. A radiogroup is one tab stop and
+ * the arrows walk it: left and right do what up and down do, and Home and End reach the ends.
+ */
+export function radioIndex(at: number, key: string, count: number): number {
+  const mapped = key === "ArrowRight" ? "ArrowDown" : key === "ArrowLeft" ? "ArrowUp" : key;
+  return nextIndex(at, mapped, count);
 }

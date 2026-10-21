@@ -26,7 +26,7 @@ import {
 } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
 import { isTyping, plural } from "@/shared/lib";
-import { Button, Icon, IconButton, Kbd } from "@/shared/ui";
+import { Button, Icon, IconButton, Kbd, useModalFocus } from "@/shared/ui";
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 import { TaskList } from "@/widgets/task-list";
 import { FilterMenu, FilterOption } from "./FilterMenu.tsx";
@@ -90,13 +90,10 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // The filter sheet closes like any other overlay.
-  useEffect(() => {
-    if (!sheet) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSheet(false);
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [sheet]);
+  // The filter sheet is the phone's filter rail in a dialog: it takes focus, keeps Tab inside and
+  // hands focus back to the chip that opened it.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useModalFocus(sheetRef, sheet, () => setSheet(false));
 
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const preset = PRESETS.find((p) => sameSet(p.statuses, f.statuses));
@@ -297,7 +294,7 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
       {sheet && (
         <div className="g-scrim g-fsheet-scrim" role="presentation" onClick={() => setSheet(false)}>
-          <div className="g-fsheet" role="dialog" aria-modal="true" aria-label="Фильтры" onClick={(e) => e.stopPropagation()}>
+          <div ref={sheetRef} className="g-fsheet" role="dialog" aria-modal="true" aria-label="Фильтры" onClick={(e) => e.stopPropagation()}>
             <header className="g-fsheet-head">
               <span className="g-h3">Фильтры</span>
               <IconButton label="Закрыть" onClick={() => setSheet(false)}>
