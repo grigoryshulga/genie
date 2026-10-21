@@ -444,13 +444,17 @@ function EpicTasks({
             className="g-select sm"
             aria-label="Перенести задачу в эпик"
             value=""
-            onChange={(e) =>
-              e.target.value &&
+            onChange={(e) => {
+              // Read the chosen IDs once, before the request: this select is controlled and falls back
+              // to "" until its list refetches, so reading them in the callback would name the wrong task.
+              const taskId = e.target.value;
+              const targetEpic = epic.id;
+              if (!taskId) return;
               patch.mutate(
-                { id: e.target.value, patch: { parent: epic.id } },
-                { onSuccess: () => toast(`${e.target.value} теперь в эпике ${epic.id}`), onError: (err) => toast(`Не удалось: ${err.message}`, "error") },
-              )
-            }
+                { id: taskId, patch: { parent: targetEpic } },
+                { onSuccess: () => toast(`${taskId} теперь в эпике ${targetEpic}`), onError: (err) => toast(`Не удалось: ${err.message}`, "error") },
+              );
+            }}
           >
             <option value="">Перенести существующую…</option>
             {movable.map((t) => (
