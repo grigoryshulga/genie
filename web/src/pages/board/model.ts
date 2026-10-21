@@ -1,6 +1,5 @@
-// What the board's headline and status strip say, from what is really going on in the project.
+// What the board headline says, from what is really going on in the project.
 
-import type { CharacterState } from "../../shared/ui/character/character-state.ts";
 import { plural } from "../../shared/lib/format.ts";
 
 export interface BoardPulse {
@@ -30,18 +29,4 @@ export function boardHeadline({ waiting, working, review, open }: BoardPulse): {
   if (parts.length) return { title: "Всё идёт само", lead: `Решений от вас не нужно. ${parts.join(", ").replace(/^./, (c) => c.toUpperCase())}.`, stop: false };
   if (open > 0) return { title: "Ничего не ждёт вас", lead: `Решений от вас не нужно. Открытых задач: ${open}, агенты свободны.`, stop: false };
   return { title: "Здесь тихо", lead: "Открытых задач нет. Создайте новую, и Genie возьмётся за дело.", stop: false };
-}
-
-/** The line the character says in the status strip, and a second line under it. */
-export function boardStrip(state: CharacterState, { working, waiting }: BoardPulse, firstWaiting?: { id: string; title: string }): { say: string; sub: string } {
-  if (state === "surprise") {
-    return {
-      say: firstWaiting ? `Нужно ваше решение: ${firstWaiting.id}` : "Нужно ваше решение",
-      sub: firstWaiting && waiting === 1 ? firstWaiting.title : `Ждут ответа: ${waiting}`,
-    };
-  }
-  if (state === "think" || state === "wake") {
-    return { say: "Агенты работают", sub: `${working} ${plural(working, "команда в работе", "команды в работе", "команд в работе")}` };
-  }
-  return { say: "Всё спокойно. Genie ждёт новых задач", sub: "Нет активных агентов" };
 }

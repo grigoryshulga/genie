@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { LANES, groupByLane, laneDropId, laneOf, moveTargets, needsQuestion, resolveDrop, statusDropId } from "../web/src/entities/task/lanes.ts";
-import { boardHeadline, boardStrip } from "../web/src/pages/board/model.ts";
+import { boardHeadline } from "../web/src/pages/board/model.ts";
 import { STATUS_ORDER } from "../web/src/entities/task/model.ts";
 
 const task = (id: string, status: string) => ({ id, status }) as never;
@@ -90,13 +90,4 @@ test("without a waiting decision the hero says what is going on instead", () => 
   assert.equal(self.stop, false);
   assert.equal(boardHeadline({ waiting: 0, working: 0, review: 0, open: 4 }).lead, "Решений от вас не нужно. Открытых задач: 4, агенты свободны.");
   assert.equal(boardHeadline({ waiting: 0, working: 0, review: 0, open: 0 }).title, "Здесь тихо");
-});
-
-test("the strip speaks for the character's state", () => {
-  const pulse = { waiting: 2, working: 1, review: 0, open: 3 };
-  assert.equal(boardStrip("surprise", pulse).say, "Нужно ваше решение");
-  assert.equal(boardStrip("surprise", pulse).sub, "Ждут ответа: 2");
-  assert.equal(boardStrip("surprise", pulse, { id: "GNE-9", title: "Fix the thing" }).say, "Нужно ваше решение: GNE-9");
-  assert.equal(boardStrip("think", pulse).say, "Агенты работают");
-  assert.equal(boardStrip("sleep", { waiting: 0, working: 0, review: 0, open: 0 }).say, "Всё спокойно. Genie ждёт новых задач");
 });

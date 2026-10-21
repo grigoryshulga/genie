@@ -5,10 +5,9 @@ import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
 import { useOnline } from "@/shared/api";
 import { readPref, writePref } from "@/shared/lib";
-import { Banner, Button, Character, Chip, EmptyState, ErrorState, Icon, Kbd, Skeleton, characterState, cx } from "@/shared/ui";
+import { Banner, Button, Chip, EmptyState, ErrorState, Icon, Kbd, Skeleton, cx } from "@/shared/ui";
 import { Board } from "@/widgets/board";
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
-import { boardStrip, type BoardPulse } from "../model.ts";
 
 /**
  * The board offers the same "new task" action as the C shortcut, so one code path opens the dialog.
@@ -16,7 +15,7 @@ import { boardStrip, type BoardPulse } from "../model.ts";
  */
 const pressC = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
 
-/** «Доска»: the project's status strip and six lanes, narrowed by filters («Мои задачи», an epic). */
+/** «Доска»: the project's six lanes, narrowed by filters («Мои задачи», an epic). */
 export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
   const query = sp.get("q") ?? "";
@@ -39,21 +38,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
       (!mine || t.assignee === login) &&
       (!q || t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q) || t.labels.some((l) => l.includes(q))),
   );
-  const openCount = tasks.filter((t) => OPEN.includes(t.status)).length;
   const myOpen = login ? all.filter((t) => inTaskViews(t) && t.assignee === login && OPEN.includes(t.status)).length : 0;
-
-  // The strip reflects the whole project, independently of the active filters.
-  const view = all.filter(inTaskViews);
-  const waiting = view.filter((t) => t.status === "needs_owner");
-  const pulse: BoardPulse = {
-    waiting: waiting.length,
-    working: [...teams.values()].filter((t) => t.state === "active" && t.members.some((m) => m.activity === "working")).length,
-    review: view.filter((t) => t.status === "review").length,
-    open: view.filter((t) => OPEN.includes(t.status)).length,
-  };
-  const state = characterState({ working: pulse.working, waiting: pulse.waiting });
-  const first = waiting[0];
-  const strip = boardStrip(state, pulse, first && { id: first.id, title: first.title });
 
   const setParam = (key: string, value?: string) => {
     const next = new URLSearchParams(sp);
@@ -72,32 +57,6 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main g-board-page" aria-label="Доска">
-      <section className="g-board-pulse" aria-label="Что происходит сейчас">
-        <Character state={state} size={96} />
-        <p className="g-pulse">
-          <strong>{strip.say}</strong>
-          <span>{strip.sub}</span>
-        </p>
-        <dl className="g-pulse-nums">
-          <div>
-            <dt>Задач</dt>
-            <dd>{openCount}</dd>
-          </div>
-          <div>
-            <dt>Ждут решения</dt>
-            <dd>{pulse.waiting}</dd>
-          </div>
-          <div>
-            <dt>Команды в работе</dt>
-            <dd>{pulse.working}</dd>
-          </div>
-          <div>
-            <dt>На ревью</dt>
-            <dd>{pulse.review}</dd>
-          </div>
-        </dl>
-      </section>
-
       {!online && (
         <Banner tone="signal" title="Нет связи с сервером">
           Перетаскивать карточки нельзя, пока соединение не вернётся. Доска обновится сама.

@@ -3,7 +3,9 @@
 // stretched with it, and the page scrolled sideways.
 import { expect, test } from "@playwright/test";
 
-const LONG = "genie-platform-integration-observatory-and-observability-console-for-the-whole-team";
+// Longer than the name box at the widest viewport we test, so the clipping path is always the one
+// under test: a name that happens to fit would make the overflow assertion meaningless.
+const LONG = Array(3).fill("genie-platform-integration-observatory-and-observability-console").join("-");
 
 /** Reads the bar's geometry; writes the name first so one pass cannot be split by a refetch. */
 const measure = (value?: string) => {

@@ -1,20 +1,9 @@
 /* ------------------------------------------------------------ board (ink and paper) */
-/* «Доска»: the character's status strip, the filter chips, then the six
-   lanes the owner decided on. Component-local to the board; the shared primitives live in
-   shared/ui/components.css and are not touched here. Every value is a token. */
+/* «Доска»: the filter chips, then the six lanes the owner decided on. Component-local to the
+   board; the shared primitives live in shared/ui/components.css and are not touched here. Every
+   value is a token. */
 
 .g-board-page { flex: 1; min-width: 0; min-height: 0; overflow-x: hidden; background: var(--g-bg); border-right: 1px solid var(--g-border); }
-
-/* ---- the character's strip: what is going on, and the numbers behind it. The mascot is the
-   anchor of the whole page: it is the one block that grows, the text scales with it. ---- */
-.g-board-pulse { flex: none; min-width: 0; display: flex; align-items: center; gap: var(--g-space-5); padding: var(--g-space-5) var(--g-space-6); border-bottom: 1px solid var(--g-border); background: var(--g-surface); }
-.g-pulse { display: grid; gap: 2px; min-width: 0; margin: 0; }
-.g-pulse strong { font-size: var(--g-text-h4); font-weight: 700; color: var(--g-text); }
-.g-pulse span { font-size: var(--g-text-caption); color: var(--g-text-muted); }
-.g-pulse-nums { display: flex; align-items: flex-end; gap: var(--g-space-7); min-width: 0; margin: 0 0 0 auto; }
-.g-pulse-nums > div { display: grid; gap: 2px; justify-items: end; }
-.g-pulse-nums dt { font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
-.g-pulse-nums dd { margin: 0; font: 900 var(--g-text-h2)/1 var(--g-font-display); letter-spacing: var(--g-tracking-heading); color: var(--g-text); font-feature-settings: "tnum"; }
 
 /* ---- filter chips: one rail under the numbers, the same on every width ---- */
 .g-toolbar { flex: none; min-width: 0; display: flex; align-items: center; gap: var(--g-space-2); padding: var(--g-space-3) var(--g-space-6); border-bottom: 1px solid var(--g-border); }
@@ -116,12 +105,6 @@
 }
 
 @media (max-width: 900px) {
-  .g-board-pulse { flex-wrap: wrap; gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-4); }
-  .g-board-pulse .g-character { width: 72px; height: auto; }
-  .g-pulse strong { font-size: var(--g-text-ui); }
-  .g-pulse-nums { width: 100%; margin-left: 0; justify-content: space-between; gap: var(--g-space-3); }
-  .g-pulse-nums > div { justify-items: start; }
-  .g-pulse-nums dd { font-size: var(--g-text-h3); }
   .g-toolbar { padding: var(--g-space-2) var(--g-space-4); overflow-x: auto; scrollbar-width: none; }
   .g-board { gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-4) calc(var(--g-space-4) + env(safe-area-inset-bottom)); scroll-snap-type: x mandatory; }
   .g-board > .g-lane { scroll-snap-align: start; }

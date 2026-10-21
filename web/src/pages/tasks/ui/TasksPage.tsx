@@ -256,17 +256,6 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main g-tasks-page" aria-label="Задачи">
-      <header className="g-tasks-head">
-        <p className="g-eyebrow">Задачи проекта</p>
-        <h1 className="g-tasks-h1">
-          <span className="g-num">{shown.length}</span> {plural(shown.length, "задача", "задачи", "задач")}
-          <span className="g-tasks-of">
-            из {all.length} · {plural(all.length, "задача", "задачи", "задач")} в проекте
-          </span>
-        </h1>
-        <p className="g-tasks-lead">{active.length ? `Отбор: ${active.join(" · ")}.` : "Весь проект: задачи по статусам, с критериями приёмки, исполнителем и возрастом."}</p>
-      </header>
-
       <div className="g-toolbar" role="toolbar" aria-label="Фильтры и вид">
         <ContextSearch inputRef={searchRef} className="mobile-context-search" />
         <div className="g-filters g-rail d-only">
