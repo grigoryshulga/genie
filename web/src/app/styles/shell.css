@@ -37,7 +37,10 @@
 .g-dialog.sheet { margin: auto auto 0; width: 100%; }
 .g-dialog.sheet .g-modal { width: 100%; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; }
 .g-sheet-nav { display: grid; gap: var(--g-space-1); }
-.g-sheet-nav a { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control); padding: 0 var(--g-space-4); border-radius: var(--g-radius-md); color: var(--g-text); font-weight: 600; text-decoration: none; }
+.g-sheet-nav a,
+.g-sheet-nav button { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control); padding: 0 var(--g-space-4); border-radius: var(--g-radius-md); color: var(--g-text); font-weight: 600; text-decoration: none; }
+/* The palette is a button rather than a destination: it wears the same row as the links beside it. */
+.g-sheet-nav button { width: 100%; border: 0; background: none; font-family: inherit; font-size: inherit; line-height: inherit; text-align: start; cursor: pointer; }
 .g-sheet-nav a[aria-current="page"] { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
 
 /* ------------------------------------------------------------ the bar on a narrow screen */
@@ -61,7 +64,7 @@
   /* Width stays at the narrow bar budget so the project name survives; height is the touch target. */
   .g-topbar .g-icon-btn, .g-topbar .g-avatar-btn { flex: none; width: var(--g-control-sm); height: var(--g-control); }
   .g-dock { flex: none; padding: 0 var(--g-space-2); }
-  .g-sheet-nav a { min-height: var(--g-row); }
+  .g-sheet-nav a, .g-sheet-nav button { min-height: var(--g-row); }
 }
 
 .spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--g-border-strong); border-top-color: var(--g-focus); animation: spin 0.9s linear infinite; flex: none; }

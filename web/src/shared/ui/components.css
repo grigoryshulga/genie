@@ -248,6 +248,7 @@
   .g-tabs > a,
   .g-seg > button,
   .g-sheet-nav a,
+  .g-sheet-nav button,
   .g-fchip,
   .fchip {
     min-height: var(--g-control);
