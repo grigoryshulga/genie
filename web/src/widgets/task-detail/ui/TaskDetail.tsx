@@ -164,6 +164,9 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
       contentEditable={writable}
       suppressContentEditableWarning
       spellCheck={false}
+      // Reachable for a programmatic hand-off (the decision box hands focus here when it closes);
+      // it stays out of the Tab order.
+      tabIndex={-1}
       onBlur={(e) => {
         if (!writable) return;
         const title = e.currentTarget.textContent?.trim() ?? "";

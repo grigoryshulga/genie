@@ -241,7 +241,7 @@
 .sv-list .who .g-muted { font-size: var(--g-text-caption); overflow-wrap: anywhere; }
 .sv-list select { width: 170px; height: 32px; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-bg); color: var(--g-text); padding: 0 var(--g-space-3); font: inherit; font-size: var(--g-text-dense); }
 .sv-initial { width: 32px; height: 32px; border-radius: var(--g-radius-sm); background: var(--g-surface-active); display: grid; place-items: center; flex: none; color: var(--g-text-2); font-weight: 600; }
-.sv-badge { font-size: var(--g-text-caption); line-height: 18px; padding: 0 var(--g-space-2); border-radius: 9px; background: var(--g-accent-soft); color: var(--g-accent-text); white-space: nowrap; }
+.sv-badge { font-size: var(--g-text-caption); line-height: 18px; padding: 0 var(--g-space-2); border-radius: 9px; background: var(--g-accent-soft); color: var(--g-accent-soft-text); white-space: nowrap; }
 .sv-badge.off { background: var(--g-surface-active); color: var(--g-text-muted); }
 .sv-menu-gap { width: 30px; flex: none; }
 .sv-extra { border-top: 1px solid var(--g-border); padding-top: var(--g-space-3); }
@@ -323,3 +323,7 @@ details.st-card > .sv-two { padding: 0 var(--g-space-5) var(--g-space-4); }
 .mc-tool-row td { background: var(--g-bg); color: var(--g-text-2); font-size: var(--g-text-caption); }
 .mc-errors { color: var(--g-danger); }
 
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-expand svg { transition: none; }
+}

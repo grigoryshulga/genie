@@ -3,18 +3,18 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { initials, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
-import { useNotifications, useProposals } from "@/entities/platform";
+import { useProposals } from "@/entities/platform";
 import { OBSERVATION_TEXT } from "@/entities/observation";
 import { inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
 import { canManageProject, saveAppearancePreferences, timeAgo, useTick } from "@/shared/lib";
 import { ActionMenu, Banner, Button, Character, characterState, Dialog, Icon, Kbd, type MenuEntry, Tabs, Tag, WorkingArcs } from "@/shared/ui";
 import { ContextSearch } from "./ContextSearch.tsx";
+import { NotificationsPopover } from "./NotificationsPopover.tsx";
 import { Popover } from "./Popover.tsx";
+import "./topbar.css";
 
 type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void };
-
-const ROLE_NAME: Record<string, string> = { owner: "владелец", admin: "админ", member: "участник", viewer: "только чтение" };
 
 type Primary = "board" | "tasks" | "epics" | "docs" | "agents";
 
@@ -36,7 +36,6 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
   const session = useSession().data;
   const switchProject = useSwitchProject();
   const logout = useLogout();
-  const unread = useNotifications().data?.unread ?? 0;
   const proposals = useProposals().data?.length ?? 0;
   const teams = useTeams().data?.filter((t) => t.state === "active") ?? [];
   const tasks = useTasks().data;
@@ -62,19 +61,36 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
               {waiting}
             </Tag>
           )}
-          {open > 0 && <span className="g-caption">{open}</span>}
+          {open > 0 && <span className="g-caption g-topbar-open">{open}</span>}
         </>
       ),
       to: "/tasks",
     },
     { id: "epics", label: "Эпики", to: "/epics" },
-    { id: "docs", label: "Документация", to: "/docs" },
+    {
+      id: "docs",
+      // Pending proposals belong to the documentation: the count rides on its entry, and the
+      // proposals themselves stay reachable on their own route.
+      label: (
+        <>
+          Документация
+          {proposals > 0 && (
+            <>
+              <span className="g-caption g-topbar-open" aria-hidden="true">
+                {proposals}
+              </span>
+              <span className="g-sr">{`предложений к документации: ${proposals}`}</span>
+            </>
+          )}
+        </>
+      ),
+      to: "/docs",
+    },
     ...(agents.isSuccess ? [{ id: "agents" as const, label: "Агенты", to: "/agents" }] : []),
   ];
   const current = activePrimary(pathname) ?? ("none" as Primary);
 
   const more: MenuEntry[] = [
-    { id: "proposals", label: "Предложения", hint: proposals || undefined, onSelect: () => navigate("/docs/proposals") },
     { id: "automations", label: "Автоматизации", onSelect: () => navigate("/automations") },
     { id: "observations", label: OBSERVATION_TEXT.nav, onSelect: () => navigate("/observations") },
   ];
@@ -99,31 +115,34 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
   return (
     <>
       <header className="g-topbar">
-        <Popover
-          label={project ? `Проект ${project.name}` : "Проект"}
-          className="g-topbar-project"
-          trigger={
-            <>
-              <Icon.mark size={22} />
-              <span className="name">{project?.name ?? meta?.project ?? "genie"}</span>
-              {(session?.projects.length ?? 0) > 1 && <Icon.updown size={12} />}
-            </>
-          }
-        >
-          {(close) => (
-            <ActionMenu
-              label="Проекты"
-              onClose={close}
-              items={(session?.projects ?? []).map((p) => ({
-                id: p.slug,
-                label: p.name,
-                hint: p.role === "viewer" ? "только чтение" : ROLE_NAME[p.role],
-                checked: p.slug === session?.project,
-                onSelect: () => void switchProject(p.slug),
-              }))}
-            />
-          )}
-        </Popover>
+        <div className="g-topbar-project-switcher">
+          <Popover
+            label={project ? `Проект ${project.name}` : "Проект"}
+            className="g-topbar-project"
+            trigger={
+              <>
+                <Icon.mark size={22} />
+                <span className="name">{project?.name ?? meta?.project ?? "genie"}</span>
+                {(session?.projects.length ?? 0) > 1 && <Icon.updown size={12} />}
+              </>
+            }
+          >
+            {(close) => (
+              <ActionMenu
+                label="Проекты"
+                onClose={close}
+                items={(session?.projects ?? []).map((p) => ({
+                  id: p.slug,
+                  // A role next to every name crowded the list: the project's own settings say what
+                  // the person may do there, so the switcher lists names only, each on one line.
+                  label: <span className="g-topbar-project-name">{p.name}</span>,
+                  checked: p.slug === session?.project,
+                  onSelect: () => void switchProject(p.slug),
+                }))}
+              />
+            )}
+          </Popover>
+        </div>
 
         <nav className="g-topbar-nav d-only" aria-label="Навигация">
           <Tabs label="Разделы" items={primary} value={current} />
@@ -175,10 +194,7 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
           )}
         </Popover>
 
-        <Link to="/notifications" className="g-icon-btn g-bell" aria-label={unread > 0 ? `Уведомления, непрочитанных: ${unread}` : "Уведомления"} title="Уведомления">
-          <Icon.bell size={16} />
-          {unread > 0 && <i className="g-unread" aria-hidden="true" />}
-        </Link>
+        <NotificationsPopover />
         <button type="button" className="g-icon-btn d-only" aria-label="Сменить тему" title="Сменить тему: чернила или бумага" onClick={toggleTheme}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <circle cx="8" cy="8" r="6" />
@@ -224,7 +240,6 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
                 {p.label}
               </Link>
             ))}
-            <Link to="/docs/proposals">Предложения</Link>
             <Link to="/automations">Автоматизации</Link>
             <Link to="/observations">{OBSERVATION_TEXT.nav}</Link>
             <Link to="/notifications">Уведомления</Link>

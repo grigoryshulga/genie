@@ -1,5 +1,6 @@
 import { cloneElement, type InputHTMLAttributes, isValidElement, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId } from "react";
 import { cx } from "./cx.ts";
+import "./select.css";
 
 /** A label, the control, optional help and error. The control gets its id and aria wiring from here. */
 export function Field({ label, help, error, children }: { label: ReactNode; help?: ReactNode; error?: ReactNode; children: ReactElement<Record<string, unknown>> }) {

@@ -127,3 +127,7 @@
   .tp-card-toggle { min-height: var(--g-row); }
   .tp-rail .props.rail { gap: var(--g-space-3) var(--g-space-2); }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-card-toggle > svg { transition: none; }
+}

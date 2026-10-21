@@ -95,3 +95,8 @@
   .tl-title { -webkit-line-clamp: 2; min-height: var(--g-control); padding-block: var(--g-space-1); }
   .tl-tags, .tl-ac, .tl-none { display: none; }
 }
+
+/* The working dot on an avatar pulses forever; under reduced motion it stays lit and still. */
+@media (prefers-reduced-motion: reduce) {
+  .av.working::after { animation: none; }
+}

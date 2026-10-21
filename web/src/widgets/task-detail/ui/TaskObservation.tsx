@@ -13,7 +13,7 @@ import {
 } from "@/entities/observation";
 import { canWriteProject, useSession } from "@/entities/session";
 import type { Task } from "@/entities/task";
-import { Button, Skeleton, useToast } from "@/shared/ui";
+import { Button, Icon, IconButton, Skeleton, useToast } from "@/shared/ui";
 import { CollapsibleSection } from "./CollapsibleSection.tsx";
 
 const POLICIES = Object.keys(POLICY_LABEL) as ObservationPolicy[];
@@ -70,9 +70,9 @@ export function TaskObservation({ task }: { task: Task }) {
       title={OBSERVATION_TEXT.section}
       badge={query.isSuccess && cases.length > 0 ? <span className="n">{cases.length}</span> : undefined}
       action={writable && !formOpen ? (
-          <Button variant="ghost" sm onClick={startForm}>
-            {OBSERVATION_TEXT.create}
-          </Button>
+          <IconButton label={OBSERVATION_TEXT.create} className="sec-edit" onClick={startForm}>
+            <Icon.plus size={16} />
+          </IconButton>
         ) : undefined}
     >
       {query.isPending && <Skeleton height={32} />}

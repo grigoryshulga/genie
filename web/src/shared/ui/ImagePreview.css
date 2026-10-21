@@ -69,3 +69,8 @@
 }
 .lightbox-tools button:hover { background: var(--bg-hover); }
 .lightbox-tools .lightbox-close:hover { background: var(--red); color: var(--on-danger); }
+
+/* The lightbox zooms with a transform; under reduced motion the image simply appears. */
+@media (prefers-reduced-motion: reduce) {
+  .lightbox-stage img { transition: none; }
+}

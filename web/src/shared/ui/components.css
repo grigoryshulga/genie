@@ -9,7 +9,9 @@
 .g-mono { font-family: var(--g-font-mono); }
 .g-muted { color: var(--g-text-muted); }
 .g-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.g-root :focus-visible, .g-focusable:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
+/* One ring for the whole app. It is scoped to the shell so it outranks the single-class field rules
+   (`.field select`, `.search input`) that hide the browser's own outline in favour of this one. */
+.app :focus-visible, .g-root :focus-visible, .g-focusable:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
 
 /* ---- type roles ---- */
 .g-display, .g-h1, .g-h2 { margin: 0; font-family: var(--g-font-display); text-wrap: balance; }
@@ -20,7 +22,9 @@
 .g-h4 { margin: 0; font-size: var(--g-text-h4); font-weight: 600; line-height: 1.35; }
 .g-eyebrow { margin: 0; font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
 .g-caption { font-size: var(--g-text-caption); font-weight: 500; color: var(--g-text-muted); line-height: 1.45; }
-.g-stop { color: var(--g-orange); }
+/* The full stop that ends a display heading. It reads as a mark, not as copy, so it takes the text step
+   of the signal ramp: orange on ink, and the darker orange on paper where the bright one is fill-only. */
+.g-stop { color: var(--g-signal-text); }
 /* A big count, used for lane and section totals. Unbounded digits only at 24px and up. */
 .g-stat { font: 900 44px/1 var(--g-font-display); letter-spacing: var(--g-tracking-display); font-feature-settings: "tnum"; }
 
@@ -46,6 +50,9 @@
 .g-seg > button:hover, .g-tabs > [role="tab"]:hover, .g-tabs > a:hover { background: var(--g-surface-hover); color: var(--g-text); }
 .g-seg > button[aria-pressed="true"] { background: var(--g-surface-active); color: var(--g-text); }
 .g-tabs > [aria-selected="true"], .g-tabs > a[aria-current="page"] { background: var(--g-accent); color: var(--g-on-accent); }
+/* A count or caption inside a filled control follows the fill's ink: the muted step is for the page,
+   and on an accent fill it lands at 1.4:1. */
+.g-tabs > [aria-selected="true"] .g-caption, .g-tabs > a[aria-current="page"] .g-caption, .g-chip[aria-pressed="true"] .g-caption { color: inherit; }
 
 /* ---- chips, tags, status ---- */
 .g-chip { display: inline-flex; align-items: center; gap: var(--g-space-2); height: var(--g-control-sm); padding: 0 var(--g-space-4); border: 1.5px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font: 600 var(--g-text-dense)/1 var(--g-font-sans); cursor: pointer; }

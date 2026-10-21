@@ -32,7 +32,7 @@ export function AuthLayout({
         <div className="auth-slogan-block">
           <h1 className="auth-slogan">
             {slogan}
-            <span className="g-stop">.</span>
+            <span className="g-stop" aria-hidden="true">.</span>
           </h1>
           {pitch && <p className="auth-pitch">{pitch}</p>}
           <Character state="sleep" size={168} />

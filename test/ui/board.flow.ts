@@ -19,7 +19,7 @@ for (const theme of ["ink", "paper"]) {
       expect(sizes.length).toBeGreaterThan(0);
       for (const size of sizes) {
         expect(size.width).toBeCloseTo(288, 2);
-        expect(size.height).toBeCloseTo(176, 2);
+        expect(size.height).toBeCloseTo(144, 2);
       }
       expect(await board.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
       await board.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
@@ -34,7 +34,7 @@ for (const theme of ["ink", "paper"]) {
       expect((await working.boundingBox())!.width).toBeCloseTo(344, 2);
       const card = working.locator(".bd-card").first();
       expect((await card.boundingBox())!.width).toBeCloseTo(288, 2);
-      expect((await card.boundingBox())!.height).toBeCloseTo(176, 2);
+      expect((await card.boundingBox())!.height).toBeCloseTo(144, 2);
       await page.screenshot({ path: `test-results/board-fixed-${theme}-${width}.png`, animations: "disabled" });
     }
   });

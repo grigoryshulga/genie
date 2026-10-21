@@ -3,14 +3,14 @@
    an Unbounded count of open work, and children grouped by where they stand. */
 
 /* -- the epic chip, wherever a task names its epic ---------------------------------- */
-.epic-chip { display: inline-flex; align-items: center; gap: var(--g-space-1); height: 20px; padding: 0 var(--g-space-2); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); color: var(--g-accent-text); font-family: var(--g-font-mono); font-size: var(--g-text-eyebrow); white-space: nowrap; text-decoration: none; }
+.epic-chip { display: inline-flex; align-items: center; gap: var(--g-space-1); height: 20px; padding: 0 var(--g-space-2); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); color: var(--g-accent-soft-text); font-family: var(--g-font-mono); font-size: var(--g-text-eyebrow); white-space: nowrap; text-decoration: none; }
 a.epic-chip:hover { border-color: var(--g-accent); color: var(--g-text); }
 .epic-mark { display: inline-flex; align-items: center; gap: var(--g-space-2); margin-right: 7px; font-size: var(--g-text-caption); color: var(--g-accent-text); vertical-align: -1px; }
 .row .tags { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; }
 .card .foot .epic-chip { height: 18px; }
 .filter-chip { display: inline-flex; align-items: center; gap: var(--g-space-2); height: 24px; padding: 0 var(--g-space-1) 0 var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); font-size: var(--g-text-dense); white-space: nowrap; }
-.filter-chip a { color: var(--g-accent-text); }
-.filter-chip button { width: 18px; height: 18px; border: 0; border-radius: var(--g-radius-pill); background: none; color: var(--g-accent-text); display: grid; place-items: center; padding: 0; }
+.filter-chip a { color: var(--g-accent-soft-text); }
+.filter-chip button { width: 18px; height: 18px; border: 0; border-radius: var(--g-radius-pill); background: none; color: var(--g-accent-soft-text); display: grid; place-items: center; padding: 0; }
 .filter-chip button:hover { background: var(--g-surface-hover); }
 
 /* -- progress: one segment per task, or one bar per state when they are many --------- */

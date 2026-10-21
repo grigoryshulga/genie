@@ -84,7 +84,7 @@
 
 .st-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--g-space-4); counter-reset: st; }
 .st-steps li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: var(--g-space-3); counter-increment: st; line-height: 1.5; color: var(--g-text-2); }
-.st-steps li::before { content: counter(st); width: 22px; height: 22px; border-radius: 50%; background: var(--g-accent-soft); color: var(--g-accent-text); font-size: var(--g-text-caption); font-weight: 600; display: grid; place-items: center; }
+.st-steps li::before { content: counter(st); width: 22px; height: 22px; border-radius: 50%; background: var(--g-accent-soft); color: var(--g-accent-soft-text); font-size: var(--g-text-caption); font-weight: 600; display: grid; place-items: center; }
 .st-steps li > div { display: flex; flex-direction: column; gap: var(--g-space-2); min-width: 0; }
 .st-steps pre { margin: 0; padding: var(--g-space-3) var(--g-space-3); border-radius: var(--g-radius-sm); background: var(--g-bg); border: 1px solid var(--g-border); font-family: var(--g-font-mono); font-size: var(--g-text-caption); line-height: 1.6; color: var(--g-text); white-space: pre-wrap; word-break: break-all; }
 .st-switch { display: flex; gap: var(--g-space-1); padding: var(--g-space-1); border-radius: var(--g-radius-sm); background: var(--g-bg); border: 1px solid var(--g-border); }
@@ -161,7 +161,7 @@ details.st-card > .st-roles { padding: 0 var(--g-space-5) var(--g-space-4); }
 .st-rail-id b { font: 700 var(--g-text-ui)/1.25 var(--g-font-display); letter-spacing: var(--g-tracking-display); overflow-wrap: anywhere; }
 .st-rail-id .g-muted { font-size: var(--g-text-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-rail-switch select { width: 100%; height: var(--g-control-sm); padding: 0 var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-bg); color: var(--g-text); font-size: var(--g-text-dense); }
-.st-rail-switch select:focus-visible { border-color: var(--g-accent); outline: 0; }
+.st-rail-switch select:focus-visible { border-color: var(--g-accent); }
 .st-rail-nav a, .st-rail-back { font-size: var(--g-text-dense); color: var(--g-text-2); }
 .st-rail-back { display: flex; align-items: center; gap: var(--g-space-3); width: 100%; min-height: var(--g-control); padding: 0 var(--g-space-4); border: 0; border-radius: var(--g-radius-md); background: transparent; font: 600 var(--g-text-dense) var(--g-font-sans); text-align: left; margin-bottom: var(--g-space-1); }
 .st-rail-back:hover { background: var(--g-surface-hover); color: var(--g-text); }
@@ -205,3 +205,7 @@ details.st-card > .st-roles { padding: 0 var(--g-space-5) var(--g-space-4); }
 .st-inline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--g-space-2); }
 .st-inline > .st-input { flex: 1 1 180px; width: auto; min-width: 0; max-width: none; }
 .st-inline > .st-input.st-input-short { flex: none; width: 96px; max-width: 96px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .st-crop-preview img { transition: none; }
+}

@@ -86,7 +86,7 @@
 .seg button.on { background: var(--bg-active); color: var(--text); }
 .seg.icons button { width: 30px; padding: 0; justify-content: center; }
 .search { display: flex; align-items: center; gap: var(--space-4); width: 240px; height: 32px; padding: 0 var(--space-5); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-panel); color: var(--muted); }
-.search:focus-within { border-color: var(--accent); }
+.search:focus-within { border-color: var(--accent); outline: 2px solid var(--g-focus); outline-offset: 1px; }
 .search input { flex: 1; border: 0; outline: 0; background: none; color: var(--text); min-width: 0; }
 .search kbd { border: 0; padding: 0; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: var(--control-md); padding: 0 var(--space-6); border: 1px solid var(--line-strong); border-radius: var(--radius); background: transparent; color: var(--text-2); white-space: nowrap; text-decoration: none; }
@@ -103,3 +103,8 @@
 .scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .hints { height: 36px; flex: none; display: flex; align-items: center; gap: var(--space-10); padding: 0 var(--space-14); border-top: 1px solid var(--line); font-size: var(--font-size-small); color: var(--muted); }
 .hints kbd { border: 0; padding: 0; color: var(--text-2); }
+
+/* The run spinner is decoration: under reduced motion it holds still instead of turning forever. */
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+}
