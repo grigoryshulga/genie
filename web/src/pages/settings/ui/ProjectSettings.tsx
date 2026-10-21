@@ -1,5 +1,6 @@
 // Project administration; its route guard admits project and server administrators.
 
+import { ProjectIconSettings } from "./ProjectIconSettings.tsx";
 import { useState } from "react";
 import { Link, Navigate, useParams } from "react-router";
 import {
@@ -138,6 +139,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
             {admin ? <input id="pj-name" className="st-input" value={name} onChange={(e) => setName(e.target.value)} required /> : <span id="pj-name">{project.name}</span>}
           </div>
         </div>
+        <ProjectIconSettings project={project} admin={admin} />
         <div className="st-row">
           <div className="lbl">
             <b>Код</b>
