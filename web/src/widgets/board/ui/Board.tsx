@@ -29,7 +29,7 @@ import type { Team } from "@/entities/team";
 import { plural } from "@/shared/lib";
 import { Button, Chip, Dialog, Field, Icon, Textarea, cx, useToast } from "@/shared/ui";
 import { BoardCard, CardBody } from "./BoardCard.tsx";
-import "@/app/styles/board.css";
+import "./board.css";
 
 const countText = (n: number) => `${n} ${plural(n, "задача", "задачи", "задач")}`;
 

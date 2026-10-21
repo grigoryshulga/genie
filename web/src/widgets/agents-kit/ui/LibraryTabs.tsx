@@ -22,7 +22,6 @@ import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
 // `pages.css` holds the pane/split-pane chrome these library tabs render.
-import "@/app/styles/pages.css";
 
 export function SkillsTab({
   cfg,

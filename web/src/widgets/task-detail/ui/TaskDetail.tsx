@@ -63,8 +63,6 @@ import { CollapsibleSection } from "./CollapsibleSection.tsx";
 // The task panel renders its own cascade: detail first, then the sheets that refine parts of it,
 // then the responsive and centring layers. `docs.css` covers the doc-impact box, `team.css` the
 // team sheet inside the panel and `epics.css` the epic box.
-import "@/app/styles/detail.css";
-import "@/app/styles/team.css";
 import "./task-detail-sheets.css";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };

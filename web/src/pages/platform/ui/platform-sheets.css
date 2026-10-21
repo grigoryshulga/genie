@@ -1,7 +1,8 @@
-/* The platform pages' cascade tail: the phone layer and the desktop centring column for the pane
-   bodies. Inlined so they load after `pages.css` instead of in a hoisted shared chunk. */
-@import "../../../app/styles/mobile.css";
-/* The search field this screen renders on a phone lives in the shared search sheet: it has to
-   load after the phone layer, which widens `.search`. */
-@import "../../../app/styles/search-and-docs.css";
-@import "../../../app/styles/content.css";
+/* The platform screens' cascade tail, inlined into the platform chunk so it loads after the public
+   page chrome instead of in a hoisted shared chunk. Order is the app's sheet order: the phone layer,
+   the public and split-pane chrome, the shared search field and the centring column. */
+@import "../../../shared/ui/mobile.css";
+@import "../../../shared/ui/public.css";
+@import "../../../shared/ui/pages.css";
+@import "../../../shared/ui/search-and-docs.css";
+@import "../../../shared/ui/content.css";

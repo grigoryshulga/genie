@@ -1,8 +1,6 @@
 import { displayName } from "@/entities/member";
 import { Avatar, cx } from "@/shared/ui";
-// The rounded-square avatar frame (`.tv-av` and its working/error/stopped rings) lives in the
-// team-view sheet; this entity is where every screen renders it.
-import "@/app/styles/team.css";
+import "./avatar.css";
 
 /**
  * Who speaks or acts in a team: agents (members and the orchestrator) are rounded squares, people are

@@ -1,8 +1,7 @@
-/* The task screen's cascade, in order: the task list rows, the shared toolbar/chip chrome, this
-   screen's filter sheet, then the phone layer that refines them. Inlined rather than imported so
-   the bundler keeps them in this order inside the page's own chunk instead of hoisting the shared
-   sheets into a chunk that loads before it. */
-@import "../../../app/styles/list.css";
-@import "../../../app/styles/board.css";
-@import "../../../app/styles/filters.css";
-@import "../../../app/styles/mobile.css";
+/* The task list's cascade tail, inlined into the tasks chunk so it loads after the page's own sheet
+   instead of in a hoisted shared chunk. Order is the app's sheet order: the list and board chrome the
+   screen shares, the phone layer, then the filter sheet it owns. */
+@import "../../../widgets/task-list/ui/list.css";
+@import "../../../widgets/board/ui/board.css";
+@import "../../../shared/ui/mobile.css";
+@import "./filters.css";

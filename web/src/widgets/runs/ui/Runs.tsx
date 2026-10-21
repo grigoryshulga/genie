@@ -7,8 +7,6 @@ import { RUN_STATUS, useRun, useRuns } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
 import { Button, LoadingState, useRefreshingAct } from "@/shared/ui";
-// The run rows use the shared pane and list rules from `pages.css`.
-import "@/app/styles/pages.css";
 
 export function Runs({ automation }: { automation?: number }) {
   useTick();

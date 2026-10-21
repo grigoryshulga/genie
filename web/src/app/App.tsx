@@ -19,13 +19,13 @@ import "./styles/additions.css";
 // The app-wide responsive layer and the desktop centring column: the shell, the eager board screen
 // and every page the shell renders itself. Lazy screens re-inline them in their own chunk (see
 // `<screen>-sheets.css`) so that they still load after that screen's area sheets.
-import "./styles/mobile.css";
+import "@/shared/ui/mobile.css";
 // The phone replacement for the top bar's search field is rendered by the screens that ask for it,
 // so its rules have to load after `shell.css` (the field is `.search`) and after the phone layer
 // (which widens `.search`): the shared sheet rides the shell's tail here, and the screens that show
 // the field re-inline it in their own chunk.
-import "./styles/search-and-docs.css";
-import "./styles/content.css";
+import "@/shared/ui/search-and-docs.css";
+import "@/shared/ui/content.css";
 
 // Only the entry screen is eager: the gate (its login page and the shell) and the board,
 // which is what `/` redirects to. Every other page is a chunk fetched when its route is

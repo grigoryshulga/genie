@@ -1,3 +1,2 @@
-/* The team view's cascade tail: the phone layer. Inlined so it loads after `team.css` instead of
-   in a hoisted shared chunk. */
-@import "../../app/styles/mobile.css";
+/* The team view's cascade tail: the phone layer, inlined so it loads after `team.css`. */
+@import "../../shared/ui/mobile.css";

@@ -1,9 +1,13 @@
-/* The task panel's cascade, in order: the epic box and doc-impact blocks it reuses, the task page
-   rail, then the phone and desktop-centring layers that refine everything above. `detail.css` and
-   `team.css` are imported directly by the module, because nothing has to load before them. Inlined
-   rather than imported so the bundler cannot hoist them into a shared chunk ahead of the layout. */
-@import "../../../app/styles/epics.css";
-@import "../../../app/styles/docs.css";
-@import "../../../app/styles/task-page.css";
-@import "../../../app/styles/mobile.css";
-@import "../../../app/styles/content.css";
+/* The task view's cascade tail, inlined into the task-detail chunk so every sheet it needs loads in the
+   app's own order instead of in a hoisted shared chunk. The list sheet comes first: the row chrome the
+   task table reuses belongs to the task-list widget but sits above the detail rules. Then the detail
+   frame itself, the team sheet the view embeds, the epic and docs chrome it reuses, its page frame, the
+   phone layer and the desktop centring column. */
+@import "../../../widgets/task-list/ui/list.css";
+@import "./detail.css";
+@import "../../team-view/team.css";
+@import "../../../entities/task/ui/epics.css";
+@import "../../../entities/doc/ui/docs.css";
+@import "./task-page.css";
+@import "../../../shared/ui/mobile.css";
+@import "../../../shared/ui/content.css";

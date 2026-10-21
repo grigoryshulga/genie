@@ -1,3 +1,2 @@
-/* The observations screen's cascade tail: the phone layer. Inlined so it loads after the page
-   sheets instead of in a hoisted shared chunk. */
-@import "../../../app/styles/mobile.css";
+/* The observations screens' cascade tail: the phone layer, inlined so it loads after the page sheet. */
+@import "../../../shared/ui/mobile.css";

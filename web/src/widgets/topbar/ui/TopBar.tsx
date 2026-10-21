@@ -14,7 +14,7 @@ import { NotificationsPopover } from "./NotificationsPopover.tsx";
 import { Popover } from "./Popover.tsx";
 import "./topbar.css";
 // The app shell bar: the top bar, its dock and the shell frame (`.app`) the bar sits in.
-import "@/app/styles/shell.css";
+import "./shell.css";
 
 type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void; onOpenPalette: () => void };
 

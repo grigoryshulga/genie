@@ -1,7 +1,6 @@
 import { initial, type Member, memberLabel, ROLE_LETTER } from "../model.ts";
 import "./avatar.css";
 // Legacy avatar primitives (`.av`, `.avatars`, `.more`) still live in the task-list sheet.
-import "@/app/styles/list.css";
 
 export function Avatar({ role, name, activity, state, size }: { role: string; name?: string; activity?: string; state?: string; size?: "md" | "lg" | "solo" }) {
   // Shape, not colour, says which one this is: a rounded square is an agent, a circle is a person.
