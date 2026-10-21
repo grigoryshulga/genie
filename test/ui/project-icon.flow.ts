@@ -2,10 +2,11 @@ import { expect, test } from "@playwright/test";
 
 for (const theme of ["ink", "paper"]) {
   test(`project icon persists and clearing restores its monogram (${theme})`, async ({ page }) => {
-    await page.goto("/manage/project/general");
+    await page.goto("/board");
     await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
     const header = page.locator(".g-topbar-project");
     await expect(header.locator(".project-icon")).toHaveText("ДЕ");
+    await page.goto("/manage/project/general");
     const png = await page.evaluate(() => {
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 64;
@@ -18,6 +19,8 @@ for (const theme of ["ink", "paper"]) {
       return canvas.toDataURL("image/png").split(",")[1];
     });
     await page.getByLabel("Загрузить иконку проекта", { exact: true }).setInputFiles({ name: "project.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+    await expect(page.getByRole("button", { name: "Заменить иконку", exact: true })).toBeVisible();
+    await page.goto("/board");
     await expect(header.locator(".project-icon img")).toBeVisible();
     expect(await header.locator(".project-icon img").evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true);
     await page.reload();
@@ -26,7 +29,10 @@ for (const theme of ["ink", "paper"]) {
     await header.click();
     await expect(page.getByRole("menu", { name: "Проекты", exact: true }).locator(".project-icon img")).toBeVisible();
     await page.keyboard.press("Escape");
+    await page.goto("/manage/project/general");
     await page.getByRole("button", { name: "Удалить иконку", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Загрузить иконку", exact: true })).toBeVisible();
+    await page.goto("/board");
     await expect(header.locator(".project-icon")).toHaveText("ДЕ");
     await expect(header.locator(".project-icon img")).toHaveCount(0);
     await page.reload();
