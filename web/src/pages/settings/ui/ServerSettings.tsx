@@ -44,6 +44,7 @@ import { SystemOneSettings } from "./SystemOneSettings.tsx";
 import { Costs } from "./ServerCosts.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 export function ServerSettingsPage() {
   const session = useSession().data;
@@ -106,9 +107,9 @@ function Health() {
       </div>
       <section className="st-card">
         {doctor.isPending ? (
-          <div className="st-card-body muted">Проверяем сервер…</div>
+          <div className="st-card-body g-muted">Проверяем сервер…</div>
         ) : doctor.isError ? (
-          <div className="st-card-body muted">Проверка не удалась: {doctor.error.message}</div>
+          <div className="st-card-body g-muted">Проверка не удалась: {doctor.error.message}</div>
         ) : (
           <>
             <div className="sv-verdict">
@@ -119,7 +120,7 @@ function Health() {
                 <b>{summary.text}</b>
                 <span>Проверено {new Date(doctor.dataUpdatedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
               </span>
-              <button type="button" className="btn" disabled={doctor.isFetching} onClick={() => void doctor.refetch()}>
+              <button type="button" className="g-btn secondary" disabled={doctor.isFetching} onClick={() => void doctor.refetch()}>
                 <Icon.restart size={12} />
                 Проверить снова
               </button>
@@ -144,7 +145,8 @@ function Checks({ list }: { list: DoctorCheck[] }) {
     <ul className="sv-checks">
       {list.map((c, i) => (
         <li key={i} className={c.level}>
-          <span className="lv" aria-label={LEVEL_NAME[c.level]} />
+          {/* A dot on its own says nothing to a screen reader, and colour alone says little to anyone. */}
+          <span className="lv" role="img" aria-label={LEVEL_NAME[c.level]} />
           <span className="area">{DOCTOR_AREA[c.area] ?? c.area}</span>
           <span className="txt">
             {c.text}
@@ -164,14 +166,14 @@ function Week() {
     <section className="sv-section">
       <div className="sv-section-head">
         <h3>Последние 7 дней</h3>
-        <span className="muted">все проекты</span>
+        <span className="g-muted">все проекты</span>
         <Link to="/statistics" className="sv-more">
           Вся статистика
           <Icon.chevron size={12} />
         </Link>
       </div>
       {stats.isError ? (
-        <p className="muted">{stats.error.message}</p>
+        <p className="g-muted">{stats.error.message}</p>
       ) : (
         <div className="sv-tiles">
           <Tile label="Готово задач" value={t.done} sub={`из ${t.created} новых`} />
@@ -208,7 +210,7 @@ function Statistics() {
   return (
     <div className="st-body sv-stats">
       <div className="sv-top">
-        <div className="seg" role="group" aria-label="Что показать">
+        <div className="g-seg" role="group" aria-label="Что показать">
           {(["work", "cost", "factory"] as const).map((v) => (
             <button key={v} type="button" className={v === view ? "on" : ""} aria-pressed={v === view} onClick={() => setView(v)}>
               {v === "work" ? "Работа" : v === "cost" ? "Расходы" : "Фабрика"}
@@ -226,7 +228,7 @@ function Statistics() {
             </option>
           ))}
         </select>
-        <div className="seg" role="group" aria-label="Период">
+        <div className="g-seg" role="group" aria-label="Период">
           {[7, 30].map((d) => (
             <button key={d} type="button" className={d === days ? "on" : ""} aria-pressed={d === days} onClick={() => setDays(d)}>
               {d === 7 ? "Неделя" : "Месяц"}
@@ -235,9 +237,9 @@ function Statistics() {
         </div>
       </div>
       {stats.isPending ? (
-        <p className="muted">Загрузка…</p>
+        <SettingsLoading />
       ) : stats.isError ? (
-        <p className="muted">{stats.error.message}</p>
+        <p className="g-muted">{stats.error.message}</p>
       ) : view === "factory" ? (
         <FactoryAnalytics list={list} />
       ) : view === "cost" ? (
@@ -293,7 +295,7 @@ function ProjectTable({ list }: { list: ProjectStats[] }) {
           <div key={p.project} className="tr">
             <span className="nm">
               <b>{p.name}</b>
-              <span className="muted">{p.people.length ? p.people.join(", ") : "людей не было"}</span>
+              <span className="g-muted">{p.people.length ? p.people.join(", ") : "людей не было"}</span>
             </span>
             <span data-l="Готово / создано">
               {p.done} / {p.created}
@@ -342,7 +344,7 @@ function Knowledge() {
         <h2>База знаний</h2>
       </div>
       {!s ? (
-        <p className="muted">{sync.isPending ? "Загрузка…" : sync.error?.message}</p>
+        <p className="g-muted">{sync.isPending ? <SettingsLoading rows={2} /> : sync.error?.message}</p>
       ) : !s.remote ? (
         <section className="st-card">
           <div className="st-card-body">
@@ -367,7 +369,7 @@ function Knowledge() {
                       : `${new Date(last.at).toLocaleString("ru-RU")}: ${last.error}`}
                 </span>
               </span>
-              <button type="button" className="btn" disabled={now.isPending} onClick={() => void act(() => now.mutateAsync(), "База знаний синхронизирована")}>
+              <button type="button" className="g-btn secondary" disabled={now.isPending} onClick={() => void act(() => now.mutateAsync(), "База знаний синхронизирована")}>
                 <Icon.restart size={12} />
                 Синхронизировать сейчас
               </button>
@@ -379,7 +381,7 @@ function Knowledge() {
               <div className="ctl">
                 <span>
                   <code className="sv-mono">{s.remote}</code>
-                  {last?.branch && <span className="muted"> · {last.branch}</span>}
+                  {last?.branch && <span className="g-muted"> · {last.branch}</span>}
                 </span>
               </div>
             </div>
@@ -432,7 +434,7 @@ function Projects({ current, tab }: { current?: string; tab: string }) {
                 </span>
                 <span className="who">
                   <b>{p.name}</b>
-                  <span className="muted">
+                  <span className="g-muted">
                     <span className="sv-mono">{p.slug}</span> · {p.repo ? <span className="sv-mono">{p.repo}</span> : "без кода"} ·{" "}
                     {AUTONOMY.find((a) => a.id === p.autonomy)?.name ?? p.autonomy}
                   </span>
@@ -442,7 +444,7 @@ function Projects({ current, tab }: { current?: string; tab: string }) {
                 ) : (
                   <button
                     type="button"
-                    className="btn"
+                    className="g-btn secondary"
                     onClick={() =>
                       void act(async () => {
                         await request("POST", "/api/session/project", { project: p.slug });
@@ -496,26 +498,26 @@ export function NewProjectForm({ onCreated, folded }: { onCreated?: () => void; 
   const [form, setForm] = useState({ slug: "", name: "", repo: "", prefix: "" });
   const extra = (
     <>
-      <label className="field">
+      <label className="g-field">
         Репозиторий кода на этой машине
-        <input className="mono" value={form.repo} placeholder="/home/team/code/shop — пусто, если проект без кода" onChange={(e) => setForm({ ...form, repo: e.target.value })} />
+        <input className="g-mono" value={form.repo} placeholder="/home/team/code/shop — пусто, если проект без кода" onChange={(e) => setForm({ ...form, repo: e.target.value })} />
         <span className="pj-hint">Задачи из .genie/ будут импортированы.</span>
       </label>
-      <label className="field">
+      <label className="g-field">
         Префикс задач
         <input value={form.prefix} placeholder="по коду проекта, например SHOP" onChange={(e) => setForm({ ...form, prefix: e.target.value.toUpperCase() })} />
       </label>
     </>
   );
   const slug = (
-    <label className="field">
+    <label className="g-field">
       Код (латиница)
       <input value={form.slug} pattern="[a-z0-9][a-z0-9-]*" title="строчные латинские буквы, цифры и дефис" placeholder="shop" onChange={(e) => setForm({ ...form, slug: e.target.value })} required />
       {folded && <span className="pj-hint">В адресах и командах genie; потом не меняется.</span>}
     </label>
   );
   const name = (
-    <label className="field">
+    <label className="g-field">
       Название
       <input value={form.name} placeholder="Магазин" onChange={(e) => setForm({ ...form, name: e.target.value })} />
     </label>
@@ -552,7 +554,7 @@ export function NewProjectForm({ onCreated, folded }: { onCreated?: () => void; 
           {extra}
         </>
       )}
-      <button className="btn primary" disabled={create.isPending}>
+      <button className="g-btn secondary" disabled={create.isPending}>
         Создать проект
       </button>
     </form>
@@ -587,7 +589,7 @@ function Accounts({ me, tab }: { me?: string; tab: string }) {
                 <PersonAvatar login={u.login} name={u.name} src={u.avatar} size="md" prefix="" />
                 <span className="who">
                   <b>{personName(u)}</b>
-                  <span className="muted">
+                  <span className="g-muted">
                     @{u.login}
                     {u.email ? ` · ${u.email}` : ""} · с {new Date(u.created).toLocaleDateString("ru-RU")}
                   </span>
@@ -651,9 +653,9 @@ function Accounts({ me, tab }: { me?: string; tab: string }) {
       <div hidden={tab !== "access"}>        <form className="st-card" onSubmit={(e) => { e.preventDefault(); void act(() => member.mutateAsync({ slug: assignment.slug, user: assignment.user, role: "admin" }), "Администратор проекта назначен"); }}>
           <div className="st-card-head"><h3>Назначить администратора проекта</h3><p>Роль назначается для выбранного проекта.</p></div>
           <div className="st-card-body pj-form">
-            <label className="field">Учётная запись<select required value={assignment.user || ""} onChange={(e) => setAssignment({ ...assignment, user: Number(e.target.value) })}><option value="">Выберите пользователя</option>{list.filter((u) => !u.disabled && !u.isAdmin).map((u) => <option key={u.id} value={u.id}>{personName(u)}</option>)}</select></label>
-            <label className="field">Проект<select required value={assignment.slug} onChange={(e) => setAssignment({ ...assignment, slug: e.target.value })}><option value="">Выберите проект</option>{projects.data?.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}</select></label>
-            <button className="btn" disabled={!assignment.user || !assignment.slug || member.isPending}>Назначить</button>
+            <label className="g-field">Учётная запись<select required value={assignment.user || ""} onChange={(e) => setAssignment({ ...assignment, user: Number(e.target.value) })}><option value="">Выберите пользователя</option>{list.filter((u) => !u.disabled && !u.isAdmin).map((u) => <option key={u.id} value={u.id}>{personName(u)}</option>)}</select></label>
+            <label className="g-field">Проект<select required value={assignment.slug} onChange={(e) => setAssignment({ ...assignment, slug: e.target.value })}><option value="">Выберите проект</option>{projects.data?.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}</select></label>
+            <button className="g-btn secondary" disabled={!assignment.user || !assignment.slug || member.isPending}>Назначить</button>
           </div>
         </form>
 </div>
@@ -672,15 +674,15 @@ function Accounts({ me, tab }: { me?: string; tab: string }) {
             }, "Учётная запись создана: добавьте человека в проект на странице проекта");
           }}
         >
-          <label className="field">
+          <label className="g-field">
             Логин (латиница)
             <input autoComplete="off" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} required />
           </label>
-          <label className="field">
+          <label className="g-field">
             Имя
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </label>
-          <label className="field">
+          <label className="g-field">
             Пароль
             <input type="password" autoComplete="new-password" minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
             <span className="pj-hint">Не короче 8 символов.</span>
@@ -689,15 +691,15 @@ function Accounts({ me, tab }: { me?: string; tab: string }) {
             <input type="checkbox" checked={form.isAdmin} onChange={(e) => setForm({ ...form, isAdmin: e.target.checked })} />
             администратор сервера
           </label>
-          <button className="btn primary" disabled={create.isPending}>
+          <button className="g-btn secondary" disabled={create.isPending}>
             Создать
           </button>
           <span className="pj-hint">Потом добавьте человека в проект на странице проекта.</span>
         </form>
-        {credentials && <div className="st-card-body"><p>Создана учётная запись @{credentials.login}.</p><button type="button" className="btn" onClick={() => void act(async () => {
+        {credentials && <div className="st-card-body"><p>Создана учётная запись @{credentials.login}.</p><button type="button" className="g-btn secondary" onClick={() => void act(async () => {
           await navigator.clipboard.writeText(`Адрес: ${location.origin}\nЛогин: ${credentials.login}\nПароль: ${credentials.password}`);
           toast("Данные скопированы");
-        })}>Скопировать данные для входа</button><button type="button" className="btn ghost" onClick={() => setCredentials(undefined)}>Скрыть данные</button></div>}
+        })}>Скопировать данные для входа</button><button type="button" className="g-btn ghost" onClick={() => setCredentials(undefined)}>Скрыть данные</button></div>}
       </aside>
       {removing && <ConfirmDialog title="Удалить учётную запись?" confirmLabel="Удалить" danger busy={remove.isPending} onClose={() => setRemoving(undefined)} onConfirm={() => void act(() => remove.mutateAsync(removing.id), "Учётная запись удалена").then((ok) => { if (ok) setRemoving(undefined); })}>
         Учётная запись @{removing.login}, её доступ к проектам, сессии и токены будут удалены. История задач сохранится.

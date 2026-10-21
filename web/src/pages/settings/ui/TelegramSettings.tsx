@@ -9,6 +9,7 @@ import { request } from "@/shared/api";
 import { useTick } from "@/shared/lib";
 import { ConfirmDialog, useAct, useToast } from "@/shared/ui";
 import "./telegram.css";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 export function TelegramSettings({ project, admin = false }: { project: string; admin?: boolean }) {
   useTick(1000);
@@ -35,11 +36,11 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
         <p>Комментарии и смена статуса ваших задач и задач, за которыми вы следите.</p>
       </div>
       {query.isPending ? (
-        <p className="muted">Загрузка…</p>
+        <SettingsLoading />
       ) : query.error ? (
         <div role="alert">
           {query.error.message}{" "}
-          <button className="btn" onClick={() => void query.refetch()}>
+          <button className="g-btn secondary" onClick={() => void query.refetch()}>
             Повторить
           </button>
         </div>
@@ -48,13 +49,13 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
           <section className="st-card">
             <div className="st-card-head">
               <h3>{data?.username ? `@${data.username}` : "Бот проекта"}</h3>
-              <span className="muted" role="status">
+              <span className="g-muted" role="status">
                 {!data?.available ? (data?.username ? "Требует настройки" : "Не настроен") : data.connected ? "Подключено" : "Готов к подключению"}
               </span>
             </div>
             <div className="st-card-body tg-connect">
               {!data?.available ? (
-                <p className="muted">
+                <p className="g-muted">
                   {data?.username ? "Токен недоступен. Администратору нужно сохранить его заново." : "Администратору проекта нужно подключить бота."}
                 </p>
               ) : data.connected ? (
@@ -62,7 +63,7 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
                   <span className="grow">Уведомления приходят в личный чат.</span>
                   <button
                     type="button"
-                    className="btn"
+                    className="g-btn secondary"
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
@@ -75,7 +76,7 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
                   </button>
                   <button
                     type="button"
-                    className="btn"
+                    className="g-btn secondary"
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
@@ -93,7 +94,7 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
                   {!link || expired ? (
                     <button
                       type="button"
-                      className="btn primary"
+                      className="g-btn secondary"
                       disabled={busy}
                       onClick={() =>
                         void run(async () => {
@@ -105,26 +106,26 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
                     </button>
                   ) : (
                     <div className="tg-pair">
+                      {/* A QR code must stay dark-on-light in both themes to scan, so it keeps the
+                          library's black-on-white default and sits on a paper chip (`.tg-qr`). */}
                       <div className="tg-qr">
                         <QRCodeSVG
                           value={link.url}
                           size={180}
                           level="M"
                           marginSize={4}
-                          fgColor="#20252a"
-                          bgColor="#ffffff"
                           title="Подключить Telegram к genie"
                         />
                       </div>
                       <div className="tg-steps">
                         <h3>Откройте бота и нажмите «Старт»</h3>
-                        <p className="muted">Или отсканируйте QR-код камерой телефона.</p>
-                        <a className="btn primary" href={link.url} target="_blank" rel="noreferrer">
+                        <p className="g-muted">Или отсканируйте QR-код камерой телефона.</p>
+                        <a className="g-btn secondary" href={link.url} target="_blank" rel="noreferrer">
                           Открыть в Telegram ↗
                         </a>
                         <button
                           type="button"
-                          className="btn"
+                          className="g-btn secondary"
                           onClick={() =>
                             void act(async () => {
                               await navigator.clipboard.writeText(link.url);
@@ -134,13 +135,13 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
                         >
                           Скопировать ссылку
                         </button>
-                        <small className="muted">Личная ссылка действует 30 минут. Не передавайте её другим.</small>
-                        <span role="status" className="muted">
+                        <small className="g-muted">Личная ссылка действует 30 минут. Не передавайте её другим.</small>
+                        <span role="status" className="g-muted">
                           Ожидаем подключения…
                         </span>
                         <button
                           type="button"
-                          className="btn ghost"
+                          className="g-btn ghost"
                           disabled={busy}
                           onClick={() =>
                             void run(async () => {
@@ -193,17 +194,17 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
                   placeholder={data?.username ? "Новый токен" : "123456789:…"}
                   required
                 />
-                <small className="muted">Токен хранится зашифрованным. Нужен отдельный бот без webhook.</small>
-                {data?.username && <small className="muted">При замене бота пользователям понадобится подключиться заново.</small>}
+                <small className="g-muted">Токен хранится зашифрованным. Нужен отдельный бот без webhook.</small>
+                {data?.username && <small className="g-muted">При замене бота пользователям понадобится подключиться заново.</small>}
               </div>
               <div className="st-foot">
                 {data?.username && (
-                  <button type="button" className="btn" disabled={busy} onClick={() => setRemoving(true)}>
+                  <button type="button" className="g-btn secondary" disabled={busy} onClick={() => setRemoving(true)}>
                     Удалить бота
                   </button>
                 )}
                 <span className="grow" />
-                <button className="btn primary" disabled={busy || !token.trim()}>
+                <button className="g-btn secondary" disabled={busy || !token.trim()}>
                   {busy ? "Проверяем…" : "Проверить и сохранить"}
                 </button>
               </div>
@@ -278,14 +279,14 @@ function LegacyTelegram() {
       <section className="st-card">
         <div className="st-card-head">
           <h3>Общий бот сервера</h3>
-          <span className="muted">Для проектов без своего бота</span>
+          <span className="g-muted">Для проектов без своего бота</span>
         </div>
         <div className="st-card-body tg-connect">
           {linked ? (
             <>
               <p>Чат подключён.</p>
               <button
-                className="btn"
+                className="g-btn secondary"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -301,7 +302,7 @@ function LegacyTelegram() {
           ) : (
             <>
               <button
-                className="btn"
+                className="g-btn secondary"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -314,13 +315,13 @@ function LegacyTelegram() {
               {link &&
                 (link.bot ? (
                   <>
-                    <a className="btn primary" href={`https://t.me/${link.bot}?start=${link.code}`} target="_blank" rel="noreferrer">
+                    <a className="g-btn secondary" href={`https://t.me/${link.bot}?start=${link.code}`} target="_blank" rel="noreferrer">
                       Открыть в Telegram ↗
                     </a>
                     <div className="tg-qr">
                       <QRCodeSVG value={`https://t.me/${link.bot}?start=${link.code}`} size={180} marginSize={4} title="Подключить общий бот" />
                     </div>
-                    <small className="muted">Личная ссылка действует 30 минут.</small>
+                    <small className="g-muted">Личная ссылка действует 30 минут.</small>
                   </>
                 ) : (
                   <p>

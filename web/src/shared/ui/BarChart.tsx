@@ -1,5 +1,5 @@
-// A bar chart by day for the server's statistics: side by side or stacked, with a legend
-// and the numbers of the day under the pointer.
+// A bar chart by day for the server's statistics: side by side or stacked, with a legend,
+// the day's number written over its column, and the breakdown under the pointer.
 
 import { useState } from "react";
 
@@ -40,6 +40,12 @@ export function BarChart<T extends { day: string }>({
   const val = (s: Series<T>, d: T) => (s.value ? s.value(d) : (d[s.key as keyof T] as number));
   const top = Math.max(1, ...days.map((d) => (stacked ? series.reduce((n, s) => n + val(s, d), 0) : Math.max(...series.map((s) => val(s, d))))));
   const totals = series.map((s) => days.reduce((n, d) => n + val(s, d), 0));
+  // The column's number sits over the bars while there is room for it; a month is too narrow
+  // and keeps its numbers in the pointer tip and the legend.
+  const columnTop = (d: T) => (stacked ? series.reduce((n, s) => n + val(s, d), 0) : Math.max(...series.map((s) => val(s, d))));
+  const labelled = days.length <= 10;
+  // A period with nothing in it: the gridlines and the axis stay honest, the numbers go away.
+  const empty = totals.every((n) => n === 0);
   const h = hover === undefined ? undefined : days[hover];
   return (
     <figure className="st-card sv-chart">
@@ -56,7 +62,7 @@ export function BarChart<T extends { day: string }>({
       </figcaption>
       <div className="sv-plot-wrap">
         <span className="sv-max" aria-hidden="true">
-          {format(top)}
+          {empty ? "" : format(top)}
         </span>
         <div
           className={`sv-plot${stacked ? " stacked" : ""}${days.length > 10 ? " dense" : ""}`}
@@ -72,6 +78,11 @@ export function BarChart<T extends { day: string }>({
                   return <span key={s.key} style={{ height: `${(v / top) * 100}%`, background: s.color, minHeight: v ? 2 : 0 }} />;
                 })}
               </div>
+              {labelled && !empty && (
+                <span className="sv-val" style={{ bottom: `${(columnTop(d) / top) * 100}%` }} aria-hidden="true">
+                  {format(columnTop(d))}
+                </span>
+              )}
             </div>
           ))}
           {h && (
@@ -86,6 +97,7 @@ export function BarChart<T extends { day: string }>({
             </div>
           )}
         </div>
+        {empty && <p className="sv-empty">За этот период данных нет</p>}
       </div>
       <div className="sv-axis" aria-hidden="true">
         {days.map((d, i) => (

@@ -32,6 +32,7 @@ import { ProjectToolsSection } from "./ProjectTools.tsx";
 import { FeatureRequest } from "./FeatureRequest.tsx";
 import "@/shared/ui/settings.css";
 import "@/shared/ui/project.css";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 export const ROLES: ProjectRole[] = ["viewer", "member", "admin", "owner"];
 
@@ -49,7 +50,7 @@ export function ProjectSettingsPage() {
       <SettingsTabs scope="project" section={section} />
       <div className="scroll">
         {!project ? (
-          <div className="empty">{projects.isPending ? "Загрузка…" : (projects.error?.message ?? "Проект не выбран")}</div>
+          projects.isPending ? <SettingsLoading /> : <div className="g-muted">{projects.error?.message ?? "Проект не выбран"}</div>
         ) : section === "observation" ? (
           <ObservationSources key={project.slug} admin={admin} />
         ) : section === "channels" ? (
@@ -146,7 +147,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
             <code className="st-code">{project.slug}</code>
             <button
               type="button"
-              className="btn ghost sm"
+              className="g-btn ghost sm"
               onClick={() =>
                 void navigator.clipboard?.writeText(project.slug).then(
                   () => toast("Код скопирован"),
@@ -161,10 +162,10 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
         {admin && (
           <div className="st-foot">
             <span className="grow" />
-            <button type="button" className="btn ghost" disabled={!dirty} onClick={() => setName(project.name)}>
+            <button type="button" className="g-btn ghost" disabled={!dirty} onClick={() => setName(project.name)}>
               Отменить
             </button>
-            <button className="btn primary" disabled={!dirty || !name.trim() || patch.isPending}>
+            <button className="g-btn secondary" disabled={!dirty || !name.trim() || patch.isPending}>
               Сохранить
             </button>
           </div>
@@ -181,8 +182,8 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
             <span>Раздел базы знаний проекта. Агенты читают его перед работой и предлагают правки.</span>
           </div>
           <div className="ctl" style={{ flexDirection: "row", alignItems: "center" }}>
-            <code className="mono">{project.space}/</code>
-            <Link to="/docs" style={{ marginLeft: "auto", fontSize: 12 }}>
+            <code className="g-mono">{project.space}/</code>
+            <Link to="/docs" style={{ marginLeft: "auto", fontSize: "var(--g-text-caption)" }}>
               Открыть
             </Link>
           </div>
@@ -195,15 +196,15 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
           <div className="ctl">
             {repos.length ? (
               repos.map((r) => (
-                <span key={r.name} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <span className="mono">{r.name}</span>
-                  <span className="pill">{r.access === "write" ? "запись" : "чтение"}</span>
+                <span key={r.name} style={{ display: "flex", gap: "var(--g-space-3)", alignItems: "center", flexWrap: "wrap" }}>
+                  <span className="g-mono">{r.name}</span>
+                  <span className="g-tag">{r.access === "write" ? "запись" : "чтение"}</span>
                 </span>
               ))
             ) : (
-              <span className="muted">{project.repo ? <span className="mono">{project.repo}</span> : "без кода: результат — артефакты задач и страницы документации"}</span>
+              <span className="g-muted">{project.repo ? <span className="g-mono">{project.repo}</span> : "без кода: результат — артефакты задач и страницы документации"}</span>
             )}
-            <Link to="/manage/project/repos" style={{ fontSize: 12 }}>
+            <Link to="/manage/project/repos" style={{ fontSize: "var(--g-text-caption)" }}>
               {admin ? "Настроить во вкладке «Репозитории»" : "Подробнее во вкладке «Репозитории»"}
             </Link>
           </div>
@@ -319,10 +320,10 @@ function AgentsTab({ project, admin }: { project: ProjectInfo; admin: boolean })
         {admin && (
           <div className="st-foot">
             <span className="grow">{dirty ? "Есть несохранённые изменения" : ""}</span>
-            <button type="button" className="btn ghost" disabled={!dirty} onClick={() => setIntegration(project.integration)}>
+            <button type="button" className="g-btn ghost" disabled={!dirty} onClick={() => setIntegration(project.integration)}>
               Отменить
             </button>
-            <button className="btn primary" disabled={!dirty || patch.isPending}>
+            <button className="g-btn secondary" disabled={!dirty || patch.isPending}>
               Сохранить
             </button>
           </div>
@@ -372,12 +373,12 @@ function People({ slug, admin, me }: { slug: string; admin: boolean; me?: string
               </option>
             ))}
           </select>
-          <button className="btn" disabled={!adding.user || setMember.isPending}>
+          <button className="g-btn secondary" disabled={!adding.user || setMember.isPending}>
             Добавить
           </button>
         </form>
       )}
-      <div className="st-card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+      <div className="st-card-body" style={{ paddingTop: "var(--g-space-1)", paddingBottom: "var(--g-space-1)" }}>
       {list.length > 0 && (
         <ul className="pj-people">
           {list.map((m) => (
@@ -388,7 +389,7 @@ function People({ slug, admin, me }: { slug: string; admin: boolean; me?: string
                   {personName(m.user)}
                   {m.user.login === me ? " — вы" : ""}
                 </b>
-                <span className="muted">
+                <span className="g-muted">
                   @{m.user.login}
                   {m.user.email ? ` · ${m.user.email}` : ""}
                   {m.user.isAdmin ? " · администратор сервера" : ""}
@@ -411,7 +412,7 @@ function People({ slug, admin, me }: { slug: string; admin: boolean; me?: string
                       </option>
                     ))}
                   </select>
-                  <button type="button" className="icon-btn" aria-label={`Убрать ${m.user.login} из проекта`} title="Убрать из проекта" onClick={() => setRemoving(m)}>
+                  <button type="button" className="g-icon-btn" aria-label={`Убрать ${m.user.login} из проекта`} title="Убрать из проекта" onClick={() => setRemoving(m)}>
                     <Icon.trash size={13} />
                   </button>
                 </>
@@ -422,7 +423,7 @@ function People({ slug, admin, me }: { slug: string; admin: boolean; me?: string
           ))}
         </ul>
       )}
-      {!list.length && <p className="muted">{members.isPending ? "Загрузка…" : "В проекте пока никого нет: пригласите людей ссылкой."}</p>}
+      {!list.length && (members.isPending ? <SettingsLoading rows={2} /> : <p className="g-muted">В проекте пока никого нет: пригласите людей ссылкой.</p>)}
       </div>
       {removing && (
         <ConfirmDialog
@@ -463,7 +464,7 @@ function Invite({ slug }: { slug: string }) {
           void act(async () => setLink((await invite.mutateAsync({ slug, role, email: email.trim() })).url));
         }}
       >
-        <label className="field">
+        <label className="g-field">
           Роль
           <select value={role} onChange={(e) => setRole(e.target.value as ProjectRole)}>
             {ROLES.map((r) => (
@@ -473,11 +474,11 @@ function Invite({ slug }: { slug: string }) {
             ))}
           </select>
         </label>
-        <label className="field">
+        <label className="g-field">
           Почта, необязательно
           <input type="email" placeholder="на неё придут уведомления" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
-        <button className="btn primary" style={{ height: 36 }} disabled={invite.isPending}>
+        <button className="g-btn secondary"  disabled={invite.isPending}>
           Создать ссылку
         </button>
       {link && (
@@ -485,7 +486,7 @@ function Invite({ slug }: { slug: string }) {
           <span className="secret">{link}</span>
           <button
             type="button"
-            className="btn"
+            className="g-btn secondary"
             onClick={() =>
               void navigator.clipboard?.writeText(link).then(
                 () => toast("Ссылка скопирована"),
@@ -497,7 +498,7 @@ function Invite({ slug }: { slug: string }) {
           </button>
         </div>
       )}
-        <p className="muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+        <p className="g-muted" style={{ fontSize: "var(--g-text-caption)", lineHeight: 1.5, margin: 0 }}>
           Человек сам выбирает логин и пароль и сразу попадает в проект с этой ролью.
         </p>
       </form>
@@ -529,19 +530,19 @@ export function FirstAdmin() {
           });
         }}
       >
-        <label className="field">
+        <label className="g-field">
           Логин (латиница)
           <input autoComplete="username" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} required />
         </label>
-        <label className="field">
+        <label className="g-field">
           Имя
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </label>
-        <label className="field">
+        <label className="g-field">
           Пароль (не короче 8 символов)
           <input type="password" autoComplete="new-password" minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
         </label>
-        <button className="btn primary">Создать администратора и войти</button>
+        <button className="g-btn secondary">Создать администратора и войти</button>
       </form>
     </section>
   );

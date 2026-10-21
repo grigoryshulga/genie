@@ -12,7 +12,7 @@ const RESULTS: Record<string, string> = { accepted: "Принята", cancelled:
 
 export function FactoryAnalytics({ list }: { list: ProjectStats[] }) {
   return <div className="factory-analytics">
-    <p className="muted">Как завершались задачи, сколько заняли времени и во что обошлись. Выберите группу, чтобы посмотреть её результаты.</p>
+    <p className="g-muted">Как завершались задачи, сколько заняли времени и во что обошлись. Выберите группу, чтобы посмотреть её результаты.</p>
     {list.map((p) => p.factory ? <ProjectFactory key={p.project} project={p.project} name={p.name} data={p.factory} /> : <p key={p.project}>{p.name}: история выполнения пока недоступна.</p>)}
   </div>;
 }
@@ -60,7 +60,7 @@ function ProjectFactory({ project, name, data }: { project: string; name: string
       const title = { deliveredTasks: "Принято", firstPassAcceptance: "С первого ревью", executionHoursMedian: "Обычный срок", costPerAcceptedTask: "На принятую задачу" }[key];
       return m ? <div key={key}><span>{title}</span><strong>{metricValue(m)}</strong><small>{key === "deliveredTasks" ? `из ${m.eligible} завершённых задач` : m.value === null ? "Не хватает истории или сведений о расходах" : metricBasis(key, m)}</small></div> : null;
     })}</div>
-    <div className="factory-sections" aria-label="Раздел показателей">{METRIC_GROUPS.map((g) => <button type="button" className="btn ghost sm" key={g.id} aria-pressed={metricGroup === g.id} onClick={() => setMetricGroup(g.id)}>{g.label}</button>)}</div>
+    <div className="factory-sections" aria-label="Раздел показателей">{METRIC_GROUPS.map((g) => <button type="button" className="g-btn ghost sm" key={g.id} aria-pressed={metricGroup === g.id} onClick={() => setMetricGroup(g.id)}>{g.label}</button>)}</div>
     <div className="factory-scroll"><table className="factory-table"><caption>{group.label}</caption><thead><tr><th>Показатель</th><th>Результат</th><th>На каких данных</th></tr></thead><tbody>
       {group.metrics.map(([key = "", title, explanation]) => {
         const m = metrics[key];
@@ -69,9 +69,9 @@ function ProjectFactory({ project, name, data }: { project: string; name: string
     </tbody></table></div>
     <details><summary>Задачи и попытки · {tasks.length}</summary>
       {error && <p role="alert">{error}</p>}
-      {!tasks.length && <p className="muted">В выбранном периоде нет завершённых задач.</p>}
+      {!tasks.length && <p className="g-muted">В выбранном периоде нет завершённых задач.</p>}
       {tasks.map((t) => <details key={t.task} className="factory-task"><summary>{t.task} · {t.title} · {RESULTS[t.result] ?? "Результат неизвестен"}</summary>
-        <button type="button" className="btn ghost sm" onClick={() => void open(t.task)}>Открыть задачу и историю решений</button>
+        <button type="button" className="g-btn ghost sm" onClick={() => void open(t.task)}>Открыть задачу и историю решений</button>
         <dl><dt>Попытки</dt><dd>{t.attempts.length || "История не записана"}</dd><dt>Команда</dt><dd>{TEAM_NAMES[t.initialTopology ?? "unknown"] ?? t.initialTopology} → {TEAM_NAMES[t.finalTopology ?? "unknown"] ?? t.finalTopology}</dd>
           <dt>Стоимость всей работы</dt><dd>{t.costUsd === null ? `Неполные данные; известно $${t.knownCostUsd.toFixed(4)}` : `$${t.costUsd.toFixed(4)}`}</dd>
           <dt>Покрытие</dt><dd>{t.missing.map((m) => MISSING[m] ?? "неполная история").join("; ") || "Полная история"}</dd></dl>
