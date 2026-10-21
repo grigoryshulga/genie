@@ -16,6 +16,7 @@ import {
   useObservationIncidents,
 } from "@/entities/observation";
 import "@/shared/ui/agents.css";
+import { LoadingState } from "@/shared/ui";
 import { TaskLinks, when } from "./parts.tsx";
 import "./observations.css";
 
@@ -60,7 +61,7 @@ export function ObservationsPage() {
             Не удалось загрузить открытые инциденты: {incidents.error.message}
           </p>
         )}
-        {cases.isPending && <div className="empty">Загрузка…</div>}
+        {cases.isPending && <LoadingState label="Загрузка наблюдений" />}
         {cases.isError && (
           <p className="obs-error" role="alert">
             Не удалось загрузить наблюдения: {cases.error.message}

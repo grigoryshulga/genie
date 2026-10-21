@@ -32,3 +32,45 @@ test("a slow page shows skeleton rows under one status instead of bare loading t
   await expect(status).toBeHidden({ timeout: 20000 });
   await expect(page.getByRole("heading", { name: /Как запустить/ })).toBeVisible();
 });
+
+test("an empty task list uses the shared heading", async ({ page }) => {
+  await page.route("**/api/tasks?*", (route) => route.fulfill({ json: [] }));
+  await page.goto("/tasks");
+  await expect(page.locator(".g-tasks-scroll .g-empty").getByRole("heading", { name: "Здесь пусто", exact: true })).toBeVisible();
+});
+
+test("a failed task list announces the error and retries", async ({ page }) => {
+  let failed = true;
+  await page.route("**/api/tasks?*", async (route) => {
+    if (failed) {
+      await route.fulfill({ status: 503, json: { error: "Temporary fixture failure" } });
+    } else await route.continue();
+  });
+  await page.goto("/tasks");
+  const error = page.locator(".g-tasks-scroll").getByRole("alert");
+  await expect(error).toContainText("Не удалось загрузить задачи");
+  failed = false;
+  await error.getByRole("button", { name: "Повторить", exact: true }).click();
+  await expect(error).toBeHidden();
+  await expect(page.getByRole("list", { name: "Задачи", exact: true })).toBeVisible();
+});
+
+for (const [path, api, label] of [
+  ["/observations", "**/api/observation/cases?*", "Загрузка наблюдений"],
+  ["/observation/O-1", "**/api/observation/cases/1", "Загрузка наблюдения"],
+]) {
+  test(`${path} announces a skeleton while its data is pending`, async ({ page }) => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    await page.route(api, async (route) => {
+      await held;
+      await route.continue();
+    });
+    await page.goto(path);
+    const loading = page.getByRole("status").filter({ hasText: label });
+    await expect(loading).toBeVisible();
+    await expect(loading.locator(".g-skeleton").first()).toBeVisible();
+    release();
+    await expect(loading).toBeHidden();
+  });
+}

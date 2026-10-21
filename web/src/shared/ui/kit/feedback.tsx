@@ -30,6 +30,7 @@ export function EmptyState({
   character,
   characterSize = 64,
   characterLabel,
+  className,
 }: {
   title: ReactNode;
   children?: ReactNode;
@@ -37,9 +38,10 @@ export function EmptyState({
   character?: CharacterState;
   characterSize?: number;
   characterLabel?: string;
+  className?: string;
 }) {
   return (
-    <div className="g-empty">
+    <div className={cx("g-empty", className)}>
       {character && <Character state={character} size={characterSize} label={characterLabel} />}
       {/* A level-2 heading: an empty state always follows the page title, and h1 → h3 skips a level. */}
       <h2 className="g-h3">{title}</h2>
