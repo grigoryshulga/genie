@@ -19,7 +19,7 @@ export function SocialAuth({ link = false }: { link?: boolean }) {
         <button
           key={provider.id}
           type="button"
-          className="btn"
+          className="g-btn secondary"
           disabled={busy || (link && provider.connected)}
           onClick={() => {
             setBusy(true);

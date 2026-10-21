@@ -27,13 +27,13 @@ export function ArtifactModal({ artifact, onClose }: { artifact: OpenArtifact; o
     <Modal label={artifact.name} wide onClose={onClose}>
       <div className="mh">
         <Icon.file />
-        <span className="mono">{artifact.name}</span>
+        <span className="g-mono">{artifact.name}</span>
         <span>
           {artifact.kind} · {bytes(artifact.size)}
         </span>
         <span className="grow" />
         <a href={`/api/tasks/${encodeURIComponent(artifact.task)}/artifacts/${artifact.n}?download=1`}>Скачать</a>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+        <button type="button" className="g-icon-btn" onClick={onClose} aria-label="Закрыть">
           <Icon.close />
         </button>
       </div>
@@ -45,7 +45,7 @@ export function ArtifactModal({ artifact, onClose }: { artifact: OpenArtifact; o
             alt={artifact.name}
           />
         ) : artifact.text === undefined ? (
-          <span className="muted">Двоичный файл — скачайте его.</span>
+          <span className="g-caption">Двоичный файл — скачайте его.</span>
         ) : /\.(md|markdown)$/i.test(artifact.name) ? (
           <Markdown text={artifact.text} />
         ) : (

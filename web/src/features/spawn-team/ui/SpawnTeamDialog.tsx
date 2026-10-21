@@ -7,6 +7,7 @@ import { STATUS_NAME, type Status } from "@/entities/task";
 import { keysFor, request, useInvalidating } from "@/shared/api";
 import { plural } from "@/shared/lib";
 import { Icon, Modal, useToast } from "@/shared/ui";
+import { Button, Field, IconButton, Input, Segmented, Select, Textarea } from "@/shared/ui/kit";
 
 /**
  * Assemble a team for a task: a template (its members and relations; models can
@@ -55,40 +56,43 @@ export function SpawnTeamDialog({ task, onClose }: { task: { id: string; title: 
     </span>
   );
   const noteField = (
-    <label className="field">
-      Заметка для команды — попадёт в kickoff
-      <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Например: сначала покажите план" />
-    </label>
+    <Field label="Заметка для команды — попадёт в kickoff">
+      <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Например: сначала покажите план" />
+    </Field>
   );
 
   return (
     <Modal label="Собрать команду" onClose={onClose} wide>
       <div className="mh spawn-head">
         <h2>Собрать команду</h2>
-        <span>
-          <span className="mono">{task.id}</span> · {(STATUS_NAME[task.status as Status] ?? task.status).toLowerCase()}
+        <span className="g-caption">
+          <span className="g-mono">{task.id}</span> · {(STATUS_NAME[task.status as Status] ?? task.status).toLowerCase()}
         </span>
         <span className="grow" />
-        <div className="seg" role="tablist" aria-label="Как собрать">
-          <button type="button" role="tab" aria-selected={mode === "template"} className={mode === "template" ? "on" : ""} onClick={() => setMode("template")}>
-            По шаблону
-          </button>
-          <button type="button" role="tab" aria-selected={mode === "roles"} className={mode === "roles" ? "on" : ""} onClick={() => setMode("roles")}>
-            Из ролей
-          </button>
-        </div>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+        <Segmented
+          label="Как собрать"
+          value={mode}
+          onChange={setMode}
+          items={[
+            { id: "template", label: "По шаблону" },
+            { id: "roles", label: "Из ролей" },
+          ]}
+        />
+        <IconButton
+          label="Закрыть"
+          onClick={onClose}
+        >
           <Icon.close />
-        </button>
+        </IconButton>
       </div>
       {!cfg ? (
         <div className="mb">
-          <p className="muted">Загрузка…</p>
+          <p className="g-caption">Загрузка…</p>
         </div>
       ) : mode === "template" ? (
         <div className="spawn-two">
           <div className="spawn-templates" role="radiogroup" aria-label="Шаблон">
-            <span className="cap">{early ? "Шаблоны разбора: задача ещё не готова к работе" : "Шаблоны для задачи, готовой к работе"}</span>
+            <span className="g-caption">{early ? "Шаблоны разбора: задача ещё не готова к работе" : "Шаблоны для задачи, готовой к работе"}</span>
             {templates.map((t) => (
               <button type="button" role="radio" aria-checked={t.id === template?.id} key={t.id} className={`spawn-template${t.id === template?.id ? " on" : ""}`} onClick={() => setPicked(t.id)}>
                 <span className="t">
@@ -98,27 +102,27 @@ export function SpawnTeamDialog({ task, onClose }: { task: { id: string; title: 
                 <span className="s">{t.members.map((m) => role(m.role)?.title ?? m.role).join(", ")}</span>
               </button>
             ))}
-            {!templates.length && <p className="muted cap">Подходящих шаблонов нет — соберите команду из ролей.</p>}
+            {!templates.length && <p className="g-caption">Подходящих шаблонов нет — соберите команду из ролей.</p>}
           </div>
           <div className="spawn-main">
             {template && (
               <>
                 <div className="spawn-title">
                   <b>{template.title}</b>
-                  <span className="muted">
+                  <span className="g-caption">
                     {STAGE_TITLE[template.stage]} · {WORKSPACE_TITLE[template.workspace]} · почта: {MAIL_TITLE[template.mail]} · {template.members.length}{" "}
                     {plural(template.members.length, "участник", "участника", "участников")}
                   </span>
-                  {template.description && <span className="muted">{template.description}</span>}
+                  {template.description && <span className="g-caption">{template.description}</span>}
                 </div>
                 <TemplateGraph members={template.members} relations={template.relations} roles={cfg.roles} />
                 <div className="spawn-models">
-                  <span className="cap">Модели участников</span>
+                  <span className="g-caption">Модели участников</span>
                   {template.members.map((m) => (
                     <label key={m.key} className="spawn-model">
                       {dot(m.role)}
                       <span>{m.name ? `${m.name[0].toUpperCase()}${m.name.slice(1)} — ${(role(m.role)?.title ?? m.role).toLowerCase()}` : (role(m.role)?.title ?? m.role)}</span>
-                      <input
+                      <Input
                         value={models[m.key] ?? ""}
                         onChange={(e) => setModels((x) => ({ ...x, [m.key]: e.target.value }))}
                         placeholder={m.model ?? defaultModel(m.role) ?? "как у роли"}
@@ -134,46 +138,44 @@ export function SpawnTeamDialog({ task, onClose }: { task: { id: string; title: 
         </div>
       ) : (
         <div className="mb spawn-team">
-          <p className="muted" style={{ margin: 0 }}>
-            Связи между участниками выводятся из их классов: исполнитель сдаёт ревьюеру, ревьюер возвращает на доработку.
-          </p>
+          <p className="g-caption spawn-note">Связи между участниками выводятся из их классов: исполнитель сдаёт ревьюеру, ревьюер возвращает на доработку.</p>
           {members.map((m, i) => (
             <div key={i} className="spawn-member">
               {dot(m.role)}
-              <select value={m.role} onChange={(e) => setMembers((x) => x.map((y, j) => (j === i ? { ...y, role: e.target.value } : y)))} aria-label="Роль">
+              <Select value={m.role} onChange={(e) => setMembers((x) => x.map((y, j) => (j === i ? { ...y, role: e.target.value } : y)))} aria-label="Роль">
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.title}
                   </option>
                 ))}
-              </select>
-              <input
+              </Select>
+              <Input
                 value={m.model}
                 onChange={(e) => setMembers((x) => x.map((y, j) => (j === i ? { ...y, model: e.target.value } : y)))}
                 placeholder={defaultModel(m.role) ?? "модель как у роли"}
                 aria-label="Модель"
               />
-              <button type="button" className="icon-btn" aria-label="Убрать" onClick={() => setMembers((x) => x.filter((_, j) => j !== i))}>
+              <IconButton label="Убрать" onClick={() => setMembers((x) => x.filter((_, j) => j !== i))}>
                 <Icon.trash size={13} />
-              </button>
+              </IconButton>
             </div>
           ))}
-          <button type="button" className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={!roles.length} onClick={() => setMembers((x) => [...x, { role: roles[0].id, model: "" }])}>
+          <Button className="spawn-add" disabled={!roles.length} onClick={() => setMembers((x) => [...x, { role: roles[0].id, model: "" }])}>
             <Icon.plus size={13} />
             Добавить роль
-          </button>
+          </Button>
           {noteField}
         </div>
       )}
       <div className="mf">
         Каждый участник получит kickoff, оркестратор — сообщение
         <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Отмена
-        </button>
-        <button type="button" className="btn primary" disabled={!ready || spawn.isPending} onClick={submit}>
+        </Button>
+        <Button variant="primary" disabled={!ready} busy={spawn.isPending} onClick={submit}>
           Собрать команду
-        </button>
+        </Button>
       </div>
     </Modal>
   );

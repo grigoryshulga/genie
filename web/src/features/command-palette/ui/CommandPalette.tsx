@@ -3,7 +3,7 @@ import { DocFileIcon, DocStatusBadge, snippetParts, useDebounced, useDocSearch }
 import { useSession } from "@/entities/session";
 import { EpicIcon, type PresetId, PRESETS, StatusIcon, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
-import { Icon, Modal } from "@/shared/ui";
+import { Icon, Kbd, Modal, WorkingArcs } from "@/shared/ui";
 
 export interface PaletteActions {
   newTask: () => void;
@@ -58,7 +58,7 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
       ...(mine ? [{ key: "p-mine", icon: <Icon.user />, label: "Задачи: мои", group: "ПЕРЕЙТИ" as const, run: () => actions.preset("open", true) }] : []),
       ...PRESETS.filter((p) => p.id !== "open").map((p) => ({ key: `p-${p.id}`, icon: <StatusIcon status={p.statuses[0]} />, label: `Задачи: ${p.name.toLowerCase()}`, group: "ПЕРЕЙТИ" as const, run: () => actions.preset(p.id) })),
       { key: "docs", icon: <DocFileIcon />, label: "Документация", hint: "docs/", group: "ПЕРЕЙТИ", run: actions.openDocs },
-      ...teams.filter((t) => t.state === "active").map((t) => ({ key: `t-${t.id}`, icon: <span className="spin" />, label: `Команда ${t.id}`, hint: t.taskInfo?.title, group: "КОМАНДЫ" as const, run: () => actions.openTeam(t.id) })),
+      ...teams.filter((t) => t.state === "active").map((t) => ({ key: `t-${t.id}`, icon: <WorkingArcs size={14} label="Команда работает" />, label: `Команда ${t.id}`, hint: t.taskInfo?.title, group: "КОМАНДЫ" as const, run: () => actions.openTeam(t.id) })),
       ...tasks.map((t) => ({ key: t.id, icon: <StatusIcon status={t.status} />, label: `${t.id}  ${t.title}`, hint: t.labels.join(", "), group: "ЗАДАЧИ" as const, run: () => actions.openTask(t.id) })),
     ];
 
@@ -126,27 +126,30 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
   let lastGroup: string | undefined;
 
   return (
-    <Modal label="Команды" onClose={onClose}>
+    <Modal label="Команды" onClose={onClose} className="palette-dialog">
       <div className="palette">
-        <input
-          autoFocus
-          aria-label="Поиск команд, задач и документации"
-          placeholder="Задача, команда, документация или действие…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Tab") {
+        <label className="g-search">
+          <Icon.search />
+          <input
+            autoFocus
+            aria-label="Поиск команд, задач и документации"
+            placeholder="Задача, команда, документация или действие…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Tab") {
+                e.preventDefault();
+                setDocsOnly((v) => !v);
+                return;
+              }
+              if (e.key === "ArrowDown") setIdx((i) => Math.min(items.length - 1, i + 1));
+              else if (e.key === "ArrowUp") setIdx((i) => Math.max(0, i - 1));
+              else if (e.key === "Enter") run(items[idx]);
+              else return;
               e.preventDefault();
-              setDocsOnly((v) => !v);
-              return;
-            }
-            if (e.key === "ArrowDown") setIdx((i) => Math.min(items.length - 1, i + 1));
-            else if (e.key === "ArrowUp") setIdx((i) => Math.max(0, i - 1));
-            else if (e.key === "Enter") run(items[idx]);
-            else return;
-            e.preventDefault();
-          }}
-        />
+            }}
+          />
+        </label>
         <div className="items" role="listbox">
           {items.map((i, n) => {
             const header = i.group !== lastGroup ? i.group : undefined;
@@ -154,12 +157,12 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
             return (
               <div key={i.key}>
                 {header && (
-                  <div className={`pal-group${docsOnly ? " on" : ""}`}>
+                  <div className="g-menu-head">
                     {header}
                     {header === "ДОКУМЕНТАЦИЯ" && docsOnly ? <span className="muted"> · только документация</span> : null}
                   </div>
                 )}
-                <button type="button" role="option" aria-selected={n === idx} className={`item${n === idx ? " on" : ""}`} onMouseEnter={() => setIdx(n)} onClick={() => run(i)}>
+                <button type="button" role="option" aria-selected={n === idx} className="g-menu-item" data-active={n === idx} onMouseEnter={() => setIdx(n)} onClick={() => run(i)}>
                   {i.icon}
                   <span className="pal-col">
                     <span className="pal-label">
@@ -174,13 +177,13 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
             );
           })}
           {!items.length && (
-            <div className="empty" style={{ padding: 30 }}>
+            <div className="g-empty">
               {docsOnly && !docs.isPending ? "В документации ничего не найдено" : "Ничего не найдено"}
             </div>
           )}
         </div>
         <div className="pal-foot muted">
-          <kbd>↑↓</kbd> выбрать <kbd>↵</kbd> открыть <kbd>Tab</kbd> только документация <kbd>Esc</kbd> закрыть
+          <Kbd>↑↓</Kbd> выбрать <Kbd>↵</Kbd> открыть <Kbd>Tab</Kbd> только документация <Kbd>Esc</Kbd> закрыть
         </div>
       </div>
     </Modal>

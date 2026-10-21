@@ -10,7 +10,7 @@ export function RemoveMemberButton({ team, name, role }: { team: string; name: s
   const label = memberLabel(name, role);
   return (
     <>
-      <button type="button" className="icon-btn member-remove" onClick={() => setOpen(true)} aria-label={`Убрать ${label} из команды`} title="Убрать из команды">
+      <button type="button" className="g-icon-btn member-remove" onClick={() => setOpen(true)} aria-label={`Убрать ${label} из команды`} title="Убрать из команды">
         <Icon.close size={12} />
       </button>
       {open && (

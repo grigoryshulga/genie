@@ -40,20 +40,20 @@ export function AddMemberDialog({ team, onClose }: { team: string; onClose: () =
           e.preventDefault();
           submit();
         }}
-        style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+        className="dlg-form"
       >
         <div className="mh">
           <Icon.userPlus />
           Добавить участника в команду {team}
           <span className="grow" />
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <button type="button" className="g-icon-btn" onClick={onClose} aria-label="Закрыть">
             <Icon.close />
           </button>
         </div>
         <div className="mb">
-          <label className="field">
-            Роль
-            <select value={role} onChange={(e) => setRole(e.target.value)} autoFocus>
+          <label className="g-field">
+            <span className="g-label">Роль</span>
+            <select className="g-select" value={role} onChange={(e) => setRole(e.target.value)} autoFocus>
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.title}
@@ -62,27 +62,27 @@ export function AddMemberDialog({ team, onClose }: { team: string; onClose: () =
               ))}
             </select>
           </label>
-          {described && <p className="muted" style={{ margin: 0 }}>{described}</p>}
-          <label className="field">
-            Имя — латиницей, необязательно (иначе подберётся само)
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="например, murphy" pattern="[a-zA-Z][a-zA-Z0-9_-]*" />
+          {described && <p className="dlg-note">{described}</p>}
+          <label className="g-field">
+            <span className="g-label">Имя — латиницей, необязательно (иначе подберётся само)</span>
+            <input className="g-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="например, murphy" pattern="[a-zA-Z][a-zA-Z0-9_-]*" />
           </label>
-          <label className="field">
-            Модель — provider/id, необязательно
-            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder={defaultModel ? `по умолчанию: ${defaultModel}` : "модель pi по умолчанию"} />
+          <label className="g-field">
+            <span className="g-label">Модель — provider/id, необязательно</span>
+            <input className="g-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder={defaultModel ? `по умолчанию: ${defaultModel}` : "модель pi по умолчанию"} />
           </label>
-          <label className="field">
-            Что ему сделать
+          <label className="g-field">
+            <span className="g-label">Что ему сделать</span>
             <textarea rows={3} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Например: покрыть тестами граничные случаи экспорта" />
           </label>
         </div>
         <div className="mf">
           Участник получит вводное сообщение, команда — уведомление
           <span className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>
+          <button type="button" className="g-btn ghost" onClick={onClose}>
             Отмена
           </button>
-          <button type="submit" className="btn primary" disabled={add.isPending}>
+          <button type="submit" className="g-btn primary" disabled={add.isPending}>
             Добавить
           </button>
         </div>

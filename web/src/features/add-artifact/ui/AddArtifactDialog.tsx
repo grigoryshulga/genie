@@ -51,19 +51,19 @@ export function AddArtifactDialog({ task, epic, onClose }: { task: string; epic?
           submit();
         }}
         onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && submit()}
-        style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+        className="dlg-form"
       >
         <div className="mh">
           <Icon.file />
           {epic ? `Общий артефакт эпика ${task}` : `Артефакт задачи ${task}`}
           <span className="grow" />
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <button type="button" className="g-icon-btn" onClick={onClose} aria-label="Закрыть">
             <Icon.close />
           </button>
         </div>
         <div className="mb">
           <div className="opts">
-            <input aria-label="Имя файла" placeholder="имя, например glossary.md" required value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+            <input aria-label="Имя файла" placeholder="имя, например glossary.md" required value={name} onChange={(e) => setName(e.target.value)} className="grow-input" />
             <select aria-label="Вид" value={kind} onChange={(e) => setKind(e.target.value)}>
               {KINDS.map(([v, n]) => (
                 <option key={v} value={v}>
@@ -71,27 +71,27 @@ export function AddArtifactDialog({ task, epic, onClose }: { task: string; epic?
                 </option>
               ))}
             </select>
-            <label className="btn" style={{ height: 30 }}>
+            <label className="g-btn sm secondary">
               Из файла…
               <input type="file" hidden onChange={(e) => readFile(e.target.files?.[0])} />
             </label>
           </div>
-          <label className="field">
-            Содержимое
-            <textarea rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder="Markdown, текст, CSV…" style={{ fontFamily: "var(--mono)", fontSize: 12 }} />
+          <label className="g-field">
+            <span className="g-label">Содержимое</span>
+            <textarea className="mono-area" rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder="Markdown, текст, CSV…" />
           </label>
-          <label className="field">
-            Пояснение (необязательно)
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="зачем он командам" />
+          <label className="g-field">
+            <span className="g-label">Пояснение (необязательно)</span>
+            <input className="g-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="зачем он командам" />
           </label>
         </div>
         <div className="mf">
           {epic ? "Команды всех задач эпика увидят его в своей задаче" : "Команда задачи сможет прочитать его"}
           <span className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>
+          <button type="button" className="g-btn ghost" onClick={onClose}>
             Отмена
           </button>
-          <button type="submit" className="btn primary" disabled={!name.trim() || !text || add.isPending}>
+          <button type="submit" className="g-btn primary" disabled={!name.trim() || !text || add.isPending}>
             Добавить
           </button>
         </div>
