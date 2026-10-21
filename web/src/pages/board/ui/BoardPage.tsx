@@ -73,7 +73,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
   return (
     <main className="main g-board-page" aria-label="Доска">
       <section className="g-board-pulse" aria-label="Что происходит сейчас">
-        <Character state={state} size={64} />
+        <Character state={state} size={96} />
         <p className="g-pulse">
           <strong>{strip.say}</strong>
           <span>{strip.sub}</span>
