@@ -16,6 +16,10 @@ import "./task-modal.css";
 // Legacy cross-layer compatibility layer (`#root` height plus old class names other sheets still
 // target). It stays with the app shell until the H33 cleanup retires those rules.
 import "./styles/additions.css";
+// The markdown surface's prose: the shell loads it here, after the avatar and shell primitives it has
+// to override (`.md` also matches the medium avatar size), and before the phone layer, which is the
+// order the central sheet used to give it.
+import "@/shared/ui/markdown.css";
 // The app-wide responsive layer and the desktop centring column: the shell, the eager board screen
 // and every page the shell renders itself. Lazy screens re-inline them in their own chunk (see
 // `<screen>-sheets.css`) so that they still load after that screen's area sheets.

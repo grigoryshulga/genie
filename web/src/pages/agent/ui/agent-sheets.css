@@ -1,2 +1,5 @@
-/* The agent chat's cascade tail: the phone layer, inlined so it loads after the chat sheet. */
+/* The agent chat's sheets in cascade order: the team view sheet it reuses, the phone layer, and the
+   chat's own sheet last, because the chat has to win over both. Inlined so the chunk keeps that order. */
+@import "../../../widgets/team-view/team.css";
 @import "../../../shared/ui/mobile.css";
+@import "./agent.css";

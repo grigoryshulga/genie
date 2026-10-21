@@ -10,8 +10,8 @@ import { matchesSearch } from "@/shared/lib";
 import { ContextSearch } from "@/widgets/topbar";
 import { ErrorState, Icon, Skeleton } from "@/shared/ui";
 import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
-import "@/shared/ui/agents.css";
 import "./agents-sheets.css";
+import "@/shared/ui/agents.css";
 
 type Tab = "roles" | "templates" | "skills" | "mcp";
 const TABS: { id: Tab; title: string }[] = [

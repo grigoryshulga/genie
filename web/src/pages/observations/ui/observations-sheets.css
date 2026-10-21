@@ -1,2 +1,0 @@
-/* The observations screens' cascade tail: the phone layer, inlined so it loads after the page sheet. */
-@import "../../../shared/ui/mobile.css";

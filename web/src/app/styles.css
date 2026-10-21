@@ -1,8 +1,7 @@
 /* ------------------------------------------------------------ global foundation */
-/* Brand tokens, resets and the rules every screen needs. Area sheets are no longer gathered
-   here: each screen imports the sheet that owns the markup it renders from its own module
-   (`@/app/styles/<area>.css`), so a screen carries its own cascade and this file stays the
-   truly global layer. Add a sheet here only when the rule really is shell-wide. */
+/* Brand tokens, resets and the rules every screen needs. Area sheets are not gathered here: the file
+   that owns a screen's markup imports its own sheet, so the screen carries its cascade and this file
+   stays the truly global layer. Add a sheet here only when the rule really is shell-wide. */
 
 @import "../shared/ui/fonts.css";
 @import "../shared/ui/g-tokens.css";

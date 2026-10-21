@@ -1,7 +1,6 @@
-/* The settings screens' cascade tail, inlined into the settings chunk so it loads after the split-pane
-   chrome instead of in a hoisted shared chunk. Order is the app's sheet order: the phone layer, the
-   pane chrome, the shared search field and the desktop centring column. */
-@import "../../../shared/ui/mobile.css";
+/* The settings screens' cascade tail, inlined into the settings chunk so the pane chrome is followed by
+   the shared search field and the centring column instead of being hoisted apart. The phone layer is in
+   the app's foundation and loads before this chunk, which is where the cascade wants it. */
 @import "../../../shared/ui/pages.css";
 @import "../../../shared/ui/search-and-docs.css";
 @import "../../../shared/ui/content.css";

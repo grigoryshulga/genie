@@ -1,4 +1,3 @@
-/* The epics screen's cascade tail: the phone layer before the epic chrome, inlined so the order is
-   the app's and not whatever a shared chunk happens to be. */
-@import "../../../shared/ui/mobile.css";
+/* The epics index's sheet, inlined into its chunk so it loads with the screen and after the app's phone
+   layer, which the cascade wants applied first. */
 @import "../../../entities/task/ui/epics.css";

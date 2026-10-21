@@ -1,7 +1,7 @@
-/* Shared Markdown renderer. Co-located with the component so it owns its own styling;
-   web/src/app/styles.css is owned by another task and is not touched here.
-   Ink and paper: g-tokens only. These rules are additive — the generic prose
-   typography lives in components.css (.g-prose) and stays as it is. */
+/* Shared Markdown renderer. The shell imports it (`App.tsx`) rather than the component, because the
+   prose typography below has to land after the primitives it refines: the same `.md` class also names
+   the medium avatar size, and `.g-prose` in components.css sets the generic typography.
+   Ink and paper: g-tokens only. The additive rules are the ones the renderer's own markup needs. */
 
 .md .md-table-wrap {
   margin: 0 0 var(--g-space-3);
@@ -59,3 +59,22 @@
 .g-prose code {
   overflow-wrap: anywhere;
 }
+
+/* ---- the prose itself ---- */
+/* The renderer owns the markup, so its typography lives here instead of in the task detail sheet that
+   used to carry it: the docs reader renders the same `.md` blocks outside any task view. The rules
+   below are the sheet's, unchanged, in the order they had there. */
+.md { color: var(--g-text-2); line-height: 1.65; overflow-wrap: anywhere; }
+.md p { margin: 0 0 8px; }
+.md h1, .md h2, .md h3, .md h4 { font-size: var(--g-text-ui); margin: 14px 0 6px; color: var(--g-text); }
+.md ul, .md ol { margin: 0 0 8px; padding-left: 20px; }
+.md code { font: 12px var(--g-font-mono); background: var(--g-surface); padding: 1px 5px; border-radius: var(--g-radius-xs); }
+.md pre { background: var(--g-bg); border: 1px solid var(--g-border); border-radius: var(--g-radius-sm); padding: var(--g-space-2) var(--g-space-3); overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--g-border-strong); color: var(--g-text-muted); }
+.md .empty-md { color: var(--g-text-muted); }
+
+/* ---- overrides the surface needs on top of the prose above ---- */
+.md { color: var(--g-text-2); line-height: var(--g-leading-prose); }
+.md code { background: var(--g-surface-raised); }
+.md pre { background: var(--g-surface); border: 1px solid var(--g-border); }

@@ -1,7 +1,6 @@
-/* The docs workspace's cascade tail, inlined into the docs chunk so it loads after the page's own
-   sheets instead of in a hoisted shared chunk. Order is the app's sheet order: the phone layer, the
-   docs chrome, the shared search field and the desktop centring column. */
-@import "../../../shared/ui/mobile.css";
+/* The docs screens' cascade tail, inlined so the sheets keep the app's order: the docs sheet, the shared
+   search field it shares with other screens, and the desktop centring column last. The phone layer is in
+   the app's foundation and loads before this chunk, which is where the cascade wants it. */
 @import "../../../entities/doc/ui/docs.css";
 @import "../../../shared/ui/search-and-docs.css";
 @import "../../../shared/ui/content.css";
