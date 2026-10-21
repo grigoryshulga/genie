@@ -8,7 +8,7 @@
   body { overflow: auto; }
   .catalog { max-width: 1000px; margin: auto; padding: var(--g-space-6); display: grid; gap: var(--g-space-5); }
   .catalog h2 { margin: 0 0 var(--g-space-3); }
-  .catalog section { padding: var(--g-space-4); border: 1px solid var(--g-border); border-radius: var(--g-radius-lg); background: var(--g-surface); }
+  .catalog .specimen-block { padding: var(--g-space-4); border: 1px solid var(--g-border); border-radius: var(--g-radius-lg); background: var(--g-surface); }
   .samples, .toolbar { display: flex; flex-wrap: wrap; gap: var(--g-space-3); align-items: center; }
   .toolbar { margin: 0 0 var(--g-space-4); }
   .toolbar label { display: flex; gap: var(--g-space-2); align-items: center; color: var(--g-text-2); }
@@ -41,7 +41,7 @@
   const h = React.createElement;
 
   /** A specimen block: a heading and whatever the kit renders underneath it. */
-  const block = (title, ...children) => h("section", { key: title }, h("h2", { className: "g-h4" }, title), ...children);
+  const block = (title, ...children) => h("section", { key: title, className: "specimen-block" }, h("h2", { className: "g-h4" }, title), ...children);
   const row = (...children) => h("div", { className: "samples" }, ...children);
 
   const colors = ["bg", "surface", "surface-raised", "surface-hover", "border-strong", "text", "text-2", "text-muted", "accent", "signal", "danger", "viz-1", "viz-2", "viz-3", "viz-4"];
@@ -85,7 +85,7 @@
     block("Status and priority",
       h("div", { className: "samples statuses" },
         ...statuses.map((status) => h("span", { key: status }, h(StatusIcon, { status, size: 16 }), status)),
-        ...[0, 1, 2, 3, 4].map((priority) => h("span", { key: priority }, h(PriorityIcon, { priority, size: 16 }), `P${priority}`))))),
+        ...[0, 1, 2, 3, 4].map((priority) => h("span", { key: priority }, h(PriorityIcon, { priority, size: 16 }), `P${priority}`)))),
     block("Typography",
       h("p", { className: "g-display" }, "Display"),
       h("p", { className: "g-h1" }, "H1 · Unbounded"),
@@ -96,6 +96,9 @@
       h("p", { className: "g-caption" }, "Caption · Manrope 500"),
       h("p", { className: "g-eyebrow" }, "Eyebrow"),
       h("p", { style: { fontFamily: "var(--g-font-mono)" } }, "GNE-69 · Geist Mono")),
+    block("Disclosure cards",
+      h(kit.DisclosureCard, { title: "Properties", storageKey: "genie.specimen.card.open" }, h("p", { className: "g-caption" }, "Open card: heading toggles with Enter or Space.")),
+      h(kit.DisclosureCard, { title: "Related pages", storageKey: "genie.specimen.card.closed", defaultOpen: false }, h("p", { className: "g-caption" }, "Closed card: the choice survives a reload."))),
     block("Dialog",
       h("div", { className: "g-modal", role: "group", "aria-label": "Dialog specimen" },
         h("header", null, h("h2", null, "Dialog heading")),

@@ -1,0 +1,10 @@
+.g-disclosure-card { flex: none; min-width: 0; padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); }
+.g-disclosure-card > h3 { margin: 0; }
+.g-disclosure-toggle { display: flex; align-items: center; gap: var(--g-space-2); width: 100%; min-height: var(--g-control-sm); padding: 0; border: 0; background: none; color: var(--g-text-2); font: var(--g-weight-semibold) var(--g-text-dense)/var(--g-leading-ui) var(--g-font-sans); text-align: left; }
+.g-disclosure-toggle:hover { color: var(--g-text); }
+.g-disclosure-toggle > svg { flex: none; }
+.g-disclosure-toggle > svg:last-child { margin-inline-start: auto; transform: rotate(90deg); transition: transform var(--g-duration) var(--g-ease); }
+.g-disclosure-card.collapsed .g-disclosure-toggle > svg:last-child { transform: none; }
+.g-disclosure-body { margin-top: var(--g-space-2); }
+@media (max-width: 900px) { .g-disclosure-toggle { min-height: var(--g-control); } }
+@media (prefers-reduced-motion: reduce) { .g-disclosure-toggle > svg:last-child { transition: none; } }

@@ -22,7 +22,7 @@ import {
   staleReasonText,
 } from "@/entities/doc";
 import { BacklinkIcon, DeprecatedIcon, DiagIcon, OkIcon, PathsIcon, StaleIcon } from "@/entities/doc";
-import { Button, Icon, Tag } from "@/shared/ui";
+import { Button, DisclosureCard, Icon, Tag } from "@/shared/ui";
 
 export function DocView({
   page,
@@ -83,13 +83,19 @@ export function DocView({
           </Button>
         </header>
 
-        <div className="docs-view scroll" ref={scrollRef}>
+        <div className="docs-view doc-reader scroll" ref={scrollRef}>
+          <article className="doc-reading">
           <div className="doc-head">
+            <div className="doc-head-top">
             <div className="doc-article-badges" aria-label="Тип и состояние статьи">
               <DocTypeBadge type={page.type} long />
               {page.status && <DocStatusBadge status={page.status} />}
               {page.stale && <DocStaleBadge count={page.staleReasons.length} />}
               {page.diagnostics.length > 0 && <DocDiagBadge count={page.diagnostics.length} />}
+            </div>
+            {page.tags.length > 0 && <div className="doc-tags" aria-label="Теги статьи">
+              {page.tags.map((tag) => <Tag key={tag} className="doc-tag">{tag}</Tag>)}
+            </div>}
             </div>
             <h2 className="doc-title">{articleTitle(page)}</h2>
             <div className="doc-meta">
@@ -163,19 +169,13 @@ export function DocView({
           {summary && <div className="doc-summary">{summary}</div>}
 
           <DocBody text={body} links={page.links} onOpen={onOpen} empty="Страница пуста" />
-          {page.tags.length > 0 && <footer className="doc-article-footer" aria-label="Теги статьи">
-            <span className="g-muted">Теги</span>
-            {page.tags.map((tag) => <Tag key={tag} className="doc-tag">{tag}</Tag>)}
-          </footer>}
+          </article>
         </div>
       </div>
 
       {!hideAside && (
         <aside className="docs-aside">
-          <section className="docs-sec">
-            <h3>
-              <BacklinkIcon size={12} /> Ссылаются сюда <span className="n">{page.backlinks.length}</span>
-            </h3>
+          <DisclosureCard title="Ссылаются сюда" icon={<BacklinkIcon size={12} />} badge={<span className="g-num">{page.backlinks.length}</span>} storageKey="genie.docs.card.backlinks">
             {page.backlinks.length > 0 ? (
               <ul className="doc-links">
                 {page.backlinks.map((path) => (
@@ -189,12 +189,9 @@ export function DocView({
             ) : (
               <p className="doc-hint">На страницу пока никто не ссылается.</p>
             )}
-          </section>
+          </DisclosureCard>
 
-          <section className="docs-sec">
-            <h3>
-              <PathsIcon size={12} /> Описывает код
-            </h3>
+          <DisclosureCard title="Описывает код" icon={<PathsIcon size={12} />} storageKey="genie.docs.card.paths">
             {page.paths && page.paths.length > 0 ? (
               <ul className="doc-paths g-mono">
                 {page.paths.map((pattern) => (
@@ -212,13 +209,10 @@ export function DocView({
             {page.paths && page.paths.length > 0 && (
               <p className={`doc-note${page.stale ? " stale" : ""}`}>{page.stale ? `Изменено после проверки: ${staleNote}` : "Без изменений после проверки"}</p>
             )}
-          </section>
+          </DisclosureCard>
 
           {page.diagnostics.length > 0 && (
-            <section className="docs-sec">
-              <h3>
-                <DiagIcon size={12} /> Диагностика
-              </h3>
+            <DisclosureCard title="Диагностика" icon={<DiagIcon size={12} />} storageKey="genie.docs.card.diagnostics">
               <ul className="doc-diags">
                 {page.diagnostics.map((raw) => (
                   <li key={raw} title={raw}>
@@ -226,12 +220,11 @@ export function DocView({
                   </li>
                 ))}
               </ul>
-            </section>
+            </DisclosureCard>
           )}
 
           {headings.length > 0 && (
-            <section className="docs-sec">
-              <h3>На странице</h3>
+            <DisclosureCard title="На странице" storageKey="genie.docs.card.contents">
               <ul className="doc-toc">
                 {headings.map((heading) => (
                   <li key={heading}>
@@ -241,12 +234,11 @@ export function DocView({
                   </li>
                 ))}
               </ul>
-            </section>
+            </DisclosureCard>
           )}
 
           {page.links.length > 0 && (
-            <section className="docs-sec">
-              <h3>Ссылки со страницы</h3>
+            <DisclosureCard title="Ссылки со страницы" storageKey="genie.docs.card.links">
               <ul className="doc-links">
                 {page.links.map((link) => (
                   <li key={link.target}>
@@ -264,7 +256,7 @@ export function DocView({
                   </li>
                 ))}
               </ul>
-            </section>
+            </DisclosureCard>
           )}
 
           <div className="docs-aside-foot">

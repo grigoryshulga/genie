@@ -87,6 +87,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | Task status and priority | 11 statuses, priorities P0-P4 | `StatusIcon`, `PriorityIcon`; shape carries the state too. |
 | Avatar | `agent`, `human` × roomy/dense | `Avatar`; shape encodes the kind of actor. |
 | Content | card, sheet, stat, progress, segments, group heading, prose | `Card`, `Sheet`, `Stat`, `Progress`, `Segments`, `GroupHead`, `Prose`. |
+| Disclosure card | expanded/collapsed, hover/focus; persisted by caller-supplied key | `DisclosureCard`; compact rail surface, full-heading keyboard toggle and hidden body. |
 | Feedback | neutral/accent/signal/danger banner, empty, error, skeleton, working arcs | `Banner`, `EmptyState`, `ErrorState`, `Skeleton`, `WorkingArcs`. An empty list uses `EmptyState`; a failed query uses `ErrorState`. |
 | Image preview | thumbnail/inline/full/lightbox | `ImagePreview`; shared surfaces and radii, paired danger foreground for close hover. |
 | Charts | grouped/stacked | `BarChart`; `g-viz-*` series colours, visible legend and textual totals. |
