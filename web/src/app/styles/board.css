@@ -1,50 +1,135 @@
-/* ------------------------------------------------------------ board */
-.board { flex: 1; min-height: 0; display: flex; gap: var(--space-6); align-items: stretch; padding: var(--space-8) var(--space-14) var(--space-10); overflow-x: auto; overflow-y: hidden; }
-.col { width: 268px; flex: none; display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-sunken); border: 1px solid transparent; transition: width 180ms ease, padding 180ms ease, border-color 180ms ease, background-color 180ms ease; }
-.col[data-column="inbox"] { --column-tint: var(--status-inbox); }
-.col[data-column="prep"] { --column-tint: var(--status-refining); }
-.col[data-column="ready"] { --column-tint: var(--status-ready); }
-.col[data-column="in_progress"] { --column-tint: var(--status-in-progress); }
-.col[data-column="review"] { --column-tint: var(--status-review); }
-.col[data-column="approved"] { --column-tint: var(--status-approved); }
-.col[data-column="needs_owner"] { --column-tint: var(--status-needs-owner); }
-.col[data-column="done"] { --column-tint: var(--status-done); }
-.col.owner { background: var(--amber-bg); border-color: var(--amber-line); }
-.col.over { background: var(--accent-soft); border-color: var(--accent); }
-.col.collapsed { width: 48px; padding: var(--space-3); border-color: color-mix(in srgb, var(--column-tint) 24%, transparent); background: color-mix(in srgb, var(--column-tint) 7%, var(--bg-sunken)); }
-.col.collapsed.over { border-color: var(--column-tint); background: color-mix(in srgb, var(--column-tint) 16%, var(--bg-sunken)); }
-.col-head { display: flex; align-items: center; flex: none; width: 100%; height: 28px; gap: var(--space-4); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); text-align: left; font-size: var(--font-size-label); font-weight: 600; }
-.col-head:hover { color: var(--text); background: color-mix(in srgb, var(--column-tint) 7%, transparent); }
-.col-head .col-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.col-head .n { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
-.col-head .col-collapse { flex: none; margin-left: auto; color: var(--muted); transform: rotate(180deg); }
-.col-head:hover .col-collapse { color: var(--column-tint); }
-.col.collapsed .col-compact { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 9px; width: 100%; padding: var(--space-4) 0; border: 0; border-radius: var(--radius); background: color-mix(in srgb, var(--column-tint) 10%, var(--bg-sunken)); color: var(--column-tint); }
-.col.collapsed .col-compact:hover { background: color-mix(in srgb, var(--column-tint) 17%, var(--bg-sunken)); }
-.col-count { display: grid; place-items: center; min-width: 27px; height: 22px; padding: 0 5px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--column-tint) 22%, var(--bg-sunken)); font-size: var(--font-size-meta); font-weight: 600; font-variant-numeric: tabular-nums; }
-.col .v { writing-mode: vertical-rl; white-space: nowrap; font-size: var(--font-size-caption); line-height: 1; font-weight: 600; letter-spacing: 0.01em; }
-.col-compact .col-open { flex: none; color: color-mix(in srgb, var(--column-tint) 72%, var(--muted)); transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { .col { transition: none; } }
-.col .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-4); }
-.col .drop-here { flex: 1; min-height: 80px; border: 1px dashed var(--line-strong); border-radius: 9px; display: grid; place-items: center; color: var(--muted); font-size: var(--font-size-small); }
-/* every card is the same height: the title and the note are cut to two lines, the full text is in the task */
-.card { display: flex; flex-direction: column; gap: var(--space-4); flex: none; width: 100%; height: 158px; overflow: hidden; padding: var(--space-6); border-radius: 10px; border: 1px solid var(--line); background: var(--bg-card); color: var(--text); text-align: left; cursor: grab; }
-.card:hover { border-color: var(--line-strong); }
-.card.sel { border-color: var(--accent); background: var(--accent-soft); }
-.card.owner { border-color: var(--amber-line); }
-.card.dragging { opacity: 0.4; }
-.card .meta { display: flex; align-items: center; gap: 7px; flex: none; height: 16px; font-size: var(--font-size-meta); color: var(--muted); white-space: nowrap; }
-.card .t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: none; height: 36px; font-size: var(--font-size-body); line-height: 18px; }
-.card .note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: none; height: 34px; font-size: var(--font-size-small); line-height: 17px; color: var(--muted); }
-.card .note.q { color: var(--amber); }
-.card .foot { display: flex; align-items: center; gap: var(--space-3); flex: none; height: 22px; margin-top: auto; }
-.card .foot > * { flex-shrink: 0; }
-.card .foot .labels { flex-wrap: nowrap; flex-shrink: 1; min-width: 0; overflow: hidden; }
-.card .foot .more, .card .foot .ac { font-size: var(--font-size-caption); color: var(--muted); white-space: nowrap; }
-.urgent-tag { font-size: 10.5px; font-weight: 600; line-height: 16px; padding: 0 var(--space-3); border-radius: var(--radius-xs); background: var(--amber); color: var(--amber-foreground); }
+/* ------------------------------------------------------------ board (ink and paper) */
+/* «Доска»: a headline that states the project, the character's strip, the filter chips, then the six
+   lanes the owner decided on. Component-local to the board; the shared primitives live in
+   shared/ui/components.css and are not touched here. Every value is a token. */
+
+.g-board-page { flex: 1; min-width: 0; min-height: 0; overflow-x: hidden; background: var(--g-bg); border-right: 1px solid var(--g-border); }
+
+/* ---- hero: the state in one headline, with the arcs cropped by the corner ---- */
+.g-board-hero { position: relative; flex: none; display: grid; gap: var(--g-space-2); padding: var(--g-space-8) var(--g-space-6) var(--g-space-5); border-bottom: 1px solid var(--g-border); overflow: hidden; }
+.g-board-hero > * { position: relative; z-index: 1; }
+/* The arcs sit behind the headline; the blanket rule above must not lift them back into the flow. */
+.g-board-hero > .g-board-arcs { position: absolute; top: -46%; right: -4%; z-index: 0; width: 560px; height: 560px; opacity: 0.9; pointer-events: none; }
+.g-board-arcs path:first-child { fill: var(--g-accent); opacity: 0.12; }
+.g-board-arcs path:nth-child(2) { fill: var(--g-signal); opacity: 0.16; }
+.g-board-arcs path:nth-child(3) { fill: var(--g-accent); opacity: 0.5; }
+.g-board-h1 { max-width: 24ch; color: var(--g-text); }
+.g-board-lead { margin: 0; max-width: 56ch; font-size: var(--g-text-body); line-height: var(--g-leading-prose); color: var(--g-text-2); }
+
+/* ---- the character's strip: what is going on, and the three numbers behind it ---- */
+.g-board-pulse { flex: none; min-width: 0; display: flex; align-items: center; gap: var(--g-space-5); padding: var(--g-space-4) var(--g-space-6); border-bottom: 1px solid var(--g-border); background: var(--g-surface); }
+.g-pulse { display: grid; gap: 2px; min-width: 0; margin: 0; }
+.g-pulse strong { font-size: var(--g-text-ui); font-weight: 700; color: var(--g-text); }
+.g-pulse span { font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.g-pulse-nums { display: flex; align-items: flex-end; gap: var(--g-space-7); min-width: 0; margin: 0 0 0 auto; }
+.g-pulse-nums > div { display: grid; gap: 2px; justify-items: end; }
+.g-pulse-nums dt { font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
+.g-pulse-nums dd { margin: 0; font: 900 var(--g-text-h2)/1 var(--g-font-display); letter-spacing: var(--g-tracking-heading); color: var(--g-text); font-feature-settings: "tnum"; }
+
+/* ---- filter chips: one rail, the same on every width ---- */
+.g-toolbar { flex: none; min-width: 0; display: flex; align-items: center; gap: var(--g-space-2); padding: var(--g-space-3) var(--g-space-6); border-bottom: 1px solid var(--g-border); }
+.g-toolbar-count { font-size: var(--g-text-dense); font-weight: 600; color: var(--g-text-2); white-space: nowrap; }
+/* A chip that carries a native select: the value lives inside the chip. */
+.g-chip-select { position: relative; padding-right: var(--g-space-2); }
+.g-chip-select select { appearance: none; max-width: 190px; padding: 0 var(--g-space-1); border: 0; background: none; color: inherit; font: inherit; outline: 0; cursor: pointer; }
+.g-chip-select select option { background: var(--g-surface); color: var(--g-text); }
+.g-chip-select.on { border-color: var(--g-accent); background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
+.g-chip .k { color: var(--g-text-muted); font-weight: 500; }
+.g-chip[aria-pressed="true"] .k { color: inherit; opacity: 0.8; }
+
+/* ---- the canvas: lanes side by side, each one its own scroller ---- */
+.g-board-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.g-lane-switch { flex: none; gap: var(--g-space-1); align-items: center; padding: var(--g-space-2) var(--g-space-4); border-bottom: 1px solid var(--g-border); overflow-x: auto; scrollbar-width: none; }
+.g-lane-switch-n { font-feature-settings: "tnum"; opacity: 0.7; }
+.g-board { flex: 1; min-height: 0; display: flex; align-items: stretch; gap: var(--g-space-3); padding: var(--g-space-5) var(--g-space-6) var(--g-space-5); overflow: auto hidden; }
+.g-board-state { flex: 1; display: grid; place-items: center; padding: var(--g-space-8) var(--g-space-6); }
+.g-board-skeleton .g-lane { gap: var(--g-space-3); }
+.g-board-skeleton .g-skeleton { flex: none; }
+
+/* ---- a lane: a quiet surface; only the owner's lane glows orange, and only when it has cards ---- */
+.g-lane { flex: 1 1 0; min-width: 176px; display: flex; flex-direction: column; min-height: 0; padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-xl); background: var(--g-surface); transition: border-color var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease); }
+.g-lane-decision.has { border-color: var(--g-signal); background: var(--g-signal-soft); }
+.g-lane-decision.has .g-lane-name { color: var(--g-signal-text); }
+.g-lane-decision.has .g-lane-n { background: var(--g-signal); color: var(--g-on-signal); }
+.g-lane-cancelled { flex: 0 0 132px; min-width: 132px; border-style: dashed; background: transparent; }
+.g-lane.over { border-color: var(--g-accent); background: var(--g-accent-soft); }
+.g-lane.shut { flex: 0 0 132px; min-width: 132px; align-self: flex-start; }
+.g-lane-head { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--g-space-1); min-width: 0; padding: 0 0 var(--g-space-2); }
+.g-lane-toggle { display: flex; align-items: center; gap: var(--g-space-2); width: 100%; padding: var(--g-space-1) var(--g-space-2); border: 0; border-radius: var(--g-radius-md); background: transparent; color: var(--g-text); text-align: left; }
+.g-lane-toggle:hover { background: var(--g-surface-hover); }
+.g-lane-n { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 var(--g-space-1); border-radius: var(--g-radius-pill); background: var(--g-surface-active); color: var(--g-text-2); font: 600 var(--g-text-caption)/1 var(--g-font-sans); font-feature-settings: "tnum"; }
+.g-lane-name { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-family: var(--g-font-display); font-size: var(--g-text-h4); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
+.g-lane-chev { flex: none; margin-left: auto; color: var(--g-text-muted); transition: transform var(--g-duration) var(--g-ease); }
+.g-lane.shut .g-lane-chev { transform: rotate(-90deg); }
+/* A folded lane stacks its count under the name, so short lanes never ellipsize the name. */
+.g-lane.shut .g-lane-toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name chev" "n chev"; align-items: center; row-gap: var(--g-space-1); }
+.g-lane.shut .g-lane-name { grid-area: name; }
+.g-lane.shut .g-lane-n { grid-area: n; justify-self: start; }
+.g-lane.shut .g-lane-chev { grid-area: chev; align-self: start; margin-left: 0; }
+.g-lane-hint { margin: 0; padding: 0 var(--g-space-2); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.g-lane-drops { display: flex; flex-wrap: wrap; gap: var(--g-space-1); padding: var(--g-space-1) var(--g-space-2) 0; }
+.g-lane-drop { display: inline-flex; align-items: center; height: 26px; padding: 0 var(--g-space-3); border: 1.5px dashed var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-bg); color: var(--g-text-2); font: 600 var(--g-text-dense)/1 var(--g-font-sans); }
+.g-lane-drop.over { border-style: solid; border-color: var(--g-accent); background: var(--g-accent); color: var(--g-on-accent); }
+.g-lane-drop.here { opacity: 0.45; }
+.g-lane-cards { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--g-space-3); overflow-y: auto; padding: 0 var(--g-space-1) var(--g-space-1); scrollbar-gutter: stable; }
+.g-lane-empty { margin: var(--g-space-2) 0; padding: var(--g-space-5) var(--g-space-3); border: 1.5px dashed var(--g-border); border-radius: var(--g-radius-lg); text-align: center; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+
+/* ---- a card: a paper sheet on the canvas (ink on a paper theme), never resized by its content ---- */
+.bd-card { position: relative; flex: none; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--g-space-2); padding: var(--g-space-3); border-radius: var(--g-radius-lg); }
+.bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent); }
+.bd-card.dragging { opacity: 0.35; }
+.bd-ghost { width: 272px; box-shadow: var(--g-shadow-overlay); cursor: grabbing; }
+.bd-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--g-space-1); min-width: 0; padding: 0; border: 0; border-radius: var(--g-radius-md); background: transparent; color: inherit; text-align: left; cursor: grab; touch-action: none; }
+.bd-main:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
+.bd-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-1); min-width: 0; min-height: 20px; padding-right: var(--g-space-6); font-size: var(--g-text-caption); color: var(--sh-m); }
+.bd-id { font-family: var(--g-font-mono); font-size: var(--g-text-dense); font-weight: 600; letter-spacing: 0.01em; }
+.bd-working { display: inline-flex; align-items: center; color: var(--sh-accent); }
+.bd-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; overflow-wrap: anywhere; font-size: var(--g-text-ui); font-weight: 700; line-height: 1.35; color: var(--sh-t); }
+.bd-epic-mark { display: inline-flex; align-items: center; gap: 3px; margin-right: 3px; font-size: var(--g-text-caption); font-weight: 700; color: var(--sh-accent); }
+.bd-ask, .bd-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--g-text-caption); line-height: 1.45; color: var(--sh-t2); }
+.bd-ask { padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); background: var(--sh-soft); }
+.bd-ac { display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-caption); color: var(--sh-m); }
+.bd-ac .g-segs { flex: 1; }
+.bd-ac b { font-weight: 600; font-feature-settings: "tnum"; color: var(--sh-t2); }
+.bd-foot { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-1); padding-top: var(--g-space-2); border-top: 1px solid var(--sh-line); font-size: var(--g-text-caption); color: var(--sh-m); }
+.bd-epic { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sh-accent); }
+.bd-more { font-weight: 600; }
+.bd-who { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.bd-card .g-tag.outline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sh-line); color: var(--sh-t2); }
+.bd-card .g-avatar { box-shadow: 0 0 0 2px var(--sh-soft); }
+.bd-answer { justify-self: start; height: 28px; padding: 0 var(--g-space-4); border: 0; border-radius: var(--g-radius-pill); background: var(--g-ink); color: var(--g-paper); font: 700 var(--g-text-dense)/1 var(--g-font-sans); }
+.bd-answer:hover { background: var(--g-n-800); }
+[data-theme="paper"] .bd-answer { background: var(--g-paper); color: var(--g-ink); }
+/* The move menu sits in the card's corner: dragging is not available on a phone or a keyboard. */
+.bd-card > .bd-move { position: absolute; top: var(--g-space-1); right: var(--g-space-1); }
+
+/* ---- the hints bar at the foot of the page ---- */
+.g-hints { flex: none; min-width: 0; display: flex; align-items: center; gap: var(--g-space-5); height: 40px; padding: 0 var(--g-space-6); border-top: 1px solid var(--g-border); font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; }
+.g-hints .g-kbd { height: 20px; min-width: 20px; font-size: 10.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .g-lane, .g-lane-chev, .bd-card { transition: none; }
+}
+
+@media (max-width: 900px) {
+  .g-board-hero { gap: var(--g-space-1); padding: var(--g-space-5) var(--g-space-4) var(--g-space-4); }
+  .g-board-hero > .g-board-arcs { top: -60%; right: -34%; width: 340px; height: 340px; }
+  .g-board-pulse { flex-wrap: wrap; gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-4); }
+  .g-pulse-nums { width: 100%; margin-left: 0; justify-content: space-between; gap: var(--g-space-3); }
+  .g-pulse-nums > div { justify-items: start; }
+  .g-pulse-nums dd { font-size: var(--g-text-h3); }
+  .g-toolbar { padding: var(--g-space-2) var(--g-space-4); overflow-x: auto; scrollbar-width: none; }
+  .g-board { gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-4) var(--g-space-4); scroll-snap-type: x mandatory; }
+  .g-board > .g-lane { flex: 0 0 calc(100% - var(--g-space-6)); min-width: 0; scroll-snap-align: start; }
+  /* Folded lanes keep their width: they are a way in, not a screen of their own. */
+  .g-board > .g-lane.shut, .g-board > .g-lane-cancelled { flex: 0 0 auto; min-width: 150px; }
+  .g-board-state { padding: var(--g-space-5) var(--g-space-4); }
+  .g-hints { gap: var(--g-space-4); padding: 0 var(--g-space-4); }
+  .g-hints > span:nth-child(2) { display: none; }
+}
+
+/* Form fields are still styled by the legacy shell for the dialogs that have not migrated yet; nothing below belongs to the board. */
 .field { display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--font-size-label); color: var(--text-2); }
 .field select, .field input, .field textarea { height: var(--control-input); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-panel); color: var(--text); padding: 0 var(--space-6); font-size: var(--font-size-body); outline: 0; }
 .field textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; line-height: 1.5; }
 .field select:focus, .field input:focus, .field textarea:focus { border-color: var(--accent); }
-.member-line { display: flex; align-items: center; gap: 9px; font-size: var(--font-size-label); }
-.member-line .st { margin-left: auto; color: var(--muted); }

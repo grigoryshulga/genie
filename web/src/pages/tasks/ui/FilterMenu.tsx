@@ -2,16 +2,16 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "re
 import { anchorPopover } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 
-/** A filter button of the task list with its options in a popover underneath. */
+/** A filter chip of the task list with its options in a popover underneath (a bottom sheet on a phone). */
 export function FilterMenu({ label, value, active, children }: { label: string; value: string; active: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
-  // The filter toolbar scrolls sideways (`.filters` is overflow-x: auto), which
+  // The filter toolbar scrolls sideways (`.g-toolbar` is overflow-x: auto), which
   // would clip an absolutely positioned popover. The popover is `position: fixed`
-  // instead, so it leaves that scroll box; its place under the button is set here
+  // instead, so it leaves that scroll box; its place under the chip is set here
   // and kept up to date while the window or the toolbar scrolls. On narrow
   // screens the stylesheet turns it into a bottom sheet and drops these values.
   useLayoutEffect(() => {
@@ -54,13 +54,15 @@ export function FilterMenu({ label, value, active, children }: { label: string; 
       <button
         type="button"
         ref={btnRef}
-        className={`fbtn${active ? " on" : ""}${open ? " open" : ""}`}
+        className="g-chip fchip"
         aria-expanded={open}
+        aria-pressed={active}
+        aria-haspopup="dialog"
         onClick={() => setOpen(!open)}
       >
         <span className="k">{label}</span>
-        {value}
-        <Icon.chevron size={10} style={{ transform: "rotate(90deg)" }} />
+        <span className="v">{value}</span>
+        <Icon.chevron size={10} className="chev" />
       </button>
       {open && (
         <div className="fpop" ref={popRef} role="dialog" aria-label={label}>
@@ -77,7 +79,7 @@ export function FilterOption({ kind, checked, onChange, children, hint }: { kind
     <label className="fopt">
       <input type={kind} checked={checked} onChange={onChange} />
       <span className="grow">{children}</span>
-      {hint !== undefined && <span className="hint">{hint}</span>}
+      {hint !== undefined && hint !== "" && <span className="hint">{hint}</span>}
     </label>
   );
 }
