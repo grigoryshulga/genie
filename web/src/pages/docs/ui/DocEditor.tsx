@@ -23,9 +23,10 @@ import {
   useSaveDoc,
 } from "@/entities/doc";
 import { DocContentEditor } from "./DocContentEditor.tsx";
+import "./editor.css";
 import { DiagIcon, StaleIcon } from "@/entities/doc";
 import { plural } from "@/shared/lib";
-import { Button, Icon, IconButton, LoadingState } from "@/shared/ui";
+import { Button, Dialog, DisclosureCard, Icon, IconButton, LoadingState } from "@/shared/ui";
 
 function countChanges(before: string, after: string): number {
   const a = before.replace(/\r/g, "").split("\n");
@@ -36,7 +37,7 @@ function countChanges(before: string, after: string): number {
 }
 
 /** Minimal chip list editor for `tags`, `paths` and `related`. */
-function Chips({ value, onChange, placeholder, mono }: { value: string[]; onChange: (next: string[]) => void; placeholder: string; mono?: boolean }) {
+function Chips({ value, onChange, placeholder, mono, label }: { value: string[]; onChange: (next: string[]) => void; placeholder: string; mono?: boolean; label: string }) {
   const [draft, setDraft] = useState("");
   const add = (raw: string) => {
     const item = raw.trim().replace(/,$/, "");
@@ -55,6 +56,7 @@ function Chips({ value, onChange, placeholder, mono }: { value: string[]; onChan
         </span>
       ))}
       <input
+        aria-label={label}
         value={draft}
         placeholder={value.length ? "" : placeholder}
         onChange={(e) => setDraft(e.target.value)}
@@ -73,6 +75,14 @@ function Chips({ value, onChange, placeholder, mono }: { value: string[]; onChan
 }
 
 export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pages: { path: string; title: string }[]; onClose: () => void; onSaved: (path: string) => void }) {
+  const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 900px)");
+    const change = () => setNarrow(query.matches);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
   const pageQ = useDocPage(path);
   const save = useSaveDoc();
   const [fields, setFields] = useState<DocFields | null>(null);
@@ -236,8 +246,70 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
 
   const update = <K extends keyof DocFields>(key: K, value: DocFields[K]) => setFields({ ...fields, [key]: value });
 
+  const properties = (
+    <div className="doc-editor-properties">
+      <DisclosureCard title="Статья" storageKey="genie.docs.editor.article">
+        <div className="doc-editor-fields">
+        <label className="doc-field">
+          <span>Название статьи</span>
+          <input className={`g-input${errorFor("title") ? " bad" : ""}`} value={fields.title} onChange={(e) => update("title", e.target.value)} />
+          {errorFor("title") && <em className="err">{errorFor("title")}</em>}
+        </label>
+        <label className="doc-field">
+          <span>Тип</span>
+          <select aria-label="Тип" className="g-select" value={fields.type} onChange={(e) => update("type", e.target.value as DocType | "")}>
+            <option value="">не указан</option>
+            {DOC_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {DOC_TYPE_NAME[type]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="doc-field">
+          <span>Статус</span>
+          <select aria-label="Статус" className="g-select" value={fields.status} onChange={(e) => update("status", e.target.value as DocStatus | "")}>
+            <option value="">не указан</option>
+            {DOC_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {DOC_STATUS_NAME[status]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="doc-field">
+          <span>Проверена</span>
+          <input
+            className={`g-input${errorFor("verified") ? " bad" : ""}`}
+            placeholder="ГГГГ-ММ-ДД"
+            value={fields.verified}
+            onChange={(e) => update("verified", e.target.value)}
+          />
+          {errorFor("verified") && <em className="err">{errorFor("verified")}</em>}
+        </label>
+
+        </div>
+      </DisclosureCard>
+      <DisclosureCard title="Теги" storageKey="genie.docs.editor.tags">
+        <Chips label="Теги" value={fields.tags} onChange={(next) => update("tags", next)} placeholder="+ тег" />
+      </DisclosureCard>
+      <DisclosureCard title="Связи" storageKey="genie.docs.editor.links">
+        <div className="doc-editor-fields">
+        <div className="doc-field">
+          <span>Код, который описывает статья</span>
+          <Chips label="Код, который описывает статья" mono value={fields.paths} onChange={(next) => update("paths", next)} placeholder="+ glob" />
+        </div>
+        <div className="doc-field">
+          <span>Связанные задачи</span>
+          <Chips label="Связанные задачи" mono value={fields.related} onChange={(next) => update("related", next)} placeholder="+ id" />
+        </div>
+        </div>
+      </DisclosureCard>
+    </div>
+  );
+
   return (
-    <div className="docs-editor" onKeyDown={onKeyDown}>
+    <div className="docs-editor doc-editor-fullscreen" onKeyDown={onKeyDown}>
       <header className="docs-topbar">
         <IconButton label="Вернуться к странице" onClick={onClose}>
           <Icon.back size={15} />
@@ -254,6 +326,7 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
             Сохранено
           </span>
         )}
+        {narrow && <Button sm aria-expanded={propertiesOpen} onClick={() => setPropertiesOpen(true)}>Свойства статьи</Button>}
         <span className="grow" />
         {externallyChanged && (
           <span className="doc-chip-state warn" title="Файл на диске изменился после открытия редактора">
@@ -334,60 +407,14 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
         </div>
       )}
 
-      <div className="doc-form">
-        <label className="doc-field span6">
-          <span>Название статьи</span>
-          <input className={`g-input${errorFor("title") ? " bad" : ""}`} value={fields.title} onChange={(e) => update("title", e.target.value)} />
-          {errorFor("title") && <em className="err">{errorFor("title")}</em>}
-        </label>
-        <label className="doc-field span2">
-          <span>Тип</span>
-          <select className="g-select" value={fields.type} onChange={(e) => update("type", e.target.value as DocType | "")}>
-            <option value="">не указан</option>
-            {DOC_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {DOC_TYPE_NAME[type]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="doc-field span2">
-          <span>Статус</span>
-          <select className="g-select" value={fields.status} onChange={(e) => update("status", e.target.value as DocStatus | "")}>
-            <option value="">не указан</option>
-            {DOC_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {DOC_STATUS_NAME[status]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="doc-field span2">
-          <span>Проверена</span>
-          <input
-            className={`g-input${errorFor("verified") ? " bad" : ""}`}
-            placeholder="ГГГГ-ММ-ДД"
-            value={fields.verified}
-            onChange={(e) => update("verified", e.target.value)}
-          />
-          {errorFor("verified") && <em className="err">{errorFor("verified")}</em>}
-        </label>
-
-        <div className="doc-field span6">
-          <span>Теги</span>
-          <Chips value={fields.tags} onChange={(next) => update("tags", next)} placeholder="+ тег" />
+      <div className="doc-editor-workspace">
+        <div className="doc-editor-canvas">
+          <DocContentEditor value={body} onChange={setBody} title={fields.title || title} />
         </div>
-        <div className="doc-field span4">
-          <span>Код, который описывает статья</span>
-          <Chips mono value={fields.paths} onChange={(next) => update("paths", next)} placeholder="+ glob" />
-        </div>
-        <div className="doc-field span2">
-          <span>Связанные задачи</span>
-          <Chips mono value={fields.related} onChange={(next) => update("related", next)} placeholder="+ id" />
-        </div>
+        {!narrow && <aside className="doc-editor-sidebar" aria-label="Свойства статьи">{properties}</aside>}
       </div>
+      {narrow && propertiesOpen && <Dialog title="Свойства статьи" sheet onClose={() => setPropertiesOpen(false)}>{properties}</Dialog>}
 
-      <DocContentEditor value={body} onChange={setBody} title={fields.title || title} />
     </div>
   );
 }

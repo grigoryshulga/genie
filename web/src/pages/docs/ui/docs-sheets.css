@@ -4,3 +4,4 @@
 @import "../../../entities/doc/ui/docs.css";
 @import "../../../shared/ui/search-and-docs.css";
 @import "../../../shared/ui/content.css";
+@import "./reader.css";

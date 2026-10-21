@@ -62,8 +62,6 @@
 
 .doc-article-badges { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); margin-bottom: var(--g-space-3); }
 .doc-article-badges:empty { display: none; }
-.doc-article-footer { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); margin-top: var(--g-space-7); padding-top: var(--g-space-4); border-top: 1px solid var(--g-border); font-size: var(--g-text-dense); }
-.doc-article-footer > span:first-child { font-size: var(--g-text-eyebrow); font-weight: var(--g-weight-semibold); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
 
 @media (prefers-reduced-motion: reduce) {
   .doc-section-card { transition: none; }
