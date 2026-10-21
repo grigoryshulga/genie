@@ -82,6 +82,9 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 CREATE TABLE IF NOT EXISTS projects (
   slug TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  icon BLOB,
+  icon_type TEXT,
+  icon_at TEXT,
   tracker_dir TEXT NOT NULL,
   repo TEXT,
   space TEXT NOT NULL,
@@ -442,7 +445,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 9;
+pub const SERVER_SCHEMA_VERSION: i64 = 10;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

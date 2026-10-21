@@ -28,19 +28,22 @@ fn project_icons_persist_are_isolated_and_can_be_cleared() {
 }
 
 #[test]
-fn schema_8_projects_gain_optional_icons_without_changing_their_data() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("server.db");
-    {
+fn older_projects_gain_optional_icons_without_changing_their_data() {
+    for old_version in [8, 9] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.db");
+        {
+            let db = ServerDb::open(&path).unwrap();
+            db.create_project("shop", "Shop", "tracker", None, None).unwrap();
+            db.conn().execute_batch("ALTER TABLE projects DROP COLUMN icon; ALTER TABLE projects DROP COLUMN icon_type; ALTER TABLE projects DROP COLUMN icon_at;").unwrap();
+            db.conn().execute("UPDATE meta SET value = ?1 WHERE key = 'schema'", [old_version.to_string()]).unwrap();
+        }
         let db = ServerDb::open(&path).unwrap();
-        db.create_project("shop", "Shop", "tracker", None, None).unwrap();
-        db.conn().execute_batch("ALTER TABLE projects DROP COLUMN icon; ALTER TABLE projects DROP COLUMN icon_type; ALTER TABLE projects DROP COLUMN icon_at; UPDATE meta SET value = '8' WHERE key = 'schema';").unwrap();
+        let project = db.project("shop").unwrap();
+        assert_eq!(project.name, "Shop");
+        assert!(project.icon.is_none());
+        let version: String = db.conn().query_row("SELECT value FROM meta WHERE key = 'schema'", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, SERVER_SCHEMA_VERSION.to_string());
+        assert!(db.set_project_icon("shop", b"\x89PNG\r\n\x1a\n icon").unwrap().icon.is_some());
     }
-    let db = ServerDb::open(&path).unwrap();
-    let project = db.project("shop").unwrap();
-    assert_eq!(project.name, "Shop");
-    assert!(project.icon.is_none());
-    let version: String = db.conn().query_row("SELECT value FROM meta WHERE key = 'schema'", [], |r| r.get(0)).unwrap();
-    assert_eq!(version, SERVER_SCHEMA_VERSION.to_string());
-    assert!(db.set_project_icon("shop", b"\x89PNG\r\n\x1a\n icon").unwrap().icon.is_some());
 }
