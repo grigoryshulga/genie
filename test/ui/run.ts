@@ -1,8 +1,8 @@
 // Runs the browser tests against a real genie server.
 //
 // The server runs on the host from a built binary, on a disposable data directory seeded through
-// the CLI. Two servers start from copies of the same seed: the screenshots get data no flow has
-// changed, and a failed screenshot does not hold back the flows. Playwright runs inside the
+// the CLI. Two servers start from the same seed written twice into two directories: the screenshots
+// get data no flow has changed, and a failed screenshot does not hold back the flows. Playwright runs inside the
 // official image pinned to the installed @playwright/test version, so screenshots render with the
 // same fonts and browser locally and in CI. The container shares the host network and reaches the
 // servers on 127.0.0.1.
@@ -13,7 +13,7 @@
 // GENIE_BIN selects the server binary (default: target/debug/genie); web/dist must be built.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -37,7 +37,6 @@ const version = JSON.parse(readFileSync(join(root, "node_modules/@playwright/tes
 const image = `mcr.microsoft.com/playwright:v${version}-noble`;
 
 const scratch = mkdtempSync(join(tmpdir(), "genie-ui-"));
-const data = join(scratch, "seed");
 mkdirSync(results, { recursive: true });
 const servers: ChildProcess[] = [];
 
@@ -50,7 +49,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => pr
 
 // The command line acts as the machine's operator, named after $USER: the owner's login keeps the
 // task history the same on every machine.
-function genie(args: string[], input?: string, dataDir = data): string {
+function genie(args: string[], input: string | undefined, dataDir: string): string {
   const env = { ...process.env, USER: OWNER.login };
   return execFileSync(bin, ["--data", dataDir, ...args], { input, env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
 }
@@ -78,25 +77,31 @@ function seedTask(dataDir: string, t: SeedTask, ids: string[]): string {
   return id;
 }
 
-function seed() {
-  genie(["user", "add", OWNER.login, "--name", OWNER.name, "--admin", "--password-stdin"], `${OWNER.password}\n`);
-  genie(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix]);
-  genie(["member", PROJECT.id, OWNER.login, "owner"]);
-  genie(["--project", PROJECT.id, "docs", "write", FLOW_DOC.path, "--text", FLOW_DOC.text]);
+// The seed the two servers share, plus the tasks only one of them may have. Each server gets its own
+// freshly written copy: a data directory records its project's paths absolutely, so a copied directory
+// would keep writing into the one it was copied from, and a task made for the flows server would turn
+// up in the screenshots and in their committed baselines.
+function seed(dataDir: string, extra: SeedTask[] = []) {
+  genie(["user", "add", OWNER.login, "--name", OWNER.name, "--admin", "--password-stdin"], `${OWNER.password}\n`, dataDir);
+  genie(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix], undefined, dataDir);
+  genie(["member", PROJECT.id, OWNER.login, "owner"], undefined, dataDir);
+  genie(["--project", PROJECT.id, "docs", "write", FLOW_DOC.path, "--text", FLOW_DOC.text], undefined, dataDir);
   if (capture) {
     for (const doc of CAPTURE_DOCS) {
-      if (!doc.raw) genie(["--project", PROJECT.id, "docs", "write", doc.path, "--text", doc.text]);
+      if (!doc.raw) genie(["--project", PROJECT.id, "docs", "write", doc.path, "--text", doc.text], undefined, dataDir);
       else {
-        mkdirSync(dirname(join(data, "vault", doc.path)), { recursive: true });
-        writeFileSync(join(data, "vault", doc.path), doc.text);
+        mkdirSync(dirname(join(dataDir, "vault", doc.path)), { recursive: true });
+        writeFileSync(join(dataDir, "vault", doc.path), doc.text);
       }
     }
   }
   const ids: string[] = [];
-  for (const t of capture ? [...SEED_TASKS, ...CAPTURE_TASKS] : SEED_TASKS) seedTask(data, t, ids);
+  for (const t of [...SEED_TASKS, ...extra]) seedTask(dataDir, t, ids);
 }
 
-// A port the kernel just handed out is free unless something grabs it in between.
+// A port the kernel just handed out is free unless something grabs it in between. Two probes listen at
+// the same time before either server starts, so the kernel cannot hand both servers the same port; a
+// shared port would silently point both test projects at whichever server bound it first.
 function freePort(): Promise<number> {
   return new Promise((done, reject) => {
     const probe = createServer();
@@ -108,14 +113,12 @@ function freePort(): Promise<number> {
   });
 }
 
-// A server on its own copy of the seeded data, logging to test-results/ui-server-<name>.log.
-// `prepare` runs on that copy between the copy and the start, so a server can get data its twin must
-// not have: the visual baselines are compared against the files committed for the shared seed.
-async function start(name: string, prepare?: (dir: string) => void): Promise<string> {
+// A server on its own freshly seeded data, logging to test-results/ui-server-<name>.log. `extra` is what
+// only this server may see.
+async function start(name: string, port: number, extra: SeedTask[]): Promise<string> {
   const dir = join(scratch, name);
-  cpSync(data, dir, { recursive: true });
-  prepare?.(dir);
-  const port = await freePort();
+  mkdirSync(dir, { recursive: true });
+  seed(dir, extra);
   const url = `http://127.0.0.1:${port}`;
   const log = createWriteStream(join(results, `ui-server-${name}.log`));
   const server = spawn(bin, ["--data", dir, "serve", "--port", String(port), "--web", web, "--no-agents"], { stdio: ["ignore", "pipe", "pipe"] });
@@ -142,16 +145,13 @@ async function waitHealthy(name: string, server: ChildProcess, url: string) {
   fail(`the server at ${url} did not become healthy in 30 s`);
 }
 
-seed();
 const seededAt = new Date().toISOString();
+const [visualPort, flowsPort] = await Promise.all([freePort(), freePort()]);
 const [visualUrl, flowsUrl] = await Promise.all([
-  start("visual"),
-  // The flows copy alone carries the decision the keyboard walkthrough answers (FLOW_TASKS): adding it
-  // before the copy would put a waiting task on /tasks and /board and change the committed screenshots.
-  start("flows", (dir) => {
-    const ids: string[] = [];
-    for (const t of FLOW_TASKS) seedTask(dir, t, ids);
-  }),
+  start("visual", visualPort, capture ? CAPTURE_TASKS : []),
+  // The flows server alone carries the decision the keyboard walkthrough answers (FLOW_TASKS): on the
+  // screenshots' server it would put a waiting task on /tasks and /board and change their baselines.
+  start("flows", flowsPort, FLOW_TASKS),
 ]);
 
 const uid = process.getuid?.() ?? 1000;
