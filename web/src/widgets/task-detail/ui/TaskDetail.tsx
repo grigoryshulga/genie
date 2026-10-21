@@ -2,7 +2,7 @@ import { TaskIntelligence } from "./TaskIntelligence.tsx";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
-import { Avatars } from "@/entities/member";
+import { Avatars, displayName, ROLE_TITLE_RU } from "@/entities/member";
 import type { DocsImpact, DocsImpactReason } from "@/shared/api";
 import {
   ArtifactThumb,
@@ -28,10 +28,10 @@ import {
   useTask,
   useTasks,
 } from "@/entities/task";
-import { useAgentConfig } from "@/entities/agent-config";
+import { liveTeam, useAgentConfig } from "@/entities/agent-config";
 import { PersonAvatar, responsibleChoices, useMembers } from "@/entities/project";
 import { canWriteProject, useSession } from "@/entities/session";
-import type { Team } from "@/entities/team";
+import { type Team, memberActivity, PartyAvatar, useTeam } from "@/entities/team";
 import { SpendText, useTaskUsage } from "@/entities/usage";
 import { IDEA_TEMPLATE } from "@/features/shape-idea";
 import { OwnerDecision } from "@/features/owner-decision";
@@ -207,11 +207,32 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     </>
   );
 
+  const crumbs = (
+    <span className="crumbs">
+      {page && (
+        <>
+          <Link to="/tasks" className="d-only">
+            Задачи
+          </Link>
+          <span className="d-only"> / </span>
+        </>
+      )}
+      {t.parent && (
+        <>
+          {epic ? <Link to={`/epic/${encodeURIComponent(t.parent)}`}>{t.parent}</Link> : t.parent}
+          {" / "}
+        </>
+      )}
+      <span className="here">{t.id}</span>
+    </span>
+  );
+
+
   // The headline: the id, the status as text with its shape, and the title under it.
   const headline = (
     <div className="td-headline">
       <div className="td-meta">
-        <span className="mono td-id">{t.id}</span>
+        {page ? crumbs : <span className="mono td-id">{t.id}</span>}
         <span className="g-status">
           <StatusIcon status={t.status} size={16} />
           {STATUS_NAME[t.status]}
@@ -469,25 +490,6 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     </>
   );
 
-  const crumbs = (
-    <span className="crumbs">
-      {page && (
-        <>
-          <Link to="/tasks" className="d-only">
-            Задачи
-          </Link>
-          <span className="d-only"> / </span>
-        </>
-      )}
-      {t.parent && (
-        <>
-          {epic ? <Link to={`/epic/${encodeURIComponent(t.parent)}`}>{t.parent}</Link> : t.parent}
-          {" / "}
-        </>
-      )}
-      <span className="here">{t.id}</span>
-    </span>
-  );
 
   if (!page)
     return (
@@ -496,21 +498,20 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <IconButton label="Назад" className="m-only" onClick={onClose}>
             <Icon.back />
           </IconButton>
-          {crumbs}
-          <FollowTask task={t.id} />
-          <span className="grow" />
-          <Link className="g-btn secondary sm" to={pageLink}>
-            <Icon.external size={12} />
-            Открыть страницу
-          </Link>
-          <IconButton label="Закрыть" className="d-only" onClick={onClose}>
-            <Icon.close />
-          </IconButton>
+          {headline}
+          <div className="td-header-actions">
+            <FollowTask task={t.id} />
+            <Link className="g-icon-btn" to={pageLink} aria-label="Открыть страницу" title="Открыть страницу">
+              <Icon.external size={16} />
+            </Link>
+            <IconButton label="Закрыть" className="d-only" onClick={onClose}>
+              <Icon.close />
+            </IconButton>
+          </div>
         </header>
 
         <div className="detail-body">
           <div className="detail-head">
-            {headline}
             {states}
             <details className="td-props" open={!narrow}>
               <summary>Свойства</summary>
@@ -537,36 +538,23 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
 
   return (
     <main className="main task-page" aria-label={`Задача ${t.id}`}>
-      <header className="td-bar">
-        <Link to="/tasks" className="g-icon-btn m-only" aria-label="Назад" title="Назад">
+      <header className="td-bar tp-page-header">
+        <Link to={tab === "team" ? pageLink : "/tasks"} className={`g-icon-btn ${tab === "team" ? "tp-back" : "m-only"}`} aria-label={tab === "team" ? "К описанию задачи" : "Назад"} title={tab === "team" ? "К описанию задачи" : "Назад"}>
           <Icon.back />
         </Link>
-        {crumbs}
-        <FollowTask task={t.id} />
-        <span className="grow" />
-        {team?.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] && (
-          // An idea being shaped: back to the conversation with its planner.
-          <Link to={teamLink(team)} className="td-link">
-            Разговор о плане
-          </Link>
-        )}
-        {canDelete && (
-          <IconButton label="Удалить задачу" onClick={() => setDeleting(true)}>
-            <Icon.trash />
-          </IconButton>
-        )}
-      </header>
-
-      <div className="tp-head">
-        <div className="tp-title-row">
-          {tab === "team" && !isEpic && (
-            <Link className="g-icon-btn tp-back" to={pageLink} aria-label="К описанию задачи" title="К описанию задачи">
-              <Icon.back />
-            </Link>
+        {headline}
+        <div className="td-header-actions">
+          <FollowTask task={t.id} />
+          {team?.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] && (
+            <Link to={teamLink(team)} className="td-link">Разговор о плане</Link>
           )}
-          {headline}
+          {canDelete && (
+            <IconButton label="Удалить задачу" onClick={() => setDeleting(true)}>
+              <Icon.trash />
+            </IconButton>
+          )}
         </div>
-      </div>
+      </header>
 
       {tab === "team" && !isEpic ? (
         (teamPane ?? (
@@ -681,7 +669,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             <RailCard id="properties" title="Свойства" className="tp-properties">
               {props}
             </RailCard>
-            <TeamCard task={t.id} team={team} canSpawn={canSpawn && writable} onSpawn={() => setSpawning(true)} />
+            <TeamCard task={t.id} status={t.status} team={team} canSpawn={canSpawn && writable} onSpawn={() => setSpawning(true)} />
             {epic && (
               <RailCard id="epic" title="Эпик">
                 <EpicBox id={epic.id} onArtifact={viewer.show} />
@@ -742,17 +730,32 @@ function RailCard({ id, title, className, children }: { id: string; title: strin
   );
 }
 
-function TeamCard({ task, team, canSpawn, onSpawn }: { task: string; team?: Team; canSpawn: boolean; onSpawn: () => void }) {
+function TeamCard({ task, status, team, canSpawn, onSpawn }: { task: string; status: Status; team?: Team; canSpawn: boolean; onSpawn: () => void }) {
+  const detail = useTeam(team?.id).data;
+  const current = detail ?? team;
+  const spec = detail?.spec;
+  const active = current?.state === "active";
+  const live = current && spec ? liveTeam(spec, current.members, status, active, displayName).live : {};
   return (
     <RailCard id="team" title="Команда" className="tp-team-card">
-      {team?.members.length ? (
+      {current?.members.length ? (
         <>
-          <div className="tp-team-members">
-            <Avatars members={team.members} max={6} />
-            <span>{team.members.length} {plural(team.members.length, "участник", "участника", "участников")}</span>
-          </div>
-          <div className="tp-team-names">
-            {team.members.map((member) => <span key={member.name}>{member.name}</span>)}
+          <div className="tp-team-roster" aria-label="Участники команды">
+            {current.members.map((member) => {
+              const key = spec?.members.find((entry) => entry.name === member.name)?.key ?? member.name;
+              const activity = memberActivity(current, member, live[key], active ? detail?.sessions?.[member.name] : undefined);
+              const queued = detail?.pending[member.name] ?? 0;
+              return (
+                <Link className={`tp-member ${activity.state}`} key={member.name} to={`/team/${encodeURIComponent(current.id)}/${encodeURIComponent(member.name)}`}>
+                  <PartyAvatar role={member.role} name={member.name} activity={active ? member.activity : undefined} state={member.state} />
+                  <span className="tp-member-info">
+                    <span className="tp-member-name"><b>{displayName(member.name)}</b><span>{ROLE_TITLE_RU[member.role] ?? member.role}</span></span>
+                    <span className="tp-member-state">{activity.text}{queued > 0 && <span title="Писем ждёт доставки"> · ✉ {queued}</span>}</span>
+                  </span>
+                  <span className="tp-member-when">{timeAgo(member.activityAt ?? member.statusAt)}</span>
+                </Link>
+              );
+            })}
           </div>
           <Link className="g-btn secondary sm" to={`/task/${encodeURIComponent(task)}/team`}>
             Перейти к команде <Icon.chevron size={12} />

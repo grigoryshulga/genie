@@ -4,6 +4,17 @@ export type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 export const stroke = (size = 14, p: IconProps) => ({ width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true, ...p });
 
 export const Icon = {
+  eye: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)}>
+      <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8Z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
+  ),
+  eyeOff: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)}>
+      <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8ZM2 2l12 12" />
+    </svg>
+  ),
   restart: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)}>
       <path d="M13 8a5 5 0 1 1-1.6-3.7" />

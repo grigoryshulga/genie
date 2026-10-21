@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import type { TaskWatch } from "@/shared/api/generated/TaskWatch.ts";
-import { Button, useToast } from "@/shared/ui";
+import { Icon, IconButton, useToast } from "@/shared/ui";
+import "./follow-task.css";
 
 export function FollowTask({ task }: { task: string }) {
   const session = useSession().data;
@@ -22,21 +23,17 @@ export function FollowTask({ task }: { task: string }) {
     onError: (e) => toast(e.message, "error"),
   });
   if (session?.mode === "local") return null;
-  if (state.data?.author)
-    return (
-      <span className="muted" title="Вы автор: уведомления включены автоматически">
-        Уведомления включены
-      </span>
-    );
+  const watching = state.data?.watching ?? false;
   return (
-    <Button
-      sm
-      aria-pressed={state.data?.watching ?? false}
-      disabled={!state.data || mutation.isPending}
-      title={state.error?.message ?? "Новые комментарии и смена статуса"}
+    <IconButton
+      label="Следить"
+      aria-pressed={watching}
+      className={watching ? "task-follow on" : "task-follow"}
+      disabled={!state.data || state.data.author || mutation.isPending}
+      title={state.error?.message ?? (state.data?.author ? "Вы автор: уведомления включены автоматически" : watching ? "Не следить за задачей" : "Следить за задачей")}
       onClick={() => mutation.mutate()}
     >
-      {state.data?.watching ? "Слежу за задачей" : "Следить"}
-    </Button>
+      {watching ? <Icon.eye /> : <Icon.eyeOff />}
+    </IconButton>
   );
 }

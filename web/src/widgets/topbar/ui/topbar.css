@@ -21,3 +21,5 @@
   .g-topbar-project-switcher > .g-popover-host { width: 100%; }
   .g-topbar-project-switcher .g-topbar-project { width: 100%; }
 }
+
+.g-topbar .g-topbar-create { color: var(--g-accent-text); flex: none; }

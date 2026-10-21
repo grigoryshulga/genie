@@ -91,8 +91,10 @@ for (const [route, what] of [
     await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
     await stubTeam(page);
     await page.goto(route);
-    const agent = page.locator(".avatars .av.agent").first();
-    const human = page.locator(".avatars .av.human").first();
+    // The task rail now uses the same kit avatars as the detailed team roster.
+    const roster = route === "/task/DM-2";
+    const agent = page.locator(roster ? ".tp-team-roster .g-avatar.agent" : ".avatars .av.agent").first();
+    const human = page.locator(roster ? ".tp-team-roster .g-avatar.human" : ".avatars .av.human").first();
     await expect(agent).toBeVisible();
     await expect(human).toBeVisible();
     await expect(agent).toHaveAttribute("aria-label", /Бендер/);
@@ -100,7 +102,10 @@ for (const [route, what] of [
     const a = await agent.evaluate(shape);
     const h = await human.evaluate(shape);
     // A quarter of the box is a rounded square at any size; a circle is half of it.
-    expect(a.percent).toBeCloseTo(25, 0);
+    if (roster) {
+      expect(a.percent).toBeGreaterThan(20);
+      expect(a.percent).toBeLessThan(40);
+    } else expect(a.percent).toBeCloseTo(25, 0);
     expect(h.percent).toBeCloseTo(50, 0);
     expect(Math.abs(a.percent - h.percent)).toBeGreaterThan(15);
     for (const avatar of [agent, human]) {

@@ -4,7 +4,7 @@ import { useSession } from "@/entities/session";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
 import { useOnline } from "@/shared/api";
-import { plural, readPref, writePref } from "@/shared/lib";
+import { readPref, writePref } from "@/shared/lib";
 import { Banner, Button, Character, Chip, EmptyState, ErrorState, Icon, Kbd, Skeleton, characterState, cx } from "@/shared/ui";
 import { Board } from "@/widgets/board";
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
@@ -80,6 +80,10 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
         </p>
         <dl className="g-pulse-nums">
           <div>
+            <dt>Задач</dt>
+            <dd>{openCount}</dd>
+          </div>
+          <div>
             <dt>Ждут решения</dt>
             <dd>{pulse.waiting}</dd>
           </div>
@@ -120,13 +124,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
             ))}
           </select>
         </label>
-        <Chip pressed={showDone} onClick={() => setDoneVisibility(!showDone)}>
-          Готово
-        </Chip>
         <span className="grow" />
-        <span className="g-toolbar-count g-num">
-          {openCount} {plural(openCount, "задача", "задачи", "задач")}
-        </span>
         <ContextSearch inputRef={searchRef} className="mobile-context-search" />
       </div>
 

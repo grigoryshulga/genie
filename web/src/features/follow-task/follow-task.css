@@ -1,0 +1,3 @@
+/* An automatic author subscription stays visibly on even though the server owns that choice. */
+.task-follow[aria-pressed="true"] { color: var(--g-accent-text); background: var(--g-accent-soft); }
+.task-follow:disabled { opacity: 1; }

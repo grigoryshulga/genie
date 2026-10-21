@@ -4,7 +4,7 @@ import { type LiveState, liveTeam, MAIL_TITLE, useAgentConfig } from "@/entities
 import { displayName, ROLE_TITLE_RU } from "@/entities/member";
 import { RemoveMemberButton, RestartMemberButton, TeamActions } from "@/features/manage-team";
 import { StageBars, STAGES, stageOf, STATUS_NAME } from "@/entities/task";
-import { type LiveSession, type Mail, type MailLevel, MessageText, PartyAvatar, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
+import { type LiveSession, type Mail, type MailLevel, MessageText, memberActivity, PartyAvatar, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
 import { useOnline } from "@/shared/api";
 import { clock, dayLabel, plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
 import { Button, Character, characterState, ErrorState, Icon, IconButton, Select, Segmented, Sheet, Skeleton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
@@ -399,22 +399,7 @@ function TeamSkeleton() {
 function MemberCard({ team, member: m, live, session: s }: { team: TeamDetail; member: TeamDetail["members"][number]; live?: { state: LiveState; note?: string }; session?: LiveSession }) {
   useTick();
   const active = team.state === "active";
-  const paused = active && m.state === "paused";
-  const state: LiveState = !active || m.state === "stopped" ? "stopped" : paused ? "waiting" : m.activity === "error" || m.state === "error" ? "error" : m.activity === "working" ? "working" : (live?.state ?? "idle");
-  const text =
-    state === "working"
-      ? s?.tool
-        ? `работает · ${s.tool.name} ${timeAgo(s.tool.since)}`
-        : "работает"
-      : paused
-        ? "на паузе"
-        : state === "waiting"
-          ? (live?.note ?? "ждёт")
-        : state === "error"
-          ? "ошибка"
-          : state === "stopped"
-            ? "остановлен"
-            : "свободен";
+  const { state, text } = memberActivity(team, m, live, s);
   const queued = team.pending[m.name] ?? 0;
   const status = m.status && m.status !== "starting" ? m.status : "";
   const said = state !== "working" && s?.lastText && s.lastText !== status ? s.lastText : "";

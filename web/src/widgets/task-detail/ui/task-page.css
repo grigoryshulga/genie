@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------ task: preview and page */
-/* The preview beside a list or board: what a glance needs, then a way to the page. */
+/* The preview above a list or board: what a glance needs, then a way to the page. */
 .detail-head { display: flex; flex-direction: column; gap: var(--g-space-4); }
 .detail h2.title { font-size: var(--g-text-h3); line-height: 1.3; }
 .detail-body { gap: var(--g-space-5); }
@@ -10,18 +10,12 @@
 .props .team-cell a { font: inherit; }
 .props .mono { font: 12px var(--g-font-mono); }
 
-/* The task's own page: a centred content column with the properties rail floating
-   above it on the right. The rail takes no grid column, so the content centres
-   across the whole page width; on narrow windows it passes under the rail. */
+/* The task's page: a centred reading column with an independent properties rail.
+   content.css reserves the rail's gutter at intermediate widths; phones stack the rail and body. */
 .main.task-page { --rail: 320px; border-right: 0; }
 .task-page .crumbs { font-size: var(--g-text-caption); }
 .task-page .crumbs .here { font: 12px var(--g-font-mono); }
-.tp-head { flex: none; display: flex; flex-direction: column; gap: var(--g-space-4); padding: 22px var(--g-space-5) 18px; border-bottom: 1px solid var(--g-border); }
-.tp-title-row { display: flex; align-items: center; gap: var(--g-space-2); max-width: var(--g-content); }
-.tp-title-row h2.title { flex: 1; }
 .tp-back { flex: none; }
-.tp-head h2.title { margin: 0; max-width: var(--g-content); font-size: var(--g-text-h2); font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; outline: none; border-radius: var(--g-radius-xs); }
-.tp-head h2.title:focus { box-shadow: 0 0 0 2px var(--g-accent-soft); }
 .tp-body { flex: 1; min-height: 0; position: relative; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 .tp-main { min-width: 0; overflow-y: auto; padding: 26px 40px 56px var(--g-space-5); display: flex; flex-direction: column; gap: var(--g-space-5); }
 .tp-main > * { max-width: var(--g-content); }
@@ -34,8 +28,6 @@
 .tp-card.collapsed .tp-card-toggle > svg { transform: none; }
 .tp-card-body { margin-top: var(--g-space-3); }
 .tp-properties .props.rail { margin: 0; }
-.tp-team-members { display: flex; align-items: center; gap: var(--g-space-2); color: var(--g-text-2); font-size: var(--g-text-caption); }
-.tp-team-names { display: flex; flex-direction: column; gap: var(--g-space-1); margin: var(--g-space-3) 0; color: var(--g-text-muted); font-size: var(--g-text-caption); }
 .tp-team-card .g-btn { margin-top: var(--g-space-3); width: 100%; box-sizing: border-box; }
 .tp-team-empty { display: flex; flex-direction: column; align-items: center; gap: var(--g-space-2); text-align: center; color: var(--g-text-muted); font-size: var(--g-text-caption); }
 .tp-team-empty b { color: var(--g-text); font-weight: 500; }
@@ -72,8 +64,6 @@
 .task-team .team-aside .hd { height: 44px; font-size: var(--g-text-caption); color: var(--g-text-muted); }
 
 @media (max-width: 900px) {
-  .tp-head { padding: var(--g-space-4) var(--g-space-4) 14px; }
-  .tp-head h2.title { font-size: var(--g-text-h3); }
   .tp-body, .task-team { display: flex; flex-direction: column; overflow: visible; }
   .tp-rail { position: static; order: -1; width: auto; background: none; overflow: visible; border-bottom: 1px solid var(--g-border); padding: var(--g-space-4); }
   .tp-main { padding: var(--g-space-4) var(--g-space-4) 40px; overflow: visible; }
@@ -87,8 +77,6 @@
    stop before it instead of running under it (see content.css). */
 .task-page { --rail-span: calc(var(--rail) + var(--g-space-5) + var(--g-space-3)); }
 .task-page .td-bar { padding-inline: var(--g-space-3); }
-.tp-head { gap: var(--g-space-3); padding: var(--g-space-5) var(--g-space-5) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
-.tp-title-row { gap: var(--g-space-3); }
 .task-page .td-headline { gap: var(--g-space-2); }
 .task-page .td-headline h2.title { font-size: var(--g-text-h2); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); }
 .task-page .td-meta { font-size: var(--g-text-dense); }
@@ -108,7 +96,6 @@
 .props.rail select, .props.rail input { margin-left: 0; }
 .tp-rail .epic-box { padding: 0; }
 .tp-rail .epic-box .goal { color: var(--g-text-2); line-height: var(--g-leading-ui); }
-.tp-team-members, .tp-team-names { font-size: var(--g-text-dense); }
 .tp-team-empty { gap: var(--g-space-3); font-size: var(--g-text-dense); color: var(--g-text-muted); }
 .tp-team-empty b { color: var(--g-text); font-weight: var(--g-weight-semibold); }
 .tp-team-empty .g-btn, .tp-team-card .g-btn { width: 100%; }
@@ -118,7 +105,6 @@
 .task-page .sec h3 { min-height: var(--g-control-sm); }
 
 @media (max-width: 900px) {
-  .tp-head { padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); }
   .task-page .td-headline h2.title { font-size: var(--g-text-h3); }
   .tp-rail { order: -1; padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); border-bottom: 1px solid var(--g-border); }
   .tp-main { padding: var(--g-space-4) var(--g-space-4) var(--g-space-6); }
@@ -128,4 +114,28 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tp-card-toggle > svg { transition: none; }
+}
+
+/* One header for the breadcrumb, status, title and actions, like the task preview. */
+.task-page > .tp-page-header { height: auto; align-items: center; gap: var(--g-space-3); padding: var(--g-space-4) var(--g-space-5); }
+.tp-page-header .td-headline { flex: 1; min-width: 0; }
+.tp-page-header h2.title { margin: 0; overflow-wrap: anywhere; outline: none; }
+.tp-page-header h2.title:focus { box-shadow: 0 0 0 2px var(--g-accent-soft); }
+.tp-page-header .crumbs { display: inline-flex; align-items: center; gap: var(--g-space-1); }
+.tp-team-roster { display: grid; gap: var(--g-space-2); }
+.tp-member { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: var(--g-space-3); min-height: var(--g-control); padding-block: var(--g-space-1); color: var(--g-text); text-decoration: none; }
+.tp-member:hover { color: var(--g-accent-text); text-decoration: none; }
+.tp-member-info { display: grid; gap: var(--g-space-1); min-width: 0; }
+.tp-member-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--g-space-2); overflow-wrap: anywhere; }
+.tp-member-name b { font-size: var(--g-text-dense); }
+.tp-member-name > span, .tp-member-state, .tp-member-when { color: var(--g-text-muted); font-size: var(--g-text-caption); }
+.tp-member-state { overflow-wrap: anywhere; }
+.tp-member-when { white-space: nowrap; }
+.tp-member.waiting .tp-member-state { color: var(--g-signal-text); }
+.tp-member.working .tp-member-state { color: var(--g-accent-text); }
+.tp-member.error .tp-member-state { color: var(--g-danger-text); }
+@media (max-width: 640px) {
+  .task-page > .tp-page-header { flex-wrap: wrap; padding-inline: var(--g-space-4); }
+  .tp-page-header .td-headline { flex-basis: calc(100% - var(--g-control) - var(--g-space-3)); }
+  .tp-page-header .td-header-actions { margin-inline-start: auto; }
 }
