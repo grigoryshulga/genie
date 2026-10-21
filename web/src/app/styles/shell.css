@@ -37,8 +37,35 @@
 .g-dialog.sheet { margin: auto auto 0; width: 100%; }
 .g-dialog.sheet .g-modal { width: 100%; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; }
 .g-sheet-nav { display: grid; gap: var(--g-space-1); }
-.g-sheet-nav a { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control); padding: 0 var(--g-space-4); border-radius: var(--g-radius-md); color: var(--g-text); font-weight: 600; text-decoration: none; }
+.g-sheet-nav a,
+.g-sheet-nav button { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control); padding: 0 var(--g-space-4); border-radius: var(--g-radius-md); color: var(--g-text); font-weight: 600; text-decoration: none; }
+/* The palette is a button rather than a destination: it wears the same row as the links beside it. */
+.g-sheet-nav button { width: 100%; border: 0; background: none; font-family: inherit; font-size: inherit; line-height: inherit; text-align: start; cursor: pointer; }
 .g-sheet-nav a[aria-current="page"] { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
+
+/* ------------------------------------------------------------ the bar on a narrow screen */
+/* A phone bar carries the project, search, create, the dock, notifications and the person:
+   five 40px targets plus the project name only fit 390px if the gaps close and the name
+   gives way first. Between the one-column breakpoint and 1180px the five destinations
+   cannot share a line with search and create, so the nav takes a line of its own. */
+@media (max-width: 1180px) and (min-width: 901px) {
+  .g-topbar { flex-wrap: wrap; gap: var(--g-space-2) var(--g-space-3); padding-block: var(--g-space-2); }
+  .g-topbar-nav { order: 10; flex: 1 0 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .g-topbar-nav::-webkit-scrollbar { display: none; }
+  .g-topbar-project { max-width: 180px; }
+  .g-topbar-search { width: 180px; }
+}
+
+@media (max-width: 900px) {
+  .g-topbar { gap: var(--g-space-2); padding: 0 var(--g-space-2); padding-top: env(safe-area-inset-top, 0); }
+  /* The project name is what gives way when the bar runs out of room; the controls never do. */
+  .g-topbar-project { flex: 1 1 auto; min-width: 0; max-width: none; gap: var(--g-space-2); padding: 0 var(--g-space-2); }
+  .g-topbar-grow { display: none; }
+  /* Width stays at the narrow bar budget so the project name survives; height is the touch target. */
+  .g-topbar .g-icon-btn, .g-topbar .g-avatar-btn { flex: none; width: var(--g-control-sm); height: var(--g-control); }
+  .g-dock { flex: none; padding: 0 var(--g-space-2); }
+  .g-sheet-nav a, .g-sheet-nav button { min-height: var(--g-row); }
+}
 
 .spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--line-strong); border-top-color: var(--accent-2); animation: spin 0.9s linear infinite; flex: none; }
 .spin.lg { width: 14px; height: 14px; border-width: 2px; }

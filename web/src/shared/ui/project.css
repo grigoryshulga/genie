@@ -297,6 +297,8 @@ details.st-card > .sv-two { padding: 0 var(--g-space-5) var(--g-space-4); }
   .sv-list .who { flex-basis: calc(100% - 100px); }
   .sv-more-facts > div { grid-template-columns: minmax(0, 1fr); gap: var(--g-space-1); }
   .st-roles.sv-two { grid-template-columns: minmax(0, 1fr); }
+  /* The quiet "all statistics" way out of a card is still a thumb, not a caption. */
+  .sv-more { min-height: var(--g-control); }
 }
 .sv-list .pj-role { width: 170px; }
 

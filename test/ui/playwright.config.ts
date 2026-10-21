@@ -13,6 +13,11 @@ const results = resolve(import.meta.dirname, "../../test-results");
 const VISUAL_AUTH = resolve(results, "ui-auth-visual.json");
 const FLOWS_AUTH = resolve(results, "ui-auth-flows.json");
 const desktop = { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } };
+// Touch screens at the two widths H30 audits: a phone and a tablet, both with a real touch layer and
+// both on Chromium, the engine the rest of the suite and the app's native pickers are checked on (the
+// iPad descriptor alone would start WebKit).
+const phone = { ...devices["Pixel 7"], viewport: { width: 390, height: 844 }, browserName: "chromium" };
+const tablet = { ...devices["iPad Mini"], viewport: { width: 768, height: 1024 }, browserName: "chromium" };
 
 // `npm run ui:capture` swaps the test projects for the capture ones (test/ui/screens.capture.ts).
 const capturing = process.env.GENIE_UI_CAPTURE === "1";
@@ -55,6 +60,19 @@ export default defineConfig({
       testMatch: "*.flow.ts",
       dependencies: ["login-flows"],
       use: { ...desktop, baseURL: flowsURL, storageState: FLOWS_AUTH },
+    },
+    // Touch last: these taps move a card, and the flows above must see their own seed first.
+    {
+      name: "touch-phone",
+      testMatch: "touch.ts",
+      dependencies: ["login-flows"],
+      use: { ...phone, baseURL: flowsURL, storageState: FLOWS_AUTH },
+    },
+    {
+      name: "touch-tablet",
+      testMatch: "touch.ts",
+      dependencies: ["login-flows"],
+      use: { ...tablet, baseURL: flowsURL, storageState: FLOWS_AUTH },
     },
   ],
 });

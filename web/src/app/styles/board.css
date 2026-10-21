@@ -112,8 +112,11 @@
   .g-pulse-nums > div { justify-items: start; }
   .g-pulse-nums dd { font-size: var(--g-text-h3); }
   .g-toolbar { padding: var(--g-space-2) var(--g-space-4); overflow-x: auto; scrollbar-width: none; }
-  .g-board { gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-4) var(--g-space-4); scroll-snap-type: x mandatory; }
+  .g-board { gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-4) calc(var(--g-space-4) + env(safe-area-inset-bottom)); scroll-snap-type: x mandatory; }
   .g-board > .g-lane { scroll-snap-align: start; }
+  /* The lane header and the answer affordance are the two things every phone tap lands on. */
+  .g-lane-toggle { min-height: var(--g-row); }
+  .bd-answer { min-height: var(--g-control); }
   /* Folded lanes remain compact beside the full-width touch lanes. */
   .g-board > .g-lane.shut { flex: 0 0 var(--g-space-8); min-width: var(--g-space-8); }
   .g-board-state { padding: var(--g-space-5) var(--g-space-4); }

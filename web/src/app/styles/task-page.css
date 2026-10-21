@@ -84,7 +84,10 @@
 
 /* ------------------------------------- task page in ink and paper (GNE-56) */
 /* The page is a reading column with the properties rail floating over the right
-   gutter; the two share one headline and one set of tokens with the panel. */
+   gutter; the two share one headline and one set of tokens with the panel.
+   --rail-span is everything the rail takes from the right edge, so the column can
+   stop before it instead of running under it (see content.css). */
+.task-page { --rail-span: calc(var(--rail) + var(--g-space-5) + var(--g-space-3)); }
 .task-page .td-bar { padding-inline: var(--g-space-3); }
 .tp-head { gap: var(--g-space-3); padding: var(--g-space-5) var(--g-space-5) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
 .tp-title-row { gap: var(--g-space-3); }
@@ -96,7 +99,7 @@
 .tp-body { grid-template-columns: minmax(0, 1fr); }
 .tp-main { gap: var(--g-space-5); padding: var(--g-space-5) var(--g-space-5) var(--g-space-7); }
 .tp-main > * { max-width: var(--measure); }
-.tp-rail { width: calc(var(--rail) + var(--g-space-5)); padding: var(--g-space-5) var(--g-space-3) var(--g-space-5) 0; gap: var(--g-space-2); }
+.tp-rail { inset-inline-end: var(--g-space-3); width: calc(var(--rail) + var(--g-space-5)); padding: var(--g-space-5) var(--g-space-3) var(--g-space-5) 0; gap: var(--g-space-2); }
 .tp-card { padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); box-shadow: none; }
 .tp-card-title { font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); }
 .tp-card-toggle { min-height: var(--g-control-sm); color: var(--g-text-2); }
@@ -121,6 +124,8 @@
   .task-page .td-headline h2.title { font-size: var(--g-text-h3); }
   .tp-rail { order: -1; padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); border-bottom: 1px solid var(--g-border); }
   .tp-main { padding: var(--g-space-4) var(--g-space-4) var(--g-space-6); }
+  .tp-card-toggle { min-height: var(--g-row); }
+  .tp-rail .props.rail { gap: var(--g-space-3) var(--g-space-2); }
 }
 
 @media (prefers-reduced-motion: reduce) {
