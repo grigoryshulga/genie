@@ -6,7 +6,7 @@ import "@/app/styles/list.css";
 export function Avatar({ role, name, activity, state, size }: { role: string; name?: string; activity?: string; state?: string; size?: "md" | "lg" | "solo" }) {
   // Shape, not colour, says which one this is: a rounded square is an agent, a circle is a person.
   const shape = role === "human" ? "human" : "agent";
-  const cls = ["av", shape, `r-${role}`, size ?? "", activity === "working" ? "working" : "", activity === "error" ? "error" : "", state === "stopped" ? "stopped" : "", state === "lost" ? "lost" : ""].filter(Boolean).join(" ");
+  const cls = ["av", shape, size ?? "", activity === "working" ? "working" : "", activity === "error" ? "error" : "", state === "stopped" ? "stopped" : "", state === "lost" ? "lost" : ""].filter(Boolean).join(" ");
   const person = role === "human" || role === "orchestrator" || !name;
   const label = `${person ? (name ?? role) : memberLabel(name, role)}${activity === "working" ? " — работает" : activity === "error" ? " — ошибка" : ""}`;
   return (

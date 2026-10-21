@@ -5,13 +5,8 @@
 /* -- the epic chip, wherever a task names its epic ---------------------------------- */
 .epic-chip { display: inline-flex; align-items: center; gap: var(--g-space-1); height: 20px; padding: 0 var(--g-space-2); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); color: var(--g-accent-soft-text); font-family: var(--g-font-mono); font-size: var(--g-text-eyebrow); white-space: nowrap; text-decoration: none; }
 a.epic-chip:hover { border-color: var(--g-accent); color: var(--g-text); }
-.epic-mark { display: inline-flex; align-items: center; gap: var(--g-space-2); margin-right: 7px; font-size: var(--g-text-caption); color: var(--g-accent-text); vertical-align: -1px; }
 .row .tags { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; }
 .card .foot .epic-chip { height: 18px; }
-.filter-chip { display: inline-flex; align-items: center; gap: var(--g-space-2); height: 24px; padding: 0 var(--g-space-1) 0 var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); font-size: var(--g-text-dense); white-space: nowrap; }
-.filter-chip a { color: var(--g-accent-soft-text); }
-.filter-chip button { width: 18px; height: 18px; border: 0; border-radius: var(--g-radius-pill); background: none; color: var(--g-accent-soft-text); display: grid; place-items: center; padding: 0; }
-.filter-chip button:hover { background: var(--g-surface-hover); }
 
 /* -- progress: one segment per task, or one bar per state when they are many --------- */
 .epic-progress { display: flex; flex-direction: column; gap: var(--g-space-2); min-width: 0; }
@@ -46,7 +41,7 @@ a.epic-chip:hover { border-color: var(--g-accent); color: var(--g-text); }
 .epics-page .ep-head { flex: none; display: flex; align-items: flex-end; gap: var(--g-space-4); flex-wrap: wrap; padding: var(--g-space-5) var(--g-space-5) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
 .ep-head-text { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
 .ep-title { margin: 0; font-family: var(--g-font-display); font-size: var(--g-text-h1); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
-.ep-lede { margin: 0; max-width: var(--measure); color: var(--g-text-muted); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
+.ep-lede { margin: 0; max-width: var(--g-measure); color: var(--g-text-muted); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
 .epics-scroll { padding: var(--g-space-5); }
 .epic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: var(--g-space-3); align-content: start; }
 .epic-card { display: flex; flex-direction: column; gap: var(--g-space-3); min-width: 0; color: var(--g-text); text-decoration: none; }
@@ -81,7 +76,7 @@ a.epic-card:hover { border-color: var(--g-border-strong); color: var(--g-text); 
 .epic-page .ep-id { font-size: var(--g-text-caption); color: var(--g-text-2); }
 .epic-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
 .epic-main { overflow-y: auto; padding: var(--g-space-5) var(--g-space-5) var(--g-space-7); display: flex; flex-direction: column; gap: var(--g-space-5); }
-.epic-main > * { max-width: var(--measure); }
+.epic-main > * { max-width: var(--g-measure); }
 .epic-head { display: flex; flex-direction: column; gap: var(--g-space-3); }
 .epic-head h2.title { margin: 0; font-size: var(--g-text-h2); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); color: var(--g-text); outline: none; border-radius: var(--g-radius-sm); }
 .epic-head h2.title:focus { box-shadow: 0 0 0 2px var(--g-focus); }
@@ -122,7 +117,7 @@ a.epic-card:hover { border-color: var(--g-border-strong); color: var(--g-text); 
 .artifact.tall .who { margin-left: 0; white-space: normal; }
 .artifact.small { height: 32px; padding: 0 var(--g-space-2); gap: var(--g-space-2); }
 .sec .hint { margin: var(--g-space-2) 0 0; font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
-.epic-skeleton { display: flex; flex-direction: column; gap: var(--g-space-3); padding: var(--g-space-6) var(--g-space-5); max-width: var(--measure); }
+.epic-skeleton { display: flex; flex-direction: column; gap: var(--g-space-3); padding: var(--g-space-6) var(--g-space-5); max-width: var(--g-measure); }
 .epic-state { display: flex; flex-direction: column; align-items: flex-start; gap: var(--g-space-3); padding: var(--g-space-5); }
 
 /* -- the epic box inside the task rail ---------------------------------------------- */

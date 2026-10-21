@@ -16,7 +16,7 @@ import {
   useObservationIncidents,
 } from "@/entities/observation";
 import "@/shared/ui/agents.css";
-import { LoadingState } from "@/shared/ui";
+import { EmptyState, LoadingState, Segmented } from "@/shared/ui";
 import { TaskLinks, when } from "./parts.tsx";
 import "./observations.css";
 import "./observations-sheets.css";
@@ -48,13 +48,7 @@ export function ObservationsPage() {
         <h1>{OBSERVATION_TEXT.nav}</h1>
         <span className="sub d-only">что дали выполненные задачи и как они работают после выпуска</span>
         <span className="grow" />
-        <div className="seg" role="group" aria-label="Какие наблюдения показать">
-          {FILTERS.map((f) => (
-            <button key={f} type="button" className={filter === f ? "on" : undefined} aria-pressed={filter === f} onClick={() => choose(f)}>
-              {FILTER_LABEL[f]}
-            </button>
-          ))}
-        </div>
+        <Segmented label="Какие наблюдения показать" value={filter} onChange={choose} items={FILTERS.map((f) => ({ id: f, label: FILTER_LABEL[f] }))} />
       </header>
       <div className="scroll obs-body">
         {incidents.isError && (
@@ -68,8 +62,8 @@ export function ObservationsPage() {
             Не удалось загрузить наблюдения: {cases.error.message}
           </p>
         )}
-        {cases.isSuccess && !cases.data.length && <div className="empty">Наблюдений пока нет. Их создают из карточки задачи.</div>}
-        {cases.isSuccess && cases.data.length > 0 && !shown?.length && <div className="empty">Ничего не найдено</div>}
+        {cases.isSuccess && !cases.data.length && <EmptyState title="Наблюдений пока нет">Их создают из карточки задачи.</EmptyState>}
+        {cases.isSuccess && cases.data.length > 0 && !shown?.length && <EmptyState title="Ничего не найдено">Под эти фильтры наблюдений нет.</EmptyState>}
         {shown && shown.length > 0 && (
           <>
             <div className="ag-table-wrap">

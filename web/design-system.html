@@ -1,82 +1,106 @@
 <!doctype html>
-<html lang="en" data-theme="dark" data-accent="violet">
+<html lang="en" data-theme="ink">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Genie design system</title>
 <link rel="stylesheet" href="/src/app/styles.css">
-<link rel="stylesheet" href="/src/shared/ui/agents.css">
-<link rel="stylesheet" href="/src/shared/ui/ChipInput.css">
 <style>
   body { overflow: auto; }
-  .catalog { max-width: 1000px; margin: auto; padding: 28px; }
-  .catalog h1 { margin: 0; font-size: var(--font-size-page); }
-  .catalog h2 { font-size: var(--font-size-heading); margin: 0 0 16px; }
-  .catalog section { margin: 20px 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-panel); }
-  .samples, .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-  .toolbar { margin: 16px 0; }
-  .toolbar select { background: var(--bg-panel); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px; }
+  .catalog { max-width: 1000px; margin: auto; padding: var(--g-space-6); display: grid; gap: var(--g-space-5); }
+  .catalog h2 { margin: 0 0 var(--g-space-3); }
+  .catalog section { padding: var(--g-space-4); border: 1px solid var(--g-border); border-radius: var(--g-radius-lg); background: var(--g-surface); }
+  .samples, .toolbar { display: flex; flex-wrap: wrap; gap: var(--g-space-3); align-items: center; }
+  .toolbar { margin: 0 0 var(--g-space-4); }
+  .toolbar label { display: flex; gap: var(--g-space-2); align-items: center; color: var(--g-text-2); }
+  .toolbar select { background: var(--g-surface-raised); color: var(--g-text); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); padding: var(--g-space-1) var(--g-space-2); }
   .swatch { min-width: 125px; flex: 1; }
-  .swatch i { display: block; height: 44px; border: 1px solid var(--line-strong); border-radius: var(--radius); margin-bottom: 6px; }
-  .statuses > span { display: inline-flex; gap: 6px; align-items: center; }
-  .catalog .field { width: min(260px, 100%); }
-  .catalog .modal { max-width: 100%; }
-  .type-sample { margin: 8px 0; }
-  @media (max-width: 600px) { .catalog { padding: 16px; } .catalog section { padding: 16px; } }
+  .swatch i { display: block; height: 44px; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); margin-bottom: var(--g-space-1); }
+  .swatch code { color: var(--g-text-muted); font-family: var(--g-font-mono); font-size: var(--g-text-caption); }
+  .catalog .g-field { width: min(260px, 100%); }
+  .statuses > span { display: inline-flex; gap: var(--g-space-1); align-items: center; color: var(--g-text-2); }
+  @media (max-width: 600px) { .catalog { padding: var(--g-space-3); } }
 </style>
 <main class="catalog">
-  <h1>Genie design system</h1>
-  <p class="muted">Live specimens using the application's CSS and status components. Foundations and Figma import: design-system/README.md.</p>
+  <header>
+    <p class="g-eyebrow">Foundations</p>
+    <h1 class="g-h1">Genie design system</h1>
+    <p class="g-caption">Live specimens rendered by the shared kit against <code>g-tokens.css</code>. Rules, tokens, and the Figma import are in <code>design-system/README.md</code>.</p>
+  </header>
   <div class="toolbar">
-    <label>Theme <select id="theme"><option>dark</option><option>light</option></select></label>
-    <label>Accent <select id="accent"><option>violet</option><option>blue</option><option>teal</option><option>green</option><option>orange</option><option>rose</option></select></label>
+    <label>Theme <select id="theme"><option value="ink">ink</option><option value="paper">paper</option></select></label>
   </div>
-  <section><h2>Surfaces and semantic colors</h2><div id="swatches" class="samples"></div></section>
-  <section><h2>Buttons</h2><div class="samples">
-    <button class="btn">Default</button><button class="btn primary">Primary</button><button class="btn ghost">Ghost</button>
-    <button class="btn amber">Owner action</button><button class="btn danger">Delete</button><button class="btn primary" disabled>Disabled</button>
-    <button class="btn sm">Small</button><button class="icon-btn" aria-label="More actions">⋯</button>
-  </div></section>
-  <section><h2>Fields and chips</h2><div class="samples">
-    <label class="field">Name <input placeholder="Project name"></label>
-    <label class="field">Status <select><option>Ready for work</option><option>In progress</option></select></label>
-    <label class="field">Tags <span class="chips"><span class="chip">Design <button aria-label="Remove Design">×</button></span><input aria-label="New tag" placeholder="Add tag"></span></label>
-  </div></section>
-  <section><h2>Status and priority</h2><div id="statuses" class="samples statuses"></div></section>
-  <section><h2>Roles and badges</h2><div class="samples">
-    <span class="av md r-analyst">A</span><span class="c-analyst">Analyst</span>
-    <span class="av md r-executor">E</span><span class="c-executor">Executor</span>
-    <span class="av md r-reviewer">R</span><span class="c-reviewer">Reviewer</span>
-    <span class="av md r-tester">T</span><span class="c-tester">Tester</span>
-    <span class="ag-badge accent">Accent</span><span class="ag-badge green">Success</span><span class="ag-badge amber">Attention</span><span class="ag-badge red">Error</span>
-  </div></section>
-  <section><h2>Typography</h2>
-    <p class="type-sample" style="font-size:var(--font-size-page);font-weight:600">Page title · 24 / 600</p>
-    <p class="type-sample" style="font-size:var(--font-size-section);font-weight:600">Section title · 20 / 600</p>
-    <p class="type-sample" style="font-size:var(--font-size-heading);font-weight:600">Panel heading · 15 / 600</p>
-    <p class="type-sample">Body text · 13 / 400 · Geist</p>
-    <p class="type-sample muted" style="font-size:var(--font-size-small)">Secondary text · 12 / 400</p>
-    <p class="type-sample mono">GNE-25 · Geist Mono</p>
-  </section>
-  <section><h2>Dialog structure</h2><div class="modal" role="group" aria-label="Dialog specimen">
-    <div class="mh">Dialog heading</div><div class="mb"><label class="field">Title <input value="A shared design language"></label><p class="muted">Panel surface, strong border, large radius and overlay shadow.</p></div>
-    <div class="mf"><span class="grow"></span><button class="btn ghost">Cancel</button><button class="btn primary">Save</button></div>
-  </div></section>
+  <div id="root"></div>
 </main>
 <script type="module">
   import React from "react";
   import { createRoot } from "react-dom/client";
+  import * as kit from "/src/shared/ui/index.ts";
   import { StatusIcon, PriorityIcon } from "/src/entities/task/ui/StatusIcon.tsx";
-  for (const name of ["theme", "accent"]) document.getElementById(name).onchange = (event) => document.documentElement.dataset[name] = event.target.value;
-  const colors = ["bg", "bg-side", "bg-panel", "bg-raised", "line-strong", "accent", "amber", "green", "red", "yellow"];
-  for (const name of colors) {
-    const item = document.createElement("div"); item.className = "swatch";
-    const paint = document.createElement("i"); paint.style.background = `var(--${name})`;
-    const label = document.createElement("code"); label.textContent = `--${name}`;
-    item.append(paint, label); document.getElementById("swatches").append(item);
-  }
+
+  document.getElementById("theme").onchange = (event) => { document.documentElement.dataset.theme = event.target.value; };
+  const h = React.createElement;
+
+  /** A specimen block: a heading and whatever the kit renders underneath it. */
+  const block = (title, ...children) => h("section", { key: title }, h("h2", { className: "g-h4" }, title), ...children);
+  const row = (...children) => h("div", { className: "samples" }, ...children);
+
+  const colors = ["bg", "surface", "surface-raised", "surface-hover", "border-strong", "text", "text-2", "text-muted", "accent", "signal", "danger", "viz-1", "viz-2", "viz-3", "viz-4"];
   const statuses = ["inbox", "draft", "refining", "ready", "in_progress", "changes_requested", "review", "approved", "needs_owner", "done", "cancelled"];
-  createRoot(document.getElementById("statuses")).render(React.createElement(React.Fragment, null,
-    ...statuses.map(status => React.createElement("span", { key: status }, React.createElement(StatusIcon, { status, size: 16 }), status)),
-    ...[0,1,2,3,4].map(priority => React.createElement("span", { key: priority }, React.createElement(PriorityIcon, { priority, size: 16 }), `P${priority}`))));
+
+  createRoot(document.getElementById("root")).render(h(React.Fragment, null,
+    block("Surfaces and semantic colour",
+      row(...colors.map((name) => h("div", { key: name, className: "swatch" },
+        h("i", { style: { background: `var(--g-${name})` } }),
+        h("code", null, `--g-${name}`))))),
+    block("Buttons",
+      row(h(kit.Button, null, "Secondary"),
+        h(kit.Button, { variant: "primary" }, "Primary"),
+        h(kit.Button, { variant: "ghost" }, "Ghost"),
+        h(kit.Button, { variant: "danger" }, "Danger"),
+        h(kit.Button, { variant: "primary", disabled: true }, "Disabled"),
+        h(kit.Button, { variant: "primary", busy: true }, "Busy"),
+        h(kit.Button, { sm: true }, "Dense"),
+        h(kit.IconButton, { label: "More actions" }, "⋯"))),
+    block("Tabs, segments, chips, tags, key caps",
+      row(h(kit.Tabs, { label: "Views", value: "board", items: [{ id: "board", label: "Board" }, { id: "list", label: "List" }] }),
+        h(kit.Segmented, { label: "Density", value: "roomy", onChange: () => {}, items: [{ id: "roomy", label: "Roomy" }, { id: "dense", label: "Dense" }] }),
+        h(kit.Chip, { pressed: true }, "Selected chip"),
+        h(kit.Chip, null, "Chip"),
+        ...["neutral", "accent", "signal", "danger", "solid-accent", "solid-signal", "outline"].map((tone) => h(kit.Tag, { key: tone, tone }, tone)),
+        h("span", null, "Search ", h(kit.Kbd, null, "⌘K")))),
+    block("Fields",
+      row(h(kit.Field, { label: "Name", help: "Shown in the sidebar" }, h(kit.Input, { placeholder: "Project name", defaultValue: "" })),
+        h(kit.Field, { label: "Status" }, h(kit.Select, { defaultValue: "ready" }, h("option", { value: "ready" }, "Ready for work"), h("option", { value: "in_progress" }, "In progress"))),
+        h(kit.Field, { label: "Notes" }, h(kit.Textarea, { rows: 2, defaultValue: "" })),
+        h(kit.SearchField, { label: "Search tasks", placeholder: "Search" })),
+      row(h(kit.Checkbox, { label: "Checkbox", defaultChecked: true }), h(kit.Radio, { label: "Radio", defaultChecked: true }), h(kit.Switch, { label: "Switch", defaultChecked: true }))),
+    block("Feedback",
+      row(h(kit.Banner, { tone: "accent", title: "Accent banner" }, "System state."),
+        h(kit.Banner, { tone: "signal", title: "Signal banner" }, "Something waits for you."),
+        h(kit.Banner, { tone: "danger", title: "Danger banner" }, "A run failed.")),
+      row(h(kit.Card, null, h(kit.Stat, { value: "12", label: "Open tasks" }), h(kit.Progress, { value: 0.4, label: "Progress" }), h(kit.Segments, { total: 8, done: 3, label: "Acceptance" })),
+        h(kit.EmptyState, { title: "No tasks yet", action: h(kit.Button, { variant: "primary" }, "Create a task") }, "The board fills as work is planned."),
+        h(kit.ErrorState, { message: "Could not load the board" })),
+      row(h(kit.Avatar, { kind: "human", name: "Olga" }), h(kit.Avatar, { kind: "agent", name: "Planner", sm: true }), h(kit.Skeleton, {}))),
+    block("Status and priority",
+      h("div", { className: "samples statuses" },
+        ...statuses.map((status) => h("span", { key: status }, h(StatusIcon, { status, size: 16 }), status)),
+        ...[0, 1, 2, 3, 4].map((priority) => h("span", { key: priority }, h(PriorityIcon, { priority, size: 16 }), `P${priority}`))))),
+    block("Typography",
+      h("p", { className: "g-display" }, "Display"),
+      h("p", { className: "g-h1" }, "H1 · Unbounded"),
+      h("p", { className: "g-h2" }, "H2 · Unbounded"),
+      h("p", { className: "g-h3" }, "H3 · Manrope"),
+      h("p", { className: "g-h4" }, "H4 · Manrope"),
+      h("p", null, "Body · Manrope 400"),
+      h("p", { className: "g-caption" }, "Caption · Manrope 500"),
+      h("p", { className: "g-eyebrow" }, "Eyebrow"),
+      h("p", { style: { fontFamily: "var(--g-font-mono)" } }, "GNE-69 · Geist Mono")),
+    block("Dialog",
+      h("div", { className: "g-modal", role: "group", "aria-label": "Dialog specimen" },
+        h("header", null, h("h2", null, "Dialog heading")),
+        h("div", { className: "g-modal-body" }, h(kit.Field, { label: "Title" }, h(kit.Input, { defaultValue: "A shared design language" })), h("p", { className: "g-caption" }, "Surface, border, radius and overlay shadow.")),
+        h("footer", null, h("span", { className: "grow" }), h(kit.Button, { variant: "ghost" }, "Cancel"), h(kit.Button, { variant: "primary" }, "Save"))))
+  ));
 </script>
 </html>

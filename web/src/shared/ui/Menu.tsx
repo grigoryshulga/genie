@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.tsx";
+import { IconButton } from "./kit/actions.tsx";
 
 /** A "⋯" button with a small menu under it; closes on a click outside or Escape. */
 export function Menu({ label, children }: { label: string; children: (close: () => void) => React.ReactNode }) {
@@ -20,9 +21,9 @@ export function Menu({ label, children }: { label: string; children: (close: () 
   }, [open]);
   return (
     <div className="rp-menu-wrap" ref={ref}>
-      <button type="button" className={open ? "icon-btn on" : "icon-btn"} aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <IconButton label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon.dots size={14} />
-      </button>
+      </IconButton>
       {open && (
         <div className="rp-menu" role="menu">
           {children(() => setOpen(false))}

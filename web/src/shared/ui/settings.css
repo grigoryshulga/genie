@@ -1,8 +1,7 @@
 /* Settings pages (profile, project): a rail of sections, cards of rows —
    the name and a hint on the left, the control on the right, saving at the card's foot. */
 
-
-.st-body { padding: var(--g-space-6) var(--g-space-6) var(--g-space-7); margin-inline: auto; display: flex; flex-direction: column; gap: var(--g-space-4); max-width: var(--content); box-sizing: border-box; }
+.st-body { padding: var(--g-space-6) var(--g-space-6) var(--g-space-7); margin-inline: auto; display: flex; flex-direction: column; gap: var(--g-space-4); max-width: var(--g-content); box-sizing: border-box; }
 .st-body.split { max-width: 1240px; display: grid; grid-template-columns: minmax(0, 1fr) 380px; align-items: start; gap: var(--g-space-5); }
 .st-body.split > .st-col { display: flex; flex-direction: column; gap: var(--g-space-4); min-width: 0; }
 .st-head { display: flex; flex-direction: column; gap: var(--g-space-1); }
@@ -21,9 +20,6 @@
 .provider-connect .st-input { max-width: none; }
 .provider-connect > .lbl { display: flex; flex-direction: column; gap: var(--g-space-1); }
 .provider-connect > .lbl b { font-weight: 500; }
-.provider-modes { display: flex; gap: var(--g-space-1); width: fit-content; padding: var(--g-space-1); border: 1px solid var(--g-border); border-radius: var(--g-radius-sm); background: var(--g-bg); }
-.provider-modes button { height: 28px; padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-sm); background: transparent; color: var(--g-text-muted); font: inherit; font-size: var(--g-text-caption); cursor: pointer; }
-.provider-modes button.on { background: var(--g-surface-active); color: var(--g-text); }
 .provider-key-form { display: flex; flex-direction: column; gap: var(--g-space-3); }
 .provider-key-form .lbl { display: flex; flex-direction: column; gap: var(--g-space-1); }
 .provider-key-form .lbl b { font-weight: 500; }
@@ -102,8 +98,6 @@
 .st-table .when.idle { color: var(--g-text-muted); }
 .st-table .end { display: flex; justify-content: flex-end; }
 .st-empty { padding: var(--g-space-4); font-size: var(--g-text-caption); color: var(--g-text-muted); }
-.btn.revoke { height: 28px; padding: 0 var(--g-space-3); font-size: var(--g-text-caption); border-color: var(--g-danger); color: var(--g-danger); }
-.btn.revoke:hover { background: var(--g-danger-soft); }
 
 .st-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--g-space-3); padding: var(--g-space-4) var(--g-space-5); margin: 0; border: 0; }
 .st-mode { display: flex; flex-direction: column; gap: var(--g-space-3); padding: var(--g-space-4); border-radius: 10px; border: 1px solid var(--g-border); background: var(--g-bg); cursor: pointer; }

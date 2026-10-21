@@ -19,6 +19,8 @@
   --g-green-400: #2fbf94;
   --g-green-700: #007a5b;
   --g-green-800: #00604a;
+  --g-green-950: #07211e;
+  --g-green-100: #d7e5db;
   --g-orange-700: #a64600;
   --g-red-500: #e5484d;
   --g-red-700: #c62a2f;
@@ -30,6 +32,7 @@
   --g-n-800: #232325;
   --g-n-700: #2f2e30;
   --g-n-600: #414142;
+  --g-n-550: #5f5e5c;
   --g-n-500: #737170;
   --g-n-400: #9b9996;
   --g-n-300: #c0beb9;
@@ -73,6 +76,8 @@
   --g-tracking-eyebrow: 0.14em;
 
   /* ---- shape, space, motion ---- */
+  /* Micro radius for inline chips, keyboard keys, and scrollbar thumbs; everything else uses the shape scale. */
+  --g-radius-xs: 4px;
   --g-radius-sm: 8px;
   --g-radius-md: 12px;
   --g-radius-lg: 20px;
@@ -91,6 +96,12 @@
 
   --g-ease: cubic-bezier(0.2, 0, 0, 1);
   --g-duration: 150ms;
+
+  /* Page content is a centred column, and running prose keeps a readable line length. "ch" is the advance of
+     "0" in the element's own font, and running text is narrower per character than a digit: in the 13px UI
+     font that is 8.6px against about 6.9px of text, so 64ch lands at roughly 79-80 characters per line. */
+  --g-content: 840px;
+  --g-measure: 64ch;
 
   /* Control and row heights; the "sm" step is for toolbars, filters, and list rows. */
   --g-control: 40px;
@@ -130,7 +141,7 @@
   --g-accent: var(--g-green);
   --g-accent-hover: var(--g-green-400);
   --g-accent-text: var(--g-green);
-  --g-accent-soft: #07211e;
+  --g-accent-soft: var(--g-green-950);
   --g-accent-soft-text: var(--g-green-400);
   --g-on-accent: var(--g-ink);
 
@@ -152,8 +163,13 @@
   --g-viz-3: var(--g-n-400);
   --g-viz-4: var(--g-green-400);
   --g-viz-grid: var(--g-n-800);
+  /* The earliest epic stage stays distinct from ready/review while readable in either theme. */
+  --g-progress-early: var(--g-n-500);
 
   --g-focus: var(--g-green-400);
+  /* Scrims sit over content and never follow the theme: a modal backdrop and a photo overlay. */
+  --g-scrim: rgb(9 9 13 / 0.6);
+  --g-scrim-image: rgb(6 7 9 / 0.9);
   --g-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.55);
   color-scheme: dark;
 }
@@ -170,12 +186,12 @@
 
   --g-text: var(--g-ink);
   --g-text-2: var(--g-n-600);
-  --g-text-muted: #5f5e5c;
+  --g-text-muted: var(--g-n-550);
 
   --g-accent: var(--g-green);
   --g-accent-hover: var(--g-green-700);
   --g-accent-text: var(--g-green-700);
-  --g-accent-soft: #d7e5db;
+  --g-accent-soft: var(--g-green-100);
   --g-accent-soft-text: var(--g-green-800);
   --g-on-accent: var(--g-ink);
 
@@ -195,6 +211,7 @@
   --g-viz-3: #737170;
   --g-viz-4: var(--g-green-800);
   --g-viz-grid: var(--g-n-200);
+  --g-progress-early: var(--g-n-500);
 
   --g-focus: var(--g-green-700);
   --g-shadow-overlay: 0 20px 50px rgb(9 9 13 / 0.18);

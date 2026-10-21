@@ -5,9 +5,7 @@
    truly global layer. Add a sheet here only when the rule really is shell-wide. */
 
 @import "../shared/ui/fonts.css";
-@import "../shared/ui/tokens.css";
 @import "../shared/ui/g-tokens.css";
-@import "../shared/ui/compat.css";
 @import "../shared/ui/components.css";
 
 @import "./styles/base.css";
