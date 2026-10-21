@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
-import { initials, useMeta } from "@/entities/project";
+import { initials, ProjectIcon, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
 import { useProposals } from "@/entities/platform";
 import { OBSERVATION_TEXT } from "@/entities/observation";
@@ -121,7 +121,7 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
             className="g-topbar-project"
             trigger={
               <>
-                <Icon.mark size={22} />
+                <ProjectIcon name={project?.name ?? meta?.project ?? "genie"} src={project?.icon} />
                 <span className="name">{project?.name ?? meta?.project ?? "genie"}</span>
                 {(session?.projects.length ?? 0) > 1 && <Icon.updown size={12} />}
               </>
@@ -135,7 +135,7 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
                   id: p.slug,
                   // A role next to every name crowded the list: the project's own settings say what
                   // the person may do there, so the switcher lists names only, each on one line.
-                  label: <span className="g-topbar-project-name">{p.name}</span>,
+                  label: <><ProjectIcon name={p.name} src={p.icon} /><span className="g-topbar-project-name">{p.name}</span></>,
                   checked: p.slug === session?.project,
                   onSelect: () => void switchProject(p.slug),
                 }))}
