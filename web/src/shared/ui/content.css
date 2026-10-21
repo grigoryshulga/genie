@@ -4,11 +4,12 @@
    --content, and running prose inside it keeps a readable line length (--measure).
    Only desktop centres: on a phone the content fills the width. */
 @media (min-width: 901px) {
-  /* The task page's head and content share one centre, and the floating rail sits in the
-     space that centre leaves on the right: the column never runs under it. */
-  .task-page { --tp-pad: max(28px, calc((100% - var(--rail-span) - var(--g-content)) / 2)); }
-  .task-page .tp-head,
-  .task-page .tp-main { padding-inline: var(--tp-pad) calc(var(--tp-pad) + var(--rail-span)); }
+  /* Centre the reading column in the page. At intermediate widths the rail reserves its own
+     gutter, so the column narrows instead of sliding underneath the properties. */
+  .task-page .tp-main {
+    --tp-pad: max(var(--g-space-5), calc((100% - var(--g-measure)) / 2));
+    padding-inline: var(--tp-pad) max(var(--tp-pad), var(--rail-span));
+  }
   .chat,
   .team-title { padding-inline: max(28px, calc((100% - var(--g-content)) / 2)); }
   .detail-body { padding-inline: max(36px, calc((100% - var(--g-content)) / 2)); }
