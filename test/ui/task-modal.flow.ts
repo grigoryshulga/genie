@@ -17,7 +17,7 @@ for (const route of ["board", "tasks"]) {
         expect(await modal.evaluate((node) => node.matches(":modal"))).toBe(true);
         const box = (await modal.boundingBox())!;
         expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThan(2);
-        expect(box.width).toBeGreaterThan(width === 390 ? 380 : 1000);
+        expect(box.width).toBeCloseTo(width === 390 ? 390 : 864, 2);
         expect(Math.abs(box.y + box.height / 2 - 450)).toBeLessThan(2);
         expect(await page.locator(".app").evaluate((node) => node.classList.contains("with-detail"))).toBe(false);
 
