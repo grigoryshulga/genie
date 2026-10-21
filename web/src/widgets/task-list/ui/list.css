@@ -27,11 +27,6 @@
 .g-toolbar > .g-rail::-webkit-scrollbar { display: none; }
 /* The view chips keep a fixed, readable width so the rail's own minimum never pushes them off the page. */
 .g-tasks-page .g-chip-select select { width: 118px; }
-.g-tasks-head { flex: none; display: grid; gap: var(--g-space-2); padding: var(--g-space-7) var(--g-space-6) var(--g-space-5); border-bottom: 1px solid var(--g-border); }
-.g-tasks-h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--g-space-2) var(--g-space-3); margin: 0; font-family: var(--g-font-display); font-size: var(--g-text-display); font-weight: 700; line-height: var(--g-leading-display); letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
-.g-tasks-h1 .g-num { font-size: var(--g-text-display-xl); font-weight: 700; line-height: 0.9; }
-.g-tasks-of { font-family: var(--g-font-sans); font-size: var(--g-text-caption); font-weight: 500; letter-spacing: 0; color: var(--g-text-muted); }
-.g-tasks-lead { margin: 0; max-width: 72ch; font-size: var(--g-text-body); line-height: var(--g-leading-prose); color: var(--g-text-2); }
 .g-tasks-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--g-space-1) var(--g-space-6) var(--g-space-8); }
 .tl-skeleton { height: 44px; margin: var(--g-space-2) var(--g-space-4); }
 
@@ -65,9 +60,6 @@
 
 /* ---- phone: the row wraps to two lines — the title over the status, the id over who has it ---- */
 @media (max-width: 900px) {
-  .g-tasks-head { gap: var(--g-space-1); padding: var(--g-space-5) var(--g-space-4) var(--g-space-4); }
-  .g-tasks-h1 { font-size: var(--g-text-h1); }
-  .g-tasks-h1 .g-num { font-size: var(--g-text-display); }
   .g-tasks-scroll { padding: 0 0 var(--g-space-6); }
   .tl-group-head { padding: 0 var(--g-space-3); }
   .tl-row { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "st main age" "id id who"; align-items: start; column-gap: var(--g-space-2); row-gap: var(--g-space-1); min-height: var(--g-row); padding: var(--g-space-3); border-radius: 0; }

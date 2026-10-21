@@ -12,8 +12,8 @@ for (const theme of ["ink", "paper"]) {
       await expect(bar.locator(".g-dock")).toHaveCount(0);
       await expect(bar.getByRole("button", { name: "Сменить тему" })).toHaveCount(0);
       await expect(page.getByRole("toolbar", { name: "Фильтры доски" }).getByRole("button", { name: "Готово", exact: true })).toHaveCount(0);
-      const count = page.locator(".g-pulse-nums > div").filter({ has: page.locator("dt", { hasText: /^Задач$/ }) });
-      await expect(count.locator("dd")).toHaveText(/\d+/);
+      await expect(page.getByRole("toolbar", { name: "Фильтры доски" })).toBeVisible();
+      await expect(page.locator("[data-lane]").first()).toBeVisible();
       await create.click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await page.keyboard.press("Escape");

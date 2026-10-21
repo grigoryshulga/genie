@@ -54,7 +54,7 @@ for (const theme of ["ink", "paper"]) {
       await expect(lane.locator(".g-lane-name")).toHaveCSS("writing-mode", "vertical-rl");
       expect((await lane.boundingBox())!.width).toBeLessThanOrEqual(72);
       await expect(page.locator(".g-board-hero")).toHaveCount(0);
-      await expect(page.getByRole("region", { name: "Что происходит сейчас" })).toBeVisible();
+      await expect(page.getByRole("toolbar", { name: "Фильтры доски" })).toBeVisible();
 
       await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
