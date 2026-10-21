@@ -10,7 +10,7 @@
 .g-muted { color: var(--g-text-muted); }
 .g-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* One ring for the whole app. It is scoped to the shell so it outranks the single-class field rules
-   (`.field select`, `.search input`) that hide the browser's own outline in favour of this one. */
+   (`.g-field select`, `.search input`) that hide the browser's own outline in favour of this one. */
 .app :focus-visible, .g-root :focus-visible, .g-focusable:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
 
 /* ---- type roles ---- */
@@ -118,7 +118,7 @@
 .g-tip { display: inline-block; max-width: 260px; padding: 6px 10px; border-radius: var(--g-radius-sm); background: var(--g-text); color: var(--g-bg); font: 600 12px/1.4 var(--g-font-sans); }
 
 /* ---- overlays ---- */
-.g-scrim { position: fixed; inset: 0; z-index: var(--g-z-overlay); background: rgb(9 9 13 / 0.6); }
+.g-scrim { position: fixed; inset: 0; z-index: var(--g-z-overlay); background: var(--g-scrim); }
 .g-modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-xl); background: var(--g-surface-raised); box-shadow: var(--g-shadow-overlay); z-index: var(--g-z-modal); }
 .g-modal > header { display: flex; align-items: center; gap: var(--g-space-3); padding: var(--g-space-5) var(--g-space-5) var(--g-space-3); }
 .g-modal > header h2 { margin: 0; flex: 1; font-size: var(--g-text-h3); font-weight: 600; letter-spacing: -0.015em; }
@@ -139,9 +139,9 @@
 .g-card { padding: var(--g-space-5); border: 1px solid var(--g-border); border-radius: var(--g-radius-lg); background: var(--g-surface); }
 .g-card.flush { padding: 0; overflow: hidden; }
 /* A sheet is the contrasting surface used for work items on the canvas: paper on ink, ink on paper. */
-.g-sheet { --sh-t: var(--g-ink); --sh-t2: var(--g-n-600); --sh-m: #5f5e5c; --sh-accent: var(--g-green-800); --sh-soft: #d7e5db; --sh-line: rgb(9 9 13 / 0.14);
+.g-sheet { --sh-t: var(--g-ink); --sh-t2: var(--g-n-600); --sh-m: var(--g-n-550); --sh-accent: var(--g-green-800); --sh-soft: var(--g-green-100); --sh-line: rgb(9 9 13 / 0.14);
   position: relative; padding: var(--g-space-4) var(--g-space-5); border: 0; border-radius: var(--g-radius-lg); background: var(--g-paper); color: var(--sh-t); }
-[data-theme="paper"] .g-sheet { --sh-t: var(--g-paper); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: #07211e; --sh-line: rgb(244 241 234 / 0.2); background: var(--g-ink); }
+[data-theme="paper"] .g-sheet { --sh-t: var(--g-paper); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: rgb(244 241 234 / 0.2); background: var(--g-ink); }
 .g-sheet.interactive { cursor: pointer; transition: transform var(--g-duration) var(--g-ease); }
 .g-sheet.interactive:hover { transform: translateY(-2px); }
 .g-lane-signal { padding: var(--g-space-4); border-radius: var(--g-radius-xl); background: var(--g-orange); color: var(--g-ink); }
@@ -229,7 +229,7 @@
 .g-tip-host > .g-tip-pop { position: absolute; z-index: var(--g-z-dropdown); left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: max-content; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity var(--g-duration) var(--g-ease); }
 .g-tip-host:hover > .g-tip-pop, .g-tip-host:focus-within > .g-tip-pop { visibility: visible; opacity: 1; }
 .g-dialog { padding: 0; border: 0; background: transparent; max-width: none; max-height: none; color: inherit; }
-.g-dialog::backdrop { background: rgb(9 9 13 / 0.6); }
+.g-dialog::backdrop { background: var(--g-scrim); }
 .g-modal.wide { width: min(880px, calc(100vw - 32px)); }
 
 /* ---- phone and tablet: a thumb needs room (H30) ---- */

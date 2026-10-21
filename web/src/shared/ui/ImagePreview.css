@@ -3,16 +3,16 @@
 .imgprev {
   display: block;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-group);
+  border: 1px solid var(--g-border);
+  border-radius: var(--g-radius-sm);
+  background: var(--g-bg);
   overflow: hidden;
   cursor: zoom-in;
 }
-.imgprev:hover { border-color: var(--line-strong); }
+.imgprev:hover { border-color: var(--g-border-strong); }
 .imgprev img { display: block; width: 100%; height: 100%; object-fit: contain; }
 
-.imgprev-thumb { width: 34px; height: 34px; flex: none; border-radius: var(--radius-sm); }
+.imgprev-thumb { width: 34px; height: 34px; flex: none; border-radius: var(--g-radius-sm); }
 .imgprev-inline { max-width: 320px; margin-top: 8px; }
 .imgprev-inline img { max-height: 240px; }
 .imgprev-full { width: 100%; background: transparent; border-color: transparent; }
@@ -23,7 +23,7 @@
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: var(--scrim-image);
+  background: var(--g-scrim-image);
   display: flex;
   flex-direction: column;
 }
@@ -41,7 +41,7 @@
   max-height: 84vh;
   user-select: none;
   transition: transform 80ms ease-out;
-  box-shadow: var(--shadow);
+  box-shadow: var(--g-shadow-overlay);
 }
 .lightbox-tools {
   position: absolute;
@@ -50,25 +50,25 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2);
-  border: 1px solid var(--line-strong);
+  gap: var(--g-space-1);
+  padding: var(--g-space-1);
+  border: 1px solid var(--g-border-strong);
   border-radius: 10px;
-  background: var(--bg-raised);
-  box-shadow: var(--shadow);
+  background: var(--g-surface-raised);
+  box-shadow: var(--g-shadow-overlay);
 }
 .lightbox-tools button {
   min-width: 34px;
   height: 30px;
-  padding: 0 var(--space-5);
+  padding: 0 var(--g-space-2);
   border: 0;
   border-radius: 7px;
   background: none;
-  color: var(--text);
-  font: 12px var(--mono);
+  color: var(--g-text);
+  font: 12px var(--g-font-mono);
 }
-.lightbox-tools button:hover { background: var(--bg-hover); }
-.lightbox-tools .lightbox-close:hover { background: var(--red); color: var(--on-danger); }
+.lightbox-tools button:hover { background: var(--g-surface-hover); }
+.lightbox-tools .lightbox-close:hover { background: var(--g-danger); color: var(--g-on-danger); }
 
 /* The lightbox zooms with a transform; under reduced motion the image simply appears. */
 @media (prefers-reduced-motion: reduce) {

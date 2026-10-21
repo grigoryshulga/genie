@@ -27,9 +27,9 @@ all of them:
 
 ## Ink and paper design system
 
-The next visual language is specified in [design-system.md](design-system.md), with principles in [principles.md](principles.md), a component specimen in [components.html](components.html), and the redesign plan in [handoff/README.md](handoff/README.md). Its tokens and components live in `web/src/shared/ui/g-tokens.css` and `web/src/shared/ui/components.css`; they are not imported by the application until the redesign foundation tasks (epic GNE-40) wire them in.
+The visual language is specified in [design-system.md](design-system.md), with principles in [principles.md](principles.md), a component specimen in [components.html](components.html), and the redesign record in [handoff/README.md](handoff/README.md). Its tokens and components live in `web/src/shared/ui/g-tokens.css` and `web/src/shared/ui/components.css`, wrapped by `web/src/shared/ui/kit/`; the application has used them since the redesign landed (epic GNE-40). [design-system/README.md](../../../design-system/README.md) is the working reference for tokens, type, and components.
 
-`web/src/shared/ui/tokens.css` is the current application token file (GNE-25) and stays in place until the redesign replaces it. The draft logo lockups (`logo-*.svg`) are exploratory; the current logo is `genie-mark.svg` until the owner supplies the final vector.
+There is one token source: `g-tokens.css`. The earlier GNE-25 palette, its compatibility aliases, the accent choices, and the Geist body font were removed in H33 (GNE-69), and `geist-mono` remains for identifiers only. The draft logo lockups (`logo-*.svg`) are exploratory; the current logo is `genie-mark.svg` until the owner supplies the final vector.
 
 ## Where the logo is used (GNE-46)
 

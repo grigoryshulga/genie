@@ -7,14 +7,6 @@
 .pj-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--g-space-3); }
 .pj-hint { font-size: var(--g-text-caption); color: var(--g-text-muted); line-height: 1.5; }
 
-.pj-choice { border: 0; padding: 0; margin: var(--g-space-2) 0 0; display: flex; flex-direction: column; gap: var(--g-space-2); width: min(560px, 100%); }
-.pj-choice legend { font-size: var(--g-text-dense); color: var(--g-text-2); margin-bottom: var(--g-space-2); padding: 0; }
-.pj-option { display: flex; gap: var(--g-space-3); align-items: flex-start; padding: var(--g-space-3) var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-sm); cursor: pointer; }
-.pj-option.on { border-color: var(--g-accent); background: color-mix(in srgb, var(--g-accent) 8%, transparent); }
-.pj-option input { margin-top: var(--g-space-1); accent-color: var(--g-accent); }
-.pj-option > span { display: flex; flex-direction: column; gap: var(--g-space-1); font-size: var(--g-text-dense); line-height: 1.45; }
-.pj-choice:disabled .pj-option { cursor: default; }
-
 .pj-people { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; }
 .pj-people li { display: flex; align-items: center; gap: var(--g-space-3); padding: var(--g-space-3) 0; border-bottom: 1px solid var(--g-border); }
 .pj-people li:last-child { border-bottom: 0; }
@@ -36,12 +28,6 @@
 
 .pj-link { display: flex; gap: var(--g-space-2); align-items: center; width: 100%; }
 .pj-link .secret { flex: 1; min-width: 0; }
-
-.pj-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--g-space-2) var(--g-space-4); margin: var(--g-space-1) 0 0; font-size: var(--g-text-caption); width: 100%; }
-.pj-roles > div { display: flex; gap: var(--g-space-2); }
-.pj-roles dt { color: var(--g-text-2); white-space: nowrap; }
-.pj-roles dt::after { content: " —"; }
-.pj-roles dd { margin: 0; color: var(--g-text-muted); }
 
 @media (max-width: 900px) {
   .pj-pair, .pj-roles { grid-template-columns: minmax(0, 1fr); }
@@ -101,7 +87,7 @@
 .rp-json textarea { width: 100%; box-sizing: border-box; font-family: var(--g-font-mono); font-size: var(--g-text-caption); line-height: 1.5; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-bg); color: var(--g-text); padding: var(--g-space-2) var(--g-space-3); outline: 0; resize: vertical; }
 .rp-json textarea:focus { border-color: var(--g-accent); }
 .rp-menu-wrap { position: relative; }
-.rp-menu-wrap .icon-btn.on { background: var(--g-surface-active); color: var(--g-text); }
+.rp-menu-wrap .g-icon-btn[aria-expanded="true"] { background: var(--g-surface-active); color: var(--g-text); }
 .rp-menu { position: absolute; right: 0; top: 36px; z-index: 20; width: 260px; padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: 10px; background: var(--g-surface-active); box-shadow: var(--g-shadow-overlay); display: flex; flex-direction: column; }
 .rp-menu button { height: 32px; padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-sm); background: transparent; color: var(--g-text); font-size: var(--g-text-dense); text-align: left; }
 .rp-menu button:hover:not(:disabled) { background: var(--g-surface-hover); }
@@ -144,9 +130,9 @@
 .td-delivery { display: flex; flex-direction: column; gap: var(--g-space-2); }
 .td-repo { display: flex; gap: var(--g-space-3); align-items: baseline; flex-wrap: wrap; font-size: var(--g-text-dense); }
 .td-repo .g-mono { font-family: var(--g-font-mono); font-size: var(--g-text-caption); }
-.td-repo .pill.ok { color: var(--g-accent); }
-.td-repo .pill.warn { color: var(--g-signal-text); }
-.td-repo .pill.fail { color: var(--g-danger); }
+.td-repo .g-tag.accent { color: var(--g-accent); }
+.td-repo .g-tag.signal { color: var(--g-signal-text); }
+.td-repo .g-tag.danger { color: var(--g-danger); }
 
 /* The server's page: tabs; a verdict at the top of a card, the rest folded; numbers, then charts, then per project */
 .st-body.sv-wide { max-width: 960px; }
@@ -322,7 +308,6 @@ details.st-card > .sv-two { padding: 0 var(--g-space-5) var(--g-space-4); }
 .mc-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
 .mc-tool-row td { background: var(--g-bg); color: var(--g-text-2); font-size: var(--g-text-caption); }
 .mc-errors { color: var(--g-danger); }
-
 
 @media (prefers-reduced-motion: reduce) {
   .mc-expand svg { transition: none; }

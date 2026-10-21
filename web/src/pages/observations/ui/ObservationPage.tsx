@@ -52,7 +52,7 @@ import type { EvidencePhase } from "@/shared/api/generated/EvidencePhase.ts";
 import type { Incident } from "@/shared/api/generated/Incident.ts";
 import type { UpdateCaseBody } from "@/shared/api/generated/UpdateCaseBody.ts";
 import "@/shared/ui/agents.css";
-import { ConfirmDialog, Icon, Modal, useToast } from "@/shared/ui";
+import { Button, ConfirmDialog, Field, Icon, Input, Modal, Select, Textarea, useToast } from "@/shared/ui";
 import { TaskLinks, when } from "./parts.tsx";
 import "./observations.css";
 
@@ -94,7 +94,7 @@ function Frame({ actions, children }: { actions?: ReactNode; children?: ReactNod
   return (
     <main className="main">
       <header className="topbar obs-topbar">
-        <Link className="btn ghost sm" to="/observations">
+        <Link className="g-btn ghost sm" to="/observations">
           ← {OBSERVATION_TEXT.nav}
         </Link>
         <span className="grow" />
@@ -126,45 +126,43 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
   const headerActions = (
     <>
       {(can("edit") || can("rename")) && (
-        <button type="button" className="btn" onClick={() => setDialog("edit")}>
+        <Button variant="secondary" onClick={() => setDialog("edit")}>
           {ACTION_LABEL.edit}
-        </button>
+        </Button>
       )}
       {can("arm") && (
-        <button
-          type="button"
-          className="btn"
+        <Button
+          variant="secondary"
           disabled={arm.isPending || armBlocked}
           title={armBlocked ? "Сначала устраните причины ниже" : undefined}
           onClick={() => arm.mutate(c.id, { onError: fail, onSuccess: () => toast("Наблюдение ждёт поставки") })}
         >
           {ACTION_LABEL.arm}
-        </button>
+        </Button>
       )}
       {can("start") && (
-        <button type="button" className="btn primary" disabled={start.isPending} onClick={() => start.mutate(c.id, { onError: fail, onSuccess: () => toast("Наблюдение начато") })}>
+        <Button type="button" variant="primary" disabled={start.isPending} onClick={() => start.mutate(c.id, { onError: fail, onSuccess: () => toast("Наблюдение начато") })}>
           {ACTION_LABEL.start}
-        </button>
+        </Button>
       )}
       {can("evaluate") && (
-        <button
-          type="button"
-          className="btn"
+        <Button
+          variant="secondary"
           disabled={evaluate.isPending}
           onClick={() => evaluate.mutate({ id: c.id, final: false }, { onError: fail, onSuccess: () => toast("Оценка запрошена") })}
         >
           {ACTION_LABEL.evaluate}
-        </button>
+        </Button>
       )}
       {can("evaluateFinal") && (
-        <button type="button" className="btn" onClick={() => setDialog("final")}>
+        <Button variant="secondary" onClick={() => setDialog("final")}>
           {ACTION_LABEL.evaluateFinal}
-        </button>
+        </Button>
       )}
       {can("cancel") && (
-        <button type="button" className="btn ghost" onClick={() => setDialog("cancel")}>
+        <Button variant="ghost" onClick={() => setDialog("cancel")}>
           {ACTION_LABEL.cancel}
-        </button>
+        </Button>
       )}
     </>
   );
@@ -283,9 +281,9 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
         title={HEADING_LABEL.followups}
         aside={
           can("followup") && (
-            <button type="button" className="btn sm" onClick={() => setFollowup({})}>
+            <Button variant="secondary" sm onClick={() => setFollowup({})}>
               {ACTION_LABEL.followup}
-            </button>
+            </Button>
           )
         }
       >
@@ -359,9 +357,9 @@ function ContractSection({ c, view, actions }: { c: ObservationCase; view: CaseV
       aside={
         canEdit &&
         !editing && (
-          <button type="button" className="btn sm" onClick={() => setEditing(true)}>
+          <Button variant="secondary" sm onClick={() => setEditing(true)}>
             {contract ? ACTION_LABEL.reviseContract : ACTION_LABEL.contract}
-          </button>
+          </Button>
         )
       }
     >
@@ -418,15 +416,13 @@ function ContractEditor({ c, contract, started, onClose }: { c: ObservationCase;
   return (
     <>
       <form className="obs-form" aria-label={HEADING_LABEL.contract} onSubmit={submit}>
-        <label className="field wide">
-          <span>{FIELD_LABEL.contractJson}</span>
-          <textarea className="obs-mono" rows={16} spellCheck={false} required autoFocus value={text} onChange={(e) => setText(e.target.value)} />
-        </label>
+        <Field className="wide" label={FIELD_LABEL.contractJson}>
+          <Textarea className="obs-mono" rows={16} spellCheck={false} required autoFocus value={text} onChange={(e) => setText(e.target.value)} />
+        </Field>
         {started && (
-          <label className="field wide">
-            <span>{FIELD_LABEL.reason}</span>
-            <textarea rows={2} required value={reason} onChange={(e) => setReason(e.target.value)} />
-          </label>
+          <Field className="wide" label={FIELD_LABEL.reason}>
+            <Textarea rows={2} required value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
         )}
         {message && (
           <p className="obs-error wide" role="alert">
@@ -434,20 +430,19 @@ function ContractEditor({ c, contract, started, onClose }: { c: ObservationCase;
           </p>
         )}
         <div className="obs-form-actions">
-          <button
-            type="button"
-            className="btn"
+          <Button
+            variant="secondary"
             onClick={() => (text === initial ? applyTemplate() : setConfirmTemplate(true))}
           >
             Шаблон для «{POLICY_LABEL[c.policy]}»
-          </button>
+          </Button>
           <span className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Отмена
-          </button>
-          <button type="submit" className="btn primary" disabled={save.isPending || !text.trim() || (started && !reason.trim())}>
+          </Button>
+          <Button variant="primary" type="submit" disabled={save.isPending || !text.trim() || (started && !reason.trim())}>
             Сохранить контракт
-          </button>
+          </Button>
         </div>
       </form>
       {confirmTemplate && (
@@ -527,18 +522,15 @@ function DeploymentForm({ caseId }: { caseId: number }) {
         );
       }}
     >
-      <label className="field">
-        <span>{FIELD_LABEL.ref}</span>
-        <input required maxLength={200} value={ref} onChange={(e) => setRef(e.target.value)} />
-      </label>
-      <label className="field">
-        <span>{FIELD_LABEL.environment}</span>
-        <input value={environment} onChange={(e) => setEnvironment(e.target.value)} />
-      </label>
-      <label className="field">
-        <span>{FIELD_LABEL.at} (по умолчанию сейчас)</span>
-        <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
-      </label>
+      <Field label={FIELD_LABEL.ref}>
+        <Input required maxLength={200} value={ref} onChange={(e) => setRef(e.target.value)} />
+      </Field>
+      <Field label={FIELD_LABEL.environment}>
+        <Input value={environment} onChange={(e) => setEnvironment(e.target.value)} />
+      </Field>
+      <Field label={<>{FIELD_LABEL.at} (по умолчанию сейчас)</>}>
+        <Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+      </Field>
       <div className="obs-form-actions">
         <span className="grow" />
         {record.error && (
@@ -546,9 +538,9 @@ function DeploymentForm({ caseId }: { caseId: number }) {
             {record.error.message}
           </p>
         )}
-        <button type="submit" className="btn" disabled={record.isPending || !ref.trim()}>
+        <Button type="submit" variant="primary" disabled={record.isPending || !ref.trim()}>
           {ACTION_LABEL.deploy}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -676,19 +668,17 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
         );
       }}
     >
-      <label className="field">
-        <span>{FIELD_LABEL.criterion}</span>
-        <select value={chosen} onChange={(e) => setCriterion(e.target.value)}>
+      <Field label={FIELD_LABEL.criterion}>
+        <Select value={chosen} onChange={(e) => setCriterion(e.target.value)}>
           {criteria.map((id) => (
             <option key={id} value={id}>
               {id}
             </option>
           ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>{FIELD_LABEL.phase}</span>
-        <select
+        </Select>
+      </Field>
+      <Field label={FIELD_LABEL.phase}>
+        <Select
           value={phase}
           onChange={(e) => {
             const next = PHASES.find((p) => p === e.target.value);
@@ -700,20 +690,17 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
               {PHASE_LABEL[p]}
             </option>
           ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>{FIELD_LABEL.value}</span>
-        <input type="number" step="any" required value={value} onChange={(e) => setValue(e.target.value)} />
-      </label>
-      <label className="field">
-        <span>{FIELD_LABEL.baseline} (необязательно)</span>
-        <input type="number" step="any" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
-      </label>
-      <label className="field wide">
-        <span>{FIELD_LABEL.note}</span>
-        <input value={note} onChange={(e) => setNote(e.target.value)} />
-      </label>
+        </Select>
+      </Field>
+      <Field label={FIELD_LABEL.value}>
+        <Input type="number" step="any" required value={value} onChange={(e) => setValue(e.target.value)} />
+      </Field>
+      <Field label={<>{FIELD_LABEL.baseline} (необязательно)</>}>
+        <Input type="number" step="any" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
+      </Field>
+      <Field className="wide" label={FIELD_LABEL.note}>
+        <Input value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
       <div className="obs-form-actions">
         <span className="grow" />
         {report.error && (
@@ -721,9 +708,9 @@ function EvidenceForm({ caseId, criteria }: { caseId: number; criteria: string[]
             {report.error.message}
           </p>
         )}
-        <button type="submit" className="btn" disabled={report.isPending || !value.trim()}>
+        <Button type="submit" variant="primary" disabled={report.isPending || !value.trim()}>
           {ACTION_LABEL.evidence}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -761,19 +748,19 @@ function IncidentItem({
       {actions.length > 0 && (
         <div className="obs-actions">
           {actions.includes("resolve") && (
-            <button type="button" className="btn sm" onClick={() => onNote({ id: i.id, action: "resolve" })}>
+            <Button variant="secondary" sm onClick={() => onNote({ id: i.id, action: "resolve" })}>
               {INCIDENT_ACTION_LABEL.resolve}
-            </button>
+            </Button>
           )}
           {actions.includes("dismiss") && (
-            <button type="button" className="btn sm" onClick={() => onNote({ id: i.id, action: "dismiss" })}>
+            <Button variant="secondary" sm onClick={() => onNote({ id: i.id, action: "dismiss" })}>
               {INCIDENT_ACTION_LABEL.dismiss}
-            </button>
+            </Button>
           )}
           {actions.includes("followup") && (
-            <button type="button" className="btn sm" onClick={() => onFollowup(i.id)}>
+            <Button variant="secondary" sm onClick={() => onFollowup(i.id)}>
               {INCIDENT_ACTION_LABEL.followup}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -806,10 +793,9 @@ function IncidentNoteForm({ incident, action, onDone }: { incident: Incident; ac
         submit();
       }}
     >
-      <label className="field wide">
-        <span>{dismissing ? "Почему это не инцидент" : `${FIELD_LABEL.note} (необязательно)`}</span>
-        <textarea autoFocus rows={2} required={dismissing} value={note} onChange={(e) => setNote(e.target.value)} />
-      </label>
+      <Field className="wide" label={<>{dismissing ? "Почему это не инцидент" : `${FIELD_LABEL.note} (необязательно)`}</>}>
+        <Textarea autoFocus rows={2} required={dismissing} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
       {error && (
         <p className="obs-error wide" role="alert">
           {error}
@@ -817,12 +803,12 @@ function IncidentNoteForm({ incident, action, onDone }: { incident: Incident; ac
       )}
       <div className="obs-form-actions">
         <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onDone}>
+        <Button variant="ghost" onClick={onDone}>
           Отмена
-        </button>
-        <button type="submit" className={`btn ${dismissing ? "danger" : "primary"}`} disabled={pending || (dismissing && !note.trim())}>
+        </Button>
+        <Button type="submit" variant={dismissing ? "danger" : "primary"} disabled={pending || (dismissing && !note.trim())}>
           {INCIDENT_ACTION_LABEL[action]}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -872,12 +858,12 @@ function FormDialog({
         </div>
         <div className="mf">
           <span className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Отмена
-          </button>
-          <button type="submit" className={`btn ${danger ? "danger" : "primary"}`} disabled={busy || !canSubmit}>
+          </Button>
+          <Button type="submit" variant={danger ? "danger" : "primary"} disabled={busy || !canSubmit}>
             {submitLabel}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -923,16 +909,14 @@ function EditDialog({ c, canRename, canEdit, onClose }: { c: ObservationCase; ca
       onClose={onClose}
     >
       {canRename && (
-        <label className="field">
-          <span>{FIELD_LABEL.title}</span>
-          <input required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
-        </label>
+        <Field label={FIELD_LABEL.title}>
+          <Input required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+        </Field>
       )}
       {canEdit && (
         <>
-          <label className="field">
-            <span>{FIELD_LABEL.policy}</span>
-            <select
+          <Field label={FIELD_LABEL.policy}>
+            <Select
               value={policy}
               onChange={(e) => {
                 const next = POLICIES.find((p) => p === e.target.value);
@@ -944,8 +928,8 @@ function EditDialog({ c, canRename, canEdit, onClose }: { c: ObservationCase; ca
                   {POLICY_LABEL[p]}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Field>
           <fieldset className="obs-tasks-field">
             <legend>{FIELD_LABEL.tasks}</legend>
             {tasks.length ? (
@@ -953,9 +937,9 @@ function EditDialog({ c, canRename, canEdit, onClose }: { c: ObservationCase; ca
                 {tasks.map((t) => (
                   <li key={t}>
                     <span className="mono">{t}</span>
-                    <button type="button" className="icon-btn" aria-label={`Убрать задачу ${t}`} title="Убрать" onClick={() => setTasks(tasks.filter((x) => x !== t))}>
+                    <Button variant="secondary" aria-label={`Убрать задачу ${t}`} title="Убрать" onClick={() => setTasks(tasks.filter((x) => x !== t))}>
                       <Icon.close size={12} />
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -975,9 +959,9 @@ function EditDialog({ c, canRename, canEdit, onClose }: { c: ObservationCase; ca
                   }
                 }}
               />
-              <button type="button" className="btn" disabled={!adding.trim()} onClick={addTask}>
+              <Button variant="secondary" disabled={!adding.trim()} onClick={addTask}>
                 Добавить
-              </button>
+              </Button>
             </div>
           </fieldset>
         </>
@@ -1000,10 +984,9 @@ function CancelDialog({ caseId, onClose }: { caseId: number; onClose: () => void
       onSubmit={() => cancel.mutate({ id: caseId, reason: reason.trim() }, { onSuccess: onClose })}
       onClose={onClose}
     >
-      <label className="field">
-        <span>{FIELD_LABEL.reason}</span>
-        <textarea required autoFocus rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
-      </label>
+      <Field label={FIELD_LABEL.reason}>
+        <Textarea required autoFocus rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
     </FormDialog>
   );
 }
@@ -1033,14 +1016,12 @@ function FollowupDialog({ caseId, incident, onClose }: { caseId: number; inciden
       onClose={onClose}
     >
       <p className="muted">Название и описание можно не заполнять: сервер подберёт их по инциденту или итогам.</p>
-      <label className="field">
-        <span>{FIELD_LABEL.title}</span>
-        <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
-      </label>
-      <label className="field">
-        <span>{FIELD_LABEL.description}</span>
-        <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </label>
+      <Field label={FIELD_LABEL.title}>
+        <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+      </Field>
+      <Field label={FIELD_LABEL.description}>
+        <Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
     </FormDialog>
   );
 }

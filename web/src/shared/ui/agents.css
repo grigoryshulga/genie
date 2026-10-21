@@ -14,7 +14,6 @@
 .ag-page-head { display: flex; align-items: flex-start; gap: var(--g-space-5); }
 .ag-page-head p { margin: 0; flex: 1; line-height: var(--g-leading-prose); }
 .ag-intro { flex: 1; min-width: 0; max-width: 70ch; display: flex; flex-direction: column; gap: var(--g-space-2); color: var(--g-text-2); font-size: var(--g-text-ui); }
-.ag-banner { padding: var(--g-space-3) var(--g-space-6); border-bottom: 1px solid var(--g-border); display: flex; flex-direction: column; gap: var(--g-space-2); font-size: var(--g-text-ui); }
 
 .ag-section { display: flex; flex-direction: column; gap: var(--g-space-3); }
 .ag-section-head { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control-sm); }
@@ -25,7 +24,6 @@
 .ag-note { font-size: var(--g-text-ui); }
 .ag-hint { font-size: var(--g-text-ui); line-height: var(--g-leading-prose); color: var(--g-text-2); }
 .ag-warn { margin: 0; padding: var(--g-space-3) var(--g-space-4); border-radius: var(--g-radius-md); background: var(--g-accent-soft); border: 1px solid var(--g-accent); color: var(--g-accent-soft-text); font-size: var(--g-text-ui); line-height: var(--g-leading-ui); }
-.ag-warn-list { margin: 0; padding-left: var(--g-space-4); color: var(--g-accent-text); font-size: var(--g-text-ui); line-height: var(--g-leading-prose); }
 .ag-list-note { margin: 0; padding: var(--g-space-3) var(--g-space-4); font-size: var(--g-text-dense); line-height: var(--g-leading-prose); }
 
 .ag-problems { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--g-space-2); }
@@ -49,8 +47,6 @@
 .ag-avatars .ag-class { margin-left: calc(-1 * var(--g-space-1)); box-shadow: 0 0 0 2px var(--g-bg); }
 .ag-avatars .ag-class:first-child { margin-left: 0; }
 .pick.on .ag-avatars .ag-class { box-shadow: 0 0 0 2px var(--g-accent-soft); }
-
-.ag-files { margin: 0; padding-left: var(--g-space-4); font-size: var(--g-text-dense); color: var(--g-text-2); line-height: var(--g-leading-prose); }
 .ag-file-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid var(--g-border); border-radius: var(--g-radius-md); overflow: hidden; }
 .ag-file-list li { display: flex; align-items: center; gap: var(--g-space-2); min-height: var(--g-control-sm); padding: 0 var(--g-space-2) 0 var(--g-space-4); }
 .ag-file-list li + li { border-top: 1px solid var(--g-border); }
@@ -73,7 +69,6 @@
 .ag-prompt-edit textarea { width: 100%; min-height: 380px; }
 .ag-prompt-preview { min-height: 380px; max-height: 52vh; overflow: auto; padding: var(--g-space-4); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); }
 .ag-prompt-preview > .ag-hint { margin-bottom: var(--g-space-2); }
-.ag-prompt-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-prompt-seg { display: none; flex: none; margin-left: 0; }
 .ag-builtin { max-height: 240px; margin: 0 0 var(--g-space-3); padding: var(--g-space-3) var(--g-space-4); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); white-space: pre-wrap; font-family: var(--g-font-mono); font-size: var(--g-text-caption); }
 @media (max-width: 900px) {
@@ -148,8 +143,6 @@ fieldset:disabled .ag-perm { cursor: default; }
 /* forms */
 .ag-form, .ag-template-form { display: flex; flex-direction: column; gap: var(--g-space-4); }
 .ag-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--g-space-3); }
-.ag-inline { margin: 0; padding: 0; border: 0; display: flex; gap: var(--g-space-5); flex-wrap: wrap; font-size: var(--g-text-ui); color: var(--g-text-2); }
-.ag-inline legend { padding: 0 0 var(--g-space-2); }
 .ag-inline label, .ag-choice label { display: flex; align-items: center; gap: var(--g-space-2); }
 .ag-inline input, .ag-choice input, .ag-checks input { accent-color: var(--g-accent); margin: 0; }
 .ag-choice { display: flex; flex-direction: column; gap: var(--g-space-2); font-size: var(--g-text-ui); color: var(--g-text-2); }
@@ -247,7 +240,6 @@ fieldset:disabled .ag-perm { cursor: default; }
 
 @media (max-width: 900px) {
   .ag-page { padding: var(--g-space-4); }
-  .ag-banner { padding: var(--g-space-3) var(--g-space-4); }
   .ag-grant { grid-template-columns: 1fr; }
   .ag-member-row, .ag-relation-row { grid-template-columns: 1fr 1fr; }
   .ag-history-row { grid-template-columns: 100px minmax(0, 1fr) 70px; }

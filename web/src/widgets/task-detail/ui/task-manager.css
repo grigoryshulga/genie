@@ -1,5 +1,5 @@
-.manager-question { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
-.manager-question form { display: flex; flex-wrap: wrap; gap: var(--space-4); }
-.manager-question form label { display: flex; flex-direction: column; gap: var(--space-3); width: 100%; min-width: 0; }
+.manager-question { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--g-border); }
+.manager-question form { display: flex; flex-wrap: wrap; gap: var(--g-space-2); }
+.manager-question form label { display: flex; flex-direction: column; gap: var(--g-space-1); width: 100%; min-width: 0; }
 .manager-question form .in { width: 100%; box-sizing: border-box; }
 .manager-question textarea { min-height: 80px; resize: vertical; }

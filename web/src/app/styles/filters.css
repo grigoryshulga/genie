@@ -53,7 +53,5 @@
 
 /* ---- legacy rules still used by other screens: the shared filter bar of the settings and epics pages,
    and the small button used across the app. The task list and the board no longer render them. ---- */
-.filters { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); min-height: 44px; padding: var(--space-4) var(--space-14); box-sizing: border-box; border-bottom: 1px solid var(--line); }
+.filters { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--g-space-2); min-height: 44px; padding: var(--g-space-2) var(--g-space-5); box-sizing: border-box; border-bottom: 1px solid var(--g-border); }
 .filters:not(.board-filters) { flex-wrap: nowrap; overflow-x: auto; }
-.page-toolbar { height: auto; min-height: 56px; padding: var(--space-4) var(--space-14); box-sizing: border-box; }
-.btn.sm { height: var(--control-sm); padding: 0 var(--space-4); font-size: var(--font-size-small); }

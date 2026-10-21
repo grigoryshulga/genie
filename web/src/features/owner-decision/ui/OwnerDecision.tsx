@@ -7,7 +7,7 @@ import { type TaskRepo, useMergeRequest, useRepos, useTaskRepos } from "@/entiti
 import { STATUS_NAME, type Status, StatusIcon, type Task, useComment, useMoveTask } from "@/entities/task";
 import type { OwnerAction } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { ConfirmDialog, Icon, useToast } from "@/shared/ui";
+import { ConfirmDialog, Icon, Tag, useToast } from "@/shared/ui";
 import "./owner-decision.css";
 import { answerText, cardKind, type Kind, mergeHeld, radioIndex } from "../model.ts";
 
@@ -104,7 +104,7 @@ function MergeCard({ task, action, resolve }: CardProps<"ask-for-merge-pr">) {
           {row?.branch && <span className="mono muted">{row.branch}</span>}
         </div>
         <div className="l2">
-          <span className={`pill ${ci === "passed" ? "ok" : ci === "failed" ? "fail" : ci === "pending" ? "warn" : ""}`}>{CI_TEXT[ci]}</span>
+          <Tag tone={ci === "passed" ? "accent" : ci === "failed" ? "danger" : ci === "pending" ? "signal" : "neutral"}>{CI_TEXT[ci]}</Tag>
           <span className="muted">
             Политика: {policy?.method ? `${policy.method}, ` : ""}
             {requireCi ? "нужны зелёные проверки" : "проверки не обязательны"}
