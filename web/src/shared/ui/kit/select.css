@@ -1,0 +1,38 @@
+/* Keep native form semantics and keyboard handling; supported browsers theme the picker too. */
+@supports (appearance: base-select) {
+  .g-select:not([multiple]),
+  .g-select:not([multiple])::picker(select) {
+    appearance: base-select;
+  }
+  .g-select:not([multiple]) {
+    display: flex;
+    align-items: center;
+    padding-right: var(--g-space-4);
+    background-image: none;
+  }
+  .g-select::picker-icon { color: var(--g-text-muted); margin-left: auto; }
+  .g-select::picker(select) {
+    padding: var(--g-space-1);
+    margin-top: var(--g-space-1);
+    max-height: min(360px, 60dvh);
+    overflow-y: auto;
+    border: 1px solid var(--g-border-strong);
+    border-radius: var(--g-radius-md);
+    background: var(--g-surface-raised);
+    color: var(--g-text);
+    box-shadow: var(--g-shadow-overlay);
+    font: var(--g-weight-medium) var(--g-text-ui)/1.4 var(--g-font-sans);
+  }
+  .g-select option {
+    min-height: var(--g-control);
+    padding: var(--g-space-2) var(--g-space-3);
+    gap: var(--g-space-2);
+    border-radius: var(--g-radius-sm);
+    background: var(--g-surface-raised);
+    color: var(--g-text);
+  }
+  .g-select option:hover, .g-select option:focus-visible { background: var(--g-surface-hover); }
+  .g-select option:checked { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
+  .g-select option::checkmark { color: var(--g-accent-soft-text); }
+  .g-select option:disabled { color: var(--g-text-muted); }
+}

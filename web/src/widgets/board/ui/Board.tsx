@@ -315,7 +315,7 @@ export function Board({
       </div>
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <div className="g-sheet bd-card bd-ghost">
+          <div className={cx("g-sheet bd-card bd-ghost", dragging.needsOwner && "bd-decision")}>
             <CardBody t={dragging} team={dragging.team ? teams.get(dragging.team) : undefined} showStatus />
           </div>
         )}
