@@ -128,25 +128,8 @@
   .g-hints > span:nth-child(2) { display: none; }
 }
 
-/* ---- shared legacy rules still used by other screens (task detail, dialogs, settings): the card panel, form fields and the team list. The board no longer renders them. ---- */
-/* every card is the same height: the title and the note are cut to two lines, the full text is in the task */
-.card { display: flex; flex-direction: column; gap: var(--space-4); flex: none; width: 100%; height: 158px; overflow: hidden; padding: var(--space-6); border-radius: 10px; border: 1px solid var(--line); background: var(--bg-card); color: var(--text); text-align: left; cursor: grab; }
-.card:hover { border-color: var(--line-strong); }
-.card.sel { border-color: var(--accent); background: var(--accent-soft); }
-.card.owner { border-color: var(--amber-line); }
-.card.dragging { opacity: 0.4; }
-.card .meta { display: flex; align-items: center; gap: 7px; flex: none; height: 16px; font-size: var(--font-size-meta); color: var(--muted); white-space: nowrap; }
-.card .t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: none; height: 36px; font-size: var(--font-size-body); line-height: 18px; }
-.card .note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: none; height: 34px; font-size: var(--font-size-small); line-height: 17px; color: var(--muted); }
-.card .note.q { color: var(--amber); }
-.card .foot { display: flex; align-items: center; gap: var(--space-3); flex: none; height: 22px; margin-top: auto; }
-.card .foot > * { flex-shrink: 0; }
-.card .foot .labels { flex-wrap: nowrap; flex-shrink: 1; min-width: 0; overflow: hidden; }
-.card .foot .more, .card .foot .ac { font-size: var(--font-size-caption); color: var(--muted); white-space: nowrap; }
-.urgent-tag { font-size: 10.5px; font-weight: 600; line-height: 16px; padding: 0 var(--space-3); border-radius: var(--radius-xs); background: var(--amber); color: var(--amber-foreground); }
+/* Form fields are still styled by the legacy shell for the dialogs that have not migrated yet; nothing below belongs to the board. */
 .field { display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--font-size-label); color: var(--text-2); }
 .field select, .field input, .field textarea { height: var(--control-input); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-panel); color: var(--text); padding: 0 var(--space-6); font-size: var(--font-size-body); outline: 0; }
 .field textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; line-height: 1.5; }
 .field select:focus, .field input:focus, .field textarea:focus { border-color: var(--accent); }
-.member-line { display: flex; align-items: center; gap: 9px; font-size: var(--font-size-label); }
-.member-line .st { margin-left: auto; color: var(--muted); }
