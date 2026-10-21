@@ -8,8 +8,7 @@ import { plural, readPref, writePref } from "@/shared/lib";
 import { Banner, Button, Character, Chip, EmptyState, ErrorState, Icon, Kbd, Skeleton, characterState, cx } from "@/shared/ui";
 import { Board } from "@/widgets/board";
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
-import { boardHeadline, boardStrip, type BoardPulse } from "../model.ts";
-import { Arcs } from "./Arcs.tsx";
+import { boardStrip, type BoardPulse } from "../model.ts";
 
 /**
  * The board offers the same "new task" action as the C shortcut, so one code path opens the dialog.
@@ -17,9 +16,7 @@ import { Arcs } from "./Arcs.tsx";
  */
 const pressC = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
 
-const weekday = () => new Date().toLocaleDateString("ru-RU", { weekday: "long" });
-
-/** «Доска»: the project's state in one headline, then the six lanes, narrowed by filters («Мои задачи», an epic). */
+/** «Доска»: the project's status strip and six lanes, narrowed by filters («Мои задачи», an epic). */
 export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
   const query = sp.get("q") ?? "";
@@ -45,7 +42,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
   const openCount = tasks.filter((t) => OPEN.includes(t.status)).length;
   const myOpen = login ? all.filter((t) => inTaskViews(t) && t.assignee === login && OPEN.includes(t.status)).length : 0;
 
-  // The headline and the strip state the project, not the filter: they are what is really going on.
+  // The strip reflects the whole project, independently of the active filters.
   const view = all.filter(inTaskViews);
   const waiting = view.filter((t) => t.status === "needs_owner");
   const pulse: BoardPulse = {
@@ -55,10 +52,8 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
     open: view.filter((t) => OPEN.includes(t.status)).length,
   };
   const state = characterState({ working: pulse.working, waiting: pulse.waiting });
-  const head = boardHeadline(pulse);
   const first = waiting[0];
   const strip = boardStrip(state, pulse, first && { id: first.id, title: first.title });
-  const project = session?.projects.find((p) => p.slug === session.project)?.name ?? session?.project;
 
   const setParam = (key: string, value?: string) => {
     const next = new URLSearchParams(sp);
@@ -77,19 +72,6 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main g-board-page" aria-label="Доска">
-      <header className="g-board-hero">
-        <Arcs className="g-board-arcs" />
-        <p className="g-eyebrow">
-          {project ? `${project} · ` : ""}
-          {weekday()}
-        </p>
-        <h1 className="g-h1 g-board-h1">
-          {head.title}
-          {head.stop && <span className="g-stop">.</span>}
-        </h1>
-        <p className="g-board-lead">{head.lead}</p>
-      </header>
-
       <section className="g-board-pulse" aria-label="Что происходит сейчас">
         <Character state={state} size={64} />
         <p className="g-pulse">
