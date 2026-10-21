@@ -921,3 +921,51 @@ async fn social_auth_refuses_remote_plain_http_configuration() {
     let (status, _, _) = call(&h.remote, "POST", "/api/auth/social/github/start").json(json!({})).send().await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn project_icons_require_membership_to_read_and_administration_to_change() {
+    let h = Harness::new();
+    h.project("shop");
+    h.app
+        .with_server(|db| {
+            for (login, role) in [("owner", ProjectRole::Owner), ("member", ProjectRole::Member), ("viewer", ProjectRole::Viewer)] {
+                let user = db.create_user(login, login, None, Some("password-1"), false)?;
+                db.set_membership("shop", user.id, role)?;
+            }
+            db.create_user("outsider", "Outsider", None, Some("password-1"), false)?;
+            Ok(())
+        })
+        .unwrap();
+    let r = &h.remote;
+    let (_, _, cookies) = call(r, "POST", "/api/auth/login").json(json!({"login":"owner", "password":"password-1"})).send().await;
+    let owner = &cookies[0];
+    let png = b"\x89PNG\r\n\x1a\n icon";
+    let (s, _, _) = call(r, "PUT", "/api/projects/shop/icon").cookie(owner).bytes(b"<svg/>").send().await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (s, project, _) = call(r, "PUT", "/api/projects/shop/icon").cookie(owner).bytes(png).send().await;
+    assert_eq!(s, StatusCode::OK);
+    let url = project["icon"].as_str().unwrap();
+    let (_, session, _) = call(r, "GET", "/api/auth/me").cookie(owner).send().await;
+    assert_eq!(session["projects"][0]["icon"], url);
+    for login in ["member", "viewer", "outsider"] {
+        let (_, _, cookies) = call(r, "POST", "/api/auth/login").json(json!({"login":login, "password":"password-1"})).send().await;
+        let cookie = &cookies[0];
+        let (s, _, _) = call(r, "PUT", "/api/projects/shop/icon").cookie(cookie).bytes(png).send().await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{login} may not change icons");
+        let (s, _, _) = call(r, "DELETE", "/api/projects/shop/icon").cookie(cookie).send().await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{login} may not clear icons");
+        let (s, headers, bytes) = call(r, "GET", url).cookie(cookie).send_raw().await;
+        if login == "outsider" {
+            assert_eq!(s, StatusCode::FORBIDDEN);
+        } else {
+            assert_eq!(s, StatusCode::OK);
+            assert_eq!(headers["content-type"], "image/png");
+            assert_eq!(bytes, png);
+        }
+    }
+    let (s, project, _) = call(r, "DELETE", "/api/projects/shop/icon").cookie(owner).send().await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(project.get("icon").is_none());
+    let (s, _, _) = call(r, "GET", url).cookie(owner).send().await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

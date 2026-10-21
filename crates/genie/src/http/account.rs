@@ -44,6 +44,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/users/{id}/avatar", get(avatar).put(set_avatar).delete(clear_avatar))
         .route("/projects", get(list_projects).post(create_project))
         .route("/projects/{slug}", patch(update_project))
+        .route("/projects/{slug}/icon", get(project_icon).put(set_project_icon).delete(clear_project_icon))
         .route("/projects/{slug}/members", get(list_members))
         .route("/projects/{slug}/members/{user}", put(set_member).delete(remove_member))
         .route("/projects/{slug}/invites", post(create_invite))
@@ -82,7 +83,7 @@ async fn me(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
                 for p in db.projects()? {
                     if let Some(role) = db.project_role(&p.slug, &u)? {
                         out.push(
-                            json!({ "slug": p.slug, "name": p.name, "role": role, "autonomy": p.autonomy, "hasRepo": p.repo.is_some() }),
+                            json!({ "slug": p.slug, "name": p.name, "icon": p.icon, "role": role, "autonomy": p.autonomy, "hasRepo": p.repo.is_some() }),
                         );
                     }
                 }
@@ -633,6 +634,32 @@ async fn create_project(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<New
         })
         .await?;
     Ok((StatusCode::CREATED, Json(json!(project))))
+}
+
+/// Project membership is required even for cached icon reads.
+async fn project_icon(State(app): State<Arc<App>>, ctx: Ctx, Path(slug): Path<String>) -> ApiResult<impl IntoResponse> {
+    ctx.access(&app, Some(&slug)).await?;
+    let found = app.blocking(move |app| app.with_server(|db| db.project_icon(&slug))).await?;
+    let Some((bytes, kind)) = found else {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "no project icon"));
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_str(&kind).unwrap_or(HeaderValue::from_static("application/octet-stream")));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=31536000, immutable"));
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    Ok((headers, bytes))
+}
+
+async fn set_project_icon(State(app): State<Arc<App>>, ctx: Ctx, Path(slug): Path<String>, body: Bytes) -> ApiResult<Json<Value>> {
+    ctx.access(&app, Some(&slug)).await?.admin()?;
+    let project = app.blocking(move |app| app.with_server(|db| db.set_project_icon(&slug, &body))).await?;
+    Ok(Json(json!(project)))
+}
+
+async fn clear_project_icon(State(app): State<Arc<App>>, ctx: Ctx, Path(slug): Path<String>) -> ApiResult<Json<Value>> {
+    ctx.access(&app, Some(&slug)).await?.admin()?;
+    let project = app.blocking(move |app| app.with_server(|db| db.clear_project_icon(&slug))).await?;
+    Ok(Json(json!(project)))
 }
 
 #[derive(Deserialize)]
