@@ -8,6 +8,7 @@ import { STATUS_NAME, type Status, StatusIcon, type Task, useComment, useMoveTas
 import type { OwnerAction } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
 import { ConfirmDialog, Icon, useToast } from "@/shared/ui";
+import "./owner-decision.css";
 import { answerText, cardKind, type Kind, mergeHeld } from "../model.ts";
 
 type ActionOf<K extends Kind> = Extract<OwnerAction, { kind: K }>;
@@ -99,11 +100,11 @@ function MergeCard({ task, action, resolve }: CardProps<"ask-for-merge-pr">) {
       )}
       <div className="od-buttons">
         {url && (
-          <a className="btn ghost" href={url} target="_blank" rel="noreferrer">
+          <a className="g-btn ghost" href={url} target="_blank" rel="noreferrer">
             <Icon.external size={13} /> Посмотреть PR
           </a>
         )}
-        <button type="button" className="btn amber" disabled={!!held || merge.isPending} onClick={() => setConfirm(true)}>
+        <button type="button" className="g-btn primary" disabled={!!held || merge.isPending} onClick={() => setConfirm(true)}>
           <Icon.merge size={13} /> Слить PR
         </button>
         <span className="hint">После слияния задача вернётся в «{STATUS_NAME[task.needsOwner?.previous ?? "approved"]}»</span>
@@ -205,14 +206,13 @@ export function OwnerDecision({ task }: { task: Task }) {
         onChange={(e) => setWords(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && send(true)}
       />
-      <div className="actions">
-        <span>⌘↵ ответить и вернуть в «{STATUS_NAME[owner.previous]}»</span>
-        <span className="grow" />
-        <button type="button" className="btn ghost" disabled={!text} onClick={() => send(false)}>
-          Только ответить
-        </button>
-        <button type="button" className={`btn ${kind === "ask-for-merge-pr" ? "ghost" : "amber"}`} disabled={!text} onClick={() => send(true)}>
+      <p className="od-hint">⌘↵ ответить и вернуть в «{STATUS_NAME[owner.previous]}»</p>
+      <div className="od-buttons">
+        <button type="button" className={`g-btn ${kind === "ask-for-merge-pr" ? "ghost" : "primary"}`} disabled={!text} onClick={() => send(true)}>
           Ответить и вернуть в работу
+        </button>
+        <button type="button" className="g-btn ghost" disabled={!text} onClick={() => send(false)}>
+          Только ответить
         </button>
       </div>
     </section>

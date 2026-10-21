@@ -153,10 +153,10 @@ function Popover({
         </div>
         <div className="mm-ft">
           <span className="muted">{changed ? "Со следующего шага, разговор сохранится" : "Выберите модель"}</span>
-          <button type="button" className="btn sm" onClick={onClose}>
+          <button type="button" className="g-btn sm secondary" onClick={onClose}>
             Отмена
           </button>
-          <button type="button" className="btn sm primary" onClick={apply} disabled={!changed || save.isPending}>
+          <button type="button" className="g-btn sm primary" onClick={apply} disabled={!changed || save.isPending}>
             Применить
           </button>
         </div>

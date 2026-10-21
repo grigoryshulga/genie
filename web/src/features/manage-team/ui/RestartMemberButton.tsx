@@ -16,7 +16,7 @@ export function RestartMemberButton({ team, name }: { team: string; name: string
   return (
     <button
       type="button"
-      className="icon-btn member-remove"
+      className="g-icon-btn member-remove"
       title="Перезапустить с текущей ролью — разговор продолжится"
       aria-label={`Перезапустить ${name}`}
       disabled={restart.isPending}

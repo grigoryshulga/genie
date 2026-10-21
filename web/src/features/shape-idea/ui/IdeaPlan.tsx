@@ -56,7 +56,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
           </span>
         )}
         {onClose && (
-          <button type="button" className="icon-btn m-only" aria-label="Закрыть план" onClick={onClose}>
+          <button type="button" className="g-icon-btn m-only" aria-label="Закрыть план" onClick={onClose}>
             <Icon.close />
           </button>
         )}
@@ -166,7 +166,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
 
       {plan && !filed && (
         <div className="ip-ft">
-          <button type="button" className="btn primary" onClick={submit} disabled={!left || apply.isPending}>
+          <button type="button" className="g-btn primary" onClick={submit} disabled={!left || apply.isPending}>
             {apply.isPending ? "Заводим…" : applyLabel(!!plan.epic, left)}
           </button>
           <span className="ac-help">
