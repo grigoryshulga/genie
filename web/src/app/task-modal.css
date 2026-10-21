@@ -1,6 +1,6 @@
 /* Task query links open above the current route, without resizing its content. */
 .task-modal {
-  width: min(calc(var(--g-space-9) * 12), calc(100vw - var(--g-space-8)));
+  width: min(calc(var(--g-space-9) * 9), calc(100vw - var(--g-space-8)));
   height: min(calc(var(--g-space-9) * 10), calc(100dvh - var(--g-space-8)));
   margin: auto;
   overflow: hidden;

@@ -88,6 +88,9 @@
 .bd-card .g-tag.outline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sh-line); color: var(--sh-t2); }
 .bd-card .g-avatar { box-shadow: 0 0 0 2px var(--sh-soft); }
 .bd-answer { justify-self: start; height: var(--g-control); padding: 0 var(--g-space-4); border: 0; border-radius: var(--g-radius-pill); background: var(--g-ink); color: var(--g-paper); font: 700 var(--g-text-dense)/1 var(--g-font-sans); }
+/* Decision cards reserve space for the question and action; details remain in the task. */
+.bd-card:has(> .bd-answer) .bd-ask { -webkit-line-clamp: 1; }
+.bd-card:has(> .bd-answer) .bd-ac, .bd-card:has(> .bd-answer) .bd-foot { display: none; }
 .bd-answer:hover { background: var(--g-n-800); }
 [data-theme="paper"] .bd-answer { background: var(--g-paper); color: var(--g-ink); }
 /* The move menu sits in the card's corner: dragging is not available on a phone or a keyboard. */
