@@ -10,6 +10,7 @@ export interface CaptureRoute {
 export const CAPTURE_ROUTES: CaptureRoute[] = [
   { name: "board", path: "/board" },
   { name: "tasks", path: "/tasks" },
+  { name: "task-panel", path: "/tasks?task=DM-2" },
   { name: "task", path: "/task/DM-2" },
   { name: "task-review", path: "/task/DM-9" },
   { name: "task-needs-owner", path: "/task/DM-12" },
