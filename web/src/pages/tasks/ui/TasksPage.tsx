@@ -30,6 +30,8 @@ import { Button, ErrorState, Icon, IconButton, Kbd, useModalFocus } from "@/shar
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 import { TaskList } from "@/widgets/task-list";
 import { FilterMenu, FilterOption } from "./FilterMenu.tsx";
+// The task screen renders the task list rows, the shared toolbar/chip chrome and its filter sheet.
+import "./tasks-sheets.css";
 
 /** One choice inside a filter: a checkbox for sets, a radio for single choices. */
 type Choice = { id: string; kind: "checkbox" | "radio"; checked: boolean; onChange: () => void; label: ReactNode; hint?: ReactNode };

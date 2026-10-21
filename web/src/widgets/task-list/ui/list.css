@@ -15,15 +15,6 @@
 .labels { display: flex; gap: var(--g-space-1); flex-wrap: wrap; }
 .empty { padding: 80px var(--g-space-4); text-align: center; color: var(--g-text-muted); display: flex; flex-direction: column; align-items: center; gap: var(--g-space-2); }
 
-.avatars { display: flex; padding-left: 5px; }
-.av { position: relative; width: 20px; height: 20px; border-radius: 50%; color: var(--g-ink); font-size: var(--g-text-eyebrow); font-weight: 600; display: grid; place-items: center; margin-left: -5px; box-shadow: 0 0 0 2px var(--g-bg); flex: none; }
-.av.solo { margin-left: 0; box-shadow: none; }
-.av.more { background: var(--g-surface); color: var(--g-text-2); font-weight: 500; }
-.av.lg { width: 30px; height: 30px; font-size: var(--g-text-caption); margin: 0; box-shadow: none; }
-.av.md { width: 26px; height: 26px; font-size: var(--g-text-caption); margin: 0; box-shadow: none; line-height: normal; }
-.av.working::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--g-focus); border-right-color: var(--g-focus); animation: spin 1s linear infinite; }
-.av.error { box-shadow: 0 0 0 2px var(--g-danger); }
-.av.stopped { opacity: 0.45; }
 
 /* ------------------------------------------------------------ task list (ink and paper) */
 /* The page chrome above the rows lives in board.css (@g-toolbar, .g-hints), because the board and the
@@ -87,9 +78,4 @@
   .tl-age { grid-area: age; }
   .tl-title { -webkit-line-clamp: 2; min-height: var(--g-control); padding-block: var(--g-space-1); }
   .tl-tags, .tl-ac, .tl-none { display: none; }
-}
-
-/* The working dot on an avatar pulses forever; under reduced motion it stays lit and still. */
-@media (prefers-reduced-motion: reduce) {
-  .av.working::after { animation: none; }
 }

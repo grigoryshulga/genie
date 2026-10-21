@@ -5,6 +5,7 @@ import { EpicChip, EpicIcon, Labels, PriorityIcon, StatusIcon, type Status, STAT
 import type { Team } from "@/entities/team";
 import { timeAgo } from "@/shared/lib";
 import { cx, EmptyState, Segments } from "@/shared/ui";
+// The list rows: `.tl-*` and the `.pill`/`.empty` primitives the rows and their pages reuse.
 
 /**
  * The task list: rows grouped by status (or one flat list, in the given order). A row states the task's

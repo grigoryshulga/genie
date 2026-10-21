@@ -1,0 +1,7 @@
+/* The platform screens' cascade tail, inlined so the sheets keep the app's order: the public pages and
+   answer sheet, the pane chrome, the shared search field, and the centring column last. The phone layer
+   is in the app's foundation and loads before this chunk. */
+@import "../../../shared/ui/public.css";
+@import "../../../shared/ui/pages.css";
+@import "../../../shared/ui/search-and-docs.css";
+@import "../../../shared/ui/content.css";

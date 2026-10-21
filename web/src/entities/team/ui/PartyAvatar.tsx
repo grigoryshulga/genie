@@ -1,5 +1,6 @@
 import { displayName } from "@/entities/member";
 import { Avatar, cx } from "@/shared/ui";
+import "./avatar.css";
 
 /**
  * Who speaks or acts in a team: agents (members and the orchestrator) are rounded squares, people are

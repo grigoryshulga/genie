@@ -125,7 +125,7 @@ test("the focus ring is the design system's own and is never a hairline", () => 
     const outline = declarations(block.body).find((d) => /^outline\s*:/.test(d)) ?? "";
     // The composer owns one ring around its textarea and action bar. Browser flows also verify
     // the computed wrapper ring in both themes; drawing a second textarea ring crosses the bar.
-    if (block.file === "app/styles/detail.css" && block.selector === ".composer .g-textarea:focus, .composer .g-textarea:focus-visible") {
+    if (block.file === "widgets/task-detail/ui/detail.css" && block.selector === ".composer .g-textarea:focus, .composer .g-textarea:focus-visible") {
       const wrapper = BLOCKS.find((b) => b.file === block.file && b.selector === ".composer:has(textarea:focus)");
       assert.ok(wrapper && declarations(wrapper.body).some((d) => /^outline\s*:\s*(2px|3px)\s+solid\s+var\(--g-focus\)/.test(d)), "the composer's wrapper must draw the delegated focus ring");
       continue;

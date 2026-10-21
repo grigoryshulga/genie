@@ -117,11 +117,6 @@
 .tv-events li { display: flex; gap: var(--g-space-2); line-height: 1.5; }
 .tv-events .tv-time { flex: none; }
 
-/* ---- who somebody is: a square for agents, a circle for people ---- */
-.tv-av { display: inline-grid; place-items: center; flex: none; }
-.tv-av.working > .g-avatar { box-shadow: 0 0 0 2px var(--g-accent); }
-.tv-av.error > .g-avatar { box-shadow: 0 0 0 2px var(--g-danger); }
-.tv-av.stopped { opacity: 0.6; }
 
 /* ---- a tool's output: a code block, clipped when long ---- */
 .tv-out { display: flex; flex-direction: column; align-items: flex-start; gap: var(--g-space-2); margin-top: var(--g-space-2); }

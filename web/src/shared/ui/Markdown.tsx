@@ -2,7 +2,6 @@
 // lists, task lists, quotes, fenced code, inline code, bold, italics, links.
 
 import { Fragment, type ReactNode } from "react";
-import "./markdown.css";
 
 function inline(text: string, key = 0): ReactNode[] {
   const out: ReactNode[] = [];

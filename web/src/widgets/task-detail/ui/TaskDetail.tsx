@@ -60,6 +60,10 @@ import { TaskDelivery } from "./TaskDelivery.tsx";
 import { TaskManager } from "./TaskManager.tsx";
 import { TaskObservation } from "./TaskObservation.tsx";
 import { CollapsibleSection } from "./CollapsibleSection.tsx";
+// The task panel renders its own cascade: detail first, then the sheets that refine parts of it,
+// then the responsive and centring layers. `docs.css` covers the doc-impact box, `team.css` the
+// team sheet inside the panel and `epics.css` the epic box.
+import "./task-detail-sheets.css";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };
 

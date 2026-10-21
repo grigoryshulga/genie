@@ -9,6 +9,7 @@ import { useOnline } from "@/shared/api";
 import { clock, dayLabel, plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
 import { Button, Character, characterState, ErrorState, Icon, IconButton, Select, Segmented, Sheet, Skeleton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
 import { TeamScheme } from "./TeamScheme.tsx";
+import "./team-view-sheets.css";
 
 /** One chat entry: broadcast rows (one per recipient) and kickoffs are merged. */
 interface Entry {

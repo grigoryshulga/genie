@@ -21,6 +21,7 @@ import { Badge, ConfirmDialog, Dialog, Icon, LoadingState, Markdown, Section, us
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
+// `pages.css` holds the pane/split-pane chrome these library tabs render.
 
 export function SkillsTab({
   cfg,

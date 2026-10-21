@@ -192,7 +192,6 @@
 /* Small inline forms (an observation case, a manager answer). */
 .td-form { display: flex; flex-direction: column; gap: var(--g-space-2); margin-bottom: var(--g-space-3); }
 .td-field { display: flex; flex-direction: column; gap: var(--g-space-1); font-size: var(--g-text-dense); color: var(--g-text-2); }
-.td-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--g-space-2); }
 .td-cases { display: flex; flex-direction: column; gap: var(--g-space-2); margin: 0; padding: 0; list-style: none; }
 .td-cases .artifact { width: 100%; }
 
@@ -222,9 +221,6 @@
 .sec h3 .n { color: var(--g-text-muted); }
 .sec .sec-edit { color: var(--g-text-muted); }
 .sec .sec-edit:hover { background: var(--g-surface-hover); color: var(--g-text); }
-.md { color: var(--g-text-2); line-height: var(--g-leading-prose); }
-.md code { background: var(--g-surface-raised); }
-.md pre { background: var(--g-surface); border: 1px solid var(--g-border); }
 
 /* ------------------------------------- the detail on a phone and a tablet (H30) */
 /* Folding a section and editing it are the two taps a document view gets; both need a

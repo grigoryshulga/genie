@@ -10,6 +10,7 @@ import { matchesSearch } from "@/shared/lib";
 import { ContextSearch } from "@/widgets/topbar";
 import { ErrorState, Icon, Skeleton } from "@/shared/ui";
 import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
+import "./agents-sheets.css";
 import "@/shared/ui/agents.css";
 
 type Tab = "roles" | "templates" | "skills" | "mcp";

@@ -258,3 +258,7 @@
   .g-check, .g-radio { min-height: var(--g-row); }
   .g-check input, .g-radio input { width: var(--g-space-5); height: var(--g-space-5); }
 }
+
+/* Actions row at the foot of an edit form: the task detail's forms and the project icon form both
+   render it, so the row lives with the shared primitives instead of the detail sheet. */
+.td-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--g-space-2); }

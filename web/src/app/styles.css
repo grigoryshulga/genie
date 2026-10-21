@@ -1,21 +1,10 @@
+/* ------------------------------------------------------------ global foundation */
+/* Brand tokens, resets and the rules every screen needs. Area sheets are not gathered here: the file
+   that owns a screen's markup imports its own sheet, so the screen carries its cascade and this file
+   stays the truly global layer. Add a sheet here only when the rule really is shell-wide. */
+
 @import "../shared/ui/fonts.css";
 @import "../shared/ui/g-tokens.css";
 @import "../shared/ui/components.css";
 
 @import "./styles/base.css";
-@import "./styles/shell.css";
-@import "./styles/list.css";
-@import "./styles/board.css";
-@import "./styles/detail.css";
-@import "./styles/team.css";
-@import "./styles/overlays.css";
-@import "./styles/mobile.css";
-@import "./styles/additions.css";
-@import "./styles/epics.css";
-@import "./styles/docs.css";
-@import "./styles/public.css";
-@import "./styles/pages.css";
-@import "./styles/filters.css";
-@import "./styles/task-page.css";
-@import "./styles/search-and-docs.css";
-@import "./styles/content.css";

@@ -1,0 +1,8 @@
+/* The epic screen's cascade tail, inlined into the epic chunk so it loads after the task detail and
+   epic sheets instead of in a hoisted shared chunk. Order is the app's sheet order: the task view's
+   frame it reuses, the phone layer, the epic chrome, the task-page frame and the centring column. */
+@import "../../../widgets/task-detail/ui/detail.css";
+@import "../../../shared/ui/mobile.css";
+@import "../../../entities/task/ui/epics.css";
+@import "../../../widgets/task-detail/ui/task-page.css";
+@import "../../../shared/ui/content.css";

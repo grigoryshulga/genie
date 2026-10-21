@@ -1,0 +1,6 @@
+/* The agents screens' cascade tail, inlined into the agents chunk so the pane chrome is followed by the
+   shared search field and the desktop centring column instead of being hoisted apart. The phone layer is
+   already in the app's own foundation and loads before this chunk, which is where the cascade wants it. */
+@import "../../../shared/ui/pages.css";
+@import "../../../shared/ui/search-and-docs.css";
+@import "../../../shared/ui/content.css";

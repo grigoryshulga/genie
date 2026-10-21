@@ -27,6 +27,9 @@ import { DocsOverview } from "./DocsOverview.tsx";
 import { DocSearchList } from "./DocSearchList.tsx";
 import { DocView } from "./DocView.tsx";
 import { NewDocDialog } from "./NewDocDialog.tsx";
+// The docs workspace: the reader/editor layout, the overview cards and the mobile drawer, then the
+// responsive and centring layers.
+import "./docs-sheets.css";
 
 const DocEditor = lazy(() => import("./DocEditor.tsx").then((module) => ({ default: module.DocEditor })));
 

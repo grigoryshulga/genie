@@ -18,6 +18,7 @@ import type { NewTaskPreset } from "@/features/create-task";
 import { plural, timeAgo, useTick } from "@/shared/lib";
 import { ContextSearch } from "@/widgets/topbar";
 import { Button, EmptyState, ErrorState, Icon, Skeleton, Tag, Tabs } from "@/shared/ui";
+import "./epics-sheets.css";
 
 const closed = (t: TaskSummary) => t.status === "done" || t.status === "cancelled";
 
