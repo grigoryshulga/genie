@@ -9,6 +9,8 @@ import { IDEA_TEMPLATE, IdeaPlan } from "@/features/shape-idea";
 import { clock, plural, timeAgo, useTick } from "@/shared/lib";
 import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, Markdown, Prose, Sheet, Tag, useToast, WorkingArcs } from "@/shared/ui";
 import "./agent.css";
+import "@/app/styles/team.css";
+import "./agent-sheets.css";
 
 type Member = TeamDetail["members"][number];
 

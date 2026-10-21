@@ -1,0 +1,3 @@
+/* The agent chat's cascade tail: the phone layer. Inlined so it loads after `team.css` and the
+   page sheet instead of in a hoisted shared chunk. */
+@import "../../../app/styles/mobile.css";

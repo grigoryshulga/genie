@@ -1,0 +1,4 @@
+/* The epics index's cascade tail: its card layout, then the phone layer. Inlined because the task
+   panel needs `epics.css` after `detail.css`, so it must not be hoisted into a shared chunk. */
+@import "../../../app/styles/epics.css";
+@import "../../../app/styles/mobile.css";

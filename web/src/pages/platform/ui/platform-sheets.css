@@ -1,0 +1,4 @@
+/* The platform pages' cascade tail: the phone layer and the desktop centring column for the pane
+   bodies. Inlined so they load after `pages.css` instead of in a hoisted shared chunk. */
+@import "../../../app/styles/mobile.css";
+@import "../../../app/styles/content.css";

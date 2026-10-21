@@ -2,6 +2,8 @@ import { type ReactNode, useEffect, useId, useRef } from "react";
 import { cx } from "./cx.ts";
 import { useModalFocus } from "./modal-focus.ts";
 import { nextIndex } from "./menu-nav.ts";
+// The dialog, modal and menu primitives every screen opens are styled by the shared overlay sheet.
+import "@/app/styles/overlays.css";
 
 /**
  * A dialog on the native <dialog> element: showModal() makes the page behind it inert, traps focus,

@@ -18,6 +18,7 @@ import {
 import "@/shared/ui/agents.css";
 import { TaskLinks, when } from "./parts.tsx";
 import "./observations.css";
+import "./observations-sheets.css";
 
 /** The most cases the list endpoint returns (`limit` tops out at 200, §15). */
 const LIST_LIMIT = 200;

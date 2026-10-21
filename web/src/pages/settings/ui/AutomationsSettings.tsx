@@ -12,6 +12,10 @@ import { timeAgo, useTick } from "@/shared/lib";
 import { Icon, Modal, useRefreshingAct } from "@/shared/ui";
 import "@/shared/ui/settings.css";
 import { SettingsLoading } from "@/widgets/settings-shell";
+// The settings pages share the split-pane rules with the platform pages, then the responsive and
+// centring layers.
+import "@/app/styles/pages.css";
+import "./settings-sheets.css";
 
 export function AutomationsSettingsPage() {
   useTick();

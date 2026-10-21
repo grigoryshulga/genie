@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Banner, Character, Icon } from "@/shared/ui";
+import "@/app/styles/public.css";
 
 /**
  * The full-bleed brand surface of the pages outside the shell: the slogan with the orange stop on

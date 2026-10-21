@@ -1,0 +1,4 @@
+/* The agents screen's cascade tail: the phone layer and the desktop centring column for the pane
+   bodies it renders through the agents kit. Inlined so they stay after `pages.css`. */
+@import "../../../app/styles/mobile.css";
+@import "../../../app/styles/content.css";

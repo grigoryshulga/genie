@@ -1,0 +1,8 @@
+/* The task screen's cascade, in order: the task list rows, the shared toolbar/chip chrome, this
+   screen's filter sheet, then the phone layer that refines them. Inlined rather than imported so
+   the bundler keeps them in this order inside the page's own chunk instead of hoisting the shared
+   sheets into a chunk that loads before it. */
+@import "../../../app/styles/list.css";
+@import "../../../app/styles/board.css";
+@import "../../../app/styles/filters.css";
+@import "../../../app/styles/mobile.css";

@@ -1,0 +1,9 @@
+/* The task panel's cascade, in order: the epic box and doc-impact blocks it reuses, the task page
+   rail, then the phone and desktop-centring layers that refine everything above. `detail.css` and
+   `team.css` are imported directly by the module, because nothing has to load before them. Inlined
+   rather than imported so the bundler cannot hoist them into a shared chunk ahead of the layout. */
+@import "../../../app/styles/epics.css";
+@import "../../../app/styles/docs.css";
+@import "../../../app/styles/task-page.css";
+@import "../../../app/styles/mobile.css";
+@import "../../../app/styles/content.css";

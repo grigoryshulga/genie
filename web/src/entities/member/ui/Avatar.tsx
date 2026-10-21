@@ -1,4 +1,6 @@
 import { initial, type Member, memberLabel, ROLE_LETTER } from "../model.ts";
+// Legacy avatar primitives (`.av`, `.avatars`, `.more`) still live in the task-list sheet.
+import "@/app/styles/list.css";
 
 export function Avatar({ role, name, activity, state, size }: { role: string; name?: string; activity?: string; state?: string; size?: "md" | "lg" | "solo" }) {
   const cls = ["av", `r-${role}`, size ?? "", activity === "working" ? "working" : "", activity === "error" ? "error" : "", state === "stopped" ? "stopped" : "", state === "lost" ? "lost" : ""].filter(Boolean).join(" ");

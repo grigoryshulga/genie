@@ -11,6 +11,11 @@ import { matchesSearch, timeAgo, useTick } from "@/shared/lib";
 import { Banner, Button, Card, Character, EmptyState, GroupHead, Icon, Markdown, Prose, Radio, Sheet, Skeleton, Tag, Textarea, useRefreshingAct, useToast, WorkingArcs } from "@/shared/ui";
 import { ContextSearch } from "@/widgets/topbar";
 import { Runs } from "@/widgets/runs";
+// The platform pages carry their own sheets: the answer page (`public.css`), the split-pane and
+// notification rules (`pages.css`), then the responsive and centring layers.
+import "@/app/styles/public.css";
+import "@/app/styles/pages.css";
+import "./platform-sheets.css";
 
 // ------------------------------------------------------------------ answer page (public)
 

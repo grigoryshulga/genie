@@ -1,0 +1,7 @@
+/* The epic screen's cascade tail: its own layout, the task page rail it reuses, then the phone and
+   desktop-centring layers. Inlined so the bundler keeps them after `detail.css` (imported by the
+   module) instead of hoisting them into a shared chunk that loads first. */
+@import "../../../app/styles/epics.css";
+@import "../../../app/styles/task-page.css";
+@import "../../../app/styles/mobile.css";
+@import "../../../app/styles/content.css";

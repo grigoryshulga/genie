@@ -30,6 +30,10 @@ import { AddArtifactDialog } from "@/features/add-artifact";
 import type { NewTaskPreset } from "@/features/create-task";
 import { timeAgo, useTick } from "@/shared/lib";
 import { Banner, Button, Character, EmptyState, ErrorState, GroupHead, Icon, IconButton, Markdown, Segments, Skeleton, Tag, useToast } from "@/shared/ui";
+// The epic screen reuses the task-detail property blocks (`detail.css`) and the task page rail
+// (`task-page.css`) under its own layout (`epics.css`), then the responsive and centring layers.
+import "@/app/styles/detail.css";
+import "./epic-sheets.css";
 
 export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }) {
   useTick();
