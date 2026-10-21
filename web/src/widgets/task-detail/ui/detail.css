@@ -241,3 +241,14 @@
 @media (prefers-reduced-motion: reduce) {
   .sec-toggle svg, .td-props > summary::after { transition: none; }
 }
+
+/* The preview header owns the identity once; its actions never compete with the title. */
+.detail > .td-bar { height: auto; align-items: flex-start; padding-block: var(--g-space-4); overflow: visible; }
+.detail > .td-bar .td-headline { flex: 1; min-width: 0; }
+.detail > .td-bar .title { margin: 0; overflow-wrap: anywhere; }
+.td-header-actions { display: flex; align-items: center; gap: var(--g-space-1); flex: none; }
+@media (max-width: 640px) {
+  .detail > .td-bar { flex-wrap: wrap; }
+  .detail > .td-bar .td-headline { flex-basis: calc(100% - var(--g-control) - var(--g-space-2)); }
+  .td-header-actions { margin-inline-start: auto; }
+}

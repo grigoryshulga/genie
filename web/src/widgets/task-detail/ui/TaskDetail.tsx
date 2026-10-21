@@ -496,21 +496,20 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <IconButton label="Назад" className="m-only" onClick={onClose}>
             <Icon.back />
           </IconButton>
-          {crumbs}
-          <FollowTask task={t.id} />
-          <span className="grow" />
-          <Link className="g-btn secondary sm" to={pageLink}>
-            <Icon.external size={12} />
-            Открыть страницу
-          </Link>
-          <IconButton label="Закрыть" className="d-only" onClick={onClose}>
-            <Icon.close />
-          </IconButton>
+          {headline}
+          <div className="td-header-actions">
+            <FollowTask task={t.id} />
+            <Link className="g-icon-btn" to={pageLink} aria-label="Открыть страницу" title="Открыть страницу">
+              <Icon.external size={16} />
+            </Link>
+            <IconButton label="Закрыть" className="d-only" onClick={onClose}>
+              <Icon.close />
+            </IconButton>
+          </div>
         </header>
 
         <div className="detail-body">
           <div className="detail-head">
-            {headline}
             {states}
             <details className="td-props" open={!narrow}>
               <summary>Свойства</summary>

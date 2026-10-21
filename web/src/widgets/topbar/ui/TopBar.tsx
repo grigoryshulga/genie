@@ -7,13 +7,13 @@ import { useProposals } from "@/entities/platform";
 import { OBSERVATION_TEXT } from "@/entities/observation";
 import { inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
-import { canManageProject, saveAppearancePreferences, timeAgo, useTick } from "@/shared/lib";
-import { ActionMenu, Banner, Button, Character, characterState, Dialog, Icon, Kbd, type MenuEntry, Tabs, Tag, WorkingArcs } from "@/shared/ui";
+import { canManageProject, saveAppearancePreferences, useTick } from "@/shared/lib";
+import { ActionMenu, Banner, Dialog, Icon, IconButton, type MenuEntry, Tabs, Tag } from "@/shared/ui";
 import { ContextSearch } from "./ContextSearch.tsx";
 import { NotificationsPopover } from "./NotificationsPopover.tsx";
 import { Popover } from "./Popover.tsx";
 import "./topbar.css";
-// The app shell bar: the top bar, its dock and the shell frame (`.app`) the bar sits in.
+// The top bar and the shell frame (`.app`) it sits in.
 import "./shell.css";
 
 type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void; onOpenPalette: () => void };
@@ -29,7 +29,7 @@ function activePrimary(pathname: string): Primary | undefined {
   return undefined;
 }
 
-/** The shell's top bar: project, the five primary destinations, search, create, the working-now dock, and the person's menu. */
+/** Project, navigation, search, create, notifications, and the person's menu. */
 export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }: Props) {
   useTick();
   const { pathname } = useLocation();
@@ -100,6 +100,7 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
     { id: "observations", label: OBSERVATION_TEXT.nav, onSelect: () => navigate("/observations") },
   ];
   const isAdmin = !!session?.user.isAdmin;
+  const toggleTheme = () => saveAppearancePreferences({ theme: document.documentElement.dataset.theme === "paper" ? "ink" : "paper" });
   const profile: MenuEntry[] = [
     { id: "settings", label: "Настройки", hint: "G S", onSelect: () => navigate("/settings") },
     ...(canManageProject(isAdmin, project?.role) ? [{ id: "manage", label: "Управление проектом", onSelect: () => navigate("/manage/project/general") } satisfies MenuEntry] : []),
@@ -111,11 +112,6 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
       : []),
     ...(session?.mode === "users" ? (["separator", { id: "logout", label: `Выйти (${session.user.login})`, onSelect: () => void logout() }] satisfies MenuEntry[]) : []),
   ];
-
-  const working = teams.filter((t) => t.members.some((m) => m.activity === "working")).length;
-  const needOwner = teams.filter((t) => t.taskInfo?.status === "needs_owner").length;
-  const state = characterState({ working, waiting: needOwner });
-  const toggleTheme = () => saveAppearancePreferences({ theme: document.documentElement.dataset.theme === "paper" ? "ink" : "paper" });
 
   return (
     <>
@@ -160,52 +156,12 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
 
         <ContextSearch inputRef={searchRef} className="g-topbar-search d-only" />
         {canCreate && (
-          <Button sm className="d-only" onClick={onNew} title="Новая задача">
-            <Icon.plus size={14} />
-            Новая задача
-            <Kbd>C</Kbd>
-          </Button>
+          <IconButton label="Новая задача" className="g-topbar-create d-only" onClick={onNew}>
+            <Icon.plus size={20} />
+          </IconButton>
         )}
 
-        <Popover
-          label={working || needOwner ? `Работают сейчас: ${teams.length}` : "Команды"}
-          className="g-dock"
-          align="right"
-          popup="dialog"
-          trigger={
-            <>
-              <Character state={state} size={26} />
-              <span className="d-only">{working ? `${working} в работе` : needOwner ? "ждут вас" : "тихо"}</span>
-            </>
-          }
-        >
-          {() => (
-            <div className="g-menu g-dock-list" role="group" aria-label="Работают сейчас">
-              <div className="g-menu-head">Работают сейчас</div>
-              {teams.length === 0 && <div className="g-menu-head">Нет активных команд</div>}
-              {teams.map((t) => {
-                const status = t.taskInfo?.status;
-                const needs = status === "needs_owner";
-                const isWorking = t.members.some((m) => m.activity === "working");
-                return (
-                  <Link key={t.id} to={`/team/${encodeURIComponent(t.id)}`} className="g-menu-item">
-                    {needs ? <span className="g-dot-signal" aria-hidden="true" /> : isWorking ? <WorkingArcs size={14} /> : <span className="g-dot-idle" aria-hidden="true" />}
-                    <span className="g-mono">{t.id}</span>
-                    <span className="hint">{needs ? "ждёт вас" : timeAgo(t.created)}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </Popover>
-
         <NotificationsPopover />
-        <button type="button" className="g-icon-btn d-only" aria-label="Сменить тему" title="Сменить тему: чернила или бумага" onClick={toggleTheme}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-            <circle cx="8" cy="8" r="6" />
-            <path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" stroke="none" />
-          </svg>
-        </button>
         <Popover
           label={`Профиль: ${me}`}
           className="g-avatar-btn"
@@ -217,14 +173,22 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
             </>
           }
         >
-          {(close) => <ActionMenu label="Профиль" items={profile} onClose={close} />}
+          {(close) => {
+            // Read when the popup opens: appearance can also change in Settings.
+            const paper = document.documentElement.dataset.theme === "paper";
+            return <ActionMenu label="Профиль" items={[
+              { id: "theme", label: "Светлая тема", hint: paper ? "Вкл" : "Выкл", checked: paper, onSelect: toggleTheme },
+              "separator",
+              ...profile,
+            ]} onClose={close} />;
+          }}
         </Popover>
 
         <button type="button" className="g-icon-btn m-only" aria-label="Поиск" onClick={onOpenSearch}>
           <Icon.search size={17} />
         </button>
         {canCreate && (
-          <button type="button" className="g-icon-btn m-only" aria-label="Новая задача" onClick={onNew}>
+          <button type="button" className="g-icon-btn g-topbar-create m-only" aria-label="Новая задача" onClick={onNew}>
             <Icon.plus size={17} />
           </button>
         )}
