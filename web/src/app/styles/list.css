@@ -31,3 +31,67 @@
 .r-tester { background: var(--role-tester); } .r-documenter { background: var(--role-documenter); } .r-orchestrator { background: var(--role-orchestrator); } .r-human { background: var(--role-human); }
 .r-planner { background: var(--role-planner); } .c-planner { color: var(--role-text-planner); }
 .c-analyst { color: var(--role-text-analyst); } .c-executor { color: var(--role-text-executor); } .c-reviewer { color: var(--role-text-reviewer); } .c-tester { color: var(--role-text-tester); } .c-documenter { color: var(--role-text-documenter); } .c-orchestrator { color: var(--role-text-orchestrator); }
+
+/* ------------------------------------------------------------ task list (ink and paper) */
+/* The page chrome above the rows lives in board.css (@g-toolbar, .g-hints), because the board and the
+   list share it. Everything here belongs to this page and its rows; every value is a token. */
+
+.g-tasks-page { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-x: hidden; }
+/* The filter rail scrolls in place: the view chips and the reset stay reachable at every width. */
+.g-tasks-page .g-toolbar { min-width: 0; overflow: hidden; }
+.g-toolbar > .g-rail { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.g-toolbar > .g-rail::-webkit-scrollbar { display: none; }
+/* The view chips keep a fixed, readable width so the rail's own minimum never pushes them off the page. */
+.g-tasks-page .g-chip-select select { width: 118px; }
+.g-tasks-head { flex: none; display: grid; gap: var(--g-space-2); padding: var(--g-space-7) var(--g-space-6) var(--g-space-5); border-bottom: 1px solid var(--g-border); }
+.g-tasks-h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--g-space-2) var(--g-space-3); margin: 0; font-family: var(--g-font-display); font-size: var(--g-text-display); font-weight: 700; line-height: var(--g-leading-display); letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
+.g-tasks-h1 .g-num { font-size: var(--g-text-display-xl); font-weight: 700; line-height: 0.9; }
+.g-tasks-of { font-family: var(--g-font-sans); font-size: var(--g-text-caption); font-weight: 500; letter-spacing: 0; color: var(--g-text-muted); }
+.g-tasks-lead { margin: 0; max-width: 72ch; font-size: var(--g-text-body); line-height: var(--g-leading-prose); color: var(--g-text-2); }
+.g-tasks-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--g-space-1) var(--g-space-6) var(--g-space-8); }
+.tl-skeleton { height: 44px; margin: var(--g-space-2) var(--g-space-4); }
+
+/* ---- the list: one row per task, grouped by status with a sticky head ---- */
+.tl-groups { display: grid; gap: var(--g-space-5); padding: var(--g-space-2) 0 var(--g-space-8); }
+.tl-group { display: grid; gap: 1px; align-content: start; }
+.tl-group-head { position: sticky; top: 0; z-index: var(--g-z-sticky); height: 34px; background: var(--g-bg); }
+.tl-row { display: grid; grid-template-columns: 16px 58px minmax(0, 1fr) minmax(0, 220px) auto 128px 52px; align-items: center; column-gap: var(--g-space-3); min-height: 48px; padding: var(--g-space-1) var(--g-space-4); cursor: default; }
+.tl-id { font-size: var(--g-text-dense); font-weight: 600; color: var(--g-text-muted); }
+.tl-main { display: grid; gap: 2px; min-width: 0; }
+.tl-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; padding: 0; border: 0; background: none; color: var(--g-text); font: 600 var(--g-text-ui)/1.35 var(--g-font-sans); text-align: left; cursor: pointer; }
+.tl-title:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; border-radius: var(--g-radius-sm); }
+.tl-epic-mark { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; font-size: var(--g-text-caption); font-weight: 700; color: var(--g-accent-soft-text); }
+.tl-note { overflow: hidden; font-size: var(--g-text-caption); color: var(--g-text-muted); text-overflow: ellipsis; white-space: nowrap; }
+.tl-tags { display: flex; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; }
+.tl-ac { display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.tl-ac .g-segs { flex: none; width: 54px; }
+.tl-ac b { font-weight: 600; color: var(--g-text-2); }
+.tl-who { display: flex; align-items: center; justify-content: flex-end; gap: var(--g-space-1); min-width: 0; }
+.tl-none { font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-age { font-size: var(--g-text-caption); color: var(--g-text-muted); text-align: right; white-space: nowrap; }
+.tl-empty { padding: var(--g-space-9) 0; }
+
+/* A narrower screen keeps the meaning: the row drops its tags, then its criteria and people. */
+@media (max-width: 1100px) {
+  .tl-row { grid-template-columns: 16px 58px minmax(0, 1fr) auto 128px 52px; }
+  .tl-tags { display: none; }
+}
+.app.with-detail .tl-row { grid-template-columns: 16px 58px minmax(0, 1fr) 52px; }
+.app.with-detail .tl-tags, .app.with-detail .tl-ac, .app.with-detail .tl-who { display: none; }
+
+/* ---- phone: the row wraps to two lines — the title over the status, the id over who has it ---- */
+@media (max-width: 900px) {
+  .g-tasks-head { gap: var(--g-space-1); padding: var(--g-space-5) var(--g-space-4) var(--g-space-4); }
+  .g-tasks-h1 { font-size: var(--g-text-h1); }
+  .g-tasks-h1 .g-num { font-size: var(--g-text-display); }
+  .g-tasks-scroll { padding: 0 0 var(--g-space-6); }
+  .tl-group-head { padding: 0 var(--g-space-3); }
+  .tl-row { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "st main age" "id id who"; align-items: start; column-gap: var(--g-space-2); row-gap: var(--g-space-1); min-height: 0; padding: var(--g-space-3); border-radius: 0; }
+  .tl-row > svg:first-child { grid-area: st; margin-top: 3px; }
+  .tl-id { grid-area: id; }
+  .tl-main { grid-area: main; }
+  .tl-who { grid-area: who; }
+  .tl-age { grid-area: age; }
+  .tl-title { -webkit-line-clamp: 2; }
+  .tl-tags, .tl-ac, .tl-none { display: none; }
+}
