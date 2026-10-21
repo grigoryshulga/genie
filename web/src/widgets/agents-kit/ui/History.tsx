@@ -38,7 +38,7 @@ export function History({ item, admin }: { item?: string; admin: boolean }) {
       void act(() => save(t.kind, t.id, { content: c.before }, undefined), "Вернули версию до этой правки");
     }
   };
-  if (!history.data?.length) return <p className="muted ag-empty">{history.isPending ? "Загрузка…" : "Правок через веб пока не было."}</p>;
+  if (!history.data?.length) return <p className="g-muted ag-empty">{history.isPending ? "Загрузка…" : "Правок через веб пока не было."}</p>;
   return (
     <ol className="ag-history">
       {history.data.map((c) => (
@@ -46,8 +46,8 @@ export function History({ item, admin }: { item?: string; admin: boolean }) {
           <button type="button" className="ag-history-row" aria-expanded={open === c.id} onClick={() => setOpen(open === c.id ? undefined : c.id)}>
             <span className="who">{c.user}</span>
             <span className="what">
-              {c.before === undefined ? "создал" : c.after === undefined ? "удалил" : "изменил"} <span className="mono">{c.path}</span>
-              {!item && <span className="muted"> · {itemTarget(c.item).label}</span>}
+              {c.before === undefined ? "создал" : c.after === undefined ? "удалил" : "изменил"} <span className="g-mono">{c.path}</span>
+              {!item && <span className="g-muted"> · {itemTarget(c.item).label}</span>}
             </span>
             <span className="when">{timeAgo(c.at)}</span>
           </button>
@@ -64,7 +64,7 @@ export function History({ item, admin }: { item?: string; admin: boolean }) {
                 </div>
               </div>
               {restorable(c) && (
-                <button type="button" className="btn" onClick={() => restore(c)}>
+                <button type="button" className="g-btn secondary" onClick={() => restore(c)}>
                   Вернуть версию до этой правки
                 </button>
               )}

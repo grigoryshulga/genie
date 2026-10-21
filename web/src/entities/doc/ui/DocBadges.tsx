@@ -2,15 +2,20 @@
 
 import type { DocPage, DocStatus } from "../model.ts";
 import { DOC_STATUS_NAME, DOC_TYPE_NAME, DOC_TYPE_SHORT } from "../model.ts";
+import { Tag } from "@/shared/ui";
 import { DeprecatedIcon, DiagIcon, DraftIcon, OkIcon, StaleIcon, UnknownIcon } from "./icons.tsx";
+
+// Tag tones carry the status: green means current, orange means "check me", red means the
+// frontmatter is broken, and a plain outline is a lifecycle fact rather than a call to act.
+const STATUS_TONE = { current: "signal", draft: "outline", deprecated: "outline" } as const;
 
 /** The page's type when the frontmatter sets one (a plain page shows nothing). */
 export function DocTypeBadge({ type, long }: { type: DocPage["type"]; long?: boolean }) {
   if (!type) return null;
   return (
-    <span className={`doc-type t-${type}`} title={`Тип: ${DOC_TYPE_NAME[type]}`}>
+    <Tag tone="outline" className={`doc-type t-${type}`} title={`Тип: ${DOC_TYPE_NAME[type]}`}>
       {long ? DOC_TYPE_NAME[type].toLowerCase() : DOC_TYPE_SHORT[type]}
-    </span>
+    </Tag>
   );
 }
 
@@ -24,10 +29,10 @@ export function DocStatusIcon({ status, size = 12 }: { status: DocStatus | null;
 export function DocStatusBadge({ status }: { status: DocStatus | null }) {
   const name = status ? DOC_STATUS_NAME[status] : "Статус не указан";
   return (
-    <span className={`doc-status s-${status ?? "none"}`} title={name}>
+    <Tag tone={status ? STATUS_TONE[status] : "outline"} className={`doc-status s-${status ?? "none"}`} title={name}>
       <DocStatusIcon status={status} />
       {name}
-    </span>
+    </Tag>
   );
 }
 
@@ -41,19 +46,19 @@ export function DocDiagIcon({ size = 12 }: { size?: number }) {
 
 export function DocStaleBadge({ count }: { count?: number }) {
   return (
-    <span className="doc-status s-stale" title="Код, который описывает страница, менялся после её проверки">
+    <Tag tone="accent" className="doc-status s-stale" title="Код, который описывает страница, менялся после её проверки">
       <DocStaleIcon />
       Возможно устарела{count && count > 1 ? ` · ${count}` : ""}
-    </span>
+    </Tag>
   );
 }
 
 export function DocDiagBadge({ count }: { count?: number }) {
   return (
-    <span className="doc-status s-diag" title="Frontmatter прочитан с ошибками, использованы значения по умолчанию">
+    <Tag tone="danger" className="doc-status s-diag" title="Frontmatter прочитан с ошибками, использованы значения по умолчанию">
       <DocDiagIcon />
       Ошибка frontmatter{count && count > 1 ? ` · ${count}` : ""}
-    </span>
+    </Tag>
   );
 }
 

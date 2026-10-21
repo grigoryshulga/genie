@@ -6,14 +6,14 @@ import { capitalized, type LiveState, layoutTeam, type MemberDef, NODE_H, ON_TIT
 type Look = "manages" | "handoff" | "returns" | "reports" | "consults" | "done" | "pending" | "later";
 
 const LOOK: Record<Look, { color: string; dash?: string; legend: string }> = {
-  manages: { color: "var(--muted)", legend: "ведёт задачу" },
-  handoff: { color: "var(--accent-2)", legend: "передаёт работу" },
-  returns: { color: "var(--amber)", legend: "возвращает" },
-  reports: { color: "var(--muted)", dash: "4 4", legend: "докладывает менеджеру задачи" },
-  consults: { color: "var(--violet)", dash: "2 4", legend: "советуется" },
-  done: { color: "var(--accent-2)", legend: "передача состоялась" },
-  pending: { color: "var(--amber)", dash: "6 5", legend: "её ждут" },
-  later: { color: "var(--off)", dash: "4 4", legend: "другие связи" },
+  manages: { color: "var(--g-viz-1)", legend: "ведёт задачу" },
+  handoff: { color: "var(--g-viz-2)", legend: "передаёт работу" },
+  returns: { color: "var(--g-viz-3)", legend: "возвращает" },
+  reports: { color: "var(--g-viz-1)", dash: "4 4", legend: "докладывает менеджеру задачи" },
+  consults: { color: "var(--g-viz-4)", dash: "2 4", legend: "советуется" },
+  done: { color: "var(--g-viz-2)", legend: "передача состоялась" },
+  pending: { color: "var(--g-viz-3)", dash: "6 5", legend: "её ждут" },
+  later: { color: "var(--g-viz-grid)", dash: "4 4", legend: "другие связи" },
 };
 
 const STATE_TITLE: Record<LiveState, string> = { working: "работает", waiting: "ждёт", idle: "свободен", error: "ошибка", stopped: "остановлен" };
@@ -151,11 +151,11 @@ export function TemplateGraph({
     <figure className="team-graph">
       {head && <div className="team-graph-head">{head}</div>}
       <div className="team-graph-tools" role="toolbar" aria-label="Вид схемы">
-        <button type="button" className="btn ghost sm" aria-label="Отдалить схему" disabled={zoom <= 0.25} onClick={() => changeZoom(zoom - 0.25)}>−</button>
+        <button type="button" className="g-btn ghost sm" aria-label="Отдалить схему" disabled={zoom <= 0.25} onClick={() => changeZoom(zoom - 0.25)}>−</button>
         <output aria-label="Масштаб схемы">{Math.round(zoom * 100)}%</output>
-        <button type="button" className="btn ghost sm" aria-label="Приблизить схему" disabled={zoom >= 2.5} onClick={() => changeZoom(zoom + 0.25)}>+</button>
-        <button type="button" className="btn ghost sm" onClick={fitGraph}>Вписать целиком</button>
-        <button type="button" className="btn ghost sm" ref={expandButtonRef} aria-pressed={expanded} onClick={() => { setDrag(undefined); setExpanded(!expanded); }}>
+        <button type="button" className="g-btn ghost sm" aria-label="Приблизить схему" disabled={zoom >= 2.5} onClick={() => changeZoom(zoom + 0.25)}>+</button>
+        <button type="button" className="g-btn ghost sm" onClick={fitGraph}>Вписать целиком</button>
+        <button type="button" className="g-btn ghost sm" ref={expandButtonRef} aria-pressed={expanded} onClick={() => { setDrag(undefined); setExpanded(!expanded); }}>
           {expanded ? "Свернуть область" : "Развернуть схему"}
         </button>
       </div>
@@ -184,8 +184,9 @@ export function TemplateGraph({
         >
           <defs>
             {(Object.keys(LOOK) as Look[]).map((k) => (
-              <marker key={k} id={`${uid}-${k}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" style={{ fill: LOOK[k].color }} />
+              <marker key={k} id={`${uid}-${k}`} viewBox="0 0 10 10" refX="6.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                {/* The arrowhead is a quarter arc, echoing the wordmark. */}
+                <path d="M 1.5 1.5 Q 8 5 1.5 8.5" fill="none" strokeWidth={1.8} strokeLinecap="round" style={{ stroke: LOOK[k].color }} />
               </marker>
             ))}
           </defs>
@@ -200,7 +201,7 @@ export function TemplateGraph({
                 <title>{`${nameOf(e.from)} → ${nameOf(e.to)}: ${e.type === "manages" ? "ведёт задачу" : RELATION_TITLE[e.type]}${e.on ? `, когда задача «${ON_TITLE[e.on] ?? e.on}»` : ""}${e.note ? ` — ${e.note}` : ""}`}</title>
                 <path d={e.d} fill="none" style={{ stroke: LOOK[look].color }} strokeWidth={1.6} strokeDasharray={LOOK[look].dash} markerEnd={`url(#${uid}-${look})`} />
                 {label && (
-                  <text x={e.lx} y={e.ly + 4} textAnchor="middle" className="edge-label" style={{ fill: look === "done" ? "var(--muted)" : LOOK[look].color }}>
+                  <text x={e.lx} y={e.ly + 4} textAnchor="middle" className="edge-label">
                     {label}
                   </text>
                 )}
@@ -227,7 +228,7 @@ export function TemplateGraph({
               >
                 <title>{`${n.label}${n.sub ? ` — ${n.sub}` : ""}${card ? ` — ${card.activity}` : ""}${state && state !== "waiting" && live?.[n.key].note ? `\n${live[n.key].note}` : ""}`}</title>
                 <rect width={nw} height={NODE_H} rx={10} />
-                <circle cx={19} cy={NODE_H / 2} r={9.5} className={`dot c-${classOf(n.key)}`} />
+                <rect x={9.5} y={NODE_H / 2 - 9.5} width={19} height={19} rx={6} className={`dot c-${classOf(n.key)}`} />
                 <text x={19} y={NODE_H / 2 + 3.8} textAnchor="middle" className="dl">
                   {n.label.slice(0, 1).toUpperCase()}
                 </text>

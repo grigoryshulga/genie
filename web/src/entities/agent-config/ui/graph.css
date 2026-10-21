@@ -1,30 +1,41 @@
-/* The team of a template as a graph (TemplateGraph). */
-.team-graph { flex: none; margin: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6) 0 var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-group); min-width: 0; }
-.team-graph-head { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-8); font-size: var(--font-size-label); color: var(--text-2); min-width: 0; }
-.team-graph-scroll { overflow-x: auto; padding: 0 var(--space-6); }
+/* The team of a template as a graph (TemplateGraph). Ink and paper: g-tokens only.
+   Agents are rounded squares — the same shape as `.g-avatar.agent` — and every
+   connection is drawn in a viz token, with an arc for its arrowhead. */
+.team-graph { flex: none; margin: 0; display: flex; flex-direction: column; gap: var(--g-space-2); padding: var(--g-space-4) 0; border: 1px solid var(--g-border); border-radius: var(--g-radius-lg); background: var(--g-surface); min-width: 0; }
+.team-graph-head { display: flex; align-items: center; gap: var(--g-space-3); padding: 0 var(--g-space-5); font-size: var(--g-text-dense); color: var(--g-text-2); min-width: 0; }
+.team-graph-scroll { overflow-x: auto; padding: 0 var(--g-space-4); }
 .team-graph svg { display: block; width: 100%; height: auto; margin: 0 auto; }
-.team-graph .node { color: var(--muted); }
-.team-graph .node rect { fill: var(--bg-raised); stroke: var(--line-strong); stroke-width: 1; }
-.team-graph .node.orch rect { fill: var(--accent-soft); stroke: var(--accent-line); }
-.team-graph .node.flagged rect { stroke: var(--red); stroke-width: 1.5; }
+.team-graph .node { color: var(--g-viz-1); }
+.team-graph .node rect { fill: var(--g-bg); stroke: var(--g-border-strong); stroke-width: 1; }
+.team-graph .node.orch rect { fill: var(--g-signal-soft); stroke: var(--g-signal); }
+.team-graph .node.flagged rect { stroke: var(--g-danger); stroke-width: 1.5; stroke-dasharray: 5 3; }
+/* The avatar: a rounded square, never a circle. The node body rule above also matches
+   this rect, so the fills are restated per agent class with higher specificity. */
 .team-graph .dot { fill: currentColor; }
-.team-graph .dl { fill: var(--bg); font-size: 10.5px; font-weight: 600; }
-.team-graph .nl { fill: var(--text); font-size: var(--font-size-label); font-weight: 500; }
-.team-graph .nr, .team-graph .ns { fill: var(--muted); font-size: var(--font-size-caption); }
-.team-graph .edge-label { font-size: var(--font-size-caption); paint-order: stroke; stroke: var(--bg-group); stroke-width: 5px; stroke-linejoin: round; }
-.team-graph-legend { display: flex; gap: var(--space-3) 18px; flex-wrap: wrap; justify-content: center; padding: 0 var(--space-8); font-size: var(--font-size-small); color: var(--muted); }
-.team-graph-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.team-graph .node rect.dot { stroke: none; }
+.team-graph rect.dot.c-analyst, .team-graph rect.dot.c-documenter { fill: var(--g-viz-2); }
+.team-graph rect.dot.c-executor { fill: var(--g-viz-3); }
+.team-graph rect.dot.c-reviewer { fill: var(--g-viz-4); }
+.team-graph rect.dot.c-tester { fill: var(--g-viz-1); }
+.team-graph rect.dot.c-orchestrator { fill: var(--g-signal); }
+.team-graph .dl { fill: var(--g-bg); font-family: var(--g-font-sans); font-size: var(--g-text-caption); font-weight: var(--g-weight-bold); }
+.team-graph .nl { fill: var(--g-text); font-family: var(--g-font-sans); font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); }
+.team-graph .nr, .team-graph .ns { fill: var(--g-text-muted); font-family: var(--g-font-sans); font-size: var(--g-text-caption); }
+.team-graph .edge path { stroke-linecap: round; }
+.team-graph .edge-label { font-family: var(--g-font-sans); font-size: var(--g-text-caption); font-weight: var(--g-weight-medium); fill: var(--g-text-2); paint-order: stroke; stroke: var(--g-surface); stroke-width: 5px; stroke-linejoin: round; }
+.team-graph-legend { display: flex; gap: var(--g-space-2) var(--g-space-4); flex-wrap: wrap; justify-content: center; padding: 0 var(--g-space-5); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.team-graph-legend span { display: inline-flex; align-items: center; gap: var(--g-space-2); }
 .team-graph-legend i { width: 16px; height: 0; }
 
 /* a running team */
-.team-graph .node.live-working rect { fill: var(--accent-soft); stroke: var(--accent-line); }
-.team-graph .node.live-working .ns { fill: var(--accent-text); }
-.team-graph .node.live-waiting rect { stroke: var(--amber-line); stroke-dasharray: 5 3; }
-.team-graph .node.live-waiting .ns { fill: var(--amber); }
-.team-graph .node.live-error rect { stroke: var(--red); }
-.team-graph .node.live-error .ns { fill: var(--red); }
+.team-graph .node.live-working rect { fill: var(--g-accent-soft); stroke: var(--g-accent); }
+.team-graph .node.live-working .ns { fill: var(--g-accent-soft-text); }
+.team-graph .node.live-waiting rect { stroke: var(--g-accent); stroke-dasharray: 5 3; }
+.team-graph .node.live-waiting .ns { fill: var(--g-accent-text); }
+.team-graph .node.live-error rect { stroke: var(--g-danger); stroke-width: 1.5; }
+.team-graph .node.live-error .ns { fill: var(--g-danger-text); }
 .team-graph .node.live-stopped { opacity: 0.5; }
-.team-graph .nspin { fill: none; stroke: var(--accent-2); stroke-width: 1.5; stroke-dasharray: 16 7; transform-box: fill-box; transform-origin: center; animation: spin 0.9s linear infinite; }
+.team-graph .nspin { fill: none; stroke: var(--g-accent); stroke-width: 1.5; stroke-dasharray: 16 7; transform-box: fill-box; transform-origin: center; animation: spin 0.9s linear infinite; }
 .team-graph .edge.pending path { animation: team-graph-flow 1.2s linear infinite; }
 @keyframes team-graph-flow { to { stroke-dashoffset: -22; } }
 @media (prefers-reduced-motion: reduce) { .team-graph .edge.pending path, .team-graph .nspin { animation: none; } }
@@ -32,15 +43,16 @@
 /* drawing a relation */
 .team-graph svg.connectable .node:not(.orch) { cursor: crosshair; }
 .team-graph svg.connectable { touch-action: none; user-select: none; }
-.team-graph .drag-line { stroke: var(--accent-2); stroke-width: 1.6; stroke-dasharray: 4 4; pointer-events: none; }
-.team-graph-hint { font-size: var(--font-size-small); color: var(--muted); text-align: center; }
+.team-graph .drag-line { stroke: var(--g-accent); stroke-width: 1.6; stroke-dasharray: 4 4; pointer-events: none; }
+.team-graph-hint { font-size: var(--g-text-caption); color: var(--g-text-muted); text-align: center; }
 
 .team-graph a.node { cursor: pointer; text-decoration: none; }
-.team-graph a.node:hover rect, .team-graph a.node:focus-visible rect { stroke: var(--accent-2); stroke-width: 2; }
+.team-graph a.node:hover rect, .team-graph a.node:focus-visible rect { stroke: var(--g-accent); stroke-width: 2; }
+.team-graph a.node:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
 
-.team-graph-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: 0 var(--space-8); }
-.team-graph-tools output { min-width: 4ch; text-align: center; font-size: var(--font-size-small); color: var(--muted); font-variant-numeric: tabular-nums; }
-.team-graph-modal { width: calc(100vw - 32px); height: calc(100dvh - 32px); max-width: none; max-height: none; padding: 0; border: 0; border-radius: var(--radius-lg); background: var(--bg-group); color: var(--text); }
-.team-graph-modal::backdrop { background: var(--scrim); }
+.team-graph-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); padding: 0 var(--g-space-5); }
+.team-graph-tools output { min-width: 4ch; text-align: center; font-size: var(--g-text-caption); font-weight: var(--g-weight-semibold); color: var(--g-text-muted); font-variant-numeric: tabular-nums; }
+.team-graph-modal { width: calc(100vw - 32px); height: calc(100dvh - 32px); max-width: none; max-height: none; padding: 0; border: 0; border-radius: var(--g-radius-lg); background: var(--g-bg); color: var(--g-text); }
+.team-graph-modal::backdrop { background: color-mix(in srgb, var(--g-ink) 62%, transparent); }
 .team-graph-modal .team-graph { height: 100%; box-sizing: border-box; }
 .team-graph-modal .team-graph-scroll { flex: 1; min-height: 0; overflow: auto; }

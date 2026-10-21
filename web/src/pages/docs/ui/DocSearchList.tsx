@@ -55,17 +55,17 @@ export function DocSearchList({
   return (
     <div className="doc-search" ref={listRef}>
       <div className="doc-search-head">
-        <span className="muted">
+        <span className="g-muted">
           {query.trim() ? `${results.length} ${plural(results.length, "страница", "страницы", "страниц")} · по релевантности` : "Введите запрос"}
         </span>
         <span className="grow" />
-        <span className="doc-keys muted">
+        <span className="doc-keys g-muted">
           <kbd>↑↓</kbd> выбрать <kbd>↵</kbd> открыть <kbd>Esc</kbd> к разделам
         </span>
       </div>
 
-      {pending && <div className="doc-search-body muted">Поиск…</div>}
-      {error && <div className="doc-search-body muted">Не удалось выполнить поиск: {error.message}</div>}
+      {pending && <div className="doc-search-body g-muted">Поиск…</div>}
+      {error && <div className="doc-search-body g-muted">Не удалось выполнить поиск: {error.message}</div>}
 
       {!pending && !error && results.length > 0 && (
         <div className="doc-hits" role="listbox">
@@ -79,10 +79,10 @@ export function DocSearchList({
         <div className="doc-search-body empty">
           <Icon.search size={26} />
           <b>Ничего не найдено по «{query}»</b>
-          <p className="muted">
-            Поиск идёт по заголовкам, тексту, тегам и алиасам. Попробуйте другое слово или путь к коду, например <span className="mono">src/team</span>.
+          <p className="g-muted">
+            Поиск идёт по заголовкам, тексту, тегам и алиасам. Попробуйте другое слово или путь к коду, например <span className="g-mono">src/team</span>.
           </p>
-          <button type="button" className="btn" onClick={() => onCreate(query)}>
+          <button type="button" className="g-btn secondary" onClick={() => onCreate(query)}>
             + Создать страницу «{query}»
           </button>
         </div>

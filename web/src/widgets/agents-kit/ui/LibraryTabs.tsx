@@ -17,7 +17,7 @@ import {
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
 import { bytes, timeAgo } from "@/shared/lib";
-import { Badge, ConfirmDialog, Icon, Markdown, Modal, Section, useAct } from "@/shared/ui";
+import { Badge, ConfirmDialog, Dialog, Icon, Markdown, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -40,26 +40,26 @@ export function SkillsTab({
   const current = selected ?? cfg.skills[0]?.name;
   const users = (name: string) => cfg.roles.filter((r) => r.skills?.includes(name));
   return (
-    <div className="split">
-      <section className="split-list" aria-label="Навыки">
+    <div className="split ag-skills-layout">
+      <section className="split-list ag-list" aria-label="Навыки">
         <Problems items={sectionProblems(cfg.problems, "skills")} />
         {cfg.skills.map((s) => (
           <button type="button" key={s.name} className={`pick plain${s.name === current ? " on" : ""}`} onClick={() => onSelect(s.name)} aria-current={s.name === current}>
             <span className="t">
-              <span className="mono">{s.name}</span>
+              <span className="g-mono">{s.name}</span>
             </span>
             <span className="s">{users(s.name).length ? users(s.name).map((r) => r.title).join(", ") : "все роли без своего списка навыков"}</span>
           </button>
         ))}
         {!cfg.skills.length && (
-          <p className="muted ag-list-note">
-            Навыков пока нет. Навык — каталог с <span className="mono">SKILL.md</span> в <span className="mono">&lt;data&gt;/skills</span> или в каталогах{" "}
-            <span className="mono">skills.paths</span>; готовые наборы (anthropics/skills, pi-skills) подключаются как есть.
+          <p className="g-muted ag-list-note">
+            Навыков пока нет. Навык — каталог с <span className="g-mono">SKILL.md</span> в <span className="g-mono">&lt;data&gt;/skills</span> или в каталогах{" "}
+            <span className="g-mono">skills.paths</span>; готовые наборы (anthropics/skills, pi-skills) подключаются как есть.
           </p>
         )}
       </section>
       <section className="split-main" aria-label="Навык">
-        {current ? <SkillPane key={current} name={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Выберите или добавьте навык</div>}
+        {current ? <SkillPane key={current} name={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="ag-pane-empty">Выберите или добавьте навык</div>}
       </section>
     </div>
   );
@@ -72,24 +72,27 @@ function SkillPane({ name, cfg, readOnly = false, base = "/agents" }: { name: st
   const remove = useDeleteConfig();
   const act = useAct();
   const d = skill.data;
-  if (!d) return <div className="pane-empty">{skill.error ? skill.error.message : "Загрузка…"}</div>;
+  if (!d) return <div className="ag-pane-empty">{skill.error ? skill.error.message : "Загрузка…"}</div>;
   const body = d.content ? (splitFrontmatter(d.content)?.body ?? d.content) : "";
   const admin = d.admin && !readOnly;
   return (
     <>
       <div className="pane-head">
         <div className="ttl">
-          <h2 className="mono">{d.skill.name}</h2>
-          <span className="sub mono">{d.skill.dir}</span>
+          <h2 className="g-mono">
+            {d.skill.name}
+            {!admin && <span className="ag-readonly">Только чтение</span>}
+          </h2>
+          <span className="sub g-mono">{d.skill.dir}</span>
           {d.skill.description && <p className="desc">{d.skill.description}</p>}
         </div>
         {admin && d.editable && (
           <>
-            <button type="button" className="btn" onClick={() => setEditing(true)}>
+            <button type="button" className="g-btn secondary" onClick={() => setEditing(true)}>
               <Icon.file size={13} />
               SKILL.md
             </button>
-            <button type="button" className="btn ghost" onClick={() => setConfirmDelete(true)}>
+            <button type="button" className="g-btn ghost" onClick={() => setConfirmDelete(true)}>
               <Icon.trash size={13} />
               Удалить
             </button>
@@ -97,7 +100,7 @@ function SkillPane({ name, cfg, readOnly = false, base = "/agents" }: { name: st
         )}
       </div>
       <div className="pane-body">
-        {admin && !d.editable && <p className="muted ag-note">Навык из каталога skills.paths: его меняют там, где он лежит (например, в клоне репозитория с навыками).</p>}
+        {admin && !d.editable && <p className="g-muted ag-note">Навык из каталога skills.paths: его меняют там, где он лежит (например, в клоне репозитория с навыками).</p>}
         <Section title="Инструкции">
           <div className="ag-skill-body">
             <Markdown text={body} />
@@ -172,7 +175,7 @@ function SkillFiles({ name, files, canEdit }: { name: string; files: string[]; c
   const aside = canEdit ? (
     <div className="ag-upload">
       <input className="ag-select" value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="в папку, например scripts" aria-label="Папка для файлов" />
-      <label className={`btn${busy ? " disabled" : ""}`}>
+      <label className={`g-btn secondary sm${busy ? " disabled" : ""}`}>
         <Icon.plus size={13} />
         {busy ? "Загружаю…" : "Загрузить"}
         <input
@@ -200,7 +203,7 @@ function SkillFiles({ name, files, canEdit }: { name: string; files: string[]; c
                 {f}
               </button>
               {canEdit && (
-                <button type="button" className="icon-btn" aria-label={`Удалить ${f}`} onClick={() => setRemoving(f)}>
+                <button type="button" className="g-icon-btn" aria-label={`Удалить ${f}`} onClick={() => setRemoving(f)}>
                   <Icon.trash size={13} />
                 </button>
               )}
@@ -208,7 +211,7 @@ function SkillFiles({ name, files, canEdit }: { name: string; files: string[]; c
           ))}
         </ul>
       ) : (
-        <p className="muted ag-empty">Дополнительных файлов нет. Лимит файла — 5 МБ.</p>
+        <p className="g-muted ag-empty">Дополнительных файлов нет. Лимит файла — 5 МБ.</p>
       )}
       {open && <SkillFileView name={name} path={open} onClose={() => setOpen(undefined)} />}
       {removing && (
@@ -233,25 +236,17 @@ function SkillFiles({ name, files, canEdit }: { name: string; files: string[]; c
 function SkillFileView({ name, path, onClose }: { name: string; path: string; onClose: () => void }) {
   const f = useSkillFile(name, path);
   return (
-    <Modal label={path} onClose={onClose} wide>
-      <div className="mh">
-        <Icon.file size={13} />
-        <span className="mono">{path}</span>
-        <span className="grow" />
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </div>
-      <div className="mb">
+    <Dialog title={<span className="g-mono">{path}</span>} onClose={onClose} wide>
+      <div>
         {!f.data ? (
-          <p className="muted">{f.error ? f.error.message : "Загрузка…"}</p>
+          <p className="g-muted">{f.error ? f.error.message : "Загрузка…"}</p>
         ) : f.data.text !== null ? (
           <pre className="ag-file-text">{f.data.text}</pre>
         ) : (
-          <p className="muted">Двоичный или большой файл ({bytes(f.data.size)}): здесь его не показать.</p>
+          <p className="g-muted">Двоичный или большой файл ({bytes(f.data.size)}): здесь его не показать.</p>
         )}
       </div>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -289,8 +284,8 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
               return (
                 <tr key={s.id}>
                   <td>
-                    <span className="mono">{s.id}</span>
-                    {s.description && <div className="muted">{s.description}</div>}
+                    <span className="g-mono">{s.id}</span>
+                    {s.description && <div className="g-muted">{s.description}</div>}
                   </td>
                   <td>
                     <div className="ag-how">
@@ -308,14 +303,14 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
                         <Link to={`${base}?tab=roles&id=${r.id}`}>{r.title}</Link>
                       </span>
                     ))}
-                    {!users(s.id).length && <span className="muted">ни одной роли</span>}
+                    {!users(s.id).length && <span className="g-muted">ни одной роли</span>}
                   </td>
                 </tr>
               );
             })}
             {!servers.length && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={4} className="g-muted">
                   Подключений пока нет.
                 </td>
               </tr>
@@ -350,7 +345,7 @@ function Calls({ project, roles }: { project: string; roles: RoleDef[] }) {
   return (
     <Section title="Вызовы инструментов" aside={filter}>
       {!list.length ? (
-        <p className="muted ag-empty">{calls.isPending ? "Загрузка…" : "Вызовов через шлюз в этом проекте пока не было."}</p>
+        <p className="g-muted ag-empty">{calls.isPending ? "Загрузка…" : "Вызовов через шлюз в этом проекте пока не было."}</p>
       ) : (
         <div className="ag-table-wrap">
           <table className="ag-table ag-calls">
@@ -371,7 +366,7 @@ function Calls({ project, roles }: { project: string; roles: RoleDef[] }) {
                     <td title={c.at}>{timeAgo(c.at)}</td>
                     <td>
                       {p.job ? `Задание ${p.job}` : displayName(c.actor)}
-                      <div className="muted">
+                      <div className="g-muted">
                         {roleTitle(p.role).toLowerCase()}
                         {c.subject ? (
                           <>
@@ -381,23 +376,23 @@ function Calls({ project, roles }: { project: string; roles: RoleDef[] }) {
                         ) : null}
                       </div>
                     </td>
-                    <td className="mono">
+                    <td className="g-mono">
                       {p.server}:{p.tool}
                     </td>
                     <td>
                       <div className="ag-how">
                         <Badge tone={p.refused ? "red" : p.ok ? "green" : "amber"}>{p.refused ? "отказано" : p.ok ? "ок" : "ошибка"}</Badge>
-                        <span className="muted">{p.ms} мс</span>
+                        <span className="g-muted">{p.ms} мс</span>
                       </div>
                       {p.refused ? (
-                        <div className="muted ag-call-error" title={p.error}>
+                        <div className="g-muted ag-call-error" title={p.error}>
                           роли не выдан этот инструмент
                         </div>
                       ) : (
-                        p.error && <div className="muted ag-call-error">{p.error}</div>
+                        p.error && <div className="g-muted ag-call-error">{p.error}</div>
                       )}
                     </td>
-                    <td className="mono ag-args">{p.args}</td>
+                    <td className="g-mono ag-args">{p.args}</td>
                   </tr>
                 );
               })}

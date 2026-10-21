@@ -18,8 +18,8 @@ function Section({ section, selected, activeSection, onSelect, onSection, filter
   const expanded = !!filter || open;
   return <div className="doc-nav-section">
     <div className="doc-section-row">
-      <button type="button" className="icon-btn" aria-label={`${expanded ? "Свернуть" : "Развернуть"}: ${section.title}`} aria-expanded={expanded} onClick={() => setOpen(!open)}><CaretIcon size={11} className={`doc-caret${expanded ? " open" : ""}`} /></button>
-      <button type="button" className={`doc-section-link${activeSection === section.path && !selected ? " on" : ""}`} onClick={() => onSection(section.path)}><span>{section.title}</span><span className="muted">{section.count}</span></button>
+      <button type="button" className="g-icon-btn" aria-label={`${expanded ? "Свернуть" : "Развернуть"}: ${section.title}`} aria-expanded={expanded} onClick={() => setOpen(!open)}><CaretIcon size={11} className={`doc-caret${expanded ? " open" : ""}`} /></button>
+      <button type="button" className={`doc-section-link${activeSection === section.path && !selected ? " on" : ""}`} onClick={() => onSection(section.path)}><span>{section.title}</span><span className="g-muted">{section.count}</span></button>
     </div>
     {expanded && <div className="doc-section-children">
       {section.landing && <Article page={section.landing} selected={selected} onSelect={onSelect} />}

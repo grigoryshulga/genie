@@ -25,7 +25,7 @@ import {
 import { DocContentEditor } from "./DocContentEditor.tsx";
 import { DiagIcon, StaleIcon } from "@/entities/doc";
 import { plural } from "@/shared/lib";
-import { Icon } from "@/shared/ui";
+import { Button, Icon, IconButton } from "@/shared/ui";
 
 function countChanges(before: string, after: string): number {
   const a = before.replace(/\r/g, "").split("\n");
@@ -45,7 +45,7 @@ function Chips({ value, onChange, placeholder, mono }: { value: string[]; onChan
     setDraft("");
   };
   return (
-    <div className={`doc-chips${mono ? " mono" : ""}`}>
+    <div className={`doc-chips${mono ? " g-mono" : ""}`}>
       {value.map((item) => (
         <span className="doc-chip" key={item}>
           {item}
@@ -230,8 +230,8 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
   };
 
   if (!fields) {
-    if (pageQ.isError) return <div className="docs-content"><div className="doc-editor-wait muted">Не удалось открыть страницу: {pageQ.error.message}</div></div>;
-    return <div className="docs-content"><div className="doc-editor-wait muted">Загрузка страницы…</div></div>;
+    if (pageQ.isError) return <div className="docs-content"><div className="doc-editor-wait g-muted">Не удалось открыть страницу: {pageQ.error.message}</div></div>;
+    return <div className="docs-content"><div className="doc-editor-wait g-muted">Загрузка страницы…</div></div>;
   }
 
   const update = <K extends keyof DocFields>(key: K, value: DocFields[K]) => setFields({ ...fields, [key]: value });
@@ -239,9 +239,9 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
   return (
     <div className="docs-editor" onKeyDown={onKeyDown}>
       <header className="docs-topbar">
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Вернуться к странице">
+        <IconButton label="Вернуться к странице" onClick={onClose}>
           <Icon.back size={15} />
-        </button>
+        </IconButton>
         <nav className="doc-crumbs" aria-label="Навигация по документации"><Link to="/docs">Документация</Link><span className="sep">›</span>{articleTitle({ path, title })}</nav>
         {dirty ? (
           <span className="doc-chip-state" title="Изменения не сохранены">
@@ -266,65 +266,65 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
             {errors.length} {plural(errors.length, "поле", "поля", "полей")} с ошибкой
           </span>
         )}
-        <Link className="btn" to={`/docs?page=${encodeURIComponent(path)}`}>
+        <Link className="g-btn secondary" to={`/docs?page=${encodeURIComponent(path)}`}>
           Отмена
         </Link>
-        <button type="button" className="btn primary" onClick={() => void submit()} disabled={save.isPending || errors.length > 0}>
+        <Button variant="primary" onClick={() => void submit()} busy={save.isPending} disabled={save.isPending || errors.length > 0}>
           <Icon.check size={13} />
           {save.isPending ? "Сохраняю…" : "Сохранить"}
-        </button>
+        </Button>
       </header>
 
       {conflict?.kind === "gone" && (
-        <div className="doc-banner diag editor">
+        <div className="doc-banner diag editor g-banner danger">
           <DiagIcon size={15} />
           <div className="doc-banner-body">
-            <b>Конфликт сохранения: страница исчезла.</b> Файла <span className="mono">{path}</span> больше нет на диске — его удалили или переместили после открытия редактора.
+            <b>Конфликт сохранения: страница исчезла.</b> Файла <span className="g-mono">{path}</span> больше нет на диске — его удалили или переместили после открытия редактора.
           </div>
-          <button type="button" className="btn" onClick={() => void reload()}>
+          <Button sm onClick={() => void reload()}>
             Перечитать
-          </button>
-          <button type="button" className="btn primary" onClick={() => void submit("create", true)}>
+          </Button>
+          <Button variant="primary" sm onClick={() => void submit("create", true)}>
             Создать заново
-          </button>
+          </Button>
         </div>
       )}
 
       {conflict?.kind === "exists" && (
-        <div className="doc-banner diag editor">
+        <div className="doc-banner diag editor g-banner danger">
           <DiagIcon size={15} />
           <div className="doc-banner-body">
-            <b>Конфликт сохранения: страница уже существует.</b> <span className="mono">{path}</span> создали параллельно — откройте текущую версию, чтобы не перезаписать чужие правки.
+            <b>Конфликт сохранения: страница уже существует.</b> <span className="g-mono">{path}</span> создали параллельно — откройте текущую версию, чтобы не перезаписать чужие правки.
           </div>
-          <Link className="btn" to={`/docs?page=${encodeURIComponent(path)}`}>
+          <Link className="g-btn secondary" to={`/docs?page=${encodeURIComponent(path)}`}>
             Открыть текущую версию
           </Link>
         </div>
       )}
 
       {conflict?.kind === "lost-update" && (
-        <div className="doc-banner stale editor">
+        <div className="doc-banner stale editor g-banner accent">
           <StaleIcon size={15} />
           <div className="doc-banner-body">
             <b>Страница изменилась на диске</b> после того, как редактор её открыл (сигнал обновления документации). Чтобы не перезаписать чужие правки, выберите, что делать.
           </div>
-          <button type="button" className="btn" onClick={() => void reload()} title="Ваши правки в форме и тексте будут потеряны">
+          <Button sm onClick={() => void reload()} title="Ваши правки в форме и тексте будут потеряны">
             Обновить из файла
-          </button>
-          <button type="button" className="btn primary" onClick={() => void submit("update", true)} title="Сохранить вашу версию поверх файла на диске">
+          </Button>
+          <Button variant="primary" sm onClick={() => void submit("update", true)} title="Сохранить вашу версию поверх файла на диске">
             Перезаписать
-          </button>
+          </Button>
         </div>
       )}
 
       {saveError && (
-        <div className="doc-banner diag editor">
+        <div className="doc-banner diag editor g-banner danger">
           <span>
             <b>{saveError}</b>
             {serverDiags.length > 0 && (
               <ul className="doc-banner-list">
                 {serverDiags.map((raw) => (
-                  <li key={raw} title={raw} className="mono">
+                  <li key={raw} title={raw} className="g-mono">
                     {diagnosticText(raw)}
                   </li>
                 ))}
@@ -337,12 +337,12 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
       <div className="doc-form">
         <label className="doc-field span6">
           <span>Название статьи</span>
-          <input className={errorFor("title") ? "bad" : ""} value={fields.title} onChange={(e) => update("title", e.target.value)} />
+          <input className={`g-input${errorFor("title") ? " bad" : ""}`} value={fields.title} onChange={(e) => update("title", e.target.value)} />
           {errorFor("title") && <em className="err">{errorFor("title")}</em>}
         </label>
         <label className="doc-field span2">
           <span>Тип</span>
-          <select value={fields.type} onChange={(e) => update("type", e.target.value as DocType | "")}>
+          <select className="g-select" value={fields.type} onChange={(e) => update("type", e.target.value as DocType | "")}>
             <option value="">не указан</option>
             {DOC_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -353,7 +353,7 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
         </label>
         <label className="doc-field span2">
           <span>Статус</span>
-          <select value={fields.status} onChange={(e) => update("status", e.target.value as DocStatus | "")}>
+          <select className="g-select" value={fields.status} onChange={(e) => update("status", e.target.value as DocStatus | "")}>
             <option value="">не указан</option>
             {DOC_STATUSES.map((status) => (
               <option key={status} value={status}>
@@ -365,7 +365,7 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
         <label className="doc-field span2">
           <span>Проверена</span>
           <input
-            className={errorFor("verified") ? "bad" : ""}
+            className={`g-input${errorFor("verified") ? " bad" : ""}`}
             placeholder="ГГГГ-ММ-ДД"
             value={fields.verified}
             onChange={(e) => update("verified", e.target.value)}
