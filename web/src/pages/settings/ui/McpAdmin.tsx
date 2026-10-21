@@ -29,6 +29,7 @@ import { ApiError } from "@/shared/api";
 import { Badge, ChipInput, ConfirmDialog, Icon, Modal, Section, useAct } from "@/shared/ui";
 import { Problems } from "@/widgets/agents-kit";
 import "@/shared/ui/agents.css";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 /** A role as the MCP tab reads it: who holds a grant of a connection. */
 interface GrantHolder {
@@ -48,7 +49,7 @@ export function McpAdminSection() {
         <p>Доступ ролей к инструментам настраивается на странице «Агенты».</p>
       </div>
       {!d ? (
-        <p className="muted">{admin.error ? admin.error.message : "Загрузка…"}</p>
+        admin.error ? <p className="g-muted">{admin.error.message}</p> : <SettingsLoading />
       ) : (
         <>
           <Problems items={d.problems} />
@@ -118,7 +119,7 @@ function Servers({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
       title="Подключения"
       note={`${d.servers.length} ${plural(d.servers.length, "подключение", "подключения", "подключений")} в mcp.json`}
       aside={
-        <button type="button" className="btn" onClick={() => onEdit(null)}>
+        <button type="button" className="g-btn secondary" onClick={() => onEdit(null)}>
           <Icon.plus size={13} />
           Новое подключение
         </button>
@@ -145,8 +146,8 @@ function Servers({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
                 <Fragment key={s.id}>
                   <tr>
                     <td>
-                      <span className="mono">{s.id}</span>
-                      {s.description && <div className="muted">{s.description}</div>}
+                      <span className="g-mono">{s.id}</span>
+                      {s.description && <div className="g-muted">{s.description}</div>}
                     </td>
                     <td>
                       <div className="ag-how">
@@ -168,7 +169,7 @@ function Servers({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
                             </span>
                           );
                         })}
-                        {!s.envRefs.length && <span className="muted">—</span>}
+                        {!s.envRefs.length && <span className="g-muted">—</span>}
                       </div>
                     </td>
                     <td>
@@ -177,19 +178,19 @@ function Servers({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
                           {s.hiddenTools.length} {plural(s.hiddenTools.length, "шаблон", "шаблона", "шаблонов")}
                         </span>
                       ) : (
-                        <span className="muted">—</span>
+                        <span className="g-muted">—</span>
                       )}
                     </td>
-                    <td title={s.checkedAt ? `проверено ${timeAgo(s.checkedAt)}` : undefined}>{s.checkedAt ? timeAgo(s.checkedAt) : <span className="muted">не проверялось</span>}</td>
+                    <td title={s.checkedAt ? `проверено ${timeAgo(s.checkedAt)}` : undefined}>{s.checkedAt ? timeAgo(s.checkedAt) : <span className="g-muted">не проверялось</span>}</td>
                     <td className="ag-cell-action">
                       <div className="ag-how mc-actions">
-                        <button type="button" className="btn" disabled={checking === s.id} onClick={() => void check(s.id)}>
+                        <button type="button" className="g-btn secondary" disabled={checking === s.id} onClick={() => void check(s.id)}>
                           {checking === s.id ? "Проверяю…" : "Проверить"}
                         </button>
-                        <button type="button" className="btn ghost" onClick={() => onEdit(s.id)}>
+                        <button type="button" className="g-btn ghost" onClick={() => onEdit(s.id)}>
                           Изменить
                         </button>
-                        <button type="button" className="btn ghost" onClick={() => setConfirming(s)}>
+                        <button type="button" className="g-btn ghost" onClick={() => setConfirming(s)}>
                           Удалить
                         </button>
                       </div>
@@ -207,7 +208,7 @@ function Servers({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
             })}
             {!d.servers.length && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={7} className="g-muted">
                   Подключений пока нет.
                 </td>
               </tr>
@@ -253,7 +254,7 @@ function CheckTools({ server, result, roles, onToggle }: { server: McpAdminServe
     <div className="ag-check">
       <div className="ag-check-head">
         <Badge tone="green">работает</Badge>
-        <span className="muted">{[info, count, `${result.ms} мс`].filter(Boolean).join(" · ")}</span>
+        <span className="g-muted">{[info, count, `${result.ms} мс`].filter(Boolean).join(" · ")}</span>
       </div>
       {tools.length > 0 && (
         <ul className="ag-tools mc-admin-tools" aria-label={`Инструменты ${server.id}`}>
@@ -261,11 +262,11 @@ function CheckTools({ server, result, roles, onToggle }: { server: McpAdminServe
             const hidden = server.hiddenTools.some((p) => globMatch(p, t.name));
             return (
               <li key={t.name}>
-                <span className="mono">{t.name}</span>
-                <span className="d muted">{t.description}</span>
+                <span className="g-mono">{t.name}</span>
+                <span className="d g-muted">{t.description}</span>
                 <span className={`who${who.length ? "" : " none"}`}>{who.length ? who.map((r) => r.title).join(", ") : "ни одной роли"}</span>
                 {hidden && <Badge tone="muted">скрыт</Badge>}
-                <button type="button" className="btn ghost" onClick={() => onToggle(t.name)}>
+                <button type="button" className="g-btn ghost" onClick={() => onToggle(t.name)}>
                   {hidden ? "Вернуть" : "Скрыть"}
                 </button>
               </li>
@@ -425,7 +426,7 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
       <div className="mh">
         {server ? `Изменить подключение ${server.id}` : "Новое подключение"}
         <span className="grow" />
-        <div className="seg" role="group" aria-label="Как править">
+        <div className="g-seg" role="group" aria-label="Как править">
           <button type="button" className={mode === "form" ? "on" : ""} aria-pressed={mode === "form"} onClick={() => switchMode("form")}>
             Форма
           </button>
@@ -433,7 +434,7 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
             JSON
           </button>
         </div>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+        <button type="button" className="g-icon-btn" onClick={onClose} aria-label="Закрыть">
           <Icon.close />
         </button>
       </div>
@@ -448,19 +449,19 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
         {mode === "form" ? (
           <>
             <div className="mc-grid">
-              <label className="field">
+              <label className="g-field">
                 Имя
-                <input className="mono" value={id} disabled={!!server} pattern="[a-z0-9_-]+" title="строчные латинские буквы, цифры, `_` и `-`" placeholder="github" required onChange={(e) => setId(e.target.value)} />
+                <input className="g-mono" value={id} disabled={!!server} pattern="[a-z0-9_-]+" title="строчные латинские буквы, цифры, `_` и `-`" placeholder="github" required onChange={(e) => setId(e.target.value)} />
               </label>
-              <label className="field">
+              <label className="g-field">
                 Описание
                 <input value={description} placeholder="GitHub: issues, pull requests" onChange={(e) => setDescription(e.target.value)} />
               </label>
             </div>
-            <div className="field">
+            <div className="g-field">
               Транспорт
               <div>
-                <div className="seg" role="group" aria-label="Транспорт">
+                <div className="g-seg" role="group" aria-label="Транспорт">
                   <button type="button" className={transport === "http" ? "on" : ""} aria-pressed={transport === "http"} onClick={() => setTransport("http")}>
                     HTTP
                   </button>
@@ -472,26 +473,26 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
             </div>
             {transport === "http" ? (
               <>
-                <label className="field">
+                <label className="g-field">
                   URL
-                  <input className="mono" value={url} placeholder="https://api.example.com/mcp/" onChange={(e) => setUrl(e.target.value)} />
+                  <input className="g-mono" value={url} placeholder="https://api.example.com/mcp/" onChange={(e) => setUrl(e.target.value)} />
                 </label>
                 <KvRows label="Заголовки" hint="значение может читать секрет: ${env:ИМЯ}" rows={headers} onChange={setHeaders} valuePlaceholder={"Bearer ${env:GITHUB_MCP_TOKEN}"} />
               </>
             ) : (
               <>
-                <label className="field">
+                <label className="g-field">
                   Команда
-                  <input className="mono" value={command} placeholder="npx -y @example/mcp" onChange={(e) => setCommand(e.target.value)} />
+                  <input className="g-mono" value={command} placeholder="npx -y @example/mcp" onChange={(e) => setCommand(e.target.value)} />
                 </label>
-                <div className="field">
+                <div className="g-field">
                   Аргументы
                   <ChipInput values={args} onChange={setArgs} mono placeholder="аргумент" />
                 </div>
                 <KvRows label="Переменные окружения" hint="значение может читать секрет: ${env:ИМЯ}" rows={env} onChange={setEnv} valuePlaceholder={"${env:TOKEN}"} />
               </>
             )}
-            <div className="field">
+            <div className="g-field">
               Проекты
               <ChipInput id="mc-projects" values={projects} onChange={setProjects} suggestions={allProjects} placeholder="Пусто — во всех проектах" />
             </div>
@@ -500,7 +501,7 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
               Через шлюз genie (секреты на сервере, вызовы в журнале)
             </label>
             {!gateway && <p className="ag-warn">Без шлюза харнесс получает подключение вместе с секретами, вызовы genie не видны.</p>}
-            <div className="field">
+            <div className="g-field">
               Скрытые инструменты
               {tools.length > 0 ? (
                 <>
@@ -510,13 +511,13 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
                       return (
                         <label key={t.name}>
                           <input type="checkbox" checked={hidden} onChange={() => toggleTool(t.name)} />
-                          <span className="mono">{t.name}</span>
-                          <span className="muted">{t.description}</span>
+                          <span className="g-mono">{t.name}</span>
+                          <span className="g-muted">{t.description}</span>
                         </label>
                       );
                     })}
                   </div>
-                  <div className="field">
+                  <div className="g-field">
                     <span>
                       Шаблоны<span className="pj-hint"> * — любой текст, ? — один символ; скрытое агентам не достаётся</span>
                     </span>
@@ -529,9 +530,9 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
             </div>
           </>
         ) : (
-          <label className="field">
-            Подключение, как оно встанет в <span className="mono">mcp.json</span>
-            <textarea className="mono mc-json" rows={16} spellCheck={false} value={json} onChange={(e) => setJson(e.target.value)} />
+          <label className="g-field">
+            Подключение, как оно встанет в <span className="g-mono">mcp.json</span>
+            <textarea className="g-mono mc-json" rows={16} spellCheck={false} value={json} onChange={(e) => setJson(e.target.value)} />
           </label>
         )}
         {error && (
@@ -542,10 +543,10 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
       </form>
       <div className="mf">
         <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
+        <button type="button" className="g-btn ghost" onClick={onClose}>
           Отмена
         </button>
-        <button type="submit" form="mc-edit" className="btn primary" disabled={busy}>
+        <button type="submit" form="mc-edit" className="g-btn secondary" disabled={busy}>
           Сохранить
         </button>
       </div>
@@ -556,22 +557,22 @@ function ServerEditor({ server, hash, onClose }: { server?: McpAdminServer; hash
 /** Key → value rows of the editor: headers or environment variables, with a way to add and remove. */
 function KvRows({ label, hint, rows, onChange, valuePlaceholder }: { label: string; hint?: string; rows: Kv[]; onChange: (rows: Kv[]) => void; valuePlaceholder?: string }) {
   return (
-    <div className="field">
+    <div className="g-field">
       <span>
         {label}
         {hint && <span className="pj-hint"> {hint}</span>}
       </span>
       {rows.map((r, i) => (
         <div key={i} className="mc-kv">
-          <input className="mono" value={r.k} placeholder="имя" aria-label={`${label}: имя`} onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)))} />
-          <input className="mono" value={r.v} placeholder={valuePlaceholder ?? "значение"} aria-label={`${label}: значение`} onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, v: e.target.value } : x)))} />
-          <button type="button" className="icon-btn" aria-label={`Убрать ${r.k || "строку"}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+          <input className="g-mono" value={r.k} placeholder="имя" aria-label={`${label}: имя`} onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)))} />
+          <input className="g-mono" value={r.v} placeholder={valuePlaceholder ?? "значение"} aria-label={`${label}: значение`} onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, v: e.target.value } : x)))} />
+          <button type="button" className="g-icon-btn" aria-label={`Убрать ${r.k || "строку"}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
             <Icon.trash size={13} />
           </button>
         </div>
       ))}
       <div>
-        <button type="button" className="btn ghost" onClick={() => onChange([...rows, { k: "", v: "" }])}>
+        <button type="button" className="g-btn ghost" onClick={() => onChange([...rows, { k: "", v: "" }])}>
           <Icon.plus size={13} />
           Добавить
         </button>
@@ -593,7 +594,7 @@ function Secrets({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
       title="Переменные окружения"
       note="Ссылка на секрет: ${env:ИМЯ}"
       aside={
-        <button type="button" className="btn" onClick={() => setCreating(true)}>
+        <button type="button" className="g-btn secondary" onClick={() => setCreating(true)}>
           <Icon.plus size={13} />
           Новая переменная
         </button>
@@ -612,26 +613,26 @@ function Secrets({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
           <tbody>
             {d.secrets.map((s) => (
               <tr key={s.name}>
-                <td className="mono">{s.name}</td>
-                <td className="muted" title={s.updated ? `обновлено ${timeAgo(s.updated)}` : undefined}>
+                <td className="g-mono">{s.name}</td>
+                <td className="g-muted" title={s.updated ? `обновлено ${timeAgo(s.updated)}` : undefined}>
                   {s.unreadable ? "значение показать нельзя" : s.hint || "есть"}
                 </td>
                 <td>
                   <div className="ag-how">
                     {s.usedBy.map((id) => (
-                      <button key={id} type="button" className="mc-server-chip mono" title="Открыть подключение в редакторе" onClick={() => onEdit(id)}>
+                      <button key={id} type="button" className="mc-server-chip g-mono" title="Открыть подключение в редакторе" onClick={() => onEdit(id)}>
                         {id}
                       </button>
                     ))}
-                    {!s.usedBy.length && <span className="muted">—</span>}
+                    {!s.usedBy.length && <span className="g-muted">—</span>}
                   </div>
                 </td>
                 <td className="ag-cell-action">
                   <div className="ag-how mc-actions">
-                    <button type="button" className="btn" onClick={() => setSetting(s.name)}>
+                    <button type="button" className="g-btn secondary" onClick={() => setSetting(s.name)}>
                       Задать значение
                     </button>
-                    <button type="button" className="btn ghost" onClick={() => setConfirming(s)}>
+                    <button type="button" className="g-btn ghost" onClick={() => setConfirming(s)}>
                       Удалить
                     </button>
                   </div>
@@ -640,19 +641,19 @@ function Secrets({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
             ))}
             {d.secretsUnset.map((name) => (
               <tr key={name} className="mc-unset">
-                <td className="mono">{name}</td>
-                <td className="muted">значения нет</td>
+                <td className="g-mono">{name}</td>
+                <td className="g-muted">значения нет</td>
                 <td>
                   <div className="ag-how">
                     {users(name).map((s) => (
-                      <button key={s.id} type="button" className="mc-server-chip mono" title="Открыть подключение в редакторе" onClick={() => onEdit(s.id)}>
+                      <button key={s.id} type="button" className="mc-server-chip g-mono" title="Открыть подключение в редакторе" onClick={() => onEdit(s.id)}>
                         {s.id}
                       </button>
                     ))}
                   </div>
                 </td>
                 <td className="ag-cell-action">
-                  <button type="button" className="btn" onClick={() => setSetting(name)}>
+                  <button type="button" className="g-btn secondary" onClick={() => setSetting(name)}>
                     Задать значение
                   </button>
                 </td>
@@ -660,7 +661,7 @@ function Secrets({ d, onEdit }: { d: McpAdmin; onEdit: (id: string | null) => vo
             ))}
             {!d.secrets.length && !d.secretsUnset.length && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={4} className="g-muted">
                   Подключения пока не читают переменных: секреты пишите в mcp.json только как {"${env:ИМЯ}"}.
                 </td>
               </tr>
@@ -722,7 +723,7 @@ function SecretForm({ name, onDone, onClose }: { name?: string; onDone: () => vo
   };
   return (
     <Modal label={name ? `Значение ${name}` : "Новая переменная"} onClose={onClose}>
-      <div className="mh">{name ? <span className="mono">{name}</span> : "Новая переменная"}</div>
+      <div className="mh">{name ? <span className="g-mono">{name}</span> : "Новая переменная"}</div>
       <form
         className="mb ag-form"
         id="mc-secret"
@@ -732,12 +733,12 @@ function SecretForm({ name, onDone, onClose }: { name?: string; onDone: () => vo
         }}
       >
         {!name && (
-          <label className="field">
+          <label className="g-field">
             Имя
-            <input className="mono" value={newName} placeholder="GITHUB_MCP_TOKEN" required onChange={(e) => setNewName(e.target.value)} />
+            <input className="g-mono" value={newName} placeholder="GITHUB_MCP_TOKEN" required onChange={(e) => setNewName(e.target.value)} />
           </label>
         )}
-        <label className="field">
+        <label className="g-field">
           Значение
           <input type="password" autoComplete="new-password" value={value} onChange={(e) => setValue(e.target.value)} />
           <span className="pj-hint">{value.trim() ? "Значение уйдёт в базу сервера и назад не прочитается." : "Пустое значение удаляет переменную."}</span>
@@ -750,10 +751,10 @@ function SecretForm({ name, onDone, onClose }: { name?: string; onDone: () => vo
       </form>
       <div className="mf">
         <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
+        <button type="button" className="g-btn ghost" onClick={onClose}>
           Отмена
         </button>
-        <button type="submit" form="mc-secret" className="btn primary" disabled={busy}>
+        <button type="submit" form="mc-secret" className="g-btn secondary" disabled={busy}>
           Сохранить
         </button>
       </div>
@@ -809,7 +810,7 @@ function Usage() {
     <Section
       title="Статистика"
       aside={
-        <div className="seg" role="group" aria-label="Период">
+        <div className="g-seg" role="group" aria-label="Период">
           {[7, 30, 90].map((v) => (
             <button key={v} type="button" className={v === days ? "on" : ""} aria-pressed={v === days} onClick={() => setDays(v)}>
               {v === 7 ? "Неделя" : v === 30 ? "Месяц" : "90 дней"}
@@ -819,11 +820,11 @@ function Usage() {
       }
     >
       {usage.isPending ? (
-        <p className="muted ag-empty">Загрузка…</p>
+        <SettingsLoading />
       ) : usage.isError ? (
-        <p className="muted ag-empty">{usage.error.message}</p>
+        <p className="g-muted ag-empty">{usage.error.message}</p>
       ) : !list.length ? (
-        <p className="muted ag-empty">Вызовов через шлюз пока не было</p>
+        <p className="g-muted ag-empty">Вызовов через шлюз пока не было</p>
       ) : (
         <div className="ag-table-wrap">
           <table className="ag-table mc-usage">
@@ -844,8 +845,8 @@ function Usage() {
                     <td>
                       <button type="button" className="mc-expand" aria-expanded={open === s.id} onClick={() => setOpen(open === s.id ? undefined : s.id)}>
                         <Icon.chevron size={12} />
-                        <span className="mono">{s.id}</span>
-                        <span className="muted">
+                        <span className="g-mono">{s.id}</span>
+                        <span className="g-muted">
                           {s.tools.length} {plural(s.tools.length, "инструмент", "инструмента", "инструментов")}
                         </span>
                       </button>
@@ -855,7 +856,7 @@ function Usage() {
                   {open === s.id &&
                     s.tools.map(([tool, t]) => (
                       <tr key={tool} className="mc-tool-row">
-                        <td className="mono">{tool}</td>
+                        <td className="g-mono">{tool}</td>
                         <UsageCells t={t} />
                       </tr>
                     ))}

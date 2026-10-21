@@ -57,7 +57,7 @@ export function ProvidersAdminSection() {
               )}
               <button
                 type="button"
-                className="btn ghost"
+                className="g-btn ghost"
                 onClick={() => void act(() => request("DELETE", `/api/llm-keys/${p.id}`), `Ключ ${p.title} удалён`)}
               >
                 Удалить
@@ -85,7 +85,7 @@ export function ProvidersAdminSection() {
         </div>
         <div className="st-foot">
           <span className="grow" />
-          <button className="btn primary" disabled={!value.trim()}>
+          <button className="g-btn secondary" disabled={!value.trim()}>
             {key ? `Заменить ключ ${p.title}` : `Сохранить ключ ${p.title}`}
           </button>
         </div>
@@ -98,7 +98,7 @@ export function ProvidersAdminSection() {
       <div className="st-head">
         <div className="provider-headline">
           <h2>Провайдеры и ключи сервера</h2>
-          {providers.length > 0 && <button type="button" className="btn primary provider-add" aria-label="Добавить провайдера" title="Добавить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
+          {providers.length > 0 && <button type="button" className="g-btn secondary provider-add" aria-label="Добавить провайдера" title="Добавить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
         </div>
         <p>
           Общие API-ключи для всех пользователей. Личный ключ имеет приоритет. Значения хранятся зашифрованными.

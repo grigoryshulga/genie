@@ -1,7 +1,7 @@
 .tg-connect {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--g-space-4);
   align-items: flex-start;
 }
 .tg-connect p {
@@ -12,16 +12,19 @@
 }
 .tg-pair {
   display: flex;
-  gap: var(--space-14);
+  gap: var(--g-space-5);
   align-items: center;
   flex-wrap: wrap;
 }
+/* The QR plate stays light whatever the theme is: the code has to scan, and the
+   scannable module/background pair is fixed by the Telegram token itself (see
+   `fgColor`/`bgColor` in TelegramSettings.tsx). It sits on the paper surface, so it
+   gets no shadow of its own. */
 .tg-qr {
-  padding: var(--space-4);
-  background: #fff;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  box-shadow: 0 4px 18px #0000000d;
+  padding: var(--g-space-2);
+  background: var(--g-n-0);
+  border-radius: var(--g-radius-lg);
+  border: 1px solid var(--g-border);
 }
 .tg-qr svg {
   display: block;
@@ -30,7 +33,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-6);
+  gap: var(--g-space-3);
   flex: 1;
   min-width: 210px;
 }
@@ -38,22 +41,22 @@
   margin: 0;
 }
 .tg-project {
-  padding: 0 40px;
+  padding: 0 var(--g-space-6);
   max-width: var(--content);
   display: flex;
-  gap: var(--space-4);
+  gap: var(--g-space-2);
   align-items: center;
 }
-.tg-project label { color: var(--muted); font-size: var(--font-size-small); }
+.tg-project label { color: var(--g-text-muted); font-size: var(--g-text-caption); }
 .tg-project .st-input {
   width: min(240px, 60vw);
   height: 32px;
-  font-size: var(--font-size-small);
+  font-size: var(--g-text-caption);
 }
 
 .tg-connected { width: 100%; flex-wrap: wrap; }
 .tg-connected .grow { flex-basis: 100%; }
 
 @media (max-width: 900px) {
-  .tg-project { padding-inline: 16px; }
+  .tg-project { padding-inline: var(--g-space-4); }
 }

@@ -28,6 +28,7 @@ import type { SourceKind } from "@/shared/api/generated/SourceKind.ts";
 import type { SourceTestView } from "@/shared/api/generated/SourceTestView.ts";
 import type { SourceView } from "@/shared/api/generated/SourceView.ts";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 const SOURCE_KINDS: SourceKind[] = ["prometheus", "sentry"];
 const SOURCE_AUTHS: SourceAuth[] = ["none", "bearer", "basic"];
@@ -74,7 +75,7 @@ export function ObservationSources({ admin }: { admin: boolean }) {
           <p>Источники — серверы метрик и ошибок, из которых наблюдения берут измерения. Секреты хранятся на сервере зашифрованными и после сохранения не показываются.</p>
         </div>
         {admin && !adding && (
-          <button type="button" className="btn primary" onClick={() => setAdding(true)}>
+          <button type="button" className="g-btn secondary" onClick={() => setAdding(true)}>
             <Icon.plus size={14} />
             Добавить источник
           </button>
@@ -85,7 +86,7 @@ export function ObservationSources({ admin }: { admin: boolean }) {
         <section className="st-card" aria-label="Доступ к источникам">
           <div className="st-card-body">
             <b>Только для администраторов проекта</b>
-            <p className="muted">Источники наблюдения и их секреты настраивают администраторы проекта. Попросите администратора подключить источник или проверить запрос.</p>
+            <p className="g-muted">Источники наблюдения и их секреты настраивают администраторы проекта. Попросите администратора подключить источник или проверить запрос.</p>
           </div>
         </section>
       ) : (
@@ -100,11 +101,11 @@ export function ObservationSources({ admin }: { admin: boolean }) {
           )}
 
           {sources.isPending ? (
-            <p className="muted">Загрузка…</p>
+            <SettingsLoading />
           ) : sources.error ? (
             <div role="alert" className="st-note">
               {sources.error.message}{" "}
-              <button type="button" className="btn sm" onClick={() => void sources.refetch()}>
+              <button type="button" className="g-btn secondary sm" onClick={() => void sources.refetch()}>
                 Повторить
               </button>
             </div>
@@ -117,7 +118,7 @@ export function ObservationSources({ admin }: { admin: boolean }) {
               <section className="st-card" aria-label="Источников нет">
                 <div className="st-card-body">
                   <b>Источников пока нет</b>
-                  <p className="muted">Наблюдение берёт измерения из источников. Добавьте Prometheus или Sentry, чтобы проверять результат поставок.</p>
+                  <p className="g-muted">Наблюдение берёт измерения из источников. Добавьте Prometheus или Sentry, чтобы проверять результат поставок.</p>
                 </div>
               </section>
             )
@@ -137,19 +138,19 @@ function SourceCard({ source, editing, onEdit }: { source: SourceView; editing: 
     <section className="st-card" aria-labelledby={titleId}>
       <div className="st-card-head st-head-line">
         <div className="st-head-main">
-          <h3 id={titleId} className="mono">
+          <h3 id={titleId} className="g-mono">
             {source.name}
           </h3>
           <p>
-            {SOURCE_KIND_LABEL[source.kind]} · <span className="mono">{source.url}</span>
+            {SOURCE_KIND_LABEL[source.kind]} · <span className="g-mono">{source.url}</span>
           </p>
         </div>
         {!editing && (
-          <button type="button" className="btn sm" onClick={() => onEdit(true)}>
+          <button type="button" className="g-btn secondary sm" onClick={() => onEdit(true)}>
             Изменить
           </button>
         )}
-        <button type="button" className="icon-btn" aria-label={`Удалить источник ${source.name}`} title="Удалить источник" onClick={() => setRemoving(true)}>
+        <button type="button" className="g-icon-btn" aria-label={`Удалить источник ${source.name}`} title="Удалить источник" onClick={() => setRemoving(true)}>
           <Icon.trash size={13} />
         </button>
       </div>
@@ -165,7 +166,7 @@ function SourceCard({ source, editing, onEdit }: { source: SourceView; editing: 
             <dd>
               {source.secret ? (
                 <>
-                  Задан: <span className="mono">{source.secret.hint}</span>
+                  Задан: <span className="g-mono">{source.secret.hint}</span>
                 </>
               ) : (
                 "Не задан"
@@ -274,7 +275,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
         <div className="ctl">
           <input
             id={`${id}-name`}
-            className="st-input mono"
+            className="st-input g-mono"
             value={draft.name}
             onChange={(e) => set("name", e.target.value)}
             pattern={SOURCE_NAME_PATTERN}
@@ -311,7 +312,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
         <div className="ctl">
           <input
             id={`${id}-url`}
-            className="st-input mono"
+            className="st-input g-mono"
             type="url"
             value={draft.url}
             onChange={(e) => set("url", e.target.value)}
@@ -346,7 +347,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
               <span>Slug организации в Sentry.</span>
             </label>
             <div className="ctl">
-              <input id={`${id}-org`} className="st-input mono" value={draft.organization} onChange={(e) => set("organization", e.target.value)} placeholder="acme" required spellCheck={false} />
+              <input id={`${id}-org`} className="st-input g-mono" value={draft.organization} onChange={(e) => set("organization", e.target.value)} placeholder="acme" required spellCheck={false} />
             </div>
           </div>
           <div className="st-row">
@@ -355,7 +356,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
               <span>Slug проекта. Пусто — все проекты организации.</span>
             </label>
             <div className="ctl">
-              <input id={`${id}-sentry-project`} className="st-input mono" value={draft.sentryProject} onChange={(e) => set("sentryProject", e.target.value)} placeholder="backend" spellCheck={false} />
+              <input id={`${id}-sentry-project`} className="st-input g-mono" value={draft.sentryProject} onChange={(e) => set("sentryProject", e.target.value)} placeholder="backend" spellCheck={false} />
             </div>
           </div>
           <div className="st-row">
@@ -364,7 +365,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
               <span>Пусто — все окружения.</span>
             </label>
             <div className="ctl">
-              <input id={`${id}-env`} className="st-input mono" value={draft.environment} onChange={(e) => set("environment", e.target.value)} placeholder="production" spellCheck={false} />
+              <input id={`${id}-env`} className="st-input g-mono" value={draft.environment} onChange={(e) => set("environment", e.target.value)} placeholder="production" spellCheck={false} />
             </div>
           </div>
           <div className="st-row">
@@ -373,7 +374,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
               <span>Значение, которое берётся из ответа. По умолчанию count().</span>
             </label>
             <div className="ctl">
-              <input id={`${id}-field`} className="st-input mono" value={draft.field} onChange={(e) => set("field", e.target.value)} placeholder="count()" spellCheck={false} />
+              <input id={`${id}-field`} className="st-input g-mono" value={draft.field} onChange={(e) => set("field", e.target.value)} placeholder="count()" spellCheck={false} />
             </div>
           </div>
           <div className="st-row">
@@ -382,7 +383,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
               <span>По умолчанию errors.</span>
             </label>
             <div className="ctl">
-              <input id={`${id}-dataset`} className="st-input mono" value={draft.dataset} onChange={(e) => set("dataset", e.target.value)} placeholder="errors" spellCheck={false} />
+              <input id={`${id}-dataset`} className="st-input g-mono" value={draft.dataset} onChange={(e) => set("dataset", e.target.value)} placeholder="errors" spellCheck={false} />
             </div>
           </div>
         </>
@@ -418,7 +419,7 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
           <div className="ctl">
             <input
               id={`${id}-secret`}
-              className="st-input mono"
+              className="st-input g-mono"
               type="password"
               autoComplete="new-password"
               value={draft.secret}
@@ -433,10 +434,10 @@ function SourceForm({ source, onDone }: { source?: SourceView; onDone: () => voi
 
       <div className="st-foot">
         <span className="grow" />
-        <button type="button" className="btn ghost" disabled={pending} onClick={onDone}>
+        <button type="button" className="g-btn ghost" disabled={pending} onClick={onDone}>
           Отменить
         </button>
-        <button className="btn primary" disabled={pending || !draft.name.trim() || !draft.url.trim() || secretMissing !== undefined}>
+        <button className="g-btn secondary" disabled={pending || !draft.name.trim() || !draft.url.trim() || secretMissing !== undefined}>
           {pending ? "Сохраняю…" : source ? "Сохранить" : "Добавить"}
         </button>
       </div>
@@ -484,7 +485,7 @@ function SecretRow({ source }: { source: SourceView }) {
         <div className="st-inline">
           <input
             id={`${id}-value`}
-            className="st-input mono"
+            className="st-input g-mono"
             type="password"
             autoComplete="new-password"
             spellCheck={false}
@@ -493,11 +494,11 @@ function SecretRow({ source }: { source: SourceView }) {
             onChange={(e) => setValue(e.target.value)}
             placeholder={SECRET_PLACEHOLDER[source.auth]}
           />
-          <button className="btn sm" disabled={!usable || busy || problem !== undefined}>
+          <button className="g-btn secondary sm" disabled={!usable || busy || problem !== undefined}>
             {setSecret.isPending ? "Сохраняю…" : source.secret ? "Заменить" : "Сохранить"}
           </button>
           {source.secret && (
-            <button type="button" className="btn sm ghost" disabled={busy} onClick={() => void act(() => clear.mutateAsync(source.name), `Секрет ${source.name} удалён`)}>
+            <button type="button" className="g-btn ghost sm" disabled={busy} onClick={() => void act(() => clear.mutateAsync(source.name), `Секрет ${source.name} удалён`)}>
               Удалить
             </button>
           )}
@@ -544,7 +545,7 @@ function TestRow({ source }: { source: SourceView }) {
       <div className="ctl">
         <textarea
           id={`${id}-query`}
-          className="mono"
+          className="g-mono"
           rows={2}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -555,14 +556,14 @@ function TestRow({ source }: { source: SourceView }) {
           <label htmlFor={`${id}-range`} className="st-hint">
             Окно
           </label>
-          <input id={`${id}-range`} className="st-input mono st-input-short" value={range} onChange={(e) => setRange(e.target.value)} placeholder={DEFAULT_RANGE} spellCheck={false} />
-          <button className="btn sm" disabled={check.isPending || !query.trim()}>
+          <input id={`${id}-range`} className="st-input g-mono st-input-short" value={range} onChange={(e) => setRange(e.target.value)} placeholder={DEFAULT_RANGE} spellCheck={false} />
+          <button className="g-btn secondary sm" disabled={check.isPending || !query.trim()}>
             {check.isPending ? "Проверяю…" : "Проверить"}
           </button>
         </div>
         {result && (
           <p role="status" className="st-result">
-            Значение <b className="mono">{result.value}</b>
+            Значение <b className="g-mono">{result.value}</b>
             {result.samples !== undefined && <> · выборка {result.samples}</>}
             <br />
             <span className="st-hint">

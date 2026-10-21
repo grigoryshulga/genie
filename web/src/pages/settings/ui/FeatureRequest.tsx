@@ -7,7 +7,7 @@ export function FeatureRequest({ id, title, children }: { id: string; title: str
         <p>{children}</p>
       </div>
       <div className="st-card-body">
-        <span className="pill">Запланировано · Feature Request {id}</span>
+        <span className="g-tag">Запланировано · Feature Request {id}</span>
       </div>
     </section>
   );

@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { LlmProvider } from "@/entities/platform";
 import { request } from "@/shared/api";
-import { Icon, Modal, useAct, useRefreshingAct } from "@/shared/ui";
+import { Icon, Modal, Segmented, useAct, useRefreshingAct } from "@/shared/ui";
 
 type Scope = "personal" | "server";
 type Flow = {
@@ -114,7 +114,7 @@ export function ProviderConnectDialog({ providers, scope, onClose }: { providers
     <Modal label="Подключить провайдера" onClose={close}>
       <div className="mh">
         <span className="grow">Подключение провайдера</span>
-        <button type="button" className="btn ghost" aria-label="Закрыть" onClick={close}>
+        <button type="button" className="g-btn ghost" aria-label="Закрыть" onClick={close}>
           <Icon.close size={13} />
         </button>
       </div>
@@ -128,10 +128,7 @@ export function ProviderConnectDialog({ providers, scope, onClose }: { providers
         </select>
 
         {provider && (provider.apiKey && allowOAuth && provider.oauth) && (
-          <div className="provider-modes" role="group" aria-label="Способ подключения">
-            <button type="button" className={mode === "oauth" ? "on" : ""} onClick={() => setMode("oauth")}>OAuth</button>
-            <button type="button" className={mode === "key" ? "on" : ""} onClick={() => setMode("key")}>Ключ API</button>
-          </div>
+          <Segmented label="Способ подключения" value={mode} onChange={setMode} items={[{ id: "oauth", label: "OAuth" }, { id: "key", label: "Ключ API" }]} />
         )}
 
         {provider && mode === "key" && provider.apiKey && (
@@ -142,8 +139,8 @@ export function ProviderConnectDialog({ providers, scope, onClose }: { providers
             </label>
             <input id="provider-key" className="st-input" type="password" autoComplete="new-password" placeholder="Вставьте ключ API" value={key} onChange={(e) => setKey(e.target.value)} required autoFocus />
             <div className="provider-actions">
-              <button type="button" className="btn ghost" onClick={close}>Отмена</button>
-              <button className="btn primary" disabled={!key.trim() || busy}>{busy ? "Сохраняем…" : "Сохранить ключ"}</button>
+              <button type="button" className="g-btn ghost" onClick={close}>Отмена</button>
+              <button className="g-btn secondary" disabled={!key.trim() || busy}>{busy ? "Сохраняем…" : "Сохранить ключ"}</button>
             </div>
           </form>
         )}
@@ -151,7 +148,7 @@ export function ProviderConnectDialog({ providers, scope, onClose }: { providers
         {provider && mode === "oauth" && allowOAuth && provider.oauth && !sessionId && (
           <div className="provider-oauth-start">
             <p>Войдите в {provider.title} через страницу провайдера. Данные входа сохранятся в вашем профиле.</p>
-            <button type="button" className="btn primary" disabled={busy} onClick={() => void startOAuth()}>{busy ? "Запускаем…" : "Продолжить с OAuth"}</button>
+            <button type="button" className="g-btn secondary" disabled={busy} onClick={() => void startOAuth()}>{busy ? "Запускаем…" : "Продолжить с OAuth"}</button>
           </div>
         )}
 
@@ -164,8 +161,8 @@ export function ProviderConnectDialog({ providers, scope, onClose }: { providers
             {flow.prompt?.message && <p>{flow.prompt.message}</p>}
             {flow.prompt?.method === "confirm" && (
               <div className="provider-actions">
-                <button type="button" className="btn ghost" disabled={busy} onClick={() => void respond({ confirmed: false })}>Нет</button>
-                <button type="button" className="btn primary" disabled={busy} onClick={() => void respond({ confirmed: true })}>Продолжить</button>
+                <button type="button" className="g-btn ghost" disabled={busy} onClick={() => void respond({ confirmed: false })}>Нет</button>
+                <button type="button" className="g-btn secondary" disabled={busy} onClick={() => void respond({ confirmed: true })}>Продолжить</button>
               </div>
             )}
             {flow.prompt && flow.prompt.method !== "confirm" && (
@@ -182,13 +179,13 @@ export function ProviderConnectDialog({ providers, scope, onClose }: { providers
                   <input id="provider-oauth-answer" className="st-input" type={flow.prompt.secret ? "password" : "text"} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder={flow.prompt.placeholder ?? "Введите код подтверждения"} autoComplete={flow.prompt.secret ? "off" : "one-time-code"} required />
                 )}
                 <div className="provider-actions">
-                  <button type="button" className="btn ghost" disabled={busy} onClick={() => void respond({ cancelled: true })}>Отмена</button>
-                  <button className="btn primary" disabled={busy || (flow.prompt.method === "select" ? !choice : !answer.trim())}>Отправить</button>
+                  <button type="button" className="g-btn ghost" disabled={busy} onClick={() => void respond({ cancelled: true })}>Отмена</button>
+                  <button className="g-btn secondary" disabled={busy || (flow.prompt.method === "select" ? !choice : !answer.trim())}>Отправить</button>
                 </div>
               </form>
             )}
-            {flow.status === "complete" && <button type="button" className="btn primary" onClick={close}>Готово</button>}
-            {flow.status === "error" && <button type="button" className="btn" onClick={close}>Закрыть</button>}
+            {flow.status === "complete" && <button type="button" className="g-btn secondary" onClick={close}>Готово</button>}
+            {flow.status === "error" && <button type="button" className="g-btn secondary" onClick={close}>Закрыть</button>}
           </div>
         )}
         {error && <p className="pj-bad" role="alert">{error}</p>}

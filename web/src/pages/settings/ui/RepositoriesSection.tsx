@@ -23,6 +23,7 @@ import {
   useSyncRepo,
 } from "@/entities/repo";
 import { ConfirmDialog, Icon, Menu, useAct } from "@/shared/ui";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 type Access = "read" | "write";
 
@@ -47,7 +48,7 @@ export function RepositoriesHead({ admin, onAdd }: { admin: boolean; onAdd?: () 
         </p>
       </div>
       {admin && onAdd && (
-        <button type="button" className="btn primary" onClick={onAdd}>
+        <button type="button" className="g-btn secondary" onClick={onAdd}>
           <Icon.plus size={14} />
           Добавить репозиторий
         </button>
@@ -75,11 +76,11 @@ export function RepositoriesSection({ admin }: { admin: boolean }) {
         !adding && (
           <div className="st-card rp-empty">
             {repos.isPending ? (
-              <p className="muted">Загрузка…</p>
+              <SettingsLoading />
             ) : (
               <>
                 <b>Репозиториев пока нет</b>
-                <p className="muted">Без них результат задач — артефакты и страницы документации. Добавьте репозиторий, чтобы агенты работали с кодом.</p>
+                <p className="g-muted">Без них результат задач — артефакты и страницы документации. Добавьте репозиторий, чтобы агенты работали с кодом.</p>
               </>
             )}
           </div>
@@ -175,23 +176,23 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
           <span className="rp-meta">
             {repo.host.webUrl ? (
               <a href={repo.host.webUrl} target="_blank" rel="noreferrer" title="Открыть на хостинге">
-                {repo.host.id} <span className="mono">{repo.remote}</span>
+                {repo.host.id} <span className="g-mono">{repo.remote}</span>
                 <Icon.external size={11} />
               </a>
             ) : (
               <span title={where}>
-                {repo.host.id} <span className="mono">{repo.remote}</span>
+                {repo.host.id} <span className="g-mono">{repo.remote}</span>
               </span>
             )}
             <span aria-hidden>·</span>
             <span>
-              ветка <span className="mono">{repo.defaultBranch || "не определена"}</span>
+              ветка <span className="g-mono">{repo.defaultBranch || "не определена"}</span>
             </span>
             {repo.mount !== "." && (
               <>
                 <span aria-hidden>·</span>
                 <span>
-                  папка <span className="mono">{repo.mount}</span>
+                  папка <span className="g-mono">{repo.mount}</span>
                 </span>
               </>
             )}
@@ -199,7 +200,7 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
         </div>
         {admin && (
           <>
-            <button type="button" className="btn sm" disabled={check.isPending} onClick={() => runCheck(false)}>
+            <button type="button" className="g-btn secondary sm" disabled={check.isPending} onClick={() => runCheck(false)}>
               {check.isPending ? "Проверяю…" : "Проверить доступ"}
             </button>
             <Menu label={`Ещё действия с ${repo.name}`}>
@@ -308,7 +309,7 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
             >
               <input
                 id={`rp-token-${repo.name}`}
-                className="st-input mono"
+                className="st-input g-mono"
                 type="password"
                 autoComplete="new-password"
                 spellCheck={false}
@@ -317,12 +318,12 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
                 onChange={(e) => setToken(e.target.value)}
               />
               {token.trim() && (
-                <button className="btn sm" disabled={patch.isPending}>
+                <button className="g-btn secondary sm" disabled={patch.isPending}>
                   {repo.token?.set ? "Заменить" : "Сохранить"}
                 </button>
               )}
               {repo.token?.set && !token && (
-                <button type="button" className="btn sm ghost" disabled={patch.isPending} onClick={() => void save({ token: "" }, `${repo.name}: токен удалён`)}>
+                <button type="button" className="g-btn ghost sm" disabled={patch.isPending} onClick={() => void save({ token: "" }, `${repo.name}: токен удалён`)}>
                   Удалить
                 </button>
               )}
@@ -353,9 +354,9 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
                 void save({ mount: mount.trim() || "." }, `${repo.name}: папка сохранена`);
               }}
             >
-              <input id={`rp-mount-${repo.name}`} className="st-input mono" placeholder="в корне" value={mount} onChange={(e) => setMount(e.target.value)} />
+              <input id={`rp-mount-${repo.name}`} className="st-input g-mono" placeholder="в корне" value={mount} onChange={(e) => setMount(e.target.value)} />
               {(mount.trim() || ".") !== repo.mount && (
-                <button className="btn sm" disabled={patch.isPending}>
+                <button className="g-btn secondary sm" disabled={patch.isPending}>
                   Сохранить
                 </button>
               )}
@@ -366,11 +367,11 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
             </label>
             {json !== undefined && (
               <div className="rp-json">
-                <textarea id={`rp-json-${repo.name}`} className="mono" rows={8} value={json} onChange={(e) => setJson(e.target.value)} spellCheck={false} />
+                <textarea id={`rp-json-${repo.name}`} className="g-mono" rows={8} value={json} onChange={(e) => setJson(e.target.value)} spellCheck={false} />
                 <span className="rp-hint">Поля: read, push (none, pr_only, branches, direct), branch, branches, protected, force_push, delete_branches, change_request.</span>
                 <button
                   type="button"
-                  className="btn sm"
+                  className="g-btn secondary sm"
                   disabled={patch.isPending || json === JSON.stringify(repo.policy, null, 2)}
                   onClick={() => {
                     let policy: RepoPolicy;
@@ -470,7 +471,7 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
         <div className="ctl">
           <input
             id="rp-link"
-            className={`st-input mono rp-link ${parsed.kind === "unknown" || parsed.kind === "bad" ? "warn" : known ? "ok" : ""}`}
+            className={`st-input rp-link ${parsed.kind === "unknown" || parsed.kind === "bad" ? "warn" : known ? "ok" : ""}`}
             placeholder={hosts[0] ? `${hosts[0].url.replace(/\/+$/, "")}/группа/репозиторий` : "https://…"}
             value={link}
             onChange={(e) => setLink(e.target.value)}
@@ -484,7 +485,7 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
               <Icon.check size={14} />
               Хостинг <b>{host}</b>
               <span aria-hidden>·</span>
-              <span className="mono">{remote}</span>
+              <span className="g-mono">{remote}</span>
             </span>
           )}
           {parsed.kind === "path" && hosts.length > 1 && (
@@ -518,7 +519,7 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
             <span>Так репозиторий называют задачи и агенты.</span>
           </label>
           <div className="ctl">
-            <input id="rp-name" className="st-input mono rp-short" placeholder="api" value={name ?? repoNameFrom(remote)} onChange={(e) => setName(e.target.value)} pattern="[a-z0-9][a-z0-9_\-]*" required />
+            <input id="rp-name" className="st-input g-mono rp-short" placeholder="api" value={name ?? repoNameFrom(remote)} onChange={(e) => setName(e.target.value)} pattern="[a-z0-9][a-z0-9_\-]*" required />
             {finalName && !/^[a-z0-9][a-z0-9_-]*$/.test(finalName) && <span className="rp-hint warn">Строчные латинские буквы, цифры, «-» и «_».</span>}
           </div>
         </div>
@@ -531,7 +532,7 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
           <div className="ctl">
             <input
               id="rp-token-new"
-              className="st-input mono"
+              className="st-input g-mono"
               type="password"
               autoComplete="new-password"
               spellCheck={false}
@@ -569,17 +570,17 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
               Папка
               <span>Нужна, когда в проекте несколько репозиториев.</span>
             </label>
-            <input id="rp-mount-new" className="st-input mono rp-short" placeholder="в корне" value={mount} onChange={(e) => setMount(e.target.value)} />
+            <input id="rp-mount-new" className="st-input g-mono rp-short" placeholder="в корне" value={mount} onChange={(e) => setMount(e.target.value)} />
           </div>
         </details>
       </fieldset>
 
       <div className="st-foot">
         <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
+        <button type="button" className="g-btn ghost" onClick={onClose}>
           Отменить
         </button>
-        <button className="btn primary" disabled={add.isPending || !ready}>
+        <button className="g-btn secondary" disabled={add.isPending || !ready}>
           {add.isPending ? "Добавляю…" : "Добавить"}
         </button>
       </div>
@@ -591,7 +592,7 @@ function AddHead({ onClose }: { onClose: () => void }) {
   return (
     <div className="rp-add-head">
       <h3>Новый репозиторий</h3>
-      <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+      <button type="button" className="g-icon-btn" aria-label="Закрыть" onClick={onClose}>
         <Icon.close size={14} />
       </button>
     </div>
