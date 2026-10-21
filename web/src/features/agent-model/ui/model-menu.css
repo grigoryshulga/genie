@@ -5,7 +5,7 @@
 .mm-trigger .mono { flex: 1; min-width: 0; font-family: var(--g-font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mm-trigger svg { flex: none; color: var(--g-text-muted); }
 .mm-src { flex: none; font-size: var(--g-text-eyebrow); line-height: 18px; padding: 0 7px; border-radius: 9px; background: var(--g-surface-active); color: var(--g-text-muted); }
-.mm-src.own { background: var(--g-accent-soft); color: var(--g-accent-text); }
+.mm-src.own { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
 
 .mm-scrim { position: fixed; inset: 0; z-index: 40; }
 .mm-pop { position: fixed; z-index: 41; width: 368px; display: flex; flex-direction: column; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-md); background: var(--g-surface); box-shadow: var(--g-shadow-overlay); overflow: hidden; }
@@ -42,7 +42,10 @@
 /* The model field of a form (a role's settings) and its list. */
 .mp-trigger { width: 100%; height: 36px; display: flex; align-items: center; gap: var(--g-space-3); padding: 0 var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-surface); color: var(--g-text); font-size: var(--g-text-dense); text-align: left; }
 .mp-trigger:hover { border-color: var(--g-border-strong); }
-.mp-trigger:focus-visible, .mp-trigger.open { border-color: var(--g-accent); background: var(--g-accent-soft); outline: 0; }
+/* The open state tints the field; the keyboard state also keeps the shared focus ring, which a
+   1px border alone is too thin to replace. */
+.mp-trigger:focus-visible { border-color: var(--g-accent); background: var(--g-accent-soft); outline: 2px solid var(--g-focus); outline-offset: 1px; }
+.mp-trigger.open { border-color: var(--g-accent); background: var(--g-accent-soft); }
 .mp-trigger .mono { flex: none; max-width: 60%; font-family: var(--g-font-mono); font-size: var(--g-text-dense); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mp-trigger .mono.def { font-family: inherit; color: var(--g-text-2); }
 .mp-trigger .sub { flex: 1; min-width: 0; font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

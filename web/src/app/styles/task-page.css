@@ -122,3 +122,7 @@
   .tp-rail { order: -1; padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); border-bottom: 1px solid var(--g-border); }
   .tp-main { padding: var(--g-space-4) var(--g-space-4) var(--g-space-6); }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-card-toggle > svg { transition: none; }
+}

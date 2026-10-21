@@ -44,6 +44,7 @@
 .doc-format-toolbar button:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
 .doc-format-toolbar button:disabled { opacity: 0.4; cursor: default; }
 .doc-rich-editor { flex: 1; min-height: 0; max-width: none; padding: var(--g-space-7) var(--g-space-6); overflow-y: auto; }
+.doc-rich-editor:focus-within { outline: 2px solid var(--g-focus); outline-offset: -2px; }
 .doc-rich-editor .tiptap { min-height: 220px; max-width: 70ch; margin-inline: auto; outline: none; font-size: var(--g-text-body); line-height: var(--g-leading-prose); color: var(--g-text); }
 .doc-rich-editor .tiptap > :first-child { margin-top: 0; }
 .doc-rich-editor hr { margin: var(--g-space-5) 0; border: 0; border-top: 1px solid var(--g-border); }
@@ -52,7 +53,7 @@
 .doc-rich-editor ul[data-type="taskList"] { list-style: none; padding-left: 0; }
 .doc-rich-editor li[data-type="taskItem"] { display: flex; align-items: baseline; gap: var(--g-space-2); }
 .doc-rich-editor li[data-type="taskItem"] > div { flex: 1; }
-.doc-wiki-link { color: var(--g-accent-text); background: var(--g-accent-soft); border-radius: var(--g-radius-sm); padding: 1px var(--g-space-2); }
+.doc-wiki-link { color: var(--g-accent-soft-text); background: var(--g-accent-soft); border-radius: var(--g-radius-sm); padding: 1px var(--g-space-2); }
 .doc-content-source { grid-template-columns: minmax(0, 1fr); }
 .doc-link-form { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-6); border-bottom: 1px solid var(--g-border); }
 .doc-link-form label { display: flex; align-items: center; flex: 1; gap: var(--g-space-2); min-width: 200px; font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); color: var(--g-text-2); }
@@ -64,3 +65,7 @@
 .doc-article-badges:empty { display: none; }
 .doc-article-footer { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); margin-top: var(--g-space-7); padding-top: var(--g-space-4); border-top: 1px solid var(--g-border); font-size: var(--g-text-dense); }
 .doc-article-footer > span:first-child { font-size: var(--g-text-eyebrow); font-weight: var(--g-weight-semibold); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-section-card { transition: none; }
+}

@@ -12,6 +12,10 @@ export interface StoredTask {
   /** The epic the server saved; absent when the task stands on its own. */
   parent?: string;
   acceptance: { id: number; text: string; done: boolean }[];
+  /** The thread as the server keeps it: the answer given to a decision is its last comment. */
+  comments: { by: string; text: string }[];
+  /** The decision the task waits for; gone once the owner has answered it. */
+  needsOwner?: { question: string; previous: string };
 }
 
 export async function storedTask(request: APIRequestContext, id: string): Promise<StoredTask> {

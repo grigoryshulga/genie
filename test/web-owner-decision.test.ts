@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { answerText, cardKind, mergeHeld } from "../web/src/features/owner-decision/model.ts";
+import { answerText, cardKind, mergeHeld, radioIndex } from "../web/src/features/owner-decision/model.ts";
 
 test("a picked option goes first, the words after it", () => {
   assert.equal(answerText("Сохранять", ""), "Выбран вариант: «Сохранять»");
@@ -27,4 +27,21 @@ test("the merge button waits for what the policy asks and says why", () => {
   assert.equal(mergeHeld("api", "open", "failed", false), undefined, "checks are not required here");
   assert.equal(mergeHeld("api", "merged", "passed", true), "Запрос уже слит.");
   assert.equal(mergeHeld("api", "closed", "passed", true), "Запрос закрыт на хостинге.");
+});
+
+test("the answer radiogroup walks with every arrow and keeps one tab stop", () => {
+  // Down and right go forward, up and left go back, and both ends wrap: one tab stop, arrows inside it.
+  assert.equal(radioIndex(0, "ArrowDown", 3), 1);
+  assert.equal(radioIndex(0, "ArrowRight", 3), 1);
+  assert.equal(radioIndex(1, "ArrowUp", 3), 0);
+  assert.equal(radioIndex(1, "ArrowLeft", 3), 0);
+  assert.equal(radioIndex(2, "ArrowDown", 3), 0, "the last option wraps to the first");
+  assert.equal(radioIndex(0, "ArrowUp", 3), 2, "the first wraps to the last");
+  assert.equal(radioIndex(1, "Home", 3), 0);
+  assert.equal(radioIndex(1, "End", 3), 2);
+  // A key that is not a navigation key leaves the focus where it is, so Space and Enter stay the button's.
+  assert.equal(radioIndex(1, "Enter", 3), 1);
+  assert.equal(radioIndex(1, " ", 3), 1);
+  assert.equal(radioIndex(-1, "ArrowDown", 3), 0, "nothing focused yet starts at the first option");
+  assert.equal(radioIndex(0, "ArrowDown", 0), -1, "an empty group has nowhere to go");
 });

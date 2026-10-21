@@ -230,3 +230,8 @@
 .md { color: var(--g-text-2); line-height: var(--g-leading-prose); }
 .md code { background: var(--g-surface-raised); }
 .md pre { background: var(--g-surface); border: 1px solid var(--g-border); }
+
+/* Disclosure chevrons and section toggles rotate when opened; that rotation is motion, not information. */
+@media (prefers-reduced-motion: reduce) {
+  .sec-toggle svg, .td-props > summary::after { transition: none; }
+}
