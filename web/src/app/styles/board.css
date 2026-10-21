@@ -65,7 +65,7 @@
 .g-lane-empty { margin: var(--g-space-2) 0; padding: var(--g-space-5) var(--g-space-3); border: 1.5px dashed var(--g-border); border-radius: var(--g-radius-lg); text-align: center; font-size: var(--g-text-caption); color: var(--g-text-muted); }
 
 /* ---- a card: a paper sheet on the canvas (ink on a paper theme), never resized by its content ---- */
-.bd-card { position: relative; flex: none; width: var(--g-board-card-width); height: var(--g-board-card-height); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: var(--g-space-2); padding: var(--g-space-3); border-radius: var(--g-radius-lg); }
+.bd-card { position: relative; flex: none; width: var(--g-board-card-width); height: var(--g-board-card-height); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--g-space-2); padding: var(--g-space-3); border-radius: var(--g-radius-lg); }
 .bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent); }
 .bd-card.dragging { opacity: 0.35; }
 .bd-ghost { display: flex; flex-direction: column; width: var(--g-board-card-width); box-shadow: var(--g-shadow-overlay); cursor: grabbing; }
@@ -87,12 +87,14 @@
 .bd-who { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
 .bd-card .g-tag.outline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sh-line); color: var(--sh-t2); }
 .bd-card .g-avatar { box-shadow: 0 0 0 2px var(--sh-soft); }
-.bd-answer { justify-self: start; height: var(--g-control); padding: 0 var(--g-space-4); border: 0; border-radius: var(--g-radius-pill); background: var(--g-ink); color: var(--g-paper); font: 700 var(--g-text-dense)/1 var(--g-font-sans); }
-/* Decision cards reserve space for the question and action; details remain in the task. */
-.bd-card:has(> .bd-answer) .bd-ask { -webkit-line-clamp: 1; }
-.bd-card:has(> .bd-answer) .bd-ac, .bd-card:has(> .bd-answer) .bd-foot { display: none; }
-.bd-answer:hover { background: var(--g-n-800); }
-[data-theme="paper"] .bd-answer { background: var(--g-paper); color: var(--g-ink); }
+/* The question uses the decision card's remaining body; the whole body opens the task. */
+.bd-decision .bd-title { -webkit-line-clamp: 1; }
+.bd-decision .bd-ask { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2); }
+.bd-question { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.bd-answer { flex: none; margin-top: auto; font-weight: var(--g-weight-semibold); color: var(--sh-accent); }
+.bd-decision .bd-ac, .bd-decision .bd-foot { display: none; }
+.bd-move-popup { position: fixed; inset: auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--g-text); overflow: visible; }
+.bd-move-popup .g-menu { max-height: calc(100dvh - var(--g-space-5)); overflow-y: auto; }
 /* The move menu sits in the card's corner: dragging is not available on a phone or a keyboard. */
 .bd-card > .bd-move { position: absolute; top: var(--g-space-1); right: var(--g-space-1); }
 
