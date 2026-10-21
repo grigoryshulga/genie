@@ -248,3 +248,7 @@
 .doc-impact .row .nm { min-width: 0; font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-impact .row .why { padding-left: var(--g-space-5); font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: normal; overflow-wrap: anywhere; }
 .doc-impact .why.note { font-size: var(--g-text-caption); color: var(--g-text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-caret { transition: none; }
+}

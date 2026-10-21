@@ -44,6 +44,30 @@ export const SEED_TASKS: SeedTask[] = [
   { title: "Обновить документацию по запуску", priority: 4, labels: ["docs"] },
 ];
 
+// One page in every seed: the keyboard walkthrough opens a document from the tree, and the docs routes
+// are not part of the committed visual baselines, so one page there costs the screenshots nothing.
+export const FLOW_DOC = {
+  path: "demo/guides/run.md",
+  text: [
+    "---",
+    "title: Как запустить сервер",
+    "type: guide",
+    "status: current",
+    "verified: 2026-05-01",
+    "tags: [запуск]",
+    "---",
+    "# Как запустить сервер",
+    "",
+    "Сервер поднимается одной командой, а данные лежат в отдельном каталоге.",
+    "",
+    "## Шаги",
+    "",
+    "1. Собрать бинарник.",
+    "2. Запустить его с каталогом данных.",
+    "",
+  ].join("\n"),
+};
+
 // Extra tasks for the capture harness only (`npm run ui:capture`): together with SEED_TASKS they
 // cover all eleven statuses, so a redesigned screen can be checked against every status icon.
 // They are kept out of the baseline seed so the committed screenshots stay unchanged.

@@ -9,7 +9,7 @@
 .settings .auth-form { width: min(340px, 100%); gap: 14px; }
 .settings .auth-form > .btn { height: 32px; font-weight: 400; align-self: flex-start; }
 .me-line { display: flex; align-items: center; gap: var(--g-space-3); }
-.me-line .me { width: 36px; height: 36px; border-radius: 50%; background: var(--g-accent-soft); color: var(--g-accent-text); font-size: var(--g-text-dense); font-weight: 600; display: grid; place-items: center; }
+.me-line .me { width: 36px; height: 36px; border-radius: 50%; background: var(--g-accent-soft); color: var(--g-accent-soft-text); font-size: var(--g-text-dense); font-weight: 600; display: grid; place-items: center; }
 
 /* Two-pane pages: automations and proposals */
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr); }

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
 import { cx } from "./cx.ts";
+import { useModalFocus } from "./modal-focus.ts";
 import { nextIndex } from "./menu-nav.ts";
 
 /**
@@ -29,6 +30,10 @@ export function Dialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useId();
+  // Declared before showModal() so the trap sees the button that opened the dialog as the opener: it
+  // keeps Tab inside and gives focus back there when the dialog goes. showModal() traps Tab on its own,
+  // but the wrap back to the first control is the browser's choice and it drops focus to the page.
+  useModalFocus(ref, true, onClose);
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();

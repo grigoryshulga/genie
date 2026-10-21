@@ -80,7 +80,7 @@ export function AnswerPage() {
                   ) : (
                     <>
                       Нужны ваши ответы
-                      <span className="g-stop">.</span>
+                      <span className="g-stop" aria-hidden="true">.</span>
                     </>
                   )}
                 </h1>

@@ -20,7 +20,8 @@ export function Banner({ tone = "neutral", title, children, action }: { tone?: T
 export function EmptyState({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="g-empty">
-      <h3 className="g-h3">{title}</h3>
+      {/* A level-2 heading: an empty state always follows the page title, and h1 → h3 skips a level. */}
+      <h2 className="g-h3">{title}</h2>
       {children && <p>{children}</p>}
       {action}
     </div>

@@ -54,3 +54,7 @@
   .nt-mode button { height: 36px; }
   .ip-task input { width: 20px; height: 20px; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .ip-title svg { transition: none; }
+}

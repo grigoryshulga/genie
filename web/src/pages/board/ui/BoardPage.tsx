@@ -85,7 +85,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
         </p>
         <h1 className="g-h1 g-board-h1">
           {head.title}
-          {head.stop && <span className="g-stop">.</span>}
+          {head.stop && <span className="g-stop" aria-hidden="true">.</span>}
         </h1>
         <p className="g-board-lead">{head.lead}</p>
       </header>

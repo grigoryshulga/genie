@@ -2,14 +2,14 @@
 // and a free answer that is always there. Each action kind is a card in CARDS; a kind
 // this web does not know yet shows as a plain question, so new kinds never break it.
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type TaskRepo, useMergeRequest, useRepos, useTaskRepos } from "@/entities/repo";
 import { STATUS_NAME, type Status, StatusIcon, type Task, useComment, useMoveTask } from "@/entities/task";
 import type { OwnerAction } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
 import { ConfirmDialog, Icon, useToast } from "@/shared/ui";
 import "./owner-decision.css";
-import { answerText, cardKind, type Kind, mergeHeld } from "../model.ts";
+import { answerText, cardKind, type Kind, mergeHeld, radioIndex } from "../model.ts";
 
 type ActionOf<K extends Kind> = Extract<OwnerAction, { kind: K }>;
 
@@ -34,16 +34,35 @@ const HEADER: Record<Kind, string> = {
 };
 
 function QuestionCard({ action, picked, setPicked }: CardProps<"ask-owner-question">) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const checked = action.options.findIndex((o) => picked.line === o);
+  // A radiogroup is one tab stop, not one per option: the checked option (or the first, while nothing
+  // is chosen) is reachable with Tab, and every arrow moves focus and selection together, as the
+  // WAI-ARIA pattern has it. Options wrap into a row, so left/right work alongside up/down.
+  const move = (at: number, key: string) => {
+    const next = radioIndex(at, key, action.options.length);
+    if (next === at) return false;
+    setPicked({ line: action.options[next] });
+    refs.current[next]?.focus();
+    return true;
+  };
   return (
     <div className="od-options" role="radiogroup" aria-label="Варианты ответа">
-      {action.options.map((o) => (
+      {action.options.map((o, i) => (
         <button
           key={o}
           type="button"
           role="radio"
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
           aria-checked={picked.line === o}
+          tabIndex={checked === i || (checked < 0 && i === 0) ? 0 : -1}
           className={picked.line === o ? "on" : ""}
           onClick={() => setPicked(picked.line === o ? {} : { line: o })}
+          onKeyDown={(e) => {
+            if (move(i, e.key)) e.preventDefault();
+          }}
         >
           {o}
         </button>

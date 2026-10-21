@@ -17,7 +17,7 @@ import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFile
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { CAPTURE_DOCS, CAPTURE_TASKS, OWNER, PROJECT, SEED_TASKS } from "./seed.ts";
+import { CAPTURE_DOCS, CAPTURE_TASKS, FLOW_DOC, OWNER, PROJECT, SEED_TASKS } from "./seed.ts";
 
 const root = resolve(import.meta.dirname, "../..");
 const bin = resolve(root, process.env.GENIE_BIN ?? "target/debug/genie");
@@ -59,6 +59,7 @@ function seed() {
   genie(["user", "add", OWNER.login, "--name", OWNER.name, "--admin", "--password-stdin"], `${OWNER.password}\n`);
   genie(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix]);
   genie(["member", PROJECT.id, OWNER.login, "owner"]);
+  genie(["--project", PROJECT.id, "docs", "write", FLOW_DOC.path, "--text", FLOW_DOC.text]);
   if (capture) {
     for (const doc of CAPTURE_DOCS) {
       if (!doc.raw) genie(["--project", PROJECT.id, "docs", "write", doc.path, "--text", doc.text]);
