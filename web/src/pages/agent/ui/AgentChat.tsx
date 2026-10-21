@@ -1,13 +1,13 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import { Avatar, displayName, ROLE_TITLE_RU } from "@/entities/member";
-import { type LiveSession, type Mail, type MailLevel, MessageText, type PeekMessage, type TeamDetail, usePeek, useRestartMember, useSendMail, useSetPaused, useTeam } from "@/entities/team";
+import { displayName, ROLE_TITLE_RU } from "@/entities/member";
+import { type LiveSession, LongOutput, type Mail, type MailLevel, MessageText, PartyAvatar, type PeekMessage, type TeamDetail, usePeek, useRestartMember, useSendMail, useSetPaused, useTeam } from "@/entities/team";
 import { SpendText, useChatUsage } from "@/entities/usage";
 import { useTask } from "@/entities/task";
 import { ModelMenu } from "@/features/agent-model";
 import { IDEA_TEMPLATE, IdeaPlan } from "@/features/shape-idea";
 import { clock, plural, timeAgo, useTick } from "@/shared/lib";
-import { Icon, Markdown, useToast } from "@/shared/ui";
+import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, Markdown, Prose, Sheet, Tag, useToast, WorkingArcs } from "@/shared/ui";
 import "./agent.css";
 
 type Member = TeamDetail["members"][number];
@@ -153,6 +153,21 @@ export function AgentChat() {
   }, [conversation, team, name, live, isIdea]);
   const toggle = (key: string) => setOpen((s) => new Set(s.has(key) ? [...s].filter((k) => k !== key) : [...s, key]));
 
+  // The character in the header reports the agent: thinking while it works, surprised when it needs the
+  // owner, asleep otherwise — and waking for a moment after the owner resumes it.
+  const memberPaused = member?.state === "paused";
+  const [woke, setWoke] = useState(false);
+  const wasPaused = useRef(memberPaused);
+  useEffect(() => {
+    if (wasPaused.current && !memberPaused) {
+      setWoke(true);
+      wasPaused.current = memberPaused;
+      const t = window.setTimeout(() => setWoke(false), 5_000);
+      return () => window.clearTimeout(t);
+    }
+    wasPaused.current = memberPaused;
+  }, [memberPaused]);
+
   useEffect(() => {
     setQuote(undefined);
     setOpen(new Set());
@@ -163,9 +178,9 @@ export function AgentChat() {
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [rows.length, agentKey]);
 
-  if (q.isPending) return <main className="main"><div className="empty">Загрузка…</div></main>;
-  if (q.isError || !team) return <main className="main"><div className="empty">Команда не найдена</div></main>;
-  if (!member || !name) return <main className="main"><div className="empty">В команде нет участника {name}</div></main>;
+  if (q.isPending) return <main className="main ac-page"><div className="ac-center">Загрузка…</div></main>;
+  if (q.isError || !team) return <main className="main ac-page"><div className="ac-center">Команда не найдена</div></main>;
+  if (!member || !name) return <main className="main ac-page"><div className="ac-center">В команде нет участника {name}</div></main>;
 
   const active = team.state === "active";
   const paused = member.state === "paused";
@@ -173,6 +188,8 @@ export function AgentChat() {
   const queued = team.mail.filter((m) => m.to === name && !m.deliveredAt);
   const pausedAt = [...team.log].reverse().find((e) => e.event === "member_paused" && e.member === name)?.at;
   const who = displayName(name);
+  // The character reports this agent: one state per view, never invented.
+  const pose = characterState({ working: working ? 1 : 0, waiting: st.cls === "error" ? 1 : 0, resumed: woke });
   // The idea planner: the plan it keeps sits next to the chat instead of the agent's details.
   const idea = isIdea;
   // Interrupting a paused agent makes no sense: its mail waits anyway.
@@ -213,76 +230,77 @@ export function AgentChat() {
   return (
     <>
       <main className="main agent-chat">
-        <header className="topbar">
-          <Link to={`/team/${encodeURIComponent(team.id)}`} className="icon-btn m-only" aria-label="Назад к команде">
+        <header className="ac-head">
+          <Link to={`/team/${encodeURIComponent(team.id)}`} className="g-icon-btn m-only" aria-label="Назад к команде">
             <Icon.back />
           </Link>
-          <nav className="crumbs d-only" aria-label="Путь">
-            <Link to="/tasks">Задачи</Link>
-            <span>/</span>
-            <Link to={`/tasks?task=${encodeURIComponent(team.task)}`} className="mono">
-              {team.task}
-            </Link>
-            <span>/</span>
-            <Link to={`/team/${encodeURIComponent(team.id)}`}>Команда</Link>
-            <span>/</span>
-            <span className="here">{who}</span>
-          </nav>
-          <span className="ac-who m-only">
-            <Avatar role={member.role} name={member.name} activity={active ? member.activity : undefined} size="md" />
-            <span>
-              <b>{who}</b> <span className="muted">{ROLE_TITLE_RU[member.role] ?? member.role}</span>
-              <span className={`ac-state ${st.cls}`}>
-                {st.cls === "working" && <span className="spin" />}
-                {st.text}
-              </span>
+          <Character state={pose} size={38} />
+          <div className="ac-who">
+            <div className="ac-nm">
+              <b>{who}</b>
+              <span className="ac-role">{ROLE_TITLE_RU[member.role] ?? member.role}</span>
+            </div>
+            <span className={`ac-state ${st.cls}`}>
+              {st.cls === "working" ? <WorkingArcs size={13} label="Работает" /> : <i className="ac-led" aria-hidden="true" />}
+              {st.text}
             </span>
-          </span>
+          </div>
           <span className="grow" />
+          <span className="ac-crumbs d-only">
+            <Breadcrumbs
+              items={[
+                { label: "Задачи", to: "/tasks" },
+                { label: <span className="g-mono">{team.task}</span>, to: `/tasks?task=${encodeURIComponent(team.task)}` },
+                { label: "Команда", to: `/team/${encodeURIComponent(team.id)}` },
+                { label: who },
+              ]}
+            />
+          </span>
           {active && member.state !== "stopped" && (
             <span className="ac-actions d-only">
-              <button type="button" className="btn sm" onClick={() => pause(!paused)} disabled={setPaused.isPending}>
+              <Button variant="ghost" sm onClick={() => pause(!paused)} disabled={setPaused.isPending}>
                 {paused ? "Продолжить" : "Пауза"}
-              </button>
-              <button type="button" className="btn sm" onClick={doRestart} disabled={restart.isPending} title="Новый процесс с текущими настройками роли; разговор продолжится">
+              </Button>
+              <Button variant="secondary" sm onClick={doRestart} disabled={restart.isPending} title="Новый процесс с текущими настройками роли; разговор продолжится">
                 Перезапустить
-              </button>
+              </Button>
             </span>
           )}
         </header>
 
-        <nav className="ac-tabs" aria-label="Участники команды">
+        <nav className="ac-tabs g-tabs" aria-label="Участники команды">
           <Link to={`/team/${encodeURIComponent(team.id)}`} className="ac-tab">
             Схема
           </Link>
-          <span className="ac-sep" />
           {team.members.map((m) => (
-            <Link key={m.name} to={`/team/${encodeURIComponent(team.id)}/${encodeURIComponent(m.name)}`} className={`ac-tab${m.name === name ? " on" : ""}`} aria-current={m.name === name ? "page" : undefined}>
-              <Avatar role={m.role} name={m.name} size="md" />
+            <Link key={m.name} to={`/team/${encodeURIComponent(team.id)}/${encodeURIComponent(m.name)}`} className="ac-tab" aria-current={m.name === name ? "page" : undefined}>
+              <PartyAvatar role={m.role} name={m.name} sm />
               {displayName(m.name)}
-              {active && m.activity === "working" && <span className="spin" />}
-              {m.state === "paused" && <span className="ac-dot amber" title="на паузе" />}
+              {active && m.activity === "working" && <WorkingArcs size={11} label="Работает" />}
+              {m.state === "paused" && <i className="ac-dot" aria-hidden="true" title="на паузе" />}
             </Link>
           ))}
         </nav>
 
         <div className={`ac-feed${paused ? " dim" : ""}`} ref={feedRef} role="log" aria-label={`Разговор ${who}`} onScroll={(e) => (stick.current = e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 60)}>
-          <div className="inner">
+          <div className="ac-inner">
             {paused && conversation.length > 0 && <div className="ac-caption">Разговор остановлен паузой{pausedAt ? ` в ${clock(pausedAt)}` : ""}</div>}
             {idea && ideaTask && (
-              <article className="mail ac-mail mine">
-                <span className="slot">
-                  <Avatar role="human" name="Вы" size="md" />
+              <article className="ac-msg mine">
+                <span className="ac-slot">
+                  <PartyAvatar role="human" name="Вы" />
                 </span>
-                <div className="body">
-                  <div className="meta">
+                <div className="ac-body">
+                  <div className="ac-from">
                     <b>Ваша идея</b>
                   </div>
-                  <div className="text">
-                    <Markdown text={ideaTask.description} />
-                  </div>
+                  <Sheet className="ac-bubble">
+                    <Prose>
+                      <Markdown text={ideaTask.description} />
+                    </Prose>
+                  </Sheet>
                 </div>
-                <span className="t">{clock(ideaTask.created)}</span>
+                <span className="ac-time">{clock(ideaTask.created)}</span>
               </article>
             )}
             {rows.map((r) => (
@@ -290,11 +308,15 @@ export function AgentChat() {
                 {r.kind === "mail" && <MailRow row={r} team={team} paused={paused} />}
                 {r.kind === "say" && (
                   <div className="ac-say">
-                    <Avatar role={member.role} name={member.name} size="md" />
-                    <div className="text">
-                      <Markdown text={r.text} />
+                    <span className="ac-slot">
+                      <PartyAvatar role={member.role} name={member.name} />
+                    </span>
+                    <div className="ac-body">
+                      <Prose>
+                        <Markdown text={r.text} />
+                      </Prose>
                     </div>
-                    <span className="t">{r.at ? clock(r.at) : ""}</span>
+                    <span className="ac-time">{r.at ? clock(r.at) : ""}</span>
                   </div>
                 )}
                 {r.kind === "steps" && (
@@ -307,18 +329,15 @@ export function AgentChat() {
                   />
                 )}
                 {r.kind === "note" && (
-                  <div className="sys">
-                    <span />
-                    <span className="body">{r.text}</span>
-                    <span className="t">{r.at ? clock(r.at) : ""}</span>
+                  <div className="ac-note">
+                    <span className="ac-note-text">{r.text}</span>
+                    <span className="ac-time">{r.at ? clock(r.at) : ""}</span>
                   </div>
                 )}
               </Fragment>
             ))}
             {!rows.length && !idea && (
-              <div className="empty">
-                {peek.isPending ? "Загрузка разговора…" : live ? "Разговор пока пуст" : "Сессия агента не запущена: разговор появится, когда он получит письмо"}
-              </div>
+              <EmptyState title={peek.isPending ? "Загрузка разговора…" : live ? "Разговор пока пуст" : "Сессия агента не запущена: разговор появится, когда он получит письмо"} />
             )}
           </div>
         </div>
@@ -328,24 +347,22 @@ export function AgentChat() {
             <div className="ac-chips m-only">
               {paused ? (
                 <>
-                  <button type="button" className="chip primary" onClick={() => pause(false)} disabled={setPaused.isPending}>
+                  <Chip className="ac-chip-primary" onClick={() => pause(false)} disabled={setPaused.isPending}>
                     Продолжить с почтой
-                  </button>
-                  <button type="button" className="chip" onClick={doRestart} disabled={restart.isPending}>
+                  </Chip>
+                  <Chip onClick={doRestart} disabled={restart.isPending}>
                     Перезапустить
-                  </button>
+                  </Chip>
                 </>
               ) : (
                 <>
-                  <button type="button" className="chip amber" aria-pressed={level === "interrupt"} onClick={interruptNow}>
+                  <Chip pressed={level === "interrupt"} onClick={interruptNow}>
                     Прервать шаг
-                  </button>
-                  <button type="button" className="chip" onClick={() => pause(true)}>
-                    Пауза
-                  </button>
-                  <button type="button" className={`chip${idea ? " primary" : ""}`} onClick={() => setInfo(!info)} aria-expanded={info}>
+                  </Chip>
+                  <Chip onClick={() => pause(true)}>Пауза</Chip>
+                  <Chip pressed={info} aria-expanded={info} onClick={() => setInfo(!info)}>
                     {idea ? "План" : "Что он делает?"}
-                  </button>
+                  </Chip>
                 </>
               )}
             </div>
@@ -359,43 +376,54 @@ export function AgentChat() {
             >
               {quote && (
                 <div className="ac-quote">
-                  к шагу <span className="mono">{quote}</span>
-                  <button type="button" className="icon-btn" aria-label="Убрать ссылку на шаг" onClick={() => setQuote(undefined)}>
+                  <span>к шагу</span>
+                  <span className="g-mono">{quote}</span>
+                  <IconButton label="Убрать ссылку на шаг" className="ac-quote-x" onClick={() => setQuote(undefined)}>
                     <Icon.close size={11} />
-                  </button>
+                  </IconButton>
                 </div>
               )}
-              <textarea
-                ref={inputRef}
-                aria-label="Текст поправки"
-                rows={2}
-                value={draft}
-                placeholder={paused ? `Добавить к почте, которую ${who} получит при продолжении` : idea ? `Ответить ${who} или попросить поправить план` : `Что поправить в работе ${who}?`}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
-              />
-              <div className="ac-row">
-                {!paused && !idea && (
-                  <div role="radiogroup" aria-label="Когда доставить" className="ac-levels">
-                    {LEVELS.map((l) => (
-                      <button key={l.level} type="button" role="radio" aria-checked={level === l.level} className={level === l.level ? `on ${l.level}` : ""} onClick={() => setLevel(l.level)}>
-                        {l.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <span className="hint">{paused ? "придёт при продолжении" : idea ? `${who} ответит здесь, план обновится справа` : LEVELS.find((l) => l.level === level)?.hint}</span>
-                <span className="grow" />
-                <button type="submit" className={`btn sm ${lvl === "interrupt" ? "amber" : "primary"}`} disabled={!draft.trim() || send.isPending} title="Отправить (⌘↵)">
-                  {lvl === "interrupt" ? "Прервать и отправить" : "Отправить"}
-                </button>
+              <div className="ac-box">
+                <textarea
+                  ref={inputRef}
+                  className="g-textarea ac-input"
+                  aria-label="Текст поправки"
+                  rows={2}
+                  value={draft}
+                  placeholder={paused ? `Добавить к почте, которую ${who} получит при продолжении` : idea ? `Ответить ${who} или попросить поправить план` : `Что поправить в работе ${who}?`}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
+                />
+                <div className="ac-row">
+                  {!paused && !idea && (
+                    <div role="radiogroup" aria-label="Когда доставить" className="ac-levels g-seg">
+                      {LEVELS.map((l) => (
+                        <button key={l.level} type="button" role="radio" aria-checked={level === l.level} onClick={() => setLevel(l.level)}>
+                          {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <span className="ac-hint">{paused ? "придёт при продолжении" : idea ? `${who} ответит здесь, план обновится справа` : LEVELS.find((l) => l.level === level)?.hint}</span>
+                  <span className="grow" />
+                  <Button type="submit" variant="primary" sm className="ac-send" disabled={!draft.trim() || send.isPending} title="Отправить (⌘↵)">
+                    {lvl === "interrupt" ? "Прервать и отправить" : "Отправить"}
+                  </Button>
+                </div>
               </div>
             </form>
           </>
         )}
       </main>
 
-      <aside className={`team-aside ac-aside${info ? " open" : ""}`} aria-label={paused ? "Пауза" : idea ? "План" : "Об агенте"}>
+      {info && <button type="button" className="g-scrim m-only" aria-label="Закрыть панель" onClick={() => setInfo(false)} />}
+      <aside className={`ac-aside${info ? " open" : ""}`} aria-label={paused ? "Пауза" : idea ? "План" : "Об агенте"}>
+        <span className="ac-aside-head m-only">
+          <span>{paused ? "Пауза" : idea ? "План" : "Об агенте"}</span>
+          <IconButton label="Закрыть" onClick={() => setInfo(false)}>
+            <Icon.close size={13} />
+          </IconButton>
+        </span>
         {paused ? (
           <PausedPanel who={who} since={pausedAt} queued={queued} busy={setPaused.isPending || restart.isPending} onResume={() => pause(false)} onRestart={doRestart} />
         ) : idea ? (
@@ -452,15 +480,15 @@ function Steps({ row, open, toggle, paused, onQuote }: { row: Extract<Row, { kin
         </span>
         <span className="chips">
           {[...names].map(([name, x]) => (
-            <span key={name} className={`ac-chip${x.bad ? " bad" : ""}`}>
+            <Tag key={name} tone={x.bad ? "signal" : "outline"}>
               {x.n > 1 ? `${name} ×${x.n}` : name}
-            </span>
+            </Tag>
           ))}
-          {thoughts > 0 && <span className="ac-chip think">{thoughts > 1 ? `Thinking ×${thoughts}` : "Thinking"}</span>}
+          {thoughts > 0 && <Tag>{thoughts > 1 ? `Thinking ×${thoughts}` : "Thinking"}</Tag>}
         </span>
         <span className="args">{now?.args}</span>
         {!now && ms > 0 && <span className="took">{took(ms)}</span>}
-        {now && <span className="spin" />}
+        {now && <WorkingArcs size={12} label="Идёт работа" />}
         <span className={`st${now ? " live" : failed ? " bad" : ""}`}>{now ? `идёт ${sinceShort(now.since)}`.trim() : failed ? "ошибка" : unfinished ? (paused ? "остановлено паузой" : "") : "готово"}</span>
       </button>
       {on && list}
@@ -477,7 +505,7 @@ function StepLine({ step, open, toggle, paused, onQuote }: { step: Step; open: b
       <div className="ac-stepitem">
         <button type="button" className={`ac-step${open ? " open" : ""}`} aria-expanded={open} onClick={toggle}>
           <Icon.chevron size={10} />
-          <span className="ac-chip think">Thinking…</span>
+          <Tag>Thinking…</Tag>
         </button>
         {open && <p className="ac-thought">{step.text}</p>}
       </div>
@@ -489,10 +517,10 @@ function StepLine({ step, open, toggle, paused, onQuote }: { step: Step; open: b
       <div className="ac-steprow">
         <button type="button" className={`ac-step${step.running ? " running" : ""}${open ? " open" : ""}`} aria-expanded={open} onClick={toggle} disabled={!step.out} title={step.args}>
           <Icon.chevron size={10} />
-          <span className={`ac-chip${step.error ? " bad" : ""}`}>{step.name}</span>
+          <Tag tone={step.error ? "signal" : "outline"}>{step.name}</Tag>
           <span className="args">{step.args}</span>
           {step.took !== undefined && <span className="took">{took(step.took)}</span>}
-          {step.running && <span className="spin" />}
+          {step.running && <WorkingArcs size={12} label="Идёт работа" />}
           <span className={`st${step.running ? " live" : step.error ? " bad" : ""}`}>{st}</span>
         </button>
         {onQuote && (
@@ -503,7 +531,7 @@ function StepLine({ step, open, toggle, paused, onQuote }: { step: Step; open: b
           </button>
         )}
       </div>
-      {open && step.out && <pre className="out">{step.out}</pre>}
+      {open && step.out && <div className="ac-out"><LongOutput text={step.out} /></div>}
     </div>
   );
 }
@@ -512,10 +540,9 @@ function MailRow({ row, team, paused }: { row: Extract<Row, { kind: "mail" }>; t
   const m = row.mail[0];
   if (!m) {
     return (
-      <div className="sys">
-        <span />
-        <span className="body">{row.text}</span>
-        <span className="t">{row.at ? clock(row.at) : ""}</span>
+      <div className="ac-note">
+        <span className="ac-note-text">{row.text}</span>
+        <span className="ac-time">{row.at ? clock(row.at) : ""}</span>
       </div>
     );
   }
@@ -525,23 +552,31 @@ function MailRow({ row, team, paused }: { row: Extract<Row, { kind: "mail" }>; t
   return (
     <>
       {row.mail.map((x, i) => (
-        <article key={x.id} className={`mail ac-mail${mine ? " mine" : ""}${hard ? " urgent" : ""}${i ? " cont" : ""}`}>
-          <span className="slot">{!i && <Avatar role={mine ? "human" : x.fromRole} name={x.from} size="md" />}</span>
-          <div className="body">
+        <article key={x.id} className={`ac-msg${mine ? " mine" : ""}${hard ? " urgent" : ""}${i ? " cont" : ""}`}>
+          <span className="ac-slot">{!i && <PartyAvatar role={mine ? "human" : x.fromRole} name={x.from} />}</span>
+          <div className="ac-body">
             {!i && (
-              <div className="meta">
+              <div className="ac-from">
                 <b>{from}</b>
-                {hard && <span className="urgent-tag">прервать шаг</span>}
-                {x.level === "high" && mine && <span className="mail-kind">на следующем шаге</span>}
-                {x.intent && <span className="mail-kind">{INTENT_LABEL[x.intent]}</span>}
+                {hard && <Tag tone="signal">прервать шаг</Tag>}
+                {x.level === "high" && mine && <Tag tone="outline">на следующем шаге</Tag>}
+                {x.intent && <Tag tone="outline">{INTENT_LABEL[x.intent]}</Tag>}
               </div>
             )}
-            <div className="text">
-              <MessageText text={x.text} team={team.id} />
-            </div>
-            {mine && <span className={`receipt${row.pending ? "" : " ok"}`}>{row.pending ? (paused ? "придёт при продолжении" : hard ? "прерывает шаг…" : "ждёт границы шага") : "доставлено"}</span>}
+            {mine ? (
+              <Sheet className="ac-bubble">
+                <div className="ac-text">
+                  <MessageText text={x.text} team={team.id} />
+                </div>
+              </Sheet>
+            ) : (
+              <div className="ac-text">
+                <MessageText text={x.text} team={team.id} />
+              </div>
+            )}
+            {mine && <span className={`ac-receipt${row.pending ? "" : " ok"}`}>{row.pending ? (paused ? "придёт при продолжении" : hard ? "прерывает шаг…" : "ждёт границы шага") : "доставлено"}</span>}
           </div>
-          <span className="t">{clock(x.at)}</span>
+          <span className="ac-time">{clock(x.at)}</span>
         </article>
       ))}
     </>
@@ -552,17 +587,17 @@ function AgentInfo({ member, team, live, st, queued }: { member: Member; team: T
   return (
     <div className="ac-info">
       <div className="who">
-        <Avatar role={member.role} name={member.name} size="lg" />
+        <PartyAvatar role={member.role} name={member.name} />
         <span>
           <b>{displayName(member.name)}</b>
-          <span className="muted">
+          <span className="ac-muted">
             {ROLE_TITLE_RU[member.role] ?? member.role} · <Link to={`/agents?tab=roles&id=${encodeURIComponent(member.role)}`}>роль</Link>
           </span>
         </span>
       </div>
       <div className={`ac-statebox ${st.cls}`}>
         <span className="line">
-          {st.cls === "working" && <span className="spin" />}
+          {st.cls === "working" && <WorkingArcs size={13} label="Работает" />}
           {st.text}
         </span>
         <span className="sub">{live?.tool ? live.tool.args : st.sub}</span>
@@ -573,7 +608,7 @@ function AgentInfo({ member, team, live, st, queued }: { member: Member; team: T
           {team.state === "active" && member.state !== "stopped" ? (
             <ModelMenu team={team.id} member={member} />
           ) : (
-            <span className="mono">
+            <span className="g-mono">
               {member.model ? member.model.replace(/^[^/]+\//, "") : "как у роли"}
               {member.thinking ? ` · ${member.thinking}` : ""}
             </span>
@@ -597,19 +632,19 @@ function AgentInfo({ member, team, live, st, queued }: { member: Member; team: T
         {team.worktree && (
           <>
             <dt>Ветка</dt>
-            <dd className="mono">{team.worktree.branch}</dd>
+            <dd className="g-mono">{team.worktree.branch}</dd>
           </>
         )}
       </dl>
       {member.status && member.status !== "starting" && (
         <section>
           <h2>Статус</h2>
-          <p className="said">{member.status}</p>
+          <p className="ac-said">{member.status}</p>
         </section>
       )}
       <section>
         <h2>Ждут доставки</h2>
-        <p className="muted">{queued.length ? `${queued.length} ${plural(queued.length, "письмо", "письма", "писем")}: ${queued.map((m) => (m.fromRole === "human" ? "ваше" : displayName(m.from))).join(", ")}` : "Нет писем."}</p>
+        <p className="ac-muted">{queued.length ? `${queued.length} ${plural(queued.length, "письмо", "письма", "писем")}: ${queued.map((m) => (m.fromRole === "human" ? "ваше" : displayName(m.from))).join(", ")}` : "Нет писем."}</p>
       </section>
       <p className="ac-help">«Прервать шаг» остановит текущую команду.</p>
     </div>
@@ -645,29 +680,29 @@ function PausedPanel({ who, since, queued, busy, onResume, onRestart }: { who: s
       </div>
       <section>
         <h2>
-          Придёт при продолжении <span className="muted">{queued.length}</span>
+          Придёт при продолжении <span className="n">{queued.length}</span>
         </h2>
         {queued.map((m) => (
           <article key={m.id} className={`ac-queued${m.fromRole === "human" ? " mine" : ""}`}>
             <span className="ac-qhd">
-              <Avatar role={m.fromRole === "human" ? "human" : m.fromRole} name={m.from} />
+              <PartyAvatar role={m.fromRole === "human" ? "human" : m.fromRole} name={m.from} sm />
               <b>{m.fromRole === "human" ? "Вы" : m.fromRole === "orchestrator" ? "Оркестратор" : displayName(m.from)}</b>
-              {m.intent && <span className="mail-kind">{INTENT_LABEL[m.intent]}</span>}
-              <span className="t">{clock(m.at)}</span>
+              {m.intent && <Tag tone="outline">{INTENT_LABEL[m.intent]}</Tag>}
+              <span className="ac-time">{clock(m.at)}</span>
             </span>
-            <span className="text">{m.text}</span>
+            <span className="ac-text">{m.text}</span>
           </article>
         ))}
-        {!queued.length && <p className="muted">Писем нет.</p>}
+        {!queued.length && <p className="ac-muted">Писем нет.</p>}
       </section>
       <span className="grow" />
       <div className="ac-paused-actions">
-        <button type="button" className="btn primary" onClick={onResume} disabled={busy}>
+        <Button variant="primary" onClick={onResume} disabled={busy}>
           Продолжить с почтой
-        </button>
-        <button type="button" className="btn" onClick={onRestart} disabled={busy}>
+        </Button>
+        <Button variant="secondary" onClick={onRestart} disabled={busy}>
           Перезапустить
-        </button>
+        </Button>
       </div>
       <p className="ac-help">При перезапуске разговор, рабочая копия и почта сохранятся.</p>
     </div>
