@@ -52,6 +52,7 @@ export interface Membership {
 
 /** A project as `/api/projects` lists it, with the caller's role. */
 export interface ProjectInfo {
+  icon?: string;
   slug: string;
   name: string;
   trackerDir: string;
@@ -250,4 +251,13 @@ export function hoursText(h: number | null | undefined): string {
   if (h < 1) return `${Math.max(1, Math.round(h * 60))} мин`;
   if (h < 48) return `${h.toFixed(1).replace(".", ",")} ч`;
   return `${(h / 24).toFixed(1).replace(".", ",")} дн`;
+}
+
+/** Initials of words, ignoring punctuation between parts of a project name. */
+export function projectMonogram(name: string): string {
+  const words = name.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const [first, second] = words;
+  if (!first) return "?";
+  const letters = second ? [Array.from(first)[0], Array.from(second)[0]] : Array.from(first).slice(0, 2);
+  return letters.join("").toLocaleUpperCase("ru-RU");
 }

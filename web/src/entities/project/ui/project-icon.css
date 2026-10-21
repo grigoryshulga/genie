@@ -1,0 +1,3 @@
+.project-icon { display: inline-grid; flex: none; place-items: center; width: 28px; height: 28px; overflow: hidden; border-radius: var(--g-radius-sm); background: var(--g-accent-soft); color: var(--g-accent-soft-text); font: var(--g-weight-bold) var(--g-text-caption)/1 var(--g-font-sans); }
+.project-icon.large { width: var(--g-space-8); height: var(--g-space-8); font-size: var(--g-text-h4); border-radius: var(--g-radius-md); }
+.project-icon img { width: 100%; height: 100%; object-fit: contain; }

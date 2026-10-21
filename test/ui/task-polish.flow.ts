@@ -81,10 +81,14 @@ for (const theme of ["ink", "paper"]) {
     await select.focus();
     await page.keyboard.press("Space");
     await page.keyboard.press("End");
+    expect(await select.evaluate((node) => node.matches(":open"))).toBe(true);
     await page.keyboard.press("Escape");
     await expect(select).toHaveValue("0");
+    await expect(select).toBeFocused();
     await select.selectOption("3");
     await expect(select).toHaveValue("3");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Задача DM-5", exact: true })).toBeHidden();
   });
 }
 

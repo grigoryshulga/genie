@@ -112,3 +112,11 @@ export const useRefreshModelPrices = () =>
   useInvalidating(() => request<{ received: number; priced: number; fetchedAt: string }>("POST", "/api/model-prices"), [["model-prices"], ["stats"]]);
 
 export const useDeleteUser = () => useInvalidating((id: number) => request("DELETE", `/api/users/${id}`), [["users"], ["members"], ["session"]]);
+
+/** An icon is shared by all members of the project; only its administrators may change it. */
+export const useSetProjectIcon = () =>
+  useInvalidating(
+    ({ slug, image }: { slug: string; image: Blob | null }) =>
+      image ? upload<ProjectInfo>("PUT", `${at(slug)}/icon`, image) : request<ProjectInfo>("DELETE", `${at(slug)}/icon`),
+    PROJECTS,
+  );

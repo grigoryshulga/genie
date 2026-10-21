@@ -13,6 +13,7 @@ export interface SessionUser {
 }
 
 export interface SessionProject {
+  icon?: string;
   slug: string;
   name: string;
   role: "viewer" | "member" | "admin" | "owner";
