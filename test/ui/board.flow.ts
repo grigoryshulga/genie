@@ -1,6 +1,46 @@
 import { expect, test } from "@playwright/test";
 
 for (const theme of ["ink", "paper"]) {
+  test(`board cards keep their size as lanes fold and the viewport changes (${theme})`, async ({ page }) => {
+    await page.goto("/board");
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    const lanes = page.locator(".g-lane[data-lane]");
+    for (const lane of await lanes.all()) {
+      const toggle = lane.locator(".g-lane-toggle");
+      if (await toggle.getAttribute("aria-expanded") === "false") await toggle.click();
+    }
+    const board = page.locator(".g-board");
+    for (const width of [1440, 1920, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const sizes = await board.locator(".bd-card").evaluateAll((nodes) => nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      }));
+      expect(sizes.length).toBeGreaterThan(0);
+      for (const size of sizes) {
+        expect(size.width).toBeCloseTo(288, 2);
+        expect(size.height).toBeCloseTo(224, 2);
+      }
+      expect(await board.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+      await board.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
+      expect(await board.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+    }
+    for (const lane of await lanes.all()) {
+      if (await lane.getAttribute("data-lane") !== "work") await lane.locator(".g-lane-toggle").click();
+    }
+    const working = page.locator('[data-lane="work"]');
+    for (const width of [1440, 1920, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect((await working.boundingBox())!.width).toBeCloseTo(344, 2);
+      const card = working.locator(".bd-card").first();
+      expect((await card.boundingBox())!.width).toBeCloseTo(288, 2);
+      expect((await card.boundingBox())!.height).toBeCloseTo(224, 2);
+      await page.screenshot({ path: `test-results/board-fixed-${theme}-${width}.png`, animations: "disabled" });
+    }
+  });
+}
+
+for (const theme of ["ink", "paper"]) {
   for (const width of [1440, 390]) {
     test(`collapsed board lanes stay compact and reopen (${theme}, ${width})`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
