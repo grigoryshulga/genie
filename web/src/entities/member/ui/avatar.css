@@ -6,10 +6,14 @@
    shape is exactly what the task list needs to keep readable at that size. */
 .av.agent {
   border-radius: 25%;
+  background: var(--g-accent-soft);
+  color: var(--g-accent-soft-text);
 }
 
 .av.human {
   border-radius: 50%;
+  background: var(--g-surface-active);
+  color: var(--g-text);
 }
 
 /* The ring of a working agent follows the avatar's own outline instead of drawing a circle around it. */

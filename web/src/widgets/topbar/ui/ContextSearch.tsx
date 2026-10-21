@@ -1,6 +1,6 @@
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { searchContext, searchParams } from "@/shared/lib";
-import { Icon } from "@/shared/ui";
+import { Icon, IconButton } from "@/shared/ui";
 
 export function ContextSearch({
   inputRef,
@@ -24,9 +24,9 @@ export function ContextSearch({
   };
   if (compact)
     return (
-      <button type="button" className="icon-btn sidebar-search-toggle" aria-label={context.label} title={context.label} onClick={onExpand}>
+      <IconButton className="sidebar-search-toggle" label={context.label} onClick={onExpand}>
         <Icon.search size={16} />
-      </button>
+      </IconButton>
     );
   return (
     <label className={`search context-search ${className}`}>

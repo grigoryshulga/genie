@@ -3,12 +3,12 @@ import { cx } from "./cx.ts";
 import "./select.css";
 
 /** A label, the control, optional help and error. The control gets its id and aria wiring from here. */
-export function Field({ label, help, error, children }: { label: ReactNode; help?: ReactNode; error?: ReactNode; children: ReactElement<Record<string, unknown>> }) {
+export function Field({ label, help, error, className, children }: { label: ReactNode; help?: ReactNode; error?: ReactNode; className?: string; children: ReactElement<Record<string, unknown>> }) {
   const id = useId();
   const describedBy = [help ? `${id}-help` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
   const control = isValidElement(children) ? cloneElement(children, { id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined }) : children;
   return (
-    <div className="g-field">
+    <div className={cx("g-field", className)}>
       <label className="g-label" htmlFor={id}>
         {label}
       </label>

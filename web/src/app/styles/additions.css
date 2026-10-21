@@ -2,13 +2,9 @@
 #root { height: 100%; }
 button.title { background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
 .row .title { min-width: 0; }
-.nav-item, .team-link { text-decoration: none; }
-.team-link:hover, .nav-item:hover { text-decoration: none; }
-.detail .topbar { gap: var(--space-5); }
-.app.team-view .main { border-right: 1px solid var(--line); }
-.m-nav { display: none; }
+.detail .topbar { gap: var(--g-space-2); }
+.app.team-view .main { border-right: 1px solid var(--g-border); }
 @media (max-width: 900px) {
-  .m-nav { display: flex; }
   .app.team-view .main { border-right: 0; }
   .col { width: min(262px, 84vw); scroll-snap-align: start; }
   .col.collapsed { width: 48px; }
@@ -23,30 +19,18 @@ button.title { background: none; border: 0; padding: 0; color: inherit; text-ali
 .topbar { overflow: hidden; }
 .topbar h1 { white-space: nowrap; }
 .search { flex-shrink: 1; min-width: 120px; }
-.hints { white-space: nowrap; overflow: hidden; }
-.app.with-detail .main .topbar > .muted,
-.app.with-detail .main .topbar .btn.primary .d-only,
-.app.with-detail .main .topbar .search kbd,
-.app.with-detail .hints { display: none; }
-.app.with-detail .main .seg { margin-left: 0; }
-.col .drop-here { flex: 0 0 auto; min-height: 90px; }
 @media (max-width: 900px) {
   .board { scroll-padding-inline: 16px; }
 }
 
 /* member that lost contact with the orchestrator */
 /* People (not agents): a ring tells them apart from the team's avatars. */
-.av.person { background: var(--role-person); box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px color-mix(in srgb, var(--role-person) 33%, transparent); }
+.av.person { background: var(--g-n-200); box-shadow: 0 0 0 1.5px var(--g-bg), 0 0 0 3px color-mix(in srgb, var(--g-n-200) 33%, transparent); }
 .av.person.solo { margin-left: 0; }
-.av.photo { background: var(--bg-card); overflow: hidden; }
+.av.photo { background: var(--g-surface); overflow: hidden; }
 .av.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.av.xl { width: 64px; height: 64px; font-size: var(--font-size-section); margin: 0; box-shadow: 0 0 0 2px var(--line-strong); }
-.side-foot .me.photo { overflow: hidden; background: var(--bg-card); }
-.side-foot .me.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.xl { width: 64px; height: 64px; font-size: var(--g-text-h3); margin: 0; box-shadow: 0 0 0 2px var(--g-border-strong); }
 .av.person.md { box-shadow: none; }
-.av.lost { opacity: 0.55; box-shadow: 0 0 0 2px var(--amber); }
+.av.lost { opacity: 0.55; box-shadow: 0 0 0 2px var(--g-signal); }
 
 /* owner team controls */
-.mcard .member-remove { width: 22px; height: 22px; }
-.btn.danger { background: var(--red); border-color: var(--red); color: var(--on-danger); font-weight: 600; }
-.btn.danger:hover:not(:disabled) { filter: brightness(1.08); }

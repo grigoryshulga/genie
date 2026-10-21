@@ -1,9 +1,10 @@
 # Genie design system
 
-Status: **draft for review, ready for the redesign handoff.** This turns the "ink and paper" visual language board into rules, tokens, a component library, and concepts. It does not change the application yet; the [redesign handoff](handoff/README.md) describes how to apply it.
+Status: **applied.** The ink and paper language is what the application renders; H33 (GNE-69) removed the last of the previous palette. This page remains the specification, so change it with the tokens rather than after them. The [redesign handoff](handoff/README.md) is the historical record of how it was applied.
 
 - Tokens: [`web/src/shared/ui/g-tokens.css`](../../../web/src/shared/ui/g-tokens.css) (prefix `--g-`; two themes).
-- Components: [`web/src/shared/ui/components.css`](../../../web/src/shared/ui/components.css), shown with every state in [`components.html`](components.html).
+- Components: [`web/src/shared/ui/components.css`](../../../web/src/shared/ui/components.css) with React wrappers in [`web/src/shared/ui/kit/`](../../../web/src/shared/ui/kit/), shown with every state in [`components.html`](components.html).
+- Working reference for tokens, type, and component contracts: [`design-system/README.md`](../../../design-system/README.md).
 - Principles and review checklist: [principles.md](principles.md).
 - Brand specimen: [`design-system.html`](design-system.html). Open it from a checkout; it reads the real tokens and has a theme toggle.
 - Accessibility contract: `test/design-tokens.test.ts` fails when a documented text, control, focus, or chart pairing drops below its WCAG ratio in either theme.
@@ -56,7 +57,7 @@ Consequences worth knowing: a white label on a green button is not allowed, and 
 | Blocked, destructive, error | red |
 | Draft, queued, done-and-quiet | neutral |
 
-The current app's `--violet` and `--yellow` have no place in this system and retire during migration.
+The previous palette's `--violet` and `--yellow` had no place in this system and were removed with the legacy tokens in H33.
 
 ## Typography
 
@@ -159,15 +160,19 @@ What it tries:
 
 ## Open decisions
 
-1. **Monospace.** The board defines no mono face. Task IDs and code keep Geist Mono for now. Alternatives: JetBrains Mono, or tabular Manrope for IDs only.
-2. **Default theme.** The app is dark today. Tokens default to ink and switch with `data-theme="paper"`. Decide whether the product should follow `prefers-color-scheme`, and whether the docs site stays force-dark.
-3. **Font delivery.** The app loads fonts from Google Fonts. Genie is self-hosted and often offline, so bundling Unbounded and Manrope (both OFL, variable) with the build is the safer default.
-4. **Orange as "needs you".** The app's amber already means "waiting on the owner". Mapping it to brand orange keeps that meaning but makes orange both the brand highlight and an alert colour. The rule that the primary button and the attention state share orange is deliberate; confirm it.
-5. **Density.** The product UI is 13px and compact. Pill rows and 40px controls are roomier than today's 32px controls. The dense variants (32px, 13px) are specified for lists and toolbars.
+Settled by the redesign: **monospace** stays Geist Mono for IDs, code and numeric metadata (revisit only with a measured legibility problem); **default theme** is ink, with a system/ink/paper preference in Settings; **fonts** are self-hosted variable files bundled with the build, so the app renders offline; **density** ships roomy 40px controls with 32px dense variants for lists, toolbars and settings.
 
-## Migration plan (not started)
+Still open:
 
-1. Import `g-tokens.css`, load the fonts, and alias the legacy variables in `app/styles.css` to the new semantic tokens.
-2. Convert shared UI primitives (button, menu, modal, pill) and settings.
-3. Convert pages by area; retire the indigo accent, violet, and yellow.
-4. Re-skin the documentation theme and README hero.
+1. **Orange as "needs you".** The primary button and the attention state share orange deliberately. Confirm it holds as the product grows beyond the board, or split the two.
+2. **The board concept.** The three-stage lane proposal is still a concept for discussion, not the shipped board.
+3. **Character mapping.** The suggested thinking/sleeping/waking/surprise mapping is not enforced anywhere yet.
+
+## Migration (complete)
+
+1. `g-tokens.css` replaced the GNE-25 token file; the fonts load from the bundle.
+2. The shared primitives, settings, and pages moved to `g-*` classes and the kit wrappers.
+3. The compatibility aliases, the legacy classes, the accent choices, the unused sidebar rules, and the Geist body font were deleted (H33).
+4. The documentation theme and the app share the same palette values.
+
+A new visual change now starts in `g-tokens.css` and `design-system/README.md`, not in a second palette.

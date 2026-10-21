@@ -99,13 +99,11 @@ test("every transition that moves a shape stops under prefers-reduced-motion", (
   assert.deepEqual(unguarded, [], "a transition that still moves something under reduced motion: hold it still, or move it into a prefers-reduced-motion block");
 });
 
-// Colours belong to the token layer. The legacy palette is on its way out with H33, so files that
-// still hold literals are allowed to keep exactly as many as they have: new ones have to be tokens.
+// Colours belong to the token layer. The legacy palette and its compatibility aliases are gone (H33),
+// so the only files allowed a literal are the token layer and the inverted sheet that cannot follow it.
 const LITERAL_BUDGET: Record<string, { count: number; why: string }> = {
-  "shared/ui/g-tokens.css": { count: 37, why: "the token layer itself: the palette every other rule names" },
-  "shared/ui/tokens.css": { count: 124, why: "the legacy palette, removed with the compatibility layer in H33" },
-  "shared/ui/compat.css": { count: 0, why: "the legacy name mapping, removed in H33" },
-  "shared/ui/components.css": { count: 7, why: "the inverted paper sheet and the scrim/backdrop that must not follow the theme" },
+  "shared/ui/g-tokens.css": { count: 39, why: "the token layer itself: the palette every other rule names" },
+  "shared/ui/components.css": { count: 2, why: "the inverted paper sheet's hairlines, which blend with the sheet underneath and so cannot follow the theme" },
 };
 
 test("no new hard-coded colours outside the token layer", () => {

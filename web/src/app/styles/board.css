@@ -125,7 +125,3 @@
 }
 
 /* Form fields are still styled by the legacy shell for the dialogs that have not migrated yet; nothing below belongs to the board. */
-.field { display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--font-size-label); color: var(--text-2); }
-.field select, .field input, .field textarea { height: var(--control-input); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-panel); color: var(--text); padding: 0 var(--space-6); font-size: var(--font-size-body); outline: 0; }
-.field textarea { height: auto; padding: var(--space-5) var(--space-6); resize: vertical; line-height: 1.5; }
-.field select:focus, .field input:focus, .field textarea:focus { border-color: var(--accent); }

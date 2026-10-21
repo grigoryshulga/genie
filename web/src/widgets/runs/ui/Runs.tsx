@@ -6,7 +6,7 @@ import { useState } from "react";
 import { RUN_STATUS, useRun, useRuns } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
-import { LoadingState, useRefreshingAct } from "@/shared/ui";
+import { Button, LoadingState, useRefreshingAct } from "@/shared/ui";
 
 export function Runs({ automation }: { automation?: number }) {
   useTick();
@@ -57,9 +57,9 @@ export function Runs({ automation }: { automation?: number }) {
                   ))}
                   {["queued", "running", "waiting"].includes(run.data.status) && (
                     <li>
-                      <button type="button" className="btn" onClick={() => void act(() => request("POST", `/api/runs/${r.id}/cancel`), "Отменено")}>
+                      <Button onClick={() => void act(() => request("POST", `/api/runs/${r.id}/cancel`), "Отменено")}>
                         Отменить запуск
-                      </button>
+                      </Button>
                     </li>
                   )}
                 </ol>

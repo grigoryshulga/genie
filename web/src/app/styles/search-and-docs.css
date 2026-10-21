@@ -54,7 +54,6 @@
 .doc-rich-editor li[data-type="taskItem"] { display: flex; align-items: baseline; gap: var(--g-space-2); }
 .doc-rich-editor li[data-type="taskItem"] > div { flex: 1; }
 .doc-wiki-link { color: var(--g-accent-soft-text); background: var(--g-accent-soft); border-radius: var(--g-radius-sm); padding: 1px var(--g-space-2); }
-.doc-content-source { grid-template-columns: minmax(0, 1fr); }
 .doc-link-form { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-6); border-bottom: 1px solid var(--g-border); }
 .doc-link-form label { display: flex; align-items: center; flex: 1; gap: var(--g-space-2); min-width: 200px; font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); color: var(--g-text-2); }
 .doc-link-form input { flex: 1; min-width: 0; height: var(--g-control); padding: 0 var(--g-space-3); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-md); background: var(--g-surface); color: var(--g-text); font: var(--g-weight-medium) var(--g-text-ui) var(--g-font-sans); }

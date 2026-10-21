@@ -69,12 +69,26 @@ const shape = (node: Element) => {
   return { percent, width: box.width, raw: style.borderTopLeftRadius };
 };
 
+const appearance = (node: Element) => {
+  const style = getComputedStyle(node);
+  const luminance = (color: string) => {
+    const rgb = (color.match(/[\d.]+/g) ?? []).slice(0, 3).map((part) => Number(part) / 255);
+    return rgb.map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+  };
+  const a = luminance(style.color);
+  const b = luminance(style.backgroundColor);
+  return { background: style.backgroundColor, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+};
+
+for (const theme of ["ink", "paper"]) {
 for (const [route, what] of [
   ["/tasks", "the task list"],
   ["/task/DM-2", "the task page"],
   ["/epic/DM-1", "the epic page"],
 ] as const) {
-  test(`agents are rounded and people are round on ${what}`, async ({ page }) => {
+  test(`agents are rounded and people are round on ${what} (${theme})`, async ({ page }) => {
+    await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
     await stubTeam(page);
     await page.goto(route);
     const agent = page.locator(".avatars .av.agent").first();
@@ -89,8 +103,15 @@ for (const [route, what] of [
     expect(a.percent).toBeCloseTo(25, 0);
     expect(h.percent).toBeCloseTo(50, 0);
     expect(Math.abs(a.percent - h.percent)).toBeGreaterThan(15);
-    await page.screenshot({ path: `test-results/avatar-shape${route.replace(/\W+/g, "-")}.png`, animations: "disabled" });
+    for (const avatar of [agent, human]) {
+      const colors = await avatar.evaluate(appearance);
+      expect(colors.background).not.toBe("rgba(0, 0, 0, 0)");
+      expect(colors.contrast).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.screenshot({ path: `test-results/avatar-shape-${theme}${route.replace(/\W+/g, "-")}.png`, animations: "disabled" });
   });
+}
+
 }
 
 test("a person's own photo stays a circle", async ({ page }) => {

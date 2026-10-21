@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
+import { PROGRESS } from "../web/src/entities/task/model.ts";
 
 const CSS = readFileSync(path.resolve(import.meta.dirname, "../web/src/shared/ui/g-tokens.css"), "utf8");
 
@@ -81,6 +82,7 @@ const PAIRS: [string, string, number][] = [
   ["control-border", "bg", 3],
   ["control-border", "surface", 3],
   ["control-border", "surface-raised", 3],
+  ["progress-early", "bg", 3],
   ["focus", "bg", 3],
   ["focus", "surface", 3],
   ["focus", "surface-raised", 3],
@@ -135,4 +137,18 @@ test("every colour token is covered by a contrast pair", () => {
     });
   const used = new Set(PAIRS.flatMap(([fg, bg]) => [`--g-${fg}`, `--g-${bg}`]));
   assert.deepEqual(colour.filter((name) => !used.has(name)), [], "a colour token no contrast pair covers: add a pair for it");
+});
+
+// Progress categories must remain distinguishable when the theme resolves their semantic colours.
+test("epic progress keeps distinct theme-aware stages", () => {
+  for (const selector of [":root", '[data-theme="paper"]']) {
+    const color = theme(selector);
+    const colors = PROGRESS.map((stage) => {
+      const token = stage.color.match(/^var\(--g-([\w-]+)\)$/);
+      assert.ok(token, `${stage.id} uses a semantic token`);
+      return color(token[1]);
+    });
+    assert.equal(new Set(colors).size, PROGRESS.length, `${selector} collapses progress stages`);
+    assert.ok(contrast(color("progress-early"), color("bg")) >= 3, `${selector} hides the draft stage`);
+  }
 });
