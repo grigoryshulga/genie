@@ -1,4 +1,7 @@
 /* The docs workspace's cascade tail: the phone layer and the desktop centring column. Inlined so
    they load after `docs.css` and `search-and-docs.css` instead of in a hoisted shared chunk. */
 @import "../../../app/styles/mobile.css";
+/* The search field this screen renders on a phone lives in the shared search sheet: it has to
+   load after the phone layer, which widens `.search`. */
+@import "../../../app/styles/search-and-docs.css";
 @import "../../../app/styles/content.css";

@@ -16,14 +16,15 @@ import "./task-modal.css";
 // Legacy cross-layer compatibility layer (`#root` height plus old class names other sheets still
 // target). It stays with the app shell until the H33 cleanup retires those rules.
 import "./styles/additions.css";
-// The phone replacement for the top bar's search field is rendered by the screens that ask for it,
-// so the rule that keeps it hidden on desktop has to load after `shell.css`. It rides the shell's
-// tail here; the docs workspace imports the same sheet for its own layout rules.
-import "./styles/search-and-docs.css";
 // The app-wide responsive layer and the desktop centring column: the shell, the eager board screen
 // and every page the shell renders itself. Lazy screens re-inline them in their own chunk (see
 // `<screen>-sheets.css`) so that they still load after that screen's area sheets.
 import "./styles/mobile.css";
+// The phone replacement for the top bar's search field is rendered by the screens that ask for it,
+// so its rules have to load after `shell.css` (the field is `.search`) and after the phone layer
+// (which widens `.search`): the shared sheet rides the shell's tail here, and the screens that show
+// the field re-inline it in their own chunk.
+import "./styles/search-and-docs.css";
 import "./styles/content.css";
 
 // Only the entry screen is eager: the gate (its login page and the shell) and the board,
