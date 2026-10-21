@@ -6,134 +6,225 @@ import {
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { useState } from "react";
-import { Avatars } from "@/entities/member";
-import { PersonAvatar } from "@/entities/project";
-import { COLUMNS, type Column, EpicChip, EpicIcon, Labels, PriorityIcon, type Status, STATUS_NAME, StatusIcon, type TaskSummary, useMoveTask } from "@/entities/task";
+import { useRef, useState } from "react";
+import {
+  groupByLane,
+  LANES,
+  type Lane,
+  type LaneId,
+  laneDropId,
+  needsQuestion,
+  resolveDrop,
+  type Status,
+  STATUS_NAME,
+  statusDropId,
+  type TaskSummary,
+  useMoveTask,
+} from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { plural } from "@/shared/lib";
-import { Icon, Modal, useToast } from "@/shared/ui";
+import { Button, Chip, Dialog, Field, Icon, Textarea, cx, useToast } from "@/shared/ui";
+import { BoardCard, CardBody } from "./BoardCard.tsx";
 
-const columnOf = (status: Status): Column => COLUMNS.find((c) => c.statuses.includes(status)) ?? COLUMNS[0];
+const countText = (n: number) => `${n} ${plural(n, "задача", "задачи", "задач")}`;
 
-function CardBody({ t, team }: { t: TaskSummary; team?: Team }) {
+/** One exact status a dragged card can be dropped on, shown only while a card is in the air. */
+function DropChip({ status, dragging }: { status: Status; dragging?: Status }) {
+  const { setNodeRef, isOver } = useDroppable({ id: statusDropId(status) });
   return (
-    <>
-      <span className="meta">
-        <span className="mono">{t.id}</span>
-        {t.priority === 0 ? <span className="urgent-tag">срочно</span> : <PriorityIcon priority={t.priority} size={12} />}
-        {t.status === "changes_requested" && <span style={{ color: "var(--amber)" }}>доработка</span>}
-      </span>
-      <span className="t" title={t.title}>
-        {t.type === "epic" && (
-          <span className="epic-mark">
-            <EpicIcon size={12} />
-            эпик
-          </span>
-        )}
-        {t.title}
-      </span>
-      {t.needsOwner ? (
-        <span className="note q" title={t.needsOwner.question}>
-          {t.needsOwner.question}
-        </span>
-      ) : (
-        <span className="note">{t.openDeps.length > 0 && `ждёт ${t.openDeps.join(", ")}`}</span>
-      )}
-      <span className="foot">
-        <EpicChip id={t.parent} text />
-        {/* Two labels at most: the rest is a count, so the footer never wraps. */}
-        <Labels labels={t.labels.slice(0, 2)} />
-        {t.labels.length > 2 && <span className="more">+{t.labels.length - 2}</span>}
-        {t.acceptanceTotal > 0 && (
-          <span className="ac">
-            ✓ {t.acceptanceDone}/{t.acceptanceTotal}
-          </span>
-        )}
-        <span className="grow" />
-        {team && <Avatars members={team.members} />}
-        {t.assignee && <PersonAvatar login={t.assignee} />}
-      </span>
-    </>
+    <span ref={setNodeRef} className={cx("g-lane-drop", isOver && "over", dragging === status && "here")}>
+      {STATUS_NAME[status]}
+    </span>
   );
 }
 
-function Card({ t, team, selected, onSelect }: { t: TaskSummary; team?: Team; selected: boolean; onSelect: () => void }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: t.id });
-  const cls = ["card", selected ? "sel" : "", t.status === "needs_owner" ? "owner" : "", isDragging ? "dragging" : ""].filter(Boolean).join(" ");
-  return (
-    <button type="button" ref={setNodeRef} className={cls} onClick={onSelect} {...attributes} {...listeners} aria-pressed={selected} aria-roledescription="карточка задачи">
-      <CardBody t={t} team={team} />
-    </button>
-  );
-}
-
-function BoardColumn({ col, tasks, teams, selected, onSelect, collapsed, onToggle }: {
-  col: Column;
+function LaneSection({
+  lane,
+  tasks,
+  teams,
+  selected,
+  collapsed,
+  dragging,
+  offline,
+  onToggle,
+  onOpen,
+  onMove,
+  laneRef,
+}: {
+  lane: Lane;
   tasks: TaskSummary[];
   teams: Map<string, Team>;
   selected?: string;
-  onSelect: (id: string) => void;
   collapsed: boolean;
+  /** The status of the card in the air, if any: it turns on the drop chips. */
+  dragging?: Status;
+  offline: boolean;
   onToggle: () => void;
+  onOpen: (id: string) => void;
+  onMove: (id: string, status: Status) => void;
+  laneRef: (node: HTMLElement | null) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: col.id });
-  const cls = ["col", col.id === "needs_owner" ? "owner" : "", isOver ? "over" : "", collapsed ? "collapsed" : ""].filter(Boolean).join(" ");
+  const { setNodeRef, isOver } = useDroppable({ id: laneDropId(lane) });
+  const n = tasks.length;
+  // The exact status is a tag on the card only where a lane gathers several of them.
+  const showStatus = lane.statuses.length > 1;
   return (
-    <section ref={setNodeRef} className={cls} data-column={col.id} aria-label={col.name}>
-      {collapsed ? (
-        <button type="button" className="col-compact" onClick={onToggle} aria-expanded={false} aria-label={`Развернуть колонку ${col.name}, ${tasks.length} ${plural(tasks.length, "задача", "задачи", "задач")}`} title={`${col.name} · ${tasks.length}`}>
-          <span className="col-count">{tasks.length}</span>
-          <StatusIcon status={col.target} size={13} />
-          <span className="v">
-            {col.name}
-          </span>
-          <Icon.chevron size={12} className="col-open" />
+    <section
+      ref={(node) => {
+        setNodeRef(node);
+        laneRef(node);
+      }}
+      className={cx("g-lane", `g-lane-${lane.id}`, n > 0 && "has", collapsed && "shut", isOver && dragging && "over")}
+      data-lane={lane.id}
+      aria-label={`${lane.name}, ${countText(n)}`}
+    >
+      <header className="g-lane-head">
+        <button
+          type="button"
+          className="g-lane-toggle"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          title={collapsed ? `Развернуть дорожку «${lane.name}», ${countText(n)}` : `Свернуть дорожку «${lane.name}»`}
+        >
+          <span className="g-lane-n">{n}</span>
+          <span className="g-lane-name">{lane.name}</span>
+          <Icon.chevron size={14} className="g-lane-chev" />
         </button>
-      ) : (
-        <>
-          <button type="button" className="col-head" onClick={onToggle} aria-expanded={true} aria-label={`Свернуть колонку ${col.name}, ${tasks.length} ${plural(tasks.length, "задача", "задачи", "задач")}`}>
-            <StatusIcon status={col.target} size={13} />
-            <span className="col-name">{col.name}</span>
-            <span className="n">{tasks.length}</span>
-            <Icon.chevron size={12} className="col-collapse" />
-          </button>
-          <div className="cards">
-            {tasks.map((t) => (
-              <Card key={t.id} t={t} team={t.team ? teams.get(t.team) : undefined} selected={selected === t.id} onSelect={() => onSelect(t.id)} />
+        {!collapsed && <p className="g-lane-hint">{lane.hint}</p>}
+        {dragging && lane.drops.length > 1 && (
+          <div className="g-lane-drops" role="group" aria-label={`Точный статус в дорожке «${lane.name}»`}>
+            {lane.drops.map((s) => (
+              <DropChip key={s} status={s} dragging={dragging} />
             ))}
-            {!tasks.length && <div className="drop-here">Перетащите сюда</div>}
           </div>
-        </>
+        )}
+      </header>
+      {!collapsed && (
+        <div className="g-lane-cards">
+          {tasks.map((t) => (
+            <BoardCard
+              key={t.id}
+              t={t}
+              team={t.team ? teams.get(t.team) : undefined}
+              selected={selected === t.id}
+              showStatus={showStatus}
+              offline={offline}
+              onSelect={() => onOpen(t.id)}
+              onMove={(status) => onMove(t.id, status)}
+            />
+          ))}
+          {!n && <p className="g-lane-empty">{dragging ? "Перетащите сюда" : "Ничего"}</p>}
+        </div>
       )}
     </section>
   );
 }
 
-/** A card click opens the task's preview beside the board (`?task=`), like a row in the list. */
-export function Board({ tasks, teams, selected, showDone, onDoneVisibilityChange, onOpen }: {
+/** Cancelled tasks belong to no lane: they wait outside the lanes, where a card can still be dragged out. */
+function CancelledStrip({
+  tasks,
+  teams,
+  selected,
+  offline,
+  onOpen,
+  onMove,
+}: {
+  tasks: TaskSummary[];
+  teams: Map<string, Team>;
+  selected?: string;
+  offline: boolean;
+  onOpen: (id: string) => void;
+  onMove: (id: string, status: Status) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className={cx("g-lane", "g-lane-cancelled", !open && "shut")} data-lane="cancelled" aria-label={`Отменено, ${countText(tasks.length)}`}>
+      <header className="g-lane-head">
+        <button type="button" className="g-lane-toggle" onClick={() => setOpen(!open)} aria-expanded={open} title={open ? "Свернуть отменённые" : "Показать отменённые"}>
+          <span className="g-lane-n">{tasks.length}</span>
+          <span className="g-lane-name">Отменено</span>
+          <Icon.chevron size={14} className="g-lane-chev" />
+        </button>
+        {!open && <p className="g-lane-hint">Вне дорожек</p>}
+      </header>
+      {open && (
+        <div className="g-lane-cards">
+          {tasks.map((t) => (
+            <BoardCard
+              key={t.id}
+              t={t}
+              team={t.team ? teams.get(t.team) : undefined}
+              selected={selected === t.id}
+              showStatus={false}
+              offline={offline}
+              onSelect={() => onOpen(t.id)}
+              onMove={(status) => onMove(t.id, status)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * «Доска»: the six lanes the owner decided on. A card click opens the task's preview beside the board
+ * (`?task=`), like a row in the list. On phones the lanes slide one per screen and a Move-to menu
+ * replaces dragging; every exact status the old eight columns allowed is still reachable.
+ */
+export function Board({
+  tasks,
+  teams,
+  selected,
+  showDone,
+  onDoneVisibilityChange,
+  onOpen,
+  offline = false,
+}: {
   tasks: TaskSummary[];
   teams: Map<string, Team>;
   selected?: string;
   showDone: boolean;
   onDoneVisibilityChange: (visible: boolean) => void;
   onOpen: (id: string) => void;
+  offline?: boolean;
 }) {
   const move = useMoveTask();
   const toast = useToast();
-  const [dragging, setDragging] = useState<string | undefined>();
+  const [dragging, setDragging] = useState<TaskSummary | undefined>();
   const [ask, setAsk] = useState<{ id: string; note: string } | undefined>();
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(showDone ? [] : ["done"]));
+  // «Может быть» is a manual backlog: it starts folded and never moves anything by itself.
+  const [folded, setFolded] = useState<Set<LaneId>>(() => new Set<LaneId>(["maybe"]));
+  const scroller = useRef<HTMLDivElement>(null);
+  const lanes = useRef<Partial<Record<LaneId, HTMLElement | null>>>({});
+  const { lanes: byLane, cancelled } = groupByLane(tasks);
+  // Every lane is on the board; «Готово» is folded unless the owner shows it, and «Может быть» starts folded.
+  const listed = LANES;
+  const [phoneLane, setPhoneLane] = useState<LaneId>(() => (LANES.find((l) => byLane[l.id].length) ?? LANES[0]).id);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
     useSensor(KeyboardSensor),
   );
+
+  const isShut = (lane: Lane) => (lane.id === "done" ? !showDone : folded.has(lane.id));
+  const toggleLane = (lane: Lane) => {
+    if (lane.id === "done") {
+      onDoneVisibilityChange(!showDone);
+      return;
+    }
+    setFolded((current) => {
+      const next = new Set(current);
+      if (next.has(lane.id)) next.delete(lane.id);
+      else next.add(lane.id);
+      return next;
+    });
+  };
 
   const doMove = (id: string, status: Status, note?: string) => {
     const t = tasks.find((x) => x.id === id);
@@ -147,81 +238,117 @@ export function Board({ tasks, teams, selected, showDone, onDoneVisibilityChange
     );
   };
 
+  // Moving into the owner's lane asks the owner's question first, exactly as the eight-column board did.
+  const moveTo = (id: string, status: Status) => {
+    if (needsQuestion(status)) setAsk({ id, note: "" });
+    else doMove(id, status);
+  };
+
   const onDragEnd = (e: DragEndEvent) => {
+    const card = dragging;
     setDragging(undefined);
-    const id = String(e.active.id);
-    const col = COLUMNS.find((c) => c.id === e.over?.id);
-    const t = tasks.find((x) => x.id === id);
-    if (!col || !t || col.statuses.includes(t.status)) return;
-    if (col.target === "needs_owner") setAsk({ id, note: "" });
-    else doMove(id, col.target);
+    if (!card) return;
+    const status = resolveDrop(e.over ? String(e.over.id) : undefined, card.status);
+    if (status) moveTo(card.id, status);
   };
 
-  const toggleColumn = (id: string) => {
-    const wasCollapsed = collapsed.has(id);
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    if (id === "done") onDoneVisibilityChange(wasCollapsed);
+  // Phone: the chip row above the lanes scrolls the board and follows the lane in view.
+  const goLane = (id: LaneId) => {
+    setPhoneLane(id);
+    lanes.current[id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
   };
-
-  const draggingTask = tasks.find((t) => t.id === dragging);
+  const onScroll = () => {
+    const box = scroller.current;
+    if (!box) return;
+    const left = box.getBoundingClientRect().left;
+    let best = phoneLane;
+    let nearest = Infinity;
+    for (const lane of listed) {
+      const node = lanes.current[lane.id];
+      if (!node) continue;
+      const distance = Math.abs(node.getBoundingClientRect().left - left);
+      if (distance < nearest) {
+        nearest = distance;
+        best = lane.id;
+      }
+    }
+    if (best !== phoneLane) setPhoneLane(best);
+  };
 
   return (
-    <DndContext sensors={sensors} onDragStart={(e: DragStartEvent) => setDragging(String(e.active.id))} onDragEnd={onDragEnd} onDragCancel={() => setDragging(undefined)}>
-      <div className="board">
-        {COLUMNS.map((col) => (
-          <BoardColumn
-            key={col.id}
-            col={col}
-            tasks={tasks.filter((t) => columnOf(t.status).id === col.id)}
-            teams={teams}
-            selected={selected}
-            onSelect={onOpen}
-            collapsed={collapsed.has(col.id)}
-            onToggle={() => toggleColumn(col.id)}
-          />
-        ))}
+    <DndContext
+      sensors={sensors}
+      onDragStart={(e: DragStartEvent) => setDragging(tasks.find((t) => t.id === String(e.active.id)))}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => setDragging(undefined)}
+    >
+      <div className="g-board-wrap">
+        <div className="g-lane-switch m-only" role="group" aria-label="Дорожки">
+          {listed.map((lane) => (
+            <Chip key={lane.id} pressed={phoneLane === lane.id} onClick={() => goLane(lane.id)}>
+              {lane.name}
+              <span className="g-lane-switch-n">{byLane[lane.id].length}</span>
+            </Chip>
+          ))}
+        </div>
+        <div className="g-board" ref={scroller} onScroll={onScroll}>
+          {listed.map((lane) => (
+            <LaneSection
+              key={lane.id}
+              lane={lane}
+              tasks={byLane[lane.id]}
+              teams={teams}
+              selected={selected}
+              collapsed={isShut(lane)}
+              dragging={dragging?.status}
+              offline={offline}
+              onToggle={() => toggleLane(lane)}
+              onOpen={onOpen}
+              onMove={moveTo}
+              laneRef={(node) => {
+                lanes.current[lane.id] = node;
+              }}
+            />
+          ))}
+          {cancelled.length > 0 && <CancelledStrip tasks={cancelled} teams={teams} selected={selected} offline={offline} onOpen={onOpen} onMove={moveTo} />}
+        </div>
       </div>
       <DragOverlay dropAnimation={null}>
-        {draggingTask && (
-          <div className="card" style={{ cursor: "grabbing", boxShadow: "var(--shadow)", width: 244 }}>
-            <CardBody t={draggingTask} team={draggingTask.team ? teams.get(draggingTask.team) : undefined} />
+        {dragging && (
+          <div className="g-sheet bd-card bd-ghost">
+            <CardBody t={dragging} team={dragging.team ? teams.get(dragging.team) : undefined} showStatus />
           </div>
         )}
       </DragOverlay>
       {ask && (
-        <Modal label="Вопрос к владельцу" onClose={() => setAsk(undefined)}>
-          <div className="mh">
-            <StatusIcon status="needs_owner" size={13} /> {ask.id} → Нужно решение
-          </div>
-          <div className="mb">
-            <label className="field">
-              Что нужно решить
-              <textarea autoFocus rows={3} value={ask.note} onChange={(e) => setAsk({ ...ask, note: e.target.value })} />
-            </label>
-          </div>
-          <div className="mf">
-            <span className="grow" />
-            <button type="button" className="btn ghost" onClick={() => setAsk(undefined)}>
-              Отмена
-            </button>
-            <button
-              type="button"
-              className="btn amber"
-              disabled={!ask.note.trim()}
-              onClick={() => {
-                doMove(ask.id, "needs_owner", ask.note.trim());
-                setAsk(undefined);
-              }}
-            >
-              Перенести
-            </button>
-          </div>
-        </Modal>
+        <Dialog
+          title="Вопрос к владельцу"
+          onClose={() => setAsk(undefined)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setAsk(undefined)}>
+                Отмена
+              </Button>
+              <Button
+                variant="primary"
+                disabled={!ask.note.trim()}
+                onClick={() => {
+                  doMove(ask.id, "needs_owner", ask.note.trim());
+                  setAsk(undefined);
+                }}
+              >
+                Перенести
+              </Button>
+            </>
+          }
+        >
+          <p className="g-muted">
+            {ask.id} → {STATUS_NAME.needs_owner}
+          </p>
+          <Field label="Что нужно решить">
+            <Textarea autoFocus rows={3} value={ask.note} onChange={(e) => setAsk({ ...ask, note: e.target.value })} />
+          </Field>
+        </Dialog>
       )}
     </DndContext>
   );
