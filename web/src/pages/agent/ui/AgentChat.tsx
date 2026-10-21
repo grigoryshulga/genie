@@ -7,7 +7,7 @@ import { useTask } from "@/entities/task";
 import { ModelMenu } from "@/features/agent-model";
 import { IDEA_TEMPLATE, IdeaPlan } from "@/features/shape-idea";
 import { clock, plural, timeAgo, useTick } from "@/shared/lib";
-import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, Markdown, Prose, Sheet, Tag, useToast, WorkingArcs } from "@/shared/ui";
+import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, LoadingState, Markdown, Prose, Sheet, Skeleton, Tag, useToast, WorkingArcs } from "@/shared/ui";
 import "./agent.css";
 import "@/app/styles/team.css";
 import "./agent-sheets.css";
@@ -180,7 +180,19 @@ export function AgentChat() {
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [rows.length, agentKey]);
 
-  if (q.isPending) return <main className="main ac-page"><div className="ac-center">Загрузка…</div></main>;
+  if (q.isPending)
+    return (
+      <main className="main ac-page">
+        <div className="ac-center">
+          <LoadingState label="Загрузка разговора" width={520}>
+            <Skeleton width={160} height={20} />
+            <Skeleton height={52} />
+            <Skeleton height={52} />
+            <Skeleton height={40} width="68%" />
+          </LoadingState>
+        </div>
+      </main>
+    );
   if (q.isError || !team) return <main className="main ac-page"><div className="ac-center">Команда не найдена</div></main>;
   if (!member || !name) return <main className="main ac-page"><div className="ac-center">В команде нет участника {name}</div></main>;
 
@@ -338,9 +350,12 @@ export function AgentChat() {
                 )}
               </Fragment>
             ))}
-            {!rows.length && !idea && (
-              <EmptyState title={peek.isPending ? "Загрузка разговора…" : live ? "Разговор пока пуст" : "Сессия агента не запущена: разговор появится, когда он получит письмо"} />
-            )}
+            {!rows.length && !idea &&
+              (peek.isPending ? (
+                <LoadingState label="Загрузка разговора" lines={2} width={320} />
+              ) : (
+                <EmptyState title={live ? "Разговор пока пуст" : "Сессия агента не запущена: разговор появится, когда он получит письмо"} />
+              ))}
           </div>
         </div>
 

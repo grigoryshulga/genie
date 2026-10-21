@@ -27,7 +27,7 @@ import {
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
 import { plural } from "@/shared/lib";
-import { Badge, ConfirmDialog, Dialog, Icon, Section, useAct, useToast } from "@/shared/ui";
+import { Badge, ConfirmDialog, Dialog, Icon, LoadingState, Section, useAct, useToast } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -90,7 +90,10 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
   const remove = useDeleteConfig();
   const act = useAct();
   const d = detail.data;
-  if (!d) return <div className="ag-pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
+  if (!d) {
+    if (detail.error) return <div className="ag-pane-empty">{detail.error.message}</div>;
+    return <div className="ag-pane-empty"><LoadingState label="Загрузка шаблона" lines={3} width={260} /></div>;
+  }
   const t = d.template;
   const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null && d.file.path.startsWith("teams/");

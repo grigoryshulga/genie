@@ -52,7 +52,7 @@ import type { EvidencePhase } from "@/shared/api/generated/EvidencePhase.ts";
 import type { Incident } from "@/shared/api/generated/Incident.ts";
 import type { UpdateCaseBody } from "@/shared/api/generated/UpdateCaseBody.ts";
 import "@/shared/ui/agents.css";
-import { ConfirmDialog, Icon, Modal, useToast } from "@/shared/ui";
+import { ConfirmDialog, Icon, LoadingState, Modal, useToast } from "@/shared/ui";
 import { TaskLinks, when } from "./parts.tsx";
 import "./observations.css";
 
@@ -86,7 +86,7 @@ export function ObservationPage() {
       </Frame>
     );
   }
-  return <Frame><div className="empty">Загрузка…</div></Frame>;
+  return <Frame><LoadingState label="Загрузка наблюдения" /></Frame>;
 }
 
 /** The page frame: a way back to the list, the actions of the case, and the scrolling body. */

@@ -17,7 +17,7 @@ import {
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
 import { bytes, timeAgo } from "@/shared/lib";
-import { Badge, ConfirmDialog, Dialog, Icon, Markdown, Section, useAct } from "@/shared/ui";
+import { Badge, ConfirmDialog, Dialog, Icon, LoadingState, Markdown, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -74,7 +74,10 @@ function SkillPane({ name, cfg, readOnly = false, base = "/agents" }: { name: st
   const remove = useDeleteConfig();
   const act = useAct();
   const d = skill.data;
-  if (!d) return <div className="ag-pane-empty">{skill.error ? skill.error.message : "Загрузка…"}</div>;
+  if (!d) {
+    if (skill.error) return <div className="ag-pane-empty">{skill.error.message}</div>;
+    return <div className="ag-pane-empty"><LoadingState label="Загрузка навыка" lines={3} width={260} /></div>;
+  }
   const body = d.content ? (splitFrontmatter(d.content)?.body ?? d.content) : "";
   const admin = d.admin && !readOnly;
   return (
@@ -241,7 +244,7 @@ function SkillFileView({ name, path, onClose }: { name: string; path: string; on
     <Dialog title={<span className="g-mono">{path}</span>} onClose={onClose} wide>
       <div>
         {!f.data ? (
-          <p className="g-muted">{f.error ? f.error.message : "Загрузка…"}</p>
+          f.error ? <p className="g-muted">{f.error.message}</p> : <LoadingState label="Загрузка файла" lines={5} />
         ) : f.data.text !== null ? (
           <pre className="ag-file-text">{f.data.text}</pre>
         ) : (
@@ -347,7 +350,11 @@ function Calls({ project, roles }: { project: string; roles: RoleDef[] }) {
   return (
     <Section title="Вызовы инструментов" aside={filter}>
       {!list.length ? (
-        <p className="g-muted ag-empty">{calls.isPending ? "Загрузка…" : "Вызовов через шлюз в этом проекте пока не было."}</p>
+        calls.isPending ? (
+          <LoadingState label="Загрузка вызовов" lines={2} width={360} />
+        ) : (
+          <p className="g-muted ag-empty">Вызовов через шлюз в этом проекте пока не было.</p>
+        )
       ) : (
         <div className="ag-table-wrap">
           <table className="ag-table ag-calls">
