@@ -17,6 +17,10 @@ export interface SeedTask {
   statuses?: string[];
   /** The note recorded with the last status; needs_owner requires the question for the owner. */
   note?: string;
+  /** The owner action attached to a needs_owner status: ask-owner-question, ask-for-merge-pr or ask-free-form. */
+  action?: string;
+  /** ask-owner-question: the options the owner picks from. */
+  options?: string[];
 }
 
 // Created in this order on an empty project, so the first is DM-1.
@@ -80,6 +84,22 @@ export const CAPTURE_TASKS: SeedTask[] = [
   { title: "Выбрать провайдера почты", priority: 1, statuses: ["refining", "ready", "in_progress", "needs_owner"], note: "Какого провайдера почты использовать для уведомлений?" },
   { title: "Обновить зависимости клиента", priority: 3, statuses: ["refining", "ready", "in_progress", "review", "approved", "done"] },
   { title: "Старая задача, отменена", priority: 4, statuses: ["cancelled"] },
+];
+
+// Extra tasks for the flows server only (test/ui/run.ts writes them into that copy of the seed, never
+// into the one the screenshots are taken from). They exist so a walkthrough can exercise state the
+// committed baselines cannot carry without being regenerated.
+export const FLOW_TASKS: SeedTask[] = [
+  {
+    title: "Выбрать провайдера уведомлений",
+    description: "Команда ждёт решения владельца и не может двинуться дальше.",
+    acceptance: ["Канал выбран и записан в задаче"],
+    priority: 1,
+    statuses: ["refining", "ready", "in_progress", "needs_owner"],
+    note: "Каким каналом отправлять уведомления о задачах?",
+    action: "ask-owner-question",
+    options: ["Почта", "Telegram", "Ничего не отправлять"],
+  },
 ];
 
 /** Knowledge pages written for the capture run only: the docs screens need a vault with every page state. */

@@ -175,6 +175,7 @@ export function OwnerDecision({ task }: { task: Task }) {
   const toast = useToast();
   const move = useMoveTask();
   const comment = useComment();
+  const box = useRef<HTMLElement>(null);
   const [words, setWords] = useState("");
   const [picked, setPicked] = useState<Picked>({});
   const owner = task.needsOwner;
@@ -197,9 +198,15 @@ export function OwnerDecision({ task }: { task: Task }) {
       {
         onSuccess: () => {
           setWords("");
+          // The box leaves the page once the answer is recorded, and a focused control that goes away drops
+          // focus on the document: a keyboard user would tab through the page again. The answer was given
+          // here, so focus moves to the task's headline — found before the box unmounts.
+          const page = box.current?.closest(".task-page, .detail") ?? document;
+          const headline = page.querySelector<HTMLElement>(".td-headline .title");
           setPicked({});
           if (andReturn) back(owner.previous, "Owner answered");
           else toast("Ответ отправлен оркестратору");
+          if (andReturn) requestAnimationFrame(() => headline?.focus());
         },
         onError: fail,
       },
@@ -207,7 +214,7 @@ export function OwnerDecision({ task }: { task: Task }) {
   };
   const hasCard = kind !== "ask-free-form";
   return (
-    <section className="owner-box" aria-label="Нужно ваше решение">
+    <section className="owner-box" aria-label="Нужно ваше решение" ref={box}>
       <div className="h">
         <StatusIcon status="needs_owner" size={15} />
         {HEADER[kind]}

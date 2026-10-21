@@ -17,7 +17,7 @@ import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFile
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { CAPTURE_DOCS, CAPTURE_TASKS, FLOW_DOC, OWNER, PROJECT, SEED_TASKS } from "./seed.ts";
+import { CAPTURE_DOCS, CAPTURE_TASKS, FLOW_DOC, FLOW_TASKS, OWNER, PROJECT, SEED_TASKS, type SeedTask } from "./seed.ts";
 
 const root = resolve(import.meta.dirname, "../..");
 const bin = resolve(root, process.env.GENIE_BIN ?? "target/debug/genie");
@@ -50,9 +50,32 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => pr
 
 // The command line acts as the machine's operator, named after $USER: the owner's login keeps the
 // task history the same on every machine.
-function genie(args: string[], input?: string): string {
+function genie(args: string[], input?: string, dataDir = data): string {
   const env = { ...process.env, USER: OWNER.login };
-  return execFileSync(bin, ["--data", data, ...args], { input, env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+  return execFileSync(bin, ["--data", dataDir, ...args], { input, env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+}
+
+/**
+ * Creates one task in `dataDir` and walks it through its statuses, the way the operator would. The
+ * CLI is the machine's operator, which is what lets a seed reach a status such as needs_owner that the
+ * web refuses to a person. Returns the id the server assigned; `ids` collects them for `parent`.
+ */
+function seedTask(dataDir: string, t: SeedTask, ids: string[]): string {
+  const args = ["--project", PROJECT.id, "task", "create", t.title, "--json"];
+  if (t.description) args.push("--description", t.description);
+  for (const ac of t.acceptance ?? []) args.push("--ac", ac);
+  if (t.priority !== undefined) args.push("--priority", String(t.priority));
+  if (t.type) args.push("--type", t.type);
+  for (const label of t.labels ?? []) args.push("--label", label);
+  if (t.parent !== undefined) args.push("--parent", ids[t.parent]);
+  const id: string = JSON.parse(genie(args, undefined, dataDir)).id;
+  ids.push(id);
+  for (const status of t.statuses ?? []) {
+    const owner = status === "needs_owner" ? ["--action", t.action ?? "ask-free-form", ...(t.options ?? []).flatMap((o) => ["--option", o])] : [];
+    const note = status === "needs_owner" && t.note ? ["--note", t.note] : [];
+    genie(["--project", PROJECT.id, "task", "status", status, "--task", id, ...note, ...owner], undefined, dataDir);
+  }
+  return id;
 }
 
 function seed() {
@@ -70,21 +93,7 @@ function seed() {
     }
   }
   const ids: string[] = [];
-  for (const t of capture ? [...SEED_TASKS, ...CAPTURE_TASKS] : SEED_TASKS) {
-    const args = ["--project", PROJECT.id, "task", "create", t.title, "--json"];
-    if (t.description) args.push("--description", t.description);
-    for (const ac of t.acceptance ?? []) args.push("--ac", ac);
-    if (t.priority !== undefined) args.push("--priority", String(t.priority));
-    if (t.type) args.push("--type", t.type);
-    for (const label of t.labels ?? []) args.push("--label", label);
-    if (t.parent !== undefined) args.push("--parent", ids[t.parent]);
-    const id: string = JSON.parse(genie(args)).id;
-    ids.push(id);
-    for (const status of t.statuses ?? []) {
-      const note = status === "needs_owner" && t.note ? ["--note", t.note] : [];
-      genie(["--project", PROJECT.id, "task", "status", status, "--task", id, ...note]);
-    }
-  }
+  for (const t of capture ? [...SEED_TASKS, ...CAPTURE_TASKS] : SEED_TASKS) seedTask(data, t, ids);
 }
 
 // A port the kernel just handed out is free unless something grabs it in between.
@@ -100,9 +109,12 @@ function freePort(): Promise<number> {
 }
 
 // A server on its own copy of the seeded data, logging to test-results/ui-server-<name>.log.
-async function start(name: string): Promise<string> {
+// `prepare` runs on that copy between the copy and the start, so a server can get data its twin must
+// not have: the visual baselines are compared against the files committed for the shared seed.
+async function start(name: string, prepare?: (dir: string) => void): Promise<string> {
   const dir = join(scratch, name);
   cpSync(data, dir, { recursive: true });
+  prepare?.(dir);
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const log = createWriteStream(join(results, `ui-server-${name}.log`));
@@ -132,7 +144,15 @@ async function waitHealthy(name: string, server: ChildProcess, url: string) {
 
 seed();
 const seededAt = new Date().toISOString();
-const [visualUrl, flowsUrl] = await Promise.all([start("visual"), start("flows")]);
+const [visualUrl, flowsUrl] = await Promise.all([
+  start("visual"),
+  // The flows copy alone carries the decision the keyboard walkthrough answers (FLOW_TASKS): adding it
+  // before the copy would put a waiting task on /tasks and /board and change the committed screenshots.
+  start("flows", (dir) => {
+    const ids: string[] = [];
+    for (const t of FLOW_TASKS) seedTask(dir, t, ids);
+  }),
+]);
 
 const uid = process.getuid?.() ?? 1000;
 const gid = process.getgid?.() ?? 1000;

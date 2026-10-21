@@ -43,15 +43,31 @@ export function useModalFocus(ref: RefObject<HTMLElement | null>, open: boolean,
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Every open overlay listens on the document, so a dialog opened inside this one would otherwise
+      // see its Escape answered twice: once by itself and once by the dialog it covers. The innermost
+      // open dialog around the focused control is the one that speaks for the keyboard.
+      const focused = document.activeElement;
+      const host = focused instanceof HTMLElement ? focused.closest("dialog[open]") : null;
+      if (host && host !== root) return;
       if (e.key === "Escape") {
-        // Capture phase: the page behind must not answer the same Escape.
+        // Capture phase: the page behind must not answer the same Escape. The default is cancelled too:
+        // the browser would otherwise close the topmost dialog itself and, with two of them up, carry the
+        // same Escape on to the one underneath. Closing goes through the owner of the state, once.
         e.stopPropagation();
+        e.preventDefault();
         close.current();
         return;
       }
       if (e.key !== "Tab" || !root) return;
       const inside = focusStops(root);
-      if (inside.length === 0) return;
+      // Nothing to move to yet: a dialog whose content is still loading. Tab must not leak to the page
+      // behind it, so focus stays on the dialog until its first control appears.
+      if (inside.length === 0) {
+        e.preventDefault();
+        root.tabIndex = -1;
+        root.focus();
+        return;
+      }
       const first = inside[0];
       const last = inside[inside.length - 1];
       const at = document.activeElement;
