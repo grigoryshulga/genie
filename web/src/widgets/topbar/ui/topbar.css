@@ -11,3 +11,13 @@
 .g-topbar-project-switcher .g-menu { min-width: 240px; max-width: min(340px, calc(100vw - 2 * var(--g-space-5))); }
 .g-topbar-project-switcher .g-menu-item { min-width: 0; }
 .g-topbar-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A long project name is cut short; it never widens the bar. Below 900px the trigger stops being capped
+   and takes whatever room the bar has left, and every box between the name and the bar contributes its
+   own min-content width — for a name that does not wrap, that is the whole name. On a phone the bar is
+   then as wide as the name and the icons land outside the window. Two things keep it inside: the bar
+   gives up its automatic minimum as a grid item (otherwise its column widens to the name), and the name
+   gives up its own (otherwise the trigger holds its full width inside the bar). */
+.g-topbar { min-width: 0; }
+.g-topbar-project .name { min-width: 0; }
+.g-topbar-project-switcher .g-popover-host { min-width: 0; }

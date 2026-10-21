@@ -25,7 +25,7 @@ import {
 import { DocContentEditor } from "./DocContentEditor.tsx";
 import { DiagIcon, StaleIcon } from "@/entities/doc";
 import { plural } from "@/shared/lib";
-import { Button, Icon, IconButton } from "@/shared/ui";
+import { Button, Icon, IconButton, LoadingState } from "@/shared/ui";
 
 function countChanges(before: string, after: string): number {
   const a = before.replace(/\r/g, "").split("\n");
@@ -231,7 +231,7 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
 
   if (!fields) {
     if (pageQ.isError) return <div className="docs-content"><div className="doc-editor-wait g-muted">Не удалось открыть страницу: {pageQ.error.message}</div></div>;
-    return <div className="docs-content"><div className="doc-editor-wait g-muted">Загрузка страницы…</div></div>;
+    return <div className="docs-content"><div className="doc-editor-wait"><LoadingState label="Загрузка страницы" lines={4} width={520} /></div></div>;
   }
 
   const update = <K extends keyof DocFields>(key: K, value: DocFields[K]) => setFields({ ...fields, [key]: value });

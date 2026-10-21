@@ -17,7 +17,7 @@ import {
   useDeleteConfig,
   useRole,
 } from "@/entities/agent-config";
-import { Badge, ConfirmDialog, Icon, Section, useAct } from "@/shared/ui";
+import { Badge, ConfirmDialog, Icon, LoadingState, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -81,7 +81,10 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
   const remove = useDeleteConfig();
   const act = useAct();
   const d = detail.data;
-  if (!d) return <div className="ag-pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
+  if (!d) {
+    if (detail.error) return <div className="ag-pane-empty">{detail.error.message}</div>;
+    return <div className="ag-pane-empty"><LoadingState label="Загрузка роли" lines={3} width={260} /></div>;
+  }
   const r = d.role;
   const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null;
