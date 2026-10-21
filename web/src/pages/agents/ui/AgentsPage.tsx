@@ -8,7 +8,7 @@ import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { matchesSearch } from "@/shared/lib";
 import { ContextSearch } from "@/widgets/topbar";
-import { Icon } from "@/shared/ui";
+import { ErrorState, Icon, Skeleton } from "@/shared/ui";
 import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
 import "@/shared/ui/agents.css";
 
@@ -44,16 +44,16 @@ export function AgentsPage() {
     <main className="main agents">
       <header className="topbar">
         <h1>Агенты</h1>
-        <div className="seg" role="tablist" aria-label="Разделы">
+        <div className="g-tabs" role="tablist" aria-label="Разделы">
           {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => update(t.id)}>
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => update(t.id)}>
               {t.title}
             </button>
           ))}
         </div>
         <span className="grow" />
         {isAdmin && (
-          <Link to={`/manage/server/${tab}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`} className="btn">
+          <Link to={`/manage/server/${tab}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`} className="g-btn secondary sm">
             <Icon.gear size={13} />
             <span className="d-only">Настроить</span>
           </Link>
@@ -61,7 +61,14 @@ export function AgentsPage() {
       </header>
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       {!c ? (
-        <div className="pane-empty">{cfg.error ? cfg.error.message : "Загрузка…"}</div>
+        cfg.error ? (
+          <div className="ag-pane-empty"><ErrorState message={cfg.error.message} onRetry={() => void cfg.refetch()} /></div>
+        ) : (
+          <div className="ag-pane-empty" aria-busy="true">
+            <Skeleton width="60%" height={20} />
+            <Skeleton width="40%" />
+          </div>
+        )
       ) : tab === "roles" ? (
         <RolesTab cfg={c} selected={selected} onSelect={select} readOnly />
       ) : tab === "templates" ? (

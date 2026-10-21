@@ -20,8 +20,8 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
   const { grants, setGrants, unknown } = state;
   return (
       <div className="ag-grants">
-        <p className="muted ag-note">Закрытый доступ отзывается сразу. Новые инструменты появятся при следующем старте сессии.</p>
-        {!cfg.mcp.length && <p className="muted ag-note">Подключений пока нет. Добавьте их в настройках MCP.</p>}
+        <p className="g-muted ag-note">Закрытый доступ отзывается сразу. Новые инструменты появятся при следующем старте сессии.</p>
+        {!cfg.mcp.length && <p className="g-muted ag-note">Подключений пока нет. Добавьте их в настройках MCP.</p>}
         {unknown.length > 0 && <p className="ag-warn">Подключения вне библиотеки (сохранены): {unknown.join(", ")}</p>}
         {cfg.mcp.map((s) => {
           const g = grants[s.id];
@@ -36,7 +36,7 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
           return (
             <div key={s.id}>
               <div className="ag-grant">
-                <span><strong>{s.id}</strong>{s.description && <span className="muted ag-option-description">{s.description}</span>}</span>
+                <span><strong>{s.id}</strong>{s.description && <span className="g-muted ag-option-description">{s.description}</span>}</span>
                 <select value={g.mode} onChange={(e) => set({ mode: e.target.value as McpGrant["mode"] })} aria-label={`Доступ к ${s.id}`}>
                   <option value="none">нет доступа</option>
                   <option value="all">все инструменты</option>
@@ -47,7 +47,7 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
                 (cached.length > 0 ? (
                   <div className="mc-role-tools">
                     {extra.length > 0 && (
-                      <div className="chips mono" aria-label={`Выдано сверх списка ${s.id}`}>
+                      <div className="chips g-mono" aria-label={`Выдано сверх списка ${s.id}`}>
                         {extra.map((p) => (
                           <span key={p} className="chip">
                             {p}
@@ -66,7 +66,7 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
                         return (
                           <label key={t.name} title={t.description}>
                             <input type="checkbox" checked={on} onChange={() => toggle(t.name)} />
-                            <span><strong>{t.name}</strong>{t.description && <span className="muted ag-option-description">{t.description}</span>}</span>
+                            <span><strong>{t.name}</strong>{t.description && <span className="g-muted ag-option-description">{t.description}</span>}</span>
                           </label>
                         );
                       })}
@@ -75,7 +75,7 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
                 ) : (
                   <div className="mc-role-tools">
                     <ChipInput values={g.tools} onChange={(tools) => set({ tools })} placeholder="шаблоны через запятую, например get_*" mono />
-                    <p className="muted ag-note">Проверьте подключение в «Настройки» → «Управление» → «MCP», чтобы выбирать инструменты списком.</p>
+                    <p className="g-muted ag-note">Проверьте подключение в «Настройки» → «Управление» → «MCP», чтобы выбирать инструменты списком.</p>
                   </div>
                 ))}
             </div>

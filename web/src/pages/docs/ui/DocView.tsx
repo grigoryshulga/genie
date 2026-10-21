@@ -21,8 +21,8 @@ import {
   firstParagraph,
   staleReasonText,
 } from "@/entities/doc";
-import { BacklinkIcon, DiagIcon, OkIcon, PathsIcon, StaleIcon } from "@/entities/doc";
-import { Icon } from "@/shared/ui";
+import { BacklinkIcon, DeprecatedIcon, DiagIcon, OkIcon, PathsIcon, StaleIcon } from "@/entities/doc";
+import { Button, Icon, Tag } from "@/shared/ui";
 
 export function DocView({
   page,
@@ -71,16 +71,16 @@ export function DocView({
       <div className="docs-content">
         <header className="docs-topbar">
           {onOpenTree && (
-            <button type="button" className="icon-btn m-only" onClick={onOpenTree} aria-label="Открыть дерево документации">
+            <button type="button" className="g-icon-btn m-only" onClick={onOpenTree} aria-label="Открыть дерево документации">
               <Icon.list size={15} />
             </button>
           )}
           <DocBreadcrumbs root={navigation} path={page.path} title={articleTitle(page)} onSection={onSection} />
           <span className="grow" />
-          <button type="button" className="btn" onClick={onEdit}>
+          <Button variant="primary" sm onClick={onEdit}>
             <Icon.file size={13} />
             Редактировать
-          </button>
+          </Button>
         </header>
 
         <div className="docs-view scroll" ref={scrollRef}>
@@ -93,15 +93,15 @@ export function DocView({
             </div>
             <h2 className="doc-title">{articleTitle(page)}</h2>
             <div className="doc-meta">
-              <span>Обновлена {docAgo(page.updated)}</span>
+              <Tag tone="outline">Обновлена {docAgo(page.updated)}</Tag>
               {page.verified ? (
-                <span className="ok">
+                <Tag tone="signal" className="ok">
                   <OkIcon size={12} /> Проверена {page.verified}
-                </span>
+                </Tag>
               ) : badVerified ? (
-                <span className="warn">Дата проверки не распознана</span>
+                <Tag tone="accent" className="warn">Дата проверки не распознана</Tag>
               ) : (
-                <span>Не проверялась</span>
+                <Tag tone="outline">Не проверялась</Tag>
               )}
               {page.related.length > 0 && (
                 <span className="doc-related">
@@ -117,36 +117,45 @@ export function DocView({
           </div>
 
           {page.diagnostics.length > 0 && (
-            <div className="doc-banner diag">
+            <div className="doc-banner diag g-banner danger">
               <DiagIcon size={15} />
               <div className="doc-banner-body">
                 <b>Ошибка во frontmatter:</b> использованы значения по умолчанию. Файл прочитан и доступен, но поля ниже нужно исправить.
                 <ul className="doc-banner-list">
                   {page.diagnostics.map((raw) => (
-                    <li key={raw} title={raw} className="mono">
+                    <li key={raw} title={raw} className="g-mono">
                       {diagnosticText(raw)}
                     </li>
                   ))}
                 </ul>
               </div>
-              <button type="button" className="btn" onClick={onEdit}>
+              <button type="button" className="g-btn secondary" onClick={onEdit}>
                 Исправить в редакторе
               </button>
             </div>
           )}
 
+          {page.status === "deprecated" && (
+            <div className="doc-banner outdated g-banner signal">
+              <DeprecatedIcon size={15} />
+              <div className="doc-banner-body">
+                <b>Страница устарела:</b> оставлена для истории — не опирайтесь на неё при работе.
+              </div>
+            </div>
+          )}
+
           {page.stale && (
-            <div className="doc-banner stale">
+            <div className="doc-banner stale g-banner accent">
               <StaleIcon size={15} />
               <div className="doc-banner-body">
                 <b>Возможно устарела:</b> {staleNote}
-                {page.related.length > 0 && <span className="muted"> · задачи {page.related.join(", ")}</span>}
+                {page.related.length > 0 && <span className="g-muted"> · задачи {page.related.join(", ")}</span>}
               </div>
               {page.diagnostics.length === 0 && (
-                <button type="button" className="btn amber" onClick={onMarkVerified}>
+                <Button sm onClick={onMarkVerified}>
                   <Icon.check size={13} />
                   Отметить проверенной
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -155,8 +164,8 @@ export function DocView({
 
           <DocBody text={body} links={page.links} onOpen={onOpen} empty="Страница пуста" />
           {page.tags.length > 0 && <footer className="doc-article-footer" aria-label="Теги статьи">
-            <span className="muted">Теги</span>
-            {page.tags.map((tag) => <span key={tag} className="doc-tag">{tag}</span>)}
+            <span className="g-muted">Теги</span>
+            {page.tags.map((tag) => <Tag key={tag} className="doc-tag">{tag}</Tag>)}
           </footer>}
         </div>
       </div>
@@ -187,7 +196,7 @@ export function DocView({
               <PathsIcon size={12} /> Описывает код
             </h3>
             {page.paths && page.paths.length > 0 ? (
-              <ul className="doc-paths mono">
+              <ul className="doc-paths g-mono">
                 {page.paths.map((pattern) => (
                   <li key={pattern}>
                     <Icon.file size={12} />
@@ -244,12 +253,12 @@ export function DocView({
                     {link.resolution === "resolved" && link.targetPath ? (
                       <button type="button" onClick={() => onOpen(link.targetPath!)}>
                         <span className="nm">{link.target}</span>
-                        <span className="mono sub">{link.targetPath}</span>
+                        <span className="g-mono sub">{link.targetPath}</span>
                       </button>
                     ) : (
                       <span className={link.resolution === "ambiguous" ? "unresolved ambiguous" : "unresolved"} title={link.resolution === "ambiguous" ? `Несколько совпадений: ${link.matches.join(", ")}` : "Страница не найдена — ссылка не угадывается"}>
                         {link.target}
-                        <span className="muted"> · {link.resolution === "ambiguous" ? "несколько совпадений" : "нет страницы"}</span>
+                        <span className="g-muted"> · {link.resolution === "ambiguous" ? "несколько совпадений" : "нет страницы"}</span>
                       </span>
                     )}
                   </li>
@@ -260,7 +269,7 @@ export function DocView({
 
           <div className="docs-aside-foot">
             <DocMarks page={page} />
-            <span className="mono">{page.path}</span>
+            <span className="g-mono">{page.path}</span>
           </div>
         </aside>
       )}

@@ -42,7 +42,7 @@ export function DocBody({
     onOpen?.(decodeURIComponent(href.slice(SENTINEL.length)));
   };
   return (
-    <div className="doc-body" onClick={onClick}>
+    <div className="doc-body g-prose" onClick={onClick}>
       <Markdown text={prepared} {...(empty !== undefined ? { empty } : {})} />
     </div>
   );

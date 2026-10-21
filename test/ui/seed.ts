@@ -57,3 +57,42 @@ export const CAPTURE_TASKS: SeedTask[] = [
   { title: "Обновить зависимости клиента", priority: 3, statuses: ["refining", "ready", "in_progress", "review", "approved", "done"] },
   { title: "Старая задача, отменена", priority: 4, statuses: ["cancelled"] },
 ];
+
+/** Knowledge pages written for the capture run only: the docs screens need a vault with every page state. */
+export const CAPTURE_DOCS: { path: string; text: string; /** Written to the vault directly: the CLI refuses invalid frontmatter. */ raw?: boolean }[] = [
+  {
+    path: "demo/guides/deploy.md",
+    text: [
+      "---",
+      "title: Как устроен деплой",
+      "type: guide",
+      "status: current",
+      "verified: 2026-05-01",
+      "tags: [deploy, релиз]",
+      "---",
+      "# Как устроен деплой",
+      "",
+      "Релиз собирается из ветки main и выкладывается на сервер одной командой. Подробности про окружения лежат в [[Окружения]].",
+      "",
+      "## Шаги",
+      "",
+      "1. Проверить, что CI зелёный.",
+      "2. Запустить сборку образа.",
+      "3. Выкатить образ на сервер.",
+      "",
+      "## Команды",
+      "",
+      "```bash",
+      "docker compose -f deploy/compose.yaml up -d --build --remove-orphans --force-recreate genie-server genie-tracker",
+      "```",
+      "",
+      "| Окружение | Адрес | Ветка | Автодеплой | Ответственный | Примечание |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| production | https://genie.example.com/very/long/path/that/keeps/going | main | нет | команда платформы | выкладывается вручную после проверки |",
+      "| staging | https://staging.genie.example.com | dev | да | любой участник | сбрасывается каждую ночь |",
+    ].join("\n"),
+  },
+  { path: "demo/guides/environments.md", text: "---\ntitle: Окружения\ntype: reference\nstatus: draft\naliases: [Окружения]\n---\n# Окружения\n\nСписок окружений проекта.\n" },
+  { path: "demo/decisions/storage.md", text: "---\ntitle: Хранилище данных\ntype: decision\nstatus: deprecated\n---\n# Хранилище данных\n\nЗаменено новым решением.\n" },
+  { path: "demo/runbooks/restore.md", text: "---\ntitle: Восстановление из резервной копии\ntype: runbook\nstatus: current\nverified: not-a-date\n---\n# Восстановление из резервной копии\n\nСначала остановите сервер.\n", raw: true },
+];

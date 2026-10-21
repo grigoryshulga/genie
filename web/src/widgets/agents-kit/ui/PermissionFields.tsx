@@ -29,7 +29,7 @@ export function PermissionReference() {
   return (
     <details className="ag-advanced">
       <summary>Ограничения и технические ключи</summary>
-      <p className="muted ag-note">Разрешения проверяет сервер, отзыв действует сразу. {FIXED_PERMISSIONS}</p>
+      <p className="g-muted ag-note">Разрешения проверяет сервер, отзыв действует сразу. {FIXED_PERMISSIONS}</p>
       <dl className="ag-dl">
         {PERMISSION_GROUPS.flatMap((g) => g.items).map((p) => (
           <Fragment key={p.id}>

@@ -13,11 +13,11 @@
 // GENIE_BIN selects the server binary (default: target/debug/genie); web/dist must be built.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { CAPTURE_TASKS, OWNER, PROJECT, SEED_TASKS } from "./seed.ts";
+import { dirname, join, resolve } from "node:path";
+import { CAPTURE_DOCS, CAPTURE_TASKS, OWNER, PROJECT, SEED_TASKS } from "./seed.ts";
 
 const root = resolve(import.meta.dirname, "../..");
 const bin = resolve(root, process.env.GENIE_BIN ?? "target/debug/genie");
@@ -59,6 +59,15 @@ function seed() {
   genie(["user", "add", OWNER.login, "--name", OWNER.name, "--admin", "--password-stdin"], `${OWNER.password}\n`);
   genie(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix]);
   genie(["member", PROJECT.id, OWNER.login, "owner"]);
+  if (capture) {
+    for (const doc of CAPTURE_DOCS) {
+      if (!doc.raw) genie(["--project", PROJECT.id, "docs", "write", doc.path, "--text", doc.text]);
+      else {
+        mkdirSync(dirname(join(data, "vault", doc.path)), { recursive: true });
+        writeFileSync(join(data, "vault", doc.path), doc.text);
+      }
+    }
+  }
   const ids: string[] = [];
   for (const t of capture ? [...SEED_TASKS, ...CAPTURE_TASKS] : SEED_TASKS) {
     const args = ["--project", PROJECT.id, "task", "create", t.title, "--json"];

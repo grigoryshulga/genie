@@ -3,23 +3,14 @@
 
 import { useState } from "react";
 import { setBody, type RoleDef, type RoleDetail, splitFrontmatter, useSaveConfig } from "@/entities/agent-config";
-import { Icon, Markdown, Modal, useToast } from "@/shared/ui";
+import { Dialog, Markdown, useToast } from "@/shared/ui";
 
 /** The role's prompt to read (people who do not edit the configuration). */
 export function PromptView({ role: r, onClose }: { role: RoleDef; onClose: () => void }) {
   return (
-    <Modal label={`Промпт роли ${r.id}`} onClose={onClose} wide>
-      <div className="mh">
-        <Icon.file size={13} />
-        <span className="ag-prompt-title">
-          Промпт роли <span className="mono">{r.id}</span>
-        </span>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </div>
-      <div className="mb">
-        {r.prompt ? <Markdown text={r.prompt} /> : <p className="muted">Промпта нет.</p>}
+    <Dialog title={<>Промпт роли <span className="g-mono">{r.id}</span></>} onClose={onClose} wide>
+      <div>
+        {r.prompt ? <Markdown text={r.prompt} /> : <p className="g-muted">Промпта нет.</p>}
         {r.instructions && (
           <>
             <h4 className="ag-sub">Особенности роли</h4>
@@ -27,7 +18,7 @@ export function PromptView({ role: r, onClose }: { role: RoleDef; onClose: () =>
           </>
         )}
       </div>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -62,32 +53,38 @@ export function PromptEditor({ detail, onClose }: { detail: RoleDetail; onClose:
     }
   };
   return (
-    <Modal label={`Промпт роли ${r.id}`} onClose={onClose} wide>
-      <div className="mh">
-        <Icon.file size={13} />
-        <span className="ag-prompt-title">
-          Промпт роли <span className="mono">{r.id}</span>
-        </span>
-        <div className="seg ag-prompt-seg" role="tablist" aria-label="Вид">
-          <button type="button" role="tab" aria-selected={view === "text"} className={view === "text" ? "on" : ""} onClick={() => setView("text")}>
+    <Dialog
+      title={<>Промпт роли <span className="g-mono">{r.id}</span></>}
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <span className="ag-save-note">{file === null ? "Сохранение создаст файл роли с этим промптом" : `agents/${r.id}.md`}</span>
+          <button type="button" className="g-btn ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="button" className="g-btn primary" disabled={busy} onClick={() => void submit()}>
+            Сохранить
+          </button>
+        </>
+      }
+    >
+      <div className="ag-prompt-body">
+        <div className="g-seg ag-prompt-seg" role="tablist" aria-label="Вид">
+          <button type="button" role="tab" aria-selected={view === "text"} aria-pressed={view === "text"} onClick={() => setView("text")}>
             Текст
           </button>
-          <button type="button" role="tab" aria-selected={view === "preview"} className={view === "preview" ? "on" : ""} onClick={() => setView("preview")}>
+          <button type="button" role="tab" aria-selected={view === "preview"} aria-pressed={view === "preview"} onClick={() => setView("preview")}>
             Просмотр
           </button>
         </div>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </div>
-      <div className="mb">
-        <p className="muted ag-hint">
+        <p className="g-muted ag-hint">
           Добавляется после общих правил genie.
           {fallback ? ` Пустой текст — действует ${fallback}.` : ""}
         </p>
         <div className={`ag-prompt-edit show-${view}`}>
           <textarea
-            className="mono code-edit"
+            className="g-mono code-edit"
             value={text}
             onChange={(e) => setText(e.target.value)}
             spellCheck={false}
@@ -95,35 +92,25 @@ export function PromptEditor({ detail, onClose }: { detail: RoleDetail; onClose:
             placeholder={fallback ? `Пусто — ${fallback}` : "Кто ты в команде, как работаешь, что сдаёшь"}
           />
           <div className="ag-prompt-preview" aria-label="Предпросмотр">
-            {!text.trim() && fallback && <div className="ag-hint muted">Сейчас действует {fallback}:</div>}
-            {shown ? <Markdown text={shown} /> : <p className="muted">Промпта нет.</p>}
+            {!text.trim() && fallback && <div className="ag-hint g-muted">Сейчас действует {fallback}:</div>}
+            {shown ? <Markdown text={shown} /> : <p className="g-muted">Промпта нет.</p>}
           </div>
         </div>
         {builtin !== undefined && (
           <details className="ag-prompt" open={showBuiltin} onToggle={(e) => setShowBuiltin(e.currentTarget.open)}>
             <summary>Встроенный текст роли</summary>
             <pre className="ag-file-text ag-builtin">{builtin}</pre>
-            <button type="button" className="btn" onClick={() => setText(builtin)} disabled={text.trim() === builtin}>
+            <button type="button" className="g-btn secondary" onClick={() => setText(builtin)} disabled={text.trim() === builtin}>
               Взять встроенный
             </button>
           </details>
         )}
         {error && (
-          <div className="auth-error" role="alert">
+          <div className="ag-form-error" role="alert">
             {error}
           </div>
         )}
       </div>
-      <div className="mf">
-        {file === null ? "Сохранение создаст файл роли с этим промптом" : `agents/${r.id}.md`}
-        <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button type="button" className="btn primary" disabled={busy} onClick={() => void submit()}>
-          Сохранить
-        </button>
-      </div>
-    </Modal>
+    </Dialog>
   );
 }

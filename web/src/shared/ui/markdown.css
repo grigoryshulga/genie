@@ -1,35 +1,61 @@
-/* Table styles for the shared Markdown renderer (G-7).
-   Co-located with the component so it owns its own styling;
-   web/src/app/styles.css is owned by task G-12 and is not touched here. */
+/* Shared Markdown renderer. Co-located with the component so it owns its own styling;
+   web/src/app/styles.css is owned by another task and is not touched here.
+   Ink and paper: g-tokens only. These rules are additive — the generic prose
+   typography lives in components.css (.g-prose) and stays as it is. */
 
 .md .md-table-wrap {
-  margin: 0 0 10px;
+  margin: 0 0 var(--g-space-3);
   max-width: 100%;
   overflow-x: auto;
 }
 
 .md table.md-table {
   border-collapse: collapse;
+  /* Tables size to their content and the wrapper scrolls: a squeezed table of narrow
+     columns is harder to read than one that continues sideways inside its block. */
   width: max-content;
-  max-width: 100%;
-  font-size: var(--font-size-body);
+  min-width: 100%;
+  font-size: var(--g-text-ui);
 }
 
 .md table.md-table th,
 .md table.md-table td {
-  border: 1px solid var(--line-strong);
-  padding: 5px var(--space-5);
+  border: 1px solid var(--g-border);
+  padding: var(--g-space-2) var(--g-space-3);
   vertical-align: top;
   text-align: left;
 }
 
 .md table.md-table thead th {
-  background: var(--bg-raised);
-  color: var(--text);
-  font-weight: 600;
+  background: var(--g-surface-active);
+  color: var(--g-text);
+  font-weight: var(--g-weight-bold);
   white-space: nowrap;
 }
 
 .md table.md-table tbody tr:nth-child(even) {
-  background: var(--bg-panel);
+  background: var(--g-surface);
+}
+
+/* Long code and long tables scroll inside their own block, never the page. */
+.md pre,
+.g-prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.md blockquote,
+.g-prose blockquote {
+  color: var(--g-text-2);
+}
+
+.md a,
+.g-prose a {
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.md code,
+.g-prose code {
+  overflow-wrap: anywhere;
 }

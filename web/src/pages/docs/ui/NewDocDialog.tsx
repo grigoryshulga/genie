@@ -4,7 +4,7 @@
 
 import { type KeyboardEvent, useMemo, useState } from "react";
 import { articlePath, docSections, sectionTrail, type DocSection, diagnosticText, DOC_TYPE_NAME, DOC_TYPES, DocSaveError, useSaveDoc, serializeDoc, slugify, todayIso, type DocType } from "@/entities/doc";
-import { Icon } from "@/shared/ui";
+import { Dialog, Icon } from "@/shared/ui";
 
 export function NewDocDialog({
   navigation,
@@ -75,72 +75,70 @@ export function NewDocDialog({
   };
 
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal doc-new" role="dialog" aria-modal="true" aria-label="Создание статьи или раздела" onKeyDown={onKeyDown}>
-        <div className="mh">
-          <div className="seg doc-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={kind === "page"} className={kind === "page" ? "on" : ""} onClick={() => switchKind("page")}>
-              Статья
-            </button>
-            <button type="button" role="tab" aria-selected={kind === "section"} className={kind === "section" ? "on" : ""} onClick={() => switchKind("section")}>Раздел</button>
-            <button type="button" role="tab" aria-selected={kind === "note"} className={kind === "note" ? "on" : ""} onClick={() => switchKind("note")}>
-              Быстрая заметка
-            </button>
-          </div>
-          <span className="grow" />
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-            <Icon.close size={14} />
+    <Dialog
+      title={
+        <span className="g-tabs doc-tabs" role="tablist" aria-label="Что создать">
+          <span className="g-sr">Создание</span>
+          <button type="button" role="tab" aria-selected={kind === "page"} aria-pressed={kind === "page"} onClick={() => switchKind("page")}>
+            Статья
           </button>
-        </div>
-
-        <div className="mb">
-          <label className="doc-field">
-            <span>Название</span>
-            <input autoFocus value={title} placeholder="Например: Как устроен деплой" onChange={(e) => setTitle(e.target.value)} />
-          </label>
-          <div className="doc-new-row">
-            <label className="doc-field">
-              <span>{kind === "section" ? "Родительский раздел" : "Раздел"}</span>
-              <select value={section} onChange={(e) => setSection(e.target.value)} aria-label="Раздел">
-                {!sections.length && <option value="">Нет доступных разделов</option>}
-                {sections.map((s) => <option key={s.path} value={s.path}>{sectionTrail(navigation, s.path).map((part, i) => i === 0 ? "Пространство" : part.title).join(" › ")}</option>)}
-              </select>
-            </label>
-            <label className="doc-field">
-              <span>Тип</span>
-              <select value={kind === "note" ? "note" : type} disabled={kind === "note"} onChange={(e) => setType(e.target.value as DocType | "")}>
-                {kind !== "note" && <option value="">не указан</option>}
-                {DOC_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t} — {DOC_TYPE_NAME[t]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <p className="doc-new-hint">
-            {kind === "note"
-              ? "Черновик заметки в выбранном разделе."
-              : kind === "section" ? "Раздел объединяет статьи и вложенные темы." : "Статья будет создана в выбранном разделе."}
-          </p>
-
-          {kind === "section" && <p className="doc-new-hint">Название обзорной статьи станет названием раздела в навигации.</p>}
-          {error && <p className="doc-new-error">{error}</p>}
-        </div>
-
-        <div className="mf">
-          <span>Откроется в редакторе</span>
-          <span className="grow" />
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" role="tab" aria-selected={kind === "section"} aria-pressed={kind === "section"} onClick={() => switchKind("section")}>
+            Раздел
+          </button>
+          <button type="button" role="tab" aria-selected={kind === "note"} aria-pressed={kind === "note"} onClick={() => switchKind("note")}>
+            Быстрая заметка
+          </button>
+        </span>
+      }
+      onClose={onClose}
+      footer={
+        <>
+          <span className="doc-save-note">Откроется в редакторе</span>
+          <button type="button" className="g-btn secondary" onClick={onClose}>
             Отмена
           </button>
-          <button type="button" className="btn primary" disabled={!title.trim() || !sections.some((s) => s.path === section) || busy} onClick={() => void create()}>
+          <button type="button" className="g-btn primary" disabled={!title.trim() || !sections.some((s) => s.path === section) || busy} onClick={() => void create()}>
             <Icon.check size={13} />
             {busy ? "Создаю…" : "Создать"}
           </button>
+        </>
+      }
+    >
+      <div className="doc-new-body" onKeyDown={onKeyDown}>
+        <label className="doc-field">
+          <span>Название</span>
+          <input className="g-input" autoFocus value={title} placeholder="Например: Как устроен деплой" onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <div className="doc-new-row">
+          <label className="doc-field">
+            <span>{kind === "section" ? "Родительский раздел" : "Раздел"}</span>
+            <select className="g-select" value={section} onChange={(e) => setSection(e.target.value)} aria-label="Раздел">
+              {!sections.length && <option value="">Нет доступных разделов</option>}
+              {sections.map((s) => <option key={s.path} value={s.path}>{sectionTrail(navigation, s.path).map((part, i) => i === 0 ? "Пространство" : part.title).join(" › ")}</option>)}
+            </select>
+          </label>
+          <label className="doc-field">
+            <span>Тип</span>
+            <select className="g-select" value={kind === "note" ? "note" : type} disabled={kind === "note"} onChange={(e) => setType(e.target.value as DocType | "")}>
+              {kind !== "note" && <option value="">не указан</option>}
+              {DOC_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t} — {DOC_TYPE_NAME[t]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+
+        <p className="doc-new-hint">
+          {kind === "note"
+            ? "Черновик заметки в выбранном разделе."
+            : kind === "section" ? "Раздел объединяет статьи и вложенные темы." : "Статья будет создана в выбранном разделе."}
+        </p>
+
+        {kind === "section" && <p className="doc-new-hint">Название обзорной статьи станет названием раздела в навигации.</p>}
+        {error && <p className="doc-new-error">{error}</p>}
       </div>
-    </div>
+    </Dialog>
   );
 }
