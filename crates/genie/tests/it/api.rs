@@ -966,6 +966,8 @@ async fn project_icons_require_membership_to_read_and_administration_to_change()
     let (s, project, _) = call(r, "DELETE", "/api/projects/shop/icon").cookie(owner).send().await;
     assert_eq!(s, StatusCode::OK);
     assert!(project.get("icon").is_none());
+    let (_, session, _) = call(r, "GET", "/api/auth/me").cookie(owner).send().await;
+    assert!(session["projects"][0].get("icon").is_none());
     let (s, _, _) = call(r, "GET", url).cookie(owner).send().await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }

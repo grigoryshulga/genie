@@ -82,9 +82,12 @@ async fn me(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
                 let mut out = Vec::new();
                 for p in db.projects()? {
                     if let Some(role) = db.project_role(&p.slug, &u)? {
-                        out.push(
-                            json!({ "slug": p.slug, "name": p.name, "icon": p.icon, "role": role, "autonomy": p.autonomy, "hasRepo": p.repo.is_some() }),
-                        );
+                        let mut project =
+                            json!({ "slug": p.slug, "name": p.name, "role": role, "autonomy": p.autonomy, "hasRepo": p.repo.is_some() });
+                        if let Some(icon) = p.icon {
+                            project["icon"] = json!(icon);
+                        }
+                        out.push(project);
                     }
                 }
                 Ok(out)
