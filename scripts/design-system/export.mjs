@@ -41,11 +41,11 @@ export function parseColor(value) {
 const SHADOW = /^0 ([\d.]+)px ([\d.]+)px ((?:rgba?|#)[^)]*\)?)$/;
 
 /** A token's DTCG entry, or null for an expression the format cannot state (a ch measure, an easing curve). */
-function token(key, value) {
-  const extensions = { "com.genie": { css: `var(--${key})`, expression: value } };
+function token(key, value, expression) {
+  const extensions = { "com.genie": { css: `var(--${key})`, expression } };
   const entry = (type, parsed) => ({ $type: type, $value: parsed, $extensions: extensions });
   if (/^#[\da-f]{6}([\da-f]{2})?$/i.test(value) || /^rgba?\(/i.test(value)) return entry("color", parseColor(value));
-  const dimension = /^(-?[\d.]+)(px|em|rem)$/.exec(value);
+  const dimension = /^(-?[\d.]+)(px|rem)$/.exec(value);
   if (dimension) return entry("dimension", { value: Number.parseFloat(dimension[1]), unit: dimension[2] });
   if (/^[\d.]+$/.test(value)) return entry("number", Number(value));
   // Font stacks are a list of names; the scale's geometry is in CSS pixels like everything else.
@@ -61,9 +61,9 @@ function token(key, value) {
       spread: { value: 0, unit: "px" },
     });
   }
-  // `--g-measure: 64ch` depends on font metrics, a `clamp()` size has no single value, and easings and
-  // durations are not design tokens a Figma collection can hold: they stay in the CSS only.
-  if (/^[\d.]+(ch|ms|s)$/.test(value) || /^(cubic-bezier|steps)\(/.test(value) || /^clamp\(/.test(value)) return null;
+  // DTCG dimensions accept px/rem, not font-relative em/ch; clamp() has no single value either.
+  // This Figma bundle also leaves motion values in CSS rather than exporting duration/easing tokens.
+  if (/^-?[\d.]+(em|ch|ms|s)$/.test(value) || /^(cubic-bezier|steps)\(/.test(value) || /^clamp\(/.test(value)) return null;
   throw new Error(`Unsupported value for ${key}: ${value}`);
 }
 
@@ -72,7 +72,7 @@ export function buildExport(css) {
   for (const theme of themes) {
     const values = readTokens(css, theme);
     result[theme] = Object.fromEntries(Object.entries(values).flatMap(([key, expression]) => {
-      const entry = token(key, resolveValue(key, values));
+      const entry = token(key, resolveValue(key, values), expression);
       return entry ? [[key, entry]] : [];
     }));
   }

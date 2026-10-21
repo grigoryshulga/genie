@@ -30,7 +30,7 @@
 .pj-link .secret { flex: 1; min-width: 0; }
 
 @media (max-width: 900px) {
-  .pj-pair, .pj-roles { grid-template-columns: minmax(0, 1fr); }
+  .pj-pair { grid-template-columns: minmax(0, 1fr); }
   .pj-people li { flex-wrap: wrap; }
   .pj-people .who { flex-basis: calc(100% - 50px); }
   .pj-link { flex-direction: column; align-items: stretch; }

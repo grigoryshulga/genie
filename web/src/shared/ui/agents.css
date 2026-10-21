@@ -143,8 +143,8 @@ fieldset:disabled .ag-perm { cursor: default; }
 /* forms */
 .ag-form, .ag-template-form { display: flex; flex-direction: column; gap: var(--g-space-4); }
 .ag-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--g-space-3); }
-.ag-inline label, .ag-choice label { display: flex; align-items: center; gap: var(--g-space-2); }
-.ag-inline input, .ag-choice input, .ag-checks input { accent-color: var(--g-accent); margin: 0; }
+.ag-choice label { display: flex; align-items: center; gap: var(--g-space-2); }
+.ag-choice input, .ag-checks input { accent-color: var(--g-accent); margin: 0; }
 .ag-choice { display: flex; flex-direction: column; gap: var(--g-space-2); font-size: var(--g-text-ui); color: var(--g-text-2); }
 .ag-checks { display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2) 0 0 var(--g-space-5); }
 .ag-checks label { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); gap: var(--g-space-2); align-items: baseline; }
@@ -295,10 +295,10 @@ fieldset:disabled .ag-perm { cursor: default; }
   .ag-roles-layout { grid-template-columns: minmax(0, 1fr); }
   /* A member row, a relation row, a permission row and a checked option are tapped, not read: each
      gets a thumb of height, and the role link inside a member row fills it. */
-  .ag-members li, .ag-relations li, .ag-file-list li, .ag-perm, .ag-checks label, .ag-choice label, .ag-inline label { min-height: var(--g-row); }
+  .ag-members li, .ag-relations li, .ag-file-list li, .ag-perm, .ag-checks label, .ag-choice label { min-height: var(--g-row); }
   .ag-members li a, .ag-relations li a, .ag-file-list li a { display: inline-flex; align-items: center; min-height: var(--g-control); }
   .ag-perm, .ag-checks label { align-items: center; }
-  .ag-perm input, .ag-checks label input, .ag-choice label input, .ag-inline input { width: var(--g-space-5); height: var(--g-space-5); }
+  .ag-perm input, .ag-checks label input, .ag-choice label input { width: var(--g-space-5); height: var(--g-space-5); }
 }
 
 @media (max-width: 640px) {

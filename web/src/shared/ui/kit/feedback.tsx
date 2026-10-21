@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { Character, type CharacterState } from "../character/index.ts";
 import { cx } from "./cx.ts";
+import "./loading.css";
 
 type Tone = "neutral" | "accent" | "signal" | "danger";
 
@@ -16,10 +18,31 @@ export function Banner({ tone = "neutral", title, children, action }: { tone?: T
   );
 }
 
-/** One shared empty state: a title, one line, an optional action. */
-export function EmptyState({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
+/**
+ * One shared empty state: an optional character, a title, one line, an optional action. The character
+ * is a pose, not art: `character="sleep"` for "nothing here yet", `character="wake"` only when work
+ * has just resumed. Keep it out of dense lists and toolbars, and never show two in the same view.
+ */
+export function EmptyState({
+  title,
+  children,
+  action,
+  character,
+  characterSize = 64,
+  characterLabel,
+  className,
+}: {
+  title: ReactNode;
+  children?: ReactNode;
+  action?: ReactNode;
+  character?: CharacterState;
+  characterSize?: number;
+  characterLabel?: string;
+  className?: string;
+}) {
   return (
-    <div className="g-empty">
+    <div className={cx("g-empty", className)}>
+      {character && <Character state={character} size={characterSize} label={characterLabel} />}
       {/* A level-2 heading: an empty state always follows the page title, and h1 → h3 skips a level. */}
       <h2 className="g-h3">{title}</h2>
       {children && <p>{children}</p>}
@@ -31,6 +54,34 @@ export function EmptyState({ title, children, action }: { title: ReactNode; chil
 /** A placeholder block that shimmers; size it with width and height. Not announced to screen readers. */
 export function Skeleton({ width = "100%", height = 14, className }: { width?: number | string; height?: number | string; className?: string }) {
   return <div className={cx("g-skeleton", className)} style={{ width, height }} aria-hidden="true" />;
+}
+
+/**
+ * What a region shows instead of its content while that content loads: `lines` bars shaped like the
+ * text they stand in for, or `children` made of Skeleton blocks when the content is not text (a page
+ * header, a card, a tree). Only `label` reaches assistive technology — the wrapper is a polite status
+ * and the bars are decorative — so a screen reader hears "Загрузка" once instead of the placeholders.
+ * Pass `width` when the parent would otherwise stretch the bars across a whole pane.
+ */
+export function LoadingState({
+  label = "Загрузка",
+  lines = 3,
+  width,
+  className,
+  children,
+}: {
+  label?: string;
+  lines?: number;
+  width?: number | string;
+  className?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={cx("g-loading", className)} style={width === undefined ? undefined : { maxWidth: width }} role="status">
+      <span className="g-sr">{label}</span>
+      {children ?? Array.from({ length: lines }, (_, line) => <Skeleton key={line} height={14} width={line % 2 ? "62%" : "88%"} />)}
+    </div>
+  );
 }
 
 /** One shared error block: the server's message and a retry. */

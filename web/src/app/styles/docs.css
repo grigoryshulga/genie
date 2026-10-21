@@ -29,8 +29,6 @@
 .doc-tree { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .doc-tree-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--g-space-2) var(--g-space-2) var(--g-space-5); }
 .doc-tree-empty { display: flex; flex-direction: column; gap: var(--g-space-2); padding: var(--g-space-4) var(--g-space-3); font-size: var(--g-text-dense); color: var(--g-text-muted); }
-.doc-folder-head .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doc-folder-head .n { margin-left: auto; font-size: var(--g-text-caption); font-weight: var(--g-weight-medium); color: var(--g-text-muted); font-feature-settings: "tnum"; }
 .doc-caret { flex: none; color: var(--g-text-muted); transition: transform var(--g-duration) var(--g-ease); }
 .doc-caret.open { transform: rotate(90deg); }
 

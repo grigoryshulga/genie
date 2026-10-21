@@ -26,7 +26,7 @@ import {
 } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
 import { isTyping, plural } from "@/shared/lib";
-import { Button, Icon, IconButton, Kbd, useModalFocus } from "@/shared/ui";
+import { Button, ErrorState, Icon, IconButton, Kbd, useModalFocus } from "@/shared/ui";
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 import { TaskList } from "@/widgets/task-list";
 import { FilterMenu, FilterOption } from "./FilterMenu.tsx";
@@ -332,10 +332,7 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
         </div>
       ) : tasksQ.isError ? (
         <div className="g-tasks-scroll">
-          <div className="g-empty tl-empty">
-            <StatusIcon status="needs_owner" size={26} />
-            <p>Не удалось загрузить задачи: {tasksQ.error.message}</p>
-          </div>
+          <ErrorState message={`Не удалось загрузить задачи: ${tasksQ.error.message}`} onRetry={() => void tasksQ.refetch()} />
         </div>
       ) : (
         <div className="g-tasks-scroll">

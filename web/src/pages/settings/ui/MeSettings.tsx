@@ -11,7 +11,7 @@ import { useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
+import { Icon, useModalFocus, useRefreshingAct as useAct } from "@/shared/ui";
 import { PersonalTelegram } from "./TelegramSettings.tsx";
 import { TokensTab } from "./TokensTab.tsx";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
@@ -200,6 +200,10 @@ function Photo({ user }: { user: SessionUser }) {
     setZoom(1); setX(0); setY(0);
   };
   const closeCrop = () => { if (source) URL.revokeObjectURL(source.url); setSource(undefined); };
+  // The crop panel covers the rest of the page: it takes focus, keeps Tab inside, closes on Escape and
+  // puts focus back on the control that opened it — the same contract a native dialog has.
+  const cropRef = useRef<HTMLElement>(null);
+  useModalFocus(cropRef, !!source, closeCrop);
   return (
     <div className="st-photo">
       <PersonAvatar login={user.login} name={user.name} src={user.avatar} size="xl" prefix="Ваше фото" />
@@ -234,7 +238,7 @@ function Photo({ user }: { user: SessionUser }) {
         />
       </div>
       {source && <div className="g-scrim st-crop-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) closeCrop(); }}>
-        <section className="st-crop" role="dialog" aria-modal="true" aria-labelledby="crop-title">
+        <section ref={cropRef} className="st-crop" role="dialog" aria-modal="true" aria-labelledby="crop-title">
           <h2 id="crop-title">Настройка фото</h2>
           <div className="st-crop-preview"><img src={source.url} alt="Предпросмотр кадра" style={{ transform: `scale(${zoom}) translate(${x * (zoom - 1) * 50 / zoom}%, ${y * (zoom - 1) * 50 / zoom}%)` }} /></div>
           <label>Масштаб <input type="range" min="1" max="3" step="0.01" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>

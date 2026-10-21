@@ -12,11 +12,12 @@
 .g-topbar-project-switcher .g-menu-item { min-width: 0; }
 .g-topbar-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Every wrapper must shrink with the project button; a long name must not push phone controls offscreen. */
+/* The grid item and every wrapper must shrink before a long project name can ellipsize. */
+.g-topbar { min-width: 0; }
+.g-topbar-project .name { min-width: 0; }
+.g-topbar-project-switcher .g-popover-host { min-width: 0; }
 @media (max-width: 900px) {
-  .g-topbar { min-width: 0; }
   .g-topbar-project-switcher { flex: 1 1 0; }
-  .g-topbar-project-switcher > .g-popover-host { min-width: 0; width: 100%; }
+  .g-topbar-project-switcher > .g-popover-host { width: 100%; }
   .g-topbar-project-switcher .g-topbar-project { width: 100%; }
-  .g-topbar-project .name { min-width: 0; }
 }

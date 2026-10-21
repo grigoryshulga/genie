@@ -6,7 +6,7 @@ import { useMeta } from "@/entities/project";
 import { STATUS_NAME, type Status } from "@/entities/task";
 import { keysFor, request, useInvalidating } from "@/shared/api";
 import { plural } from "@/shared/lib";
-import { Icon, Modal, useToast } from "@/shared/ui";
+import { Icon, LoadingState, Modal, useToast } from "@/shared/ui";
 import { Button, Field, IconButton, Input, Segmented, Select, Textarea } from "@/shared/ui/kit";
 
 /**
@@ -87,7 +87,7 @@ export function SpawnTeamDialog({ task, onClose }: { task: { id: string; title: 
       </div>
       {!cfg ? (
         <div className="mb">
-          <p className="g-caption">Загрузка…</p>
+          <LoadingState label="Загрузка" lines={3} />
         </div>
       ) : mode === "template" ? (
         <div className="spawn-two">

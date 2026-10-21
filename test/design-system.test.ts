@@ -39,3 +39,18 @@ test("filled actions retain readable foregrounds in both themes", () => {
     }
   }
 });
+
+// DTCG 2025.10 dimensions permit only px/rem. Font-relative tracking must not masquerade as a portable length.
+test("portable dimensions use DTCG units and retain the original CSS expression", () => {
+  for (const theme of themes) {
+    const entries: Record<string, { $type: string; $value: unknown }> = bundle[theme];
+    for (const [name, entry] of Object.entries(entries)) {
+      if (entry.$type !== "dimension") continue;
+      assert.ok(typeof entry.$value === "object" && entry.$value !== null && "unit" in entry.$value);
+      assert.ok(entry.$value.unit === "px" || entry.$value.unit === "rem", `${theme}.${name} has an unsupported DTCG unit`);
+    }
+    assert.ok(!("g-tracking-display" in entries));
+  }
+  const rawBackground = Object.entries(readTokens(css, "ink")).find(([name]) => name === "g-bg")?.[1];
+  assert.equal(bundle.ink["g-bg"].$extensions["com.genie"].expression, rawBackground);
+});

@@ -9,7 +9,7 @@ import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
 import { canManageProject, managementDestination, isTyping, rememberWorkRoute } from "@/shared/lib";
-import { Dialog } from "@/shared/ui";
+import { Dialog, LoadingState, Skeleton } from "@/shared/ui";
 import { TopBar } from "@/widgets/topbar";
 import { lazyPage } from "./lazyPage.ts";
 import "./task-modal.css";
@@ -43,9 +43,17 @@ const TaskDetail = lazyPage(() => import("@/widgets/task-detail").then((m) => m.
 const CommandPalette = lazyPage(() => import("@/features/command-palette").then((m) => m.CommandPalette));
 const NewTaskDialog = lazyPage(() => import("@/features/create-task").then((m) => m.NewTaskDialog));
 
-/** What a page shows while its chunk loads; the same «Загрузка…» row the pages use. */
+/** What a page shows while its chunk loads: the shape of a page header and its first lines. */
 function PageFallback() {
-  return <div className="empty">Загрузка…</div>;
+  return (
+    <div className="empty">
+      <LoadingState label="Загрузка страницы" width={420}>
+        <Skeleton width={200} height={22} />
+        <Skeleton height={14} />
+        <Skeleton height={14} width="72%" />
+      </LoadingState>
+    </div>
+  );
 }
 
 function Shell() {
@@ -274,7 +282,7 @@ function Gate() {
 /** The server section of the settings: server administrators only. A route-level policy, so it lives with the routes. */
 function RequireServerAdmin({ children }: { children: ReactNode }) {
   const session = useSession();
-  if (session.isLoading) return <div className="empty">Загрузка…</div>;
+  if (session.isLoading) return <div className="empty"><LoadingState label="Загрузка" lines={2} width={320} /></div>;
   if (!session.data?.user.isAdmin) return <div className="empty">Раздел доступен администраторам сервера.</div>;
   return children;
 }

@@ -18,7 +18,7 @@ node scripts/design-system/export.mjs --check
 npm test
 ```
 
-The test suite rejects stale generated output, a theme that drops a token another theme declares, missing/circular references, and insufficient action foreground contrast. The exporter only supports the CSS expressions used by the source and rejects unsupported ones; a value it cannot state in DTCG (a `ch` measure, a `clamp()` size, an easing curve) is skipped deliberately and stays in the CSS.
+The test suite rejects stale generated output, mismatched exported theme keys, missing/circular references, and insufficient action foreground contrast. The exporter only supports the CSS expressions used by the source and rejects unsupported ones; font-relative `em`/`ch` values and fluid `clamp()` sizes are deliberately kept in CSS because they have no context-independent DTCG dimension. DTCG dimensions accept only `px` or `rem`. Motion values also stay CSS-only in this Figma bundle.
 
 ## Transfer to Figma
 

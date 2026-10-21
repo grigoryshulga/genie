@@ -199,7 +199,7 @@ export const PROGRESS: { id: Progress; name: string; color: string }[] = [
   { id: "review", name: "На ревью", color: "var(--g-text-2)" },
   { id: "working", name: "В работе", color: "var(--g-accent-soft-text)" },
   { id: "ready", name: "Готово к работе", color: "var(--g-text-muted)" },
-  { id: "early", name: "Черновик", color: "var(--g-n-300)" },
+  { id: "early", name: "Черновик", color: "var(--g-progress-early)" },
 ];
 
 export function progressOf(status: Status): Progress {

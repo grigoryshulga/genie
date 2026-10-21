@@ -4,7 +4,7 @@ import { PersonAvatar } from "@/entities/project";
 import { EpicChip, EpicIcon, Labels, PriorityIcon, StatusIcon, type Status, STATUS_NAME, STATUS_ORDER, type TaskSummary } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { timeAgo } from "@/shared/lib";
-import { cx, Segments } from "@/shared/ui";
+import { cx, EmptyState, Segments } from "@/shared/ui";
 
 /**
  * The task list: rows grouped by status (or one flat list, in the given order). A row states the task's
@@ -54,10 +54,7 @@ export function TaskList({
 
   if (!groups.length) {
     return (
-      <div className="g-empty tl-empty">
-        <StatusIcon status="done" size={26} />
-        <p>{empty}</p>
-      </div>
+      <EmptyState className="tl-empty" title={empty} />
     );
   }
 

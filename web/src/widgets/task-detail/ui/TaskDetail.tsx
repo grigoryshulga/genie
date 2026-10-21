@@ -569,6 +569,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           <div className="tp-noteam">
             <EmptyState
               title="Команда не собрана"
+              character="sleep"
+              characterLabel="Команда ещё не собрана"
               action={canSpawn && writable ? <Button variant="primary" onClick={() => setSpawning(true)}>Собрать команду</Button> : undefined}
             >
               Соберите команду агентов: здесь появятся её почта, схема и участники.

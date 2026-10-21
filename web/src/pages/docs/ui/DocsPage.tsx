@@ -2,7 +2,7 @@
 // column layout (tree | page | aside, search, editor, empty state), the mobile
 // drawer and the docs change signal.
 
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   buildDocNavigation,
@@ -22,7 +22,7 @@ import {
 import { useProposals } from "@/entities/platform";
 import { useSession } from "@/entities/session";
 import { ContextSearch } from "@/widgets/topbar";
-import { useToast, Banner, EmptyState, ErrorState, Icon, Skeleton } from "@/shared/ui";
+import { useToast, Banner, EmptyState, ErrorState, Icon, LoadingState, Skeleton, useModalFocus } from "@/shared/ui";
 import { DocsOverview } from "./DocsOverview.tsx";
 import { DocSearchList } from "./DocSearchList.tsx";
 import { DocView } from "./DocView.tsx";
@@ -83,6 +83,10 @@ export function DocsPage() {
 
   const [drawer, setDrawer] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState("");
+  // The mobile drawer is the tree on a phone: it covers the page, so it takes focus, keeps Tab inside,
+  // closes on Escape and hands focus back to the button that opened it.
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useModalFocus(drawerRef, drawer, () => setDrawer(false));
 
   const setParam = (patch: Record<string, string | null>, replace = false) => {
     const next = new URLSearchParams(sp);
@@ -115,7 +119,7 @@ export function DocsPage() {
     if (!pagePath) return <Navigate to="/docs" replace />;
     return (
       <main className="main docs-main">
-        <Suspense fallback={<div className="docs-view g-muted">Загрузка редактора…</div>}>
+        <Suspense fallback={<div className="docs-view"><LoadingState label="Загрузка редактора" lines={4} /></div>}>
         <DocEditor
           path={pagePath}
           pages={pages}
@@ -264,7 +268,7 @@ export function DocsPage() {
 
       {drawer && (
         <div className="docs-drawer-overlay" onMouseDown={(event) => event.target === event.currentTarget && setDrawer(false)}>
-          <div className="docs-drawer" role="dialog" aria-modal="true" aria-label="Навигация по документации">
+          <div ref={drawerRef} className="docs-drawer" role="dialog" aria-modal="true" aria-label="Навигация по документации">
             <div className="docs-drawer-grab" />
             <header className="docs-col-head">
               <h1>Документация</h1>
@@ -284,7 +288,9 @@ export function DocsPage() {
             </header>
             <label className="docs-filter">
               <Icon.search size={13} />
-              <input value={drawerFilter} aria-label="Фильтр статей" placeholder="Фильтр и поиск" onChange={(event) => setDrawerFilter(event.target.value)} autoFocus />
+              {/* No autoFocus: the drawer's own focus trap puts the keyboard inside, and a field that
+                  grabs focus during mount would leave the trap without an opener to restore to. */}
+              <input value={drawerFilter} aria-label="Фильтр статей" placeholder="Фильтр и поиск" onChange={(event) => setDrawerFilter(event.target.value)} />
             </label>
             <div className="docs-drawer-tree scroll">
               <DocsTree

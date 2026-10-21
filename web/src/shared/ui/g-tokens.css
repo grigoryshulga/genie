@@ -163,6 +163,8 @@
   --g-viz-3: var(--g-n-400);
   --g-viz-4: var(--g-green-400);
   --g-viz-grid: var(--g-n-800);
+  /* The earliest epic stage stays distinct from ready/review while readable in either theme. */
+  --g-progress-early: var(--g-n-500);
 
   --g-focus: var(--g-green-400);
   /* Scrims sit over content and never follow the theme: a modal backdrop and a photo overlay. */
@@ -209,6 +211,7 @@
   --g-viz-3: #737170;
   --g-viz-4: var(--g-green-800);
   --g-viz-grid: var(--g-n-200);
+  --g-progress-early: var(--g-n-500);
 
   --g-focus: var(--g-green-700);
   --g-shadow-overlay: 0 20px 50px rgb(9 9 13 / 0.18);

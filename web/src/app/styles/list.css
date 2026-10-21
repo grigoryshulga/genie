@@ -20,7 +20,7 @@
 .av.solo { margin-left: 0; box-shadow: none; }
 .av.more { background: var(--g-surface); color: var(--g-text-2); font-weight: 500; }
 .av.lg { width: 30px; height: 30px; font-size: var(--g-text-caption); margin: 0; box-shadow: none; }
-.av.md { width: 26px; height: 26px; font-size: var(--g-text-caption); margin: 0; box-shadow: none; color: var(--g-ink); line-height: normal; }
+.av.md { width: 26px; height: 26px; font-size: var(--g-text-caption); margin: 0; box-shadow: none; line-height: normal; }
 .av.working::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--g-focus); border-right-color: var(--g-focus); animation: spin 1s linear infinite; }
 .av.error { box-shadow: 0 0 0 2px var(--g-danger); }
 .av.stopped { opacity: 0.45; }
