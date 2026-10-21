@@ -1,0 +1,21 @@
+/* Task query links open above the current route, without resizing its content. */
+.task-modal {
+  width: min(calc(var(--g-space-9) * 12), calc(100vw - var(--g-space-8)));
+  height: min(calc(var(--g-space-9) * 10), calc(100dvh - var(--g-space-8)));
+  margin: auto;
+  overflow: hidden;
+  border-radius: var(--g-radius-xl);
+}
+.task-modal > .g-modal {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  overflow: hidden;
+}
+.task-modal .detail { flex: 1; width: 100%; min-height: 0; overflow: hidden; }
+.task-modal .detail-body { overscroll-behavior: contain; }
+
+@media (max-width: 640px) {
+  .task-modal { width: 100vw; height: 100dvh; border-radius: 0; }
+  .task-modal > .g-modal { border: 0; border-radius: 0; }
+}

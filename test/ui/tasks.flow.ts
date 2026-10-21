@@ -8,7 +8,7 @@ test("the new-task dialog creates a task with its criteria and labels", async ({
   await page.goto("/tasks");
   await page.getByRole("button", { name: /Новая задача/ }).click();
 
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("dialog", { name: "Новая задача", exact: true });
   await expect(dialog.getByText("Новая задача во входящие")).toBeVisible();
   const create = dialog.getByRole("button", { name: /Создать/ });
   await expect(create).toBeDisabled();
@@ -20,19 +20,20 @@ test("the new-task dialog creates a task with its criteria and labels", async ({
   await create.click();
 
   await expect(dialog).toBeHidden();
-  const toast = page.getByRole("status").filter({ hasText: "во входящих" });
-  await expect(toast).toBeVisible();
-  const id = (await toast.textContent())?.match(/DM-\d+/)?.[0];
-  expect(id, "the toast names the new task").toBeTruthy();
+  const taskDialog = page.getByRole("dialog", { name: /^Задача DM-/ });
+  await expect(taskDialog).toBeVisible();
+  const id = new URL(page.url()).searchParams.get("task");
+  expect(id, "the task query names the created task").toMatch(/^DM-\d+$/);
 
-  // The list opens the new task next to it.
+  // Creation opens the task above the list; closing reveals the saved row.
   await expect(page).toHaveURL(new RegExp(`[?&]task=${id}`));
-  await expect(page.getByRole("listitem").filter({ hasText: "Проверить тёмную тему" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Проверить тёмную тему" })).toBeVisible();
+  await expect(taskDialog.getByRole("heading", { name: "Проверить тёмную тему" })).toBeVisible();
 
   const stored = await storedTask(page.request, id!);
   expect(stored).toMatchObject({ title: "Проверить тёмную тему", status: "inbox", labels: ["ui", "theme"] });
   expect(stored.acceptance.map((a) => a.text)).toEqual(["Контраст текста не ниже AA", "Иконки видны на тёмном фоне"]);
+  await taskDialog.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "Проверить тёмную тему" })).toBeVisible();
 });
 
 test("cancelling the new-task dialog creates nothing", async ({ page }) => {
