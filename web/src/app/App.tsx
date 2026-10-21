@@ -176,7 +176,7 @@ function Shell() {
   const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : "app";
   return (
     <div className={cls}>
-      <TopBar onNew={() => newTask()} online={online} searchRef={searchRef} onOpenSearch={focusSearch} />
+      <TopBar onNew={() => newTask()} online={online} searchRef={searchRef} onOpenSearch={focusSearch} onOpenPalette={() => setDialog("palette")} />
       <Suspense fallback={<PageFallback />}>
         <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
       </Suspense>

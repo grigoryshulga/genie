@@ -14,7 +14,7 @@ import { NotificationsPopover } from "./NotificationsPopover.tsx";
 import { Popover } from "./Popover.tsx";
 import "./topbar.css";
 
-type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void };
+type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void; onOpenPalette: () => void };
 
 type Primary = "board" | "tasks" | "epics" | "docs" | "agents";
 
@@ -28,7 +28,7 @@ function activePrimary(pathname: string): Primary | undefined {
 }
 
 /** The shell's top bar: project, the five primary destinations, search, create, the working-now dock, and the person's menu. */
-export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
+export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }: Props) {
   useTick();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -91,6 +91,9 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
   const current = activePrimary(pathname) ?? ("none" as Primary);
 
   const more: MenuEntry[] = [
+    // ⌘K is a keyboard's way into the palette; a pointer needs a row of its own, so the overflow carries one.
+    { id: "palette", label: "Команды", hint: "⌘K", onSelect: onOpenPalette },
+    "separator",
     { id: "automations", label: "Автоматизации", onSelect: () => navigate("/automations") },
     { id: "observations", label: OBSERVATION_TEXT.nav, onSelect: () => navigate("/observations") },
   ];
@@ -235,6 +238,17 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch }: Props) {
       {sheet && (
         <Dialog title="Навигация" sheet onClose={() => setSheet(false)}>
           <nav className="g-sheet-nav" aria-label="Разделы" onClick={(e) => (e.target as HTMLElement).closest("a") && setSheet(false)}>
+            {/* A thumb has no ⌘K: the sheet carries the palette as a row like every destination beside it. */}
+            <button
+              type="button"
+              onClick={() => {
+                setSheet(false);
+                onOpenPalette();
+              }}
+            >
+              <Icon.search size={16} />
+              Команды
+            </button>
             {primary.map((p) => (
               <Link key={p.id} to={p.to} aria-current={p.id === current ? "page" : undefined}>
                 {p.label}

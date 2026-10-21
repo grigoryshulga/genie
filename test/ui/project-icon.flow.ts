@@ -45,3 +45,39 @@ for (const theme of ["ink", "paper"]) {
   });
 }
 }
+
+for (const theme of ["ink", "paper"]) {
+  for (const width of [390, 768]) {
+    test(`a long project name keeps phone controls in view (${theme}, ${width})`, async ({ page }) => {
+      await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
+      await page.setViewportSize({ width, height: 900 });
+      // The session's project label is the fixture; routing and the rest of the application use the real seed.
+      await page.route("**/api/auth/me", async (route) => {
+        const response = await route.fetch();
+        const session: { projects: { name: string }[] } = await response.json();
+        session.projects = session.projects.map((project) => ({ ...project, name: "Genie — redesign с очень длинным названием проекта" }));
+        await route.fulfill({ response, json: session });
+      });
+      await page.goto("/board");
+      const project = page.getByRole("button", { name: "Проект Genie — redesign с очень длинным названием проекта", exact: true });
+      await expect(project).toBeVisible();
+      const geometry = await page.locator(".g-topbar").evaluate((bar) => ({
+        pageWidth: document.documentElement.scrollWidth,
+        viewport: innerWidth,
+        controls: [...bar.querySelectorAll("button")].filter((button) => button.getBoundingClientRect().width > 0).map((button) => {
+          const rect = button.getBoundingClientRect();
+          return { left: rect.left, right: rect.right };
+        }),
+      }));
+      expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewport);
+      for (const control of geometry.controls) {
+        expect(control.left).toBeGreaterThanOrEqual(0);
+        expect(control.right).toBeLessThanOrEqual(width);
+      }
+      await project.click();
+      await expect(page.getByRole("menu", { name: "Проекты", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(project).toBeFocused();
+    });
+  }
+}
