@@ -6,7 +6,27 @@ import { nextIndex } from "./menu-nav.ts";
  * A dialog on the native <dialog> element: showModal() makes the page behind it inert, traps focus,
  * closes on Escape, and returns focus to the opener. Closing from any source calls onClose.
  */
-export function Dialog({ title, onClose, footer, children, wide, sheet }: { title: ReactNode; onClose: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean; /** A bottom sheet on phones. */ sheet?: boolean }) {
+export function Dialog({
+  title,
+  onClose,
+  footer,
+  children,
+  wide,
+  sheet,
+  bare,
+  className,
+}: {
+  title: ReactNode;
+  onClose: () => void;
+  footer?: ReactNode;
+  children: ReactNode;
+  wide?: boolean;
+  /** A bottom sheet on phones. */
+  sheet?: boolean;
+  /** No header, body or footer chrome: the children draw it (legacy .mh/.mb/.mf markup); the title becomes the accessible name. */
+  bare?: boolean;
+  className?: string;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useId();
   useEffect(() => {
@@ -15,7 +35,21 @@ export function Dialog({ title, onClose, footer, children, wide, sheet }: { titl
     return () => dialog?.close();
   }, []);
   return (
-    <dialog ref={ref} className={cx("g-dialog", sheet && "sheet")} aria-labelledby={heading} onClose={onClose} onClick={(e) => e.target === ref.current && onClose()}>
+    <dialog
+      ref={ref}
+      className={cx("g-dialog", sheet && "sheet", className)}
+      aria-labelledby={bare ? undefined : heading}
+      aria-label={bare && typeof title === "string" ? title : undefined}
+      onCancel={(e) => {
+        // Let the owner of the state decide: Escape asks to close, the unmount closes the element.
+        e.preventDefault();
+        onClose();
+      }}
+      onClick={(e) => e.target === ref.current && onClose()}
+    >
+      {bare ? (
+        <div className={cx("g-modal", wide && "wide")}>{children}</div>
+      ) : (
       <div className={cx("g-modal", wide && "wide")}>
         <header>
           <h2 id={heading}>{title}</h2>
@@ -28,6 +62,7 @@ export function Dialog({ title, onClose, footer, children, wide, sheet }: { titl
         <div className="g-modal-body">{children}</div>
         {footer && <footer>{footer}</footer>}
       </div>
+      )}
     </dialog>
   );
 }

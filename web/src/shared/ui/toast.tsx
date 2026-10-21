@@ -15,12 +15,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={show}>
       {children}
-      {toast && (
-        <div className={`toast${toast.kind === "error" ? " error" : ""}`} role="status">
-          {toast.kind === "ok" && <Icon.check size={13} style={{ color: "var(--green)" }} />}
-          {toast.text}
-        </div>
-      )}
+      {/* One polite live region for the whole app; it stays mounted so screen readers pick up the text. */}
+      <div className="g-toast-region" role="status" aria-live="polite">
+        {toast && (
+          <div className={`g-toast${toast.kind === "error" ? " danger" : ""}`} key={toast.id}>
+            {toast.kind === "ok" && <Icon.check size={13} />}
+            {toast.text}
+          </div>
+        )}
+      </div>
     </ToastCtx.Provider>
   );
 }
