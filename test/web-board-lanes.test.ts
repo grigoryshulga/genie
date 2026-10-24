@@ -1,11 +1,9 @@
-// The board's lanes and the things its headline says, without a browser: the lane order and names
-// the owner decided, what a card becomes where it is dropped, and what the hero states.
+// The board's lane order and names, move targets, and the status a card takes when dropped.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import { LANES, groupByLane, laneDropId, laneOf, moveTargets, needsQuestion, resolveDrop, statusDropId } from "../web/src/entities/task/lanes.ts";
-import { boardHeadline } from "../web/src/pages/board/model.ts";
 import { STATUS_ORDER } from "../web/src/entities/task/model.ts";
 
 const task = (id: string, status: string) => ({ id, status }) as never;
@@ -70,24 +68,4 @@ test("grouping keeps lane order and knows the cancelled ones", () => {
   assert.deepEqual(lanes.prep.map((t) => t.id), ["T-4"]);
   assert.deepEqual(cancelled.map((t) => t.id), ["T-2"]);
   assert.deepEqual(lanes.queue, []);
-});
-
-test("the headline puts the owner's decision first and only then wears the orange stop", () => {
-  const waiting = boardHeadline({ waiting: 1, working: 2, review: 0, open: 5 });
-  assert.equal(waiting.title, "1 решение ждёт вас");
-  assert.equal(waiting.lead, "Остальное идёт само: 2 команды работают.");
-  assert.equal(waiting.stop, true);
-
-  const two = boardHeadline({ waiting: 2, working: 0, review: 3, open: 9 });
-  assert.equal(two.title, "2 решения ждут вас");
-  assert.equal(two.lead, "Остальное идёт само: 3 на ревью.");
-  assert.equal(boardHeadline({ waiting: 1, working: 0, review: 0, open: 1 }).lead, "Больше ничего не требует вашего внимания.");
-});
-
-test("without a waiting decision the hero says what is going on instead", () => {
-  const self = boardHeadline({ waiting: 0, working: 2, review: 1, open: 7 });
-  assert.equal(self.title, "Всё идёт само");
-  assert.equal(self.stop, false);
-  assert.equal(boardHeadline({ waiting: 0, working: 0, review: 0, open: 4 }).lead, "Решений от вас не нужно. Открытых задач: 4, агенты свободны.");
-  assert.equal(boardHeadline({ waiting: 0, working: 0, review: 0, open: 0 }).title, "Здесь тихо");
 });

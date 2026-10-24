@@ -10,7 +10,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   groupByLane,
   LANES,
@@ -197,6 +197,14 @@ export function Board({
   const move = useMoveTask();
   const toast = useToast();
   const [dragging, setDragging] = useState<TaskSummary | undefined>();
+  // Every dnd-kit sensor cancels on the physical Escape code, including pending gestures.
+  // Leave the logical key empty so modal/menu Escape handlers do not consume this sensor cancel.
+  useEffect(() => {
+    if (offline) {
+      document.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", bubbles: true, cancelable: true }));
+      setDragging(undefined);
+    }
+  }, [offline]);
   const [ask, setAsk] = useState<{ id: string; note: string } | undefined>();
   // «Может быть» is a manual backlog: it starts folded and never moves anything by itself.
   const [folded, setFolded] = useState<Set<LaneId>>(() => new Set<LaneId>(["maybe"]));
@@ -229,7 +237,7 @@ export function Board({
 
   const doMove = (id: string, status: Status, note?: string) => {
     const t = tasks.find((x) => x.id === id);
-    if (!t || t.status === status) return;
+    if (offline || !t || t.status === status) return;
     move.mutate(
       { id, status, note },
       {
@@ -241,6 +249,7 @@ export function Board({
 
   // Moving into the owner's lane asks the owner's question first, exactly as the eight-column board did.
   const moveTo = (id: string, status: Status) => {
+    if (offline) return;
     if (needsQuestion(status)) setAsk({ id, note: "" });
     else doMove(id, status);
   };
@@ -248,7 +257,7 @@ export function Board({
   const onDragEnd = (e: DragEndEvent) => {
     const card = dragging;
     setDragging(undefined);
-    if (!card) return;
+    if (offline || !card) return;
     const status = resolveDrop(e.over ? String(e.over.id) : undefined, card.status);
     if (status) moveTo(card.id, status);
   };
@@ -279,7 +288,9 @@ export function Board({
   return (
     <DndContext
       sensors={sensors}
-      onDragStart={(e: DragStartEvent) => setDragging(tasks.find((t) => t.id === String(e.active.id)))}
+      onDragStart={(e: DragStartEvent) => {
+        if (!offline) setDragging(tasks.find((t) => t.id === String(e.active.id)));
+      }}
       onDragEnd={onDragEnd}
       onDragCancel={() => setDragging(undefined)}
     >
@@ -332,7 +343,7 @@ export function Board({
               </Button>
               <Button
                 variant="primary"
-                disabled={!ask.note.trim()}
+                disabled={offline || !ask.note.trim()}
                 onClick={() => {
                   doMove(ask.id, "needs_owner", ask.note.trim());
                   setAsk(undefined);

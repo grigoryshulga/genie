@@ -121,6 +121,7 @@ function MoveMenu({ t, offline, onMove }: { t: TaskSummary; offline: boolean; on
     id: status,
     label: STATUS_NAME[status],
     hint: lane.statuses.length > 1 || lane.name !== STATUS_NAME[status] ? lane.name : undefined,
+    disabled: offline,
     onSelect: () => onMove(status),
   }));
   return (
@@ -158,7 +159,7 @@ export function BoardCard({ t, team, selected, showStatus, offline, onSelect, on
   onSelect: () => void;
   onMove: (status: Status) => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: t.id });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: t.id, disabled: offline });
   return (
     <div ref={setNodeRef} className={cx("g-sheet interactive bd-card", t.needsOwner && "bd-decision", selected && "selected", isDragging && "dragging")} data-status={t.status}>
       <button type="button" className="bd-main" onClick={onSelect} {...attributes} {...listeners} aria-pressed={selected} aria-roledescription="карточка задачи">

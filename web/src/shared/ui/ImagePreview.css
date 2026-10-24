@@ -18,6 +18,11 @@
 .imgprev-full { width: 100%; background: transparent; border-color: transparent; }
 .imgprev-full img { max-height: 62vh; margin: 0 auto; }
 
+/* A nested native dialog keeps the lightbox in the top layer above artifact viewers. */
+.g-dialog.lightbox-dialog { margin: 0; width: 100vw; height: 100dvh; }
+.lightbox-dialog::backdrop { background: transparent; }
+.lightbox-dialog > .g-modal { width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+
 /* ------------------------------------------------------------ lightbox */
 .lightbox {
   position: fixed;

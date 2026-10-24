@@ -121,7 +121,6 @@ export function TokensTab() {
             value={label}
             maxLength={80}
             onChange={(e) => setLabel(e.target.value)}
-            
           />
           <button className="g-btn secondary"  disabled={issue.isPending}>
             Выпустить токен

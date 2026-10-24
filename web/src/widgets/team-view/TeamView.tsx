@@ -7,7 +7,7 @@ import { StageBars, STAGES, stageOf, STATUS_NAME } from "@/entities/task";
 import { type LiveSession, type Mail, type MailLevel, MessageText, memberActivity, PartyAvatar, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
 import { useOnline } from "@/shared/api";
 import { clock, dayLabel, plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
-import { Button, Character, characterState, ErrorState, Icon, IconButton, Select, Segmented, Sheet, Skeleton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
+import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, Select, Segmented, Sheet, Skeleton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
 import { TeamScheme } from "./TeamScheme.tsx";
 import "./team-view-sheets.css";
 
@@ -128,7 +128,16 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   const team = q.data;
   const entries = useMemo(() => (team ? toEntries(team.mail) : []), [team]);
 
-  useEffect(() => setTo("all"), [teamId]);
+  useEffect(() => {
+    setTo("all");
+    setSheet(false);
+  }, [teamId]);
+  useEffect(() => {
+    const phone = window.matchMedia("(max-width: 900px)");
+    const closeOnDesktop = () => { if (!phone.matches) setSheet(false); };
+    phone.addEventListener("change", closeOnDesktop);
+    return () => phone.removeEventListener("change", closeOnDesktop);
+  }, []);
   // An interrupt stops one agent's step: not for a broadcast or the orchestrator.
   useEffect(() => {
     if (level === "interrupt" && (to === "all" || to === "orchestrator")) setLevel("high");
@@ -163,6 +172,42 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
 
   let lastDay = "";
   const levels = (["low", "normal", "high", "interrupt"] as MailLevel[]).filter((l) => l !== "interrupt" || (to !== "all" && to !== "orchestrator"));
+
+  const participants = (
+    <aside className="tv-aside" aria-label="Участники и журнал">
+      <div className="tv-aside-head">
+        <Character state={pose} size={44} />
+        <span>Участники</span>
+        <IconButton label="Закрыть" className="m-only" onClick={() => setSheet(false)}>
+          <Icon.close size={14} />
+        </IconButton>
+      </div>
+      {team.templateChanged && (
+        <div className="tv-note">
+          <b>Шаблон изменили после запуска</b>
+          <span>Команда работает по снимку, взятому при старте. Новые настройки роли участник получит после перезапуска.</span>
+        </div>
+      )}
+      <div className="tv-members">
+        {team.members.map((m) => (
+          <MemberCard key={m.name} team={team} member={m} live={live[keyOf(m.name)]} session={active ? team.sessions?.[m.name] : undefined} />
+        ))}
+      </div>
+      <h3 className="tv-cap">Журнал</h3>
+      <ol className="tv-events">
+        {[...team.log]
+          .filter((e) => e.event !== "mail" && !(e.event === "status" && e.status === "starting"))
+          .reverse()
+          .slice(0, 40)
+          .map((e, i) => (
+            <li key={i}>
+              <span className="tv-time">{clock(e.at)}</span>
+              <span>{(EVENT_TEXT[e.event] ?? (() => e.event))(e)}</span>
+            </li>
+          ))}
+      </ol>
+    </aside>
+  );
 
   return (
     <div className="task-team tv">
@@ -326,40 +371,7 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
         )}
       </section>
 
-      {sheet && <button type="button" className="g-scrim tv-scrim m-only" aria-label="Закрыть список участников" onClick={() => setSheet(false)} />}
-      <aside className={`tv-aside${sheet ? " open" : ""}`} aria-label="Участники и журнал">
-        <div className="tv-aside-head">
-          <Character state={pose} size={44} />
-          <span>Участники</span>
-          <IconButton label="Закрыть" className="m-only" onClick={() => setSheet(false)}>
-            <Icon.close size={14} />
-          </IconButton>
-        </div>
-        {team.templateChanged && (
-          <div className="tv-note">
-            <b>Шаблон изменили после запуска</b>
-            <span>Команда работает по снимку, взятому при старте. Новые настройки роли участник получит после перезапуска.</span>
-          </div>
-        )}
-        <div className="tv-members">
-          {team.members.map((m) => (
-            <MemberCard key={m.name} team={team} member={m} live={live[keyOf(m.name)]} session={active ? team.sessions?.[m.name] : undefined} />
-          ))}
-        </div>
-        <h3 className="tv-cap">Журнал</h3>
-        <ol className="tv-events">
-          {[...team.log]
-            .filter((e) => e.event !== "mail" && !(e.event === "status" && e.status === "starting"))
-            .reverse()
-            .slice(0, 40)
-            .map((e, i) => (
-              <li key={i}>
-                <span className="tv-time">{clock(e.at)}</span>
-                <span>{(EVENT_TEXT[e.event] ?? (() => e.event))(e)}</span>
-              </li>
-            ))}
-        </ol>
-      </aside>
+      {sheet ? <Dialog title="Участники и журнал" onClose={() => setSheet(false)} bare sheet className="tv-participants-dialog">{participants}</Dialog> : participants}
     </div>
   );
 }
