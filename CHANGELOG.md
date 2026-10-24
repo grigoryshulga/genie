@@ -2,6 +2,49 @@
 
 Notable changes by release. Versions follow [SemVer](https://semver.org/); entries use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Detailed implementation history remains in Git.
 
+## [0.6.0] — 2026-10-24
+
+### Added
+
+- Ink-and-paper web interface with dark `ink`, light `paper`, and system appearance preferences; self-hosted Unbounded, Manrope, and Geist Mono fonts; semantic design tokens; and shared accessible controls, menus, dialogs, loading, empty, and error states.
+- A top navigation bar, working-team dock, notification popup, command palette touch entry, and configurable project icons with monogram fallbacks. Redesigned task boards, task and epic pages, team chat, settings, statistics, authentication, and documentation use the same design system across desktop and phone layouts.
+- Workspace-environment foundations: host and rootless Podman runners, environment recipes and capability checks, snapshot inputs, harness bundles, lifecycle control, and garbage collection. Built-in recipes cover Node/npm, Python/uv, Rust/Cargo, JVM/Gradle, and custom setups. The controller is not yet connected to normal task dispatch; this is infrastructure for subsequent integration.
+- Observation plane, Phase 1: outcome cases for delivered tasks, versioned guardrail and hypothesis contracts, Prometheus- and Sentry-compatible sources, incidents, follow-up tasks, and deterministic conclusions. Includes CLI/MCP operations, HTTP APIs, task sections, and project source settings.
+- Task Intelligence and Factory Analytics: immutable task assessments, constrained team and model routing, mandatory independent checks, safety pauses, reassessment evidence, and project analytics. Assessment policy is disabled by default and configured by a human project administrator.
+- Optional GitHub and Google sign-in using authorization code flow with PKCE. Providers require deployment configuration; existing password sign-in remains available.
+- Documentation spaces with tree navigation, a reader and visual editor, search, and fullscreen editing; an updated documentation site, brand assets, and design-system specimen.
+- Browser flow, screenshot, keyboard, contrast, focus, and reduced-motion checks, plus a disposable route-capture harness. These checks cover the documented rules, rather than full WCAG conformance.
+
+### Changed
+
+- Task previews open in centered dialogs with compact properties and team details; board cards and lanes use denser layouts with horizontal scrolling where needed.
+- Screen styles live with their owning components and reference semantic `--g-` tokens. The exported token library and documentation palette match the two application themes.
+- Rust CI uses pinned Pi-Bolt and nextest with controlled test clocks and leaner fixtures to reduce avoidable waits while retaining integration coverage.
+- Local fixed-candidate previews support explicit readiness, isolated review data, and named Tailscale service routing.
+
+### Fixed
+
+- Enlarged image artifacts remain interactive inside native dialogs, and the phone participants sheet traps and restores keyboard focus.
+- Losing connectivity cancels active and pending pointer, touch, and keyboard drags without closing unrelated dialogs; offline moves and confirmations cannot submit stale changes after reconnection.
+- Keyboard navigation, nested Escape handling, focus visibility, mobile navigation, notification menus, decision-card drag previews, and long project names across the redesigned screens.
+- Podman readiness and watchdog tests synchronize on observable state instead of timing assumptions.
+
+### Removed
+
+- Legacy accent selections, compatibility token aliases, obsolete UI class names, unused sidebar layouts, the Geist body font, and the unused board headline model. Geist Mono remains for code and numeric metadata.
+
+### Upgrade notes
+
+- Back up the complete server data and project tracker data before upgrading from 0.5.1. This release uses tracker schema 8 and server schema 10; startup applies additive migrations. Older binaries reject newer schemas, so a rollback requires restoring a compatible backup together with the older image.
+- Social sign-in stays disabled until provider credentials and an appropriate public HTTPS URL are configured. Rootless Podman environments require a working rootless runtime and compatible host resource controls; unsupported capabilities are rejected rather than silently downgraded.
+
+## [0.5.1] — 2026-10-17
+
+### Changed
+
+- Releases now flow from protected `dev` to protected `main` through pull requests. Main release PRs validate aligned Cargo/npm versions and changelog entries; merges publish a GitHub Release and tag. Docker images publish only from pushes to `main`.
+- Feature branches merged into `dev` are automatically deleted after the merge.
+
 ## [0.5.0] — 2026-10-17
 
 ### Added
@@ -27,30 +70,6 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 
 - The `pi-mcp-adapter` path; pi's built-in MCP integration is used instead.
 - Unused npm/Cargo dependencies and obsolete lock/name-selection helpers.
-
-## Unreleased
-
-### Added
-
-- Ink-and-paper redesign of the web interface: a two-theme design system (`ink` default, `paper` light, plus a system preference) with semantic `--g-` tokens, self-hosted Unbounded/Manrope/Geist Mono, and a shared kit of `g-*` primitives (buttons, fields, tabs, menus, dialogs, tags, banners, empty and error states) that carry keyboard and focus behaviour. Dense 32 px controls cover lists and toolbars; 40 px controls are the default.
-- Project icons, a rebuilt task board, new task and documentation pages, and redesigned observation pages, all on the new system.
-- Observation plane, Phase 1: outcome cases that watch delivered tasks with guardrails or hypothesis checks, versioned contracts, Prometheus- and Sentry-compatible sources, guardrail incidents, follow-up tasks, and deterministic conclusions. Includes `genie observe` CLI and MCP operations, HTTP routes, journal events, web pages and a task section, project settings for sources, the project manager's observation guidance, and additive tracker schema 8 and server schema 7.
-
-### Changed
-
-- Web styles name semantic design tokens only (`--g-bg`, `--g-surface`, `--g-text`, `--g-accent`, `--g-signal`, `--g-danger`, `--g-viz-*`), so every screen renders correctly in both themes. The documentation site mirrors the same palette.
-- `design-system/tokens.json` is generated from the two themes instead of the twelve earlier accent combinations, and the design-system specimen renders the real kit.
-
-### Removed
-
-- The GNE-25 design tokens, their compatibility aliases, the six accent choices, the legacy `btn`/`icon-btn`/`seg`/`pill`/`field` class names, unused sidebar and layout rules, and the Geist body font. Geist Mono remains for identifiers, code, and numeric metadata.
-
-## [0.5.1] — 2026-10-17
-
-### Changed
-
-- Releases now flow from protected `dev` to protected `main` through pull requests. Main release PRs validate aligned Cargo/npm versions and changelog entries; merges publish a GitHub Release and tag. Docker images publish only from pushes to `main`.
-- Feature branches merged into `dev` are automatically deleted after the merge.
 
 ## [0.4.0] — 2026-10-04
 
@@ -130,6 +149,7 @@ Initial release as a local pi extension.
 - The original web server had no account authentication and was intended for localhost or a trusted tailnet.
 - This extension architecture has since been replaced by the standalone server.
 
+[0.6.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.6.0
 [0.5.1]: https://github.com/grigoryshulga/genie/releases/tag/v0.5.1
 [0.5.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.5.0
 [0.4.0]: https://github.com/grigoryshulga/genie/releases/tag/v0.4.0
