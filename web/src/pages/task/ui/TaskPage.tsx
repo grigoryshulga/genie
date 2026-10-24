@@ -4,7 +4,7 @@ import { useTeamMap } from "@/entities/team";
 import { TeamView } from "@/widgets/team-view";
 import { TaskDetail, type TaskTab } from "@/widgets/task-detail";
 
-/** `/task/:taskId/:tab?`: a task on its own page, with its description and its team as tabs. */
+/** `/task/:taskId/:tab?`: a task on its own page; `team` opens the team from the rail. */
 export function TaskPage() {
   const { taskId = "", tab } = useParams();
   const navigate = useNavigate();

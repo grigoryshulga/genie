@@ -34,14 +34,26 @@ async fn rig(kind: &'static str, policy: Value) -> Rig {
 }
 
 async fn rig_with(kind: &'static str, policy: Value, cfg: impl FnOnce(&mut genie::config::Config)) -> Rig {
+    rig_with_clock(kind, policy, cfg, std::sync::Arc::new(genie::clock::SystemClock)).await
+}
+
+async fn rig_with_clock(
+    kind: &'static str,
+    policy: Value,
+    cfg: impl FnOnce(&mut genie::config::Config),
+    clock: std::sync::Arc<dyn genie::clock::Clock>,
+) -> Rig {
     // Keep the port bound during setup; releasing a probe listener lets another
     // parallel test claim it before this server starts.
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let h = Harness::with_config(|c| {
-        c.port = port;
-        cfg(c);
-    });
+    let h = Harness::with_clock(
+        |c| {
+            c.port = port;
+            cfg(c);
+        },
+        clock,
+    );
     let hosts = h.dir.path().join("hosts");
     std::fs::create_dir_all(&hosts).unwrap();
     upstream(&hosts, "acme/api", &[("README.md", "api\n")]);
@@ -153,6 +165,21 @@ fn commit_and_push(t: &Team) -> String {
 
 fn row(r: &Rig, task: &str) -> genie_core::repos::TaskRepo {
     r.h.app.with_server(|db| db.task_repo("shop", task, "api")).unwrap().unwrap()
+}
+
+fn expire_pending_checks(r: &Rig, task: &str) {
+    // The watch uses persisted wall-clock time, so age its fixture instead of sleeping.
+    assert_eq!(row(r, task).ci_state, Some(CheckState::Pending));
+    let changed =
+        r.h.app
+            .with_server(|db| {
+                Ok(db.conn().execute(
+                    "UPDATE task_repos SET ci_since = ?1 WHERE project = ?2 AND task = ?3 AND repo = ?4",
+                    rusqlite::params!["2020-01-01T00:00:00Z", "shop", task, "api"],
+                )?)
+            })
+            .unwrap();
+    assert_eq!(changed, 1);
 }
 
 fn journal(r: &Rig, kind: &str) -> Vec<genie_core::Event> {
@@ -520,7 +547,8 @@ async fn a_failed_github_check_reaches_the_team_with_its_name_link_and_summary()
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn review_is_closed_when_the_checks_failed() {
     each_provider(async |kind| {
-        let r = rig(kind, json!({})).await;
+        let clock = std::sync::Arc::new(ManualClock::default());
+        let r = rig_with_clock(kind, json!({}), |_| {}, clock.clone()).await;
         let t = team(&r, "Add a feature").await;
         let id = t.task.clone();
         assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
@@ -549,7 +577,7 @@ async fn review_is_closed_when_the_checks_failed() {
         genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
         assert_eq!(row(&r, &id).ci_state, Some(CheckState::Failed));
         r.fake.lock().broken = 5;
-        let (s, b) = status(&r, &id, &t.executor, "review").await;
+        let (s, b) = clock.run(status(&r, &id, &t.executor, "review")).await;
         assert_eq!(s, StatusCode::CONFLICT, "{kind}: the recorded state is used when the host is down: {b}");
 
         // A person is not held to it: their moves are authoritative.
@@ -671,7 +699,7 @@ async fn checks_pending_too_long_are_reported_once() {
     assert!(journal(&r, "ci.stalled").is_empty());
 
     // Longer than `ciPendingSecs`: one event, one letter, and the state stops pretending.
-    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    expire_pending_checks(&r, &id);
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     let stalled = row(&r, &id);
     assert_eq!(stalled.ci_state, Some(CheckState::Stalled));
@@ -712,7 +740,8 @@ fn unarm(r: &Rig, task: &str, head_sha: Option<&str>, ci_state: &str) {
 /// without a push through the proxy must not leave the gate and the watcher on different commits.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_delivery_from_before_the_watch_does_not_slip_past_a_failed_check() {
-    let r = rig("github", json!({})).await;
+    let clock = std::sync::Arc::new(ManualClock::default());
+    let r = rig_with_clock("github", json!({}), |_| {}, clock.clone()).await;
     let t = team(&r, "An old delivery").await;
     let id = t.task.clone();
     assert_eq!(status(&r, &id, &t.executor, "in_progress").await.0, StatusCode::OK);
@@ -724,7 +753,7 @@ async fn a_delivery_from_before_the_watch_does_not_slip_past_a_failed_check() {
     // (a) Nothing watched, `head_sha` and the failure recorded, the host down: the state decides.
     unarm(&r, &id, Some(&watched), "failed");
     r.fake.lock().broken = 5;
-    let (s, b) = status(&r, &id, &t.executor, "review").await;
+    let (s, b) = clock.run(status(&r, &id, &t.executor, "review")).await;
     assert_eq!(s, StatusCode::CONFLICT, "the recorded state decides when the host is down: {b}");
     assert!(b["error"].as_str().unwrap().contains("checks"), "{b}");
     r.fake.lock().broken = 0;
@@ -899,7 +928,7 @@ async fn a_rerun_needs_a_failed_check_and_a_watched_commit() {
     // them on the host, and a rerun is refused (nothing may restart a run nobody is waiting for).
     r.fake.lock().ci = "pending".into();
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    expire_pending_checks(&r, &id);
     genie::git::delivery::watch_one(&r.h.app, &row(&r, &id)).await.unwrap();
     assert_eq!(row(&r, &id).ci_state, Some(CheckState::Stalled));
     let (s, b) = rerun(&r, &id, &t.executor).await;

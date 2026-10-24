@@ -109,6 +109,8 @@ pub struct Live {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_tokens: Option<u64>,
     #[serde(skip)]
+    clock: Arc<dyn crate::clock::Clock>,
+    #[serde(skip)]
     last_event: Instant,
     #[serde(skip)]
     state_at: Instant,
@@ -132,7 +134,7 @@ pub struct Live {
 }
 
 impl Live {
-    fn new(pid: u32) -> Live {
+    fn new(pid: u32, clock: Arc<dyn crate::clock::Clock>) -> Live {
         let t = now();
         Live {
             state: "starting".into(),
@@ -147,8 +149,9 @@ impl Live {
             failures: 0,
             last_error: None,
             context_tokens: None,
-            last_event: Instant::now(),
-            state_at: Instant::now(),
+            last_event: clock.now(),
+            state_at: clock.now(),
+            clock,
             nudged: None,
             interrupting: false,
             stall_abort: None,
@@ -163,7 +166,7 @@ impl Live {
         if self.state != state {
             self.state = state.into();
             self.since = now();
-            self.state_at = Instant::now();
+            self.state_at = self.clock.now();
         }
     }
     fn note(&mut self, line: String) {
@@ -223,9 +226,9 @@ impl Session {
     }
     /// Wake an idle session: the extension takes the pending mail.
     fn nudge(&self) {
-        let again = self.with_live(|l| l.nudged.is_none_or(|t| t.elapsed() >= NUDGE_AGAIN));
+        let again = self.with_live(|l| l.nudged.is_none_or(|t| l.clock.now().saturating_duration_since(t) >= NUDGE_AGAIN));
         if again && self.send(json!({ "type": "prompt", "message": "/genie-mail" })) {
-            self.with_live(|l| l.nudged = Some(Instant::now()));
+            self.with_live(|l| l.nudged = Some(l.clock.now()));
         }
     }
     /// Stop the running step (and a running shell command).
@@ -396,7 +399,9 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) -> Option<Duration> {
     let live = app.sessions.all();
     if live.len() >= app.cfg.runtime.max_sessions.max(1) {
         // Make room: stop the session idle the longest; this agent starts on a later pass.
-        if let Some(oldest) = live.iter().filter(|s| s.is("idle")).max_by_key(|s| s.with_live(|l| l.state_at.elapsed())) {
+        if let Some(oldest) =
+            live.iter().filter(|s| s.is("idle")).max_by_key(|s| s.with_live(|l| l.clock.now().saturating_duration_since(l.state_at)))
+        {
             oldest.stop("making room for another agent");
         }
         return None;
@@ -461,7 +466,7 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
         stdin: Mutex::new(Some(tx)),
         replies: Mutex::new(HashMap::new()),
         seq: AtomicU64::new(1),
-        live: Mutex::new(Live::new(pid)),
+        live: Mutex::new(Live::new(pid, app.clock.clone())),
         dir: dir.clone(),
     });
     s.with_live(|l| l.note(format!("▶ session started (pid {pid})")));
@@ -527,7 +532,7 @@ fn args_summary(args: &Value) -> String {
 
 async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
     let kind = e["type"].as_str().unwrap_or_default();
-    s.with_live(|l| l.last_event = Instant::now());
+    s.with_live(|l| l.last_event = l.clock.now());
     // Full settled messages and tool results, independent of the bounded live
     // preview and of the team's disposable workspace. Never archive token deltas.
     if matches!(kind, "message_end" | "tool_execution_end" | "agent_end")
@@ -613,7 +618,7 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
             let signature = format!("{name} {}", e["args"]);
             let looping = s.with_live(|l| {
                 l.tool = Some(json!({ "name": name, "args": args, "since": now() }));
-                l.tool_at = Some(Instant::now());
+                l.tool_at = Some(l.clock.now());
                 l.note(format!("▶ {name}: {args}"));
                 if l.repeat.0 == signature {
                     l.repeat.1 += 1;
@@ -635,7 +640,11 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
             let name = e["toolName"].as_str().unwrap_or("tool").to_string();
             let failed = e["isError"] == true;
             s.with_live(|l| {
-                let took = l.tool_at.take().map(|t| format!(" · {:.1}s", t.elapsed().as_secs_f32())).unwrap_or_default();
+                let took = l
+                    .tool_at
+                    .take()
+                    .map(|t| format!(" · {:.1}s", l.clock.now().saturating_duration_since(t).as_secs_f32()))
+                    .unwrap_or_default();
                 l.tool = None;
                 l.note(format!("{} {name}{took}", if failed { "✗" } else { "✓" }));
             });
@@ -710,12 +719,14 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
             s.send(json!({ "type": "prompt", "message": "[genie] Your step was interrupted: act on the INTERRUPT message above." }));
         }
     }
-    if let Some(v) = verdict.filter(|v| v.failures > 0 && !v.gave_up) {
+    if verdict.is_some_and(|v| v.failures > 0 && !v.gave_up) {
         // The mail of the failed run is in the conversation already: ask it to go on.
+        let retry_at = app.clock.now() + app.attempts.wait_for(&s.key).unwrap_or_default();
+        let app = app.clone();
         let s = s.clone();
         let error = s.with_live(|l| l.last_error.clone()).unwrap_or_default();
         tokio::spawn(async move {
-            tokio::time::sleep(v.retry_in).await;
+            app.clock.sleep_until(retry_at).await;
             if s.is("idle") {
                 s.send(json!({
                     "type": "prompt",
@@ -760,9 +771,10 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
         .await;
     if let Some(v) = verdict.ok().filter(|v| v.failures > 0) {
         // Wake the scheduler when the agent may start again, not at its next periodic pass.
+        let retry_at = app.clock.now() + v.retry_in + Duration::from_millis(50);
         let app = app.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(v.retry_in + Duration::from_millis(50)).await;
+            app.clock.sleep_until(retry_at).await;
             app.wake_runtime.notify_one();
         });
     }
@@ -844,8 +856,14 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
     let idle_stop = Duration::from_secs(app.cfg.runtime.idle_stop_secs.max(1));
     let stall = Duration::from_secs(app.cfg.runtime.turn_timeout_secs.max(1));
     for s in app.sessions.all() {
-        let (state, idle_for, silent_for, stall_abort) =
-            s.with_live(|l| (l.state.clone(), l.state_at.elapsed(), l.last_event.elapsed(), l.stall_abort));
+        let (state, idle_for, silent_for, stall_abort) = s.with_live(|l| {
+            (
+                l.state.clone(),
+                l.clock.now().saturating_duration_since(l.state_at),
+                l.clock.now().saturating_duration_since(l.last_event),
+                l.stall_abort,
+            )
+        });
         if state == "idle" && idle_for >= idle_stop {
             s.stop("idle");
             continue;
@@ -854,17 +872,18 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
         match (state.as_str(), stall_abort) {
             ("idle", _) => next.within(idle_stop - idle_for + Duration::from_millis(50)),
             ("working", None) => next.within(stall.saturating_sub(silent_for) + Duration::from_millis(50)),
-            ("working", Some(at)) => next.within(Duration::from_secs(60).saturating_sub(at.elapsed()) + Duration::from_millis(50)),
+            ("working", Some(at)) => next
+                .within(Duration::from_secs(60).saturating_sub(app.clock.now().saturating_duration_since(at)) + Duration::from_millis(50)),
             _ => {}
         }
         if state == "working" && silent_for >= stall {
             match stall_abort {
                 None => {
-                    s.with_live(|l| l.stall_abort = Some(Instant::now()));
+                    s.with_live(|l| l.stall_abort = Some(l.clock.now()));
                     s.abort("no sign of life");
                     watchdog(app, &s, &format!("showed no sign of life for {}s; its step was aborted", stall.as_secs())).await;
                 }
-                Some(at) if at.elapsed() >= Duration::from_secs(60) => {
+                Some(at) if app.clock.now().saturating_duration_since(at) >= Duration::from_secs(60) => {
                     s.with_live(|l| l.note("■ killed: the abort did not stop it".into()));
                     kill(s.pid, "-KILL");
                 }

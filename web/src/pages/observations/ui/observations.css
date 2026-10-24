@@ -1,0 +1,88 @@
+/* Observation pages (docs/platform/observation-plane.md §17): the case list and one case.
+   Tables use the shared `ag-table`; colours come from the global tokens in app/styles.css.
+   The classes here are prefixed `obs-`. */
+
+.obs-topbar { height: auto; min-height: 56px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+.obs-body { display: flex; flex-direction: column; gap: 24px; padding: 24px 40px 48px; box-sizing: border-box; min-height: 0; }
+.obs-body .empty { padding: 48px 20px; }
+.obs-error { margin: 0; color: var(--g-danger); font-size: var(--g-text-dense); line-height: 1.5; }
+.obs-note { margin: 0; font-size: 12px; color: var(--g-text-muted); }
+.obs-status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.obs-tasks { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }
+.obs-tasks a { font: 12px var(--g-font-mono); color: var(--g-text-2); text-decoration: none; }
+.obs-tasks a:hover { color: var(--g-text); text-decoration: underline; }
+.obs-table-cell-link { color: var(--g-text); text-decoration: none; }
+.obs-table-cell-link:hover { text-decoration: underline; }
+.obs-open { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--g-signal-soft); border: 1px solid color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); color: var(--g-signal-text); font-variant-numeric: tabular-nums; }
+
+/* Header of a case */
+.obs-head { display: flex; flex-direction: column; gap: 16px; }
+.obs-title { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.obs-title h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; overflow-wrap: anywhere; }
+.obs-facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 24px; }
+.obs-facts > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.obs-facts > div.wide { grid-column: 1 / -1; }
+.obs-facts dt { font-size: 12px; color: var(--g-text-muted); }
+.obs-facts dd { margin: 0; color: var(--g-text-2); line-height: 1.5; overflow-wrap: anywhere; }
+
+/* Warnings: a collection that keeps failing, and the reasons arming is refused */
+.obs-warn { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); border-radius: var(--g-radius-md); background: var(--g-signal-soft); color: var(--g-text-2); font-size: var(--g-text-dense); line-height: 1.5; }
+.obs-warn b { font-weight: 600; color: var(--g-signal-text); }
+.obs-warn ul { margin: 0; padding-left: 18px; }
+.obs-warn .mono { overflow-wrap: anywhere; color: var(--g-signal-text); }
+
+/* Sections of a case */
+.obs-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.obs-section-head { display: flex; align-items: center; gap: 10px; min-height: 28px; flex-wrap: wrap; }
+.obs-section-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--g-text-2); }
+.obs-section-head .n { font-size: 12px; color: var(--g-text-muted); }
+.obs-section-head .g-btn { margin-left: auto; }
+.obs-section details { font-size: var(--g-text-dense); color: var(--g-text-2); }
+.obs-section summary { cursor: pointer; color: var(--g-text-muted); padding: 2px 0; }
+.obs-section summary:hover { color: var(--g-text); }
+.obs-code { margin: 8px 0 0; padding: 12px 14px; max-height: 420px; overflow: auto; border: 1px solid var(--g-border); border-radius: var(--g-radius-sm); background: var(--g-surface); color: var(--g-text-2); font: 12px/1.55 var(--g-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ag-table td .obs-error { font-size: 12px; }
+
+/* Lists: contract history, follow-ups, incidents, evaluations */
+.obs-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: var(--g-text-dense); color: var(--g-text-2); }
+.obs-list > li { line-height: 1.5; overflow-wrap: anywhere; }
+.obs-eval, .obs-incident { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--g-border); border-radius: var(--g-radius-md); }
+.obs-incident.open { border-color: color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); }
+.obs-eval-head, .obs-incident-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: var(--g-text-dense); }
+.obs-eval p, .obs-incident p { margin: 0; line-height: 1.5; color: var(--g-text-2); overflow-wrap: anywhere; }
+.obs-criteria { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: var(--g-text-dense); color: var(--g-text-2); line-height: 1.5; }
+.obs-criteria .mono { color: var(--g-text); }
+.obs-badge { font-size: var(--g-text-caption); line-height: var(--g-space-5); padding: 0 var(--g-space-2); border-radius: var(--g-radius-pill); background: var(--g-surface); color: var(--g-text-2); }
+.obs-badge.open { background: var(--g-signal-soft); color: var(--g-signal-text); }
+.obs-badge.resolved { color: var(--g-accent-text); }
+.obs-badge.dismissed { color: var(--g-text-muted); }
+.obs-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Forms: a grid of fields, with the buttons on their own row */
+.obs-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 16px; align-items: end; min-width: 0; }
+.obs-form .wide { grid-column: 1 / -1; }
+.obs-form textarea { min-height: 60px; }
+.obs-form textarea.obs-mono { min-height: 240px; font: 12px/1.5 var(--g-font-mono); }
+.obs-form-actions { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.obs-form-actions .obs-error { flex-basis: 100%; }
+.obs-form .g-label { font-size: 12px; font-weight: 500; color: var(--g-text-muted); }
+.obs-form textarea { height: auto; padding: 9px 12px; resize: vertical; line-height: 1.5; }
+
+/* Dialogs: the form is the modal's only child, so it lays out the header, body and footer */
+.obs-dialog { display: flex; flex-direction: column; min-height: 0; }
+.obs-dialog .mb { min-height: 0; }
+.obs-dialog .muted { margin: 0; line-height: 1.5; }
+.obs-tasks-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.obs-tasks-field legend { padding: 0; margin-bottom: 2px; font-size: 12px; color: var(--g-text-muted); }
+.obs-tasks-field .muted { margin: 0; font-size: var(--g-text-dense); }
+.obs-chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.obs-chips li { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 10px; border: 1px solid var(--g-border-strong); border-radius: 999px; font-size: 12px; color: var(--g-text-2); }
+.obs-add { display: flex; gap: 8px; }
+.obs-add input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-surface); color: var(--g-text); }
+.obs-add input:focus { border-color: var(--g-accent); }
+
+@media (max-width: 900px) {
+  .obs-body { padding: 16px; }
+  .obs-facts { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .obs-form { grid-template-columns: minmax(0, 1fr); }
+}

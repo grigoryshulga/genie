@@ -1,6 +1,7 @@
 import { useDecisionSettings } from "@/entities/decision";
 import { useSession } from "@/entities/session";
 import { Link } from "react-router";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 export function SystemOneSettings() {
   const slug = useSession().data?.project ?? "";
@@ -26,13 +27,13 @@ export function SystemOneSettings() {
                 Провайдер ключа: <code>{data.keyProvider}</code>
                 {data.serverKey ? " · ключ из окружения сервера" : " · общий ключ провайдера"}
               </p>
-              <Link className="btn" to="/manage/server/providers">
+              <Link className="g-btn secondary" to="/manage/server/providers">
                 Настроить ключ провайдера
               </Link>
-              <p className="muted">Адрес API, модель и включение сервиса задаются в секции decisions файла config.json сервера.</p>
+              <p className="g-muted">Адрес API, модель и включение сервиса задаются в секции decisions файла config.json сервера.</p>
             </>
           ) : (
-            <p role="status">{query.error?.message ?? "Загрузка…"}</p>
+            query.error ? <p role="status">{query.error.message}</p> : <SettingsLoading />
           )}
         </div>
       </section>

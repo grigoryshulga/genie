@@ -1,0 +1,23 @@
+/* ------------------------------------------------------------ mobile */
+.m-only { display: none; }
+@media (max-width: 900px) {
+  body { overflow: auto; }
+  .app, .app.with-detail, .app.team-view { grid-template-columns: 1fr; height: auto; min-height: 100vh; grid-template-rows: auto; }
+  .app > .g-topbar { position: sticky; top: 0; padding: 0 var(--g-space-3); }
+  .app.with-detail .main { display: none; }
+  .m-only { display: flex; }
+  .d-only { display: none !important; }
+  .main { border-right: 0; }
+  .topbar { height: auto; padding: 14px var(--g-space-4) var(--g-space-2); flex-wrap: wrap; }
+  .search { width: 100%; order: 5; }
+  .row { grid-template-columns: minmax(0, 1fr) auto; height: auto; min-height: 56px; padding: var(--g-space-2) var(--g-space-4); }
+  .row .id, .row .prio, .row .labels, .row .when { display: none; }
+  .row .title { white-space: normal; }
+  .board { padding: var(--g-space-3) var(--g-space-4); }
+  .detail-body { padding: var(--g-space-4); }
+  .props { grid-template-columns: 100px minmax(0, 1fr); }
+  .props .wide { grid-column: span 1; }
+  .artifacts { grid-template-columns: 1fr; }
+  .chat, .team-title, .team-scheme { padding-left: 16px; padding-right: 16px; }
+  .g-icon-btn, .g-btn, .g-seg button { min-height: var(--g-control); }
+}

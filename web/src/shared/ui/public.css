@@ -1,0 +1,378 @@
+/* ------------------------------------------------------------ public surfaces
+   The pages outside the shell: signing in, joining, the first project, and the answer link.
+   AuthLayout (web/src/pages/auth/ui/AuthLayout.tsx) draws the slogan, the arcs motif and the
+   character; the rules here place them. Tokens only, both themes, phone first. */
+
+/* The page-level loader and the first-project page still use this column (pages/settings).
+   They sit on the same ink backdrop as the sign-in surface so the first screen of a server reads as one place. */
+.auth-page {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--g-space-8) var(--g-space-5);
+  background: var(--g-ink);
+  color: var(--g-paper);
+  overflow-y: auto;
+}
+
+.auth-card {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-5);
+}
+
+.auth-page .auth-card {
+  padding: var(--g-space-6);
+  border: 1px solid var(--g-n-800);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface);
+  color: var(--g-text);
+}
+
+.auth-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-3);
+}
+
+.auth-head h1 {
+  margin: 0;
+  font: 700 var(--g-text-h2) / 1.12 var(--g-font-display);
+  letter-spacing: -0.02em;
+  color: var(--g-text);
+}
+
+.auth-sub {
+  margin: 0;
+  color: var(--g-text-2);
+  font-size: var(--g-text-body);
+  line-height: 1.55;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-4);
+}
+
+.auth-foot {
+  margin: 0;
+  color: var(--g-text-muted);
+  font-size: var(--g-text-caption);
+  line-height: 1.5;
+}
+
+.auth-error {
+  color: var(--g-danger-text);
+  font-size: var(--g-text-dense);
+}
+
+/* Signing in, joining: the brand column on the left, the form card on the right. */
+.auth-surface {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 40%);
+  background: var(--g-bg);
+  color: var(--g-text);
+}
+
+.auth-brand {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-6);
+  padding: clamp(24px, 4vw, 56px);
+  background: var(--g-ink);
+  color: var(--g-paper);
+  border-right: 1px solid var(--g-n-800);
+}
+
+.auth-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 1px solid var(--g-n-700);
+  border-radius: var(--g-radius-md);
+  background: var(--g-n-900);
+  color: var(--g-paper);
+}
+
+.auth-slogan-block {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-6);
+  flex: 1;
+  min-height: 0;
+}
+
+.auth-slogan {
+  margin: 0;
+  max-width: 12ch;
+  font: 900 var(--g-text-display-xl) / 0.96 var(--g-font-display);
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  color: var(--g-paper);
+}
+
+.auth-pitch {
+  margin: 0;
+  max-width: 32ch;
+  color: var(--g-n-300);
+  font-size: var(--g-text-body-lg);
+  line-height: 1.5;
+}
+
+/* The arcs motif: quarter rings anchored to the corner, cropped by two edges, never behind text. */
+.auth-arcs {
+  position: absolute;
+  right: -16%;
+  bottom: -16%;
+  width: clamp(260px, 52%, 560px);
+  aspect-ratio: 1;
+  pointer-events: none;
+}
+
+.auth-arc-outer,
+.auth-arc-core {
+  fill: var(--g-accent);
+}
+
+.auth-arc-inner {
+  fill: var(--g-signal);
+}
+
+.auth-brand .g-character {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+.auth-side {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: clamp(20px, 4vw, 48px);
+}
+
+.auth-side .auth-card {
+  width: min(420px, 100%);
+  padding: var(--g-space-6);
+  border: 1px solid var(--g-border);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface);
+}
+
+.auth-title {
+  margin: 0;
+  font: 700 var(--g-text-h3) / 1.2 var(--g-font-sans);
+  letter-spacing: -0.01em;
+  color: var(--g-text);
+}
+
+.auth-or {
+  margin: 0;
+  text-align: center;
+  color: var(--g-text-muted);
+  font-size: var(--g-text-caption);
+  text-transform: lowercase;
+}
+
+@media (max-width: 900px) {
+  .auth-surface {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .auth-brand {
+    padding: var(--g-space-6) var(--g-space-5) var(--g-space-8);
+    border-right: 0;
+    border-bottom: 1px solid var(--g-n-800);
+  }
+
+  .auth-slogan {
+    max-width: 16ch;
+  }
+
+  .auth-brand .g-character {
+    display: none;
+  }
+
+  .auth-arcs {
+    right: -28%;
+    bottom: -34%;
+    width: clamp(200px, 54%, 340px);
+  }
+
+  .auth-side .auth-card {
+    width: min(520px, 100%);
+  }
+}
+
+/* ------------------------------------------------------------ answer link
+   The one page outside the shell that carries a form: a brand moment, then one sheet per question. */
+
+.answer-page {
+  min-height: 100svh;
+  display: flex;
+  justify-content: center;
+  padding: clamp(24px, 5vw, 64px) var(--g-space-5);
+  background: var(--g-bg);
+  color: var(--g-text);
+}
+
+.answer-body {
+  width: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-6);
+}
+
+.answer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--g-space-4);
+}
+
+.answer-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.answer-head h1 {
+  margin: 0;
+  font: 700 var(--g-text-h1) / 1.02 var(--g-font-display);
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.answer-ctx {
+  color: var(--g-text-muted);
+  font-size: var(--g-text-dense);
+}
+
+.answer-lead {
+  margin: 0;
+  color: var(--g-text-2);
+  font-size: var(--g-text-body-lg);
+  line-height: 1.55;
+}
+
+.answer-head .g-character {
+  flex: none;
+}
+
+.answer-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-4);
+}
+
+.answer-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--g-space-3);
+  padding: var(--g-space-8) 0;
+  color: var(--g-text-muted);
+}
+
+.answer-done {
+  margin: 0;
+  font-size: var(--g-text-body-lg);
+  line-height: 1.55;
+  color: var(--g-text-2);
+  max-width: 46ch;
+}
+
+.answer-options > .g-textarea,
+.answer-options > textarea {
+  margin-top: var(--g-space-2);
+}
+
+/* The sheet flips ink↔paper by theme, so the controls inside it follow the sheet's own text
+   colour instead of the page surface: a dark field on a paper sheet reads as "not editable". */
+.answer-options > textarea {
+  background: transparent;
+  border-color: var(--g-control-border);
+  color: var(--sh-t);
+}
+
+.answer-options > textarea::placeholder {
+  color: var(--sh-t2);
+}
+
+.answer-options .g-radio input {
+  background: transparent;
+}
+
+.answer-question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-3);
+}
+
+.answer-legend {
+  margin: 0;
+  font: 600 var(--g-text-h4) / 1.35 var(--g-font-sans);
+  letter-spacing: -0.01em;
+}
+
+.answer-num {
+  color: var(--g-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.answer-why {
+  color: var(--g-text-muted);
+  font-size: var(--g-text-dense);
+  line-height: 1.5;
+}
+
+.answer-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-2);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.answer-answered {
+  display: flex;
+  align-items: center;
+  gap: var(--g-space-2);
+  color: var(--g-accent-soft-text);
+  font-size: var(--g-text-dense);
+}
+
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--g-space-3);
+}
+
+.answer-note {
+  color: var(--g-text-muted);
+  font-size: var(--g-text-caption);
+}
+
+@media (max-width: 640px) {
+  .answer-head .g-character {
+    width: 96px;
+    height: auto;
+  }
+
+  .answer-head h1 {
+    font-size: var(--g-text-h2);
+  }
+}

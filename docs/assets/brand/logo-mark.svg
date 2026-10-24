@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 40 560 570" fill="none">
+  <title>Genie</title>
+  <desc>Genie g mark: green stroked g with an orange arc.</desc>
+  <g fill="none" stroke="#008f6b" stroke-width="70">
+    <circle cx="314" cy="229" r="136"/>
+    <path d="M456 154L580 103" stroke-width="56"/>
+    <rect x="92" y="418" width="390" height="144" rx="72" stroke-width="76"/>
+    <path d="M190 278C130 268 98 320 112 372C116 390 118 400 120 418" stroke-width="66"/>
+  </g>
+  <path d="M253 233A62 62 0 0 1 377 233" fill="none" stroke="#ff873c" stroke-width="40"/>
+</svg>

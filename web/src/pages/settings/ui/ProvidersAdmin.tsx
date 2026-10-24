@@ -31,7 +31,7 @@ export function ProvidersAdminSection() {
     const value = values[p.id] ?? "";
     return (
       <form
-        className="st-card"
+        className="st-card provider-card"
         key={p.id}
         onSubmit={(e) => {
           e.preventDefault();
@@ -39,20 +39,13 @@ export function ProvidersAdminSection() {
         }}
       >
         <div className="st-row">
-          <div className="lbl">
-            <b>{p.title}</b>
-            <span>
-              {p.strict
-                ? "Прокси этого сервера. Агенты на моделях litellm/… людей без своего ключа запускаются на нём; ждущие агенты стартуют сразу после сохранения."
-                : `Провайдер pi: агенты на моделях этого провайдера (${p.id}/…) людей без своего ключа получают его в переменной ${p.keyVar} — поверх серверного окружения.`}
-            </span>
-          </div>
+          <div className="lbl"><b>{p.title}</b></div>
         </div>
         {key && (
           <div className="st-row">
             <div className="lbl">
               <b>Сейчас</b>
-              <span>Ключ хранится на сервере в зашифрованном виде и больше не показывается.</span>
+              <span>Хранится на сервере в зашифрованном виде.</span>
             </div>
             <div className="ctl" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
               {key.unreadable ? (
@@ -64,7 +57,7 @@ export function ProvidersAdminSection() {
               )}
               <button
                 type="button"
-                className="btn ghost"
+                className="g-btn ghost"
                 onClick={() => void act(() => request("DELETE", `/api/llm-keys/${p.id}`), `Ключ ${p.title} удалён`)}
               >
                 Удалить
@@ -75,7 +68,7 @@ export function ProvidersAdminSection() {
         <div className="st-row">
           <label className="lbl" htmlFor={`sv-key-${p.id}`}>
             <b>{key ? "Новый ключ" : "Ключ"}</b>
-            <span>Агенты людей без своего ключа ходят к провайдеру с ним; личный ключ человека перекрывает его.</span>
+            <span>Общий API-ключ провайдера.</span>
           </label>
           <div className="ctl">
             <input
@@ -92,7 +85,7 @@ export function ProvidersAdminSection() {
         </div>
         <div className="st-foot">
           <span className="grow" />
-          <button className="btn primary" disabled={!value.trim()}>
+          <button className="g-btn secondary" disabled={!value.trim()}>
             {key ? `Заменить ключ ${p.title}` : `Сохранить ключ ${p.title}`}
           </button>
         </div>
@@ -105,7 +98,7 @@ export function ProvidersAdminSection() {
       <div className="st-head">
         <div className="provider-headline">
           <h2>Провайдеры и ключи сервера</h2>
-          {providers.length > 0 && <button type="button" className="btn provider-add" aria-label="Добавить провайдера" title="Добавить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
+          {providers.length > 0 && <button type="button" className="g-btn secondary provider-add" aria-label="Добавить провайдера" title="Добавить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
         </div>
         <p>
           Общие API-ключи для всех пользователей. Личный ключ имеет приоритет. Значения хранятся зашифрованными.

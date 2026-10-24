@@ -1,10 +1,21 @@
 // Profile and administration use separate menus and share the project switcher.
+//
+// The rail is the one place that names the settings area: a card-like column of
+// section links on the left, the page itself on the right. Pages no longer repeat
+// the title in a header band of their own.
 
 import { Suspense } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { Link, Outlet, useLocation, useNavigate } from "react-router";
+import { OBSERVATION_TEXT } from "@/entities/observation";
+import { PROJECT_ROLE_NAME } from "@/entities/project";
 import { useSession, useSwitchProject } from "@/entities/session";
 import { lastWorkRoute } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
+import { SettingsLoading } from "./SettingsLoading.tsx";
+import "@/shared/ui/settings.css";
+
+/** Sections that are not in `items` but belong to the "tools" tab of the rail. */
+const TOOLS_SECTIONS = /\/(roles|templates|skills|history|automations|decisions|health|vault)$/;
 
 export function SettingsShell() {
   const session = useSession().data;
@@ -18,61 +29,59 @@ export function SettingsShell() {
   const title = projectMode ? "Управление проектом" : serverMode ? "Глобальные настройки" : "Настройки";
   const items = projectMode ? [
     ["general", "Общие настройки"], ["repos", "Репозитории и окружение"],
-    ["tools", "Инструменты"], ["people", "Доступ и роли"],
+    ["tools", "Инструменты"], ["observation", OBSERVATION_TEXT.section], ["people", "Доступ и роли"],
     ["channels", "Каналы связи"], ["knowledge", "База знаний"],
   ] : serverMode ? [
     ["projects", "Проекты"], ["accounts", "Учётные записи"],
     ["providers", "Провайдеры"], ["tools", "Инструменты"],
   ] : [
-    ["account", "Аккаунт"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
+    ["account", "Аккаунт"], ["appearance", "Оформление"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
     ["keys", "Провайдеры и ключи"], ["tokens", "Токены CLI и MCP"],
   ];
   const base = projectMode ? "/manage/project" : serverMode ? "/manage/server" : "/settings/me";
+  const sub = session?.mode === "local" ? "локальный режим" : project ? `${project.name} · ${PROJECT_ROLE_NAME[project.role]}` : "genie";
+  const active = (id: string) => pathname === `${base}/${id}` || (id === "tools" && TOOLS_SECTIONS.test(pathname));
   return (
     <div className="app settings-mode">
-      <nav className="sidebar" aria-label={title}>
-        <div className={`project${many ? " switch" : ""}`} title={project ? (project.hasRepo ? "Проект с репозиторием кода" : "Проект без кода") : undefined}>
-          <span className="logo-mark">
-            <Icon.mark size={15} />
+      <nav className="st-rail" aria-label={title}>
+        <div className="st-rail-head">
+          <span className="st-rail-mark" title={project ? (project.hasRepo ? "Проект с репозиторием кода" : "Проект без кода") : undefined}>
+            <Icon.mark size={20} />
           </span>
-          <span className="txt">
-            <span className="name">{title}</span>
-            <span className="sub">{project?.name ?? "genie"}</span>
+          <span className="st-rail-id">
+            <b title={title}>{title}</b>
+            <span className="g-muted">{sub}</span>
           </span>
-          {many && session && (
-            <>
-              <Icon.updown size={12} className="caret" />
-              <select aria-label="Сменить проект" value={session.project ?? ""} onChange={(e) => void switchProject(e.target.value)}>
-                {session.projects.map((p) => (
-                  <option key={p.slug} value={p.slug}>
-                    {p.name}
-                    {p.role === "viewer" ? " (чтение)" : ""}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
         </div>
 
-        <div className="nav-group">
-          <button type="button" className="nav-item" onClick={() => navigate(lastWorkRoute())}>
+        {many && session && (
+          <label className="st-rail-switch">
+            <span className="sr-only">Сменить проект</span>
+            <select value={session.project ?? ""} onChange={(e) => void switchProject(e.target.value)}>
+              {session.projects.map((p) => (
+                <option key={p.slug} value={p.slug}>
+                  {p.name}
+                  {p.role === "viewer" ? " (чтение)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        <div className="g-sheet-nav st-rail-nav">
+          <button type="button" className="st-rail-back" aria-label="Вернуться к работе" onClick={() => navigate(lastWorkRoute())}>
             <Icon.back size={15} />
-            <span className="grow">← к работе</span>
+            {/* The icon is the arrow; the label only spells it out on wider screens. */}
+            <span className="grow">к работе</span>
           </button>
-        </div>
-
-        <div className="nav-group">
-          <span className="nav-label">{title}</span>
           {items.map(([id, label]) => (
-            <NavLink key={id} to={`${base}/${id}`} className={({ isActive }) => `nav-item${isActive || (id === "tools" && /\/(roles|templates|skills|history|automations|decisions|health|vault)$/.test(pathname)) ? " on" : ""}`}>
-              <span className="grow">{label}</span>
-            </NavLink>
+            <Link key={id} to={`${base}/${id}`} className={active(id) ? "on" : undefined} aria-current={active(id) ? "page" : undefined}>
+              {label}
+            </Link>
           ))}
         </div>
-
-        <span className="grow" />
       </nav>
-      <Suspense fallback={<div className="empty">Загрузка…</div>}>
+      <Suspense fallback={<div className="st-rail-fallback"><SettingsLoading rows={5} /></div>}>
         <Outlet />
       </Suspense>
     </div>

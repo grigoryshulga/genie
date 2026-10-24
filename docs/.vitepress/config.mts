@@ -6,12 +6,14 @@ export default defineConfig({
   titleTemplate: ':title · Genie',
   description: 'Run tasks, knowledge, and AI agent teams on one self-hosted server.',
   base: '/genie/',
-  appearance: 'force-dark',
+  appearance: 'dark',
   lastUpdated: false,
+  // Brand and design handoff files are repository material (they link to source files and static specimens), not site pages.
+  srcExclude: ['assets/brand/**'],
   sitemap: { hostname: 'https://grigoryshulga.github.io/genie/' },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/genie/logo.svg' }],
-    ['meta', { name: 'theme-color', content: '#0c0d0f' }],
+    ['meta', { name: 'theme-color', content: '#09090d' }],
   ],
   themeConfig: {
     logo: { src: '/logo.svg', alt: '' },
@@ -32,10 +34,12 @@ export default defineConfig({
       { text: 'Work with Genie', items: [
         { text: 'Tasks and epics', link: '/guide/tasks' },
         { text: 'Roles and teams', link: '/platform/agent-roles-and-teams' },
+        { text: 'Task Intelligence and Factory Analytics', link: '/platform/task-intelligence' },
           { text: 'Project and task managers', link: '/platform/project-and-task-managers' },
         { text: 'Repositories and delivery', link: '/platform/git-repositories' },
         { text: 'Knowledge vault', link: '/platform/knowledge-vault' },
         { text: 'Automations', link: '/platform/automations' },
+        { text: 'Observation', link: '/platform/observation' },
         { text: 'CLI and MCP', link: '/reference/cli' },
       ] },
       { text: 'Run your server', items: [
@@ -50,9 +54,11 @@ export default defineConfig({
         { text: 'Documentation contract', link: '/reference/genie-docs-system' },
         { text: 'Development', link: '/development' },
         { text: 'Repository workflow', link: '/development/genie-cli' },
+        { text: 'Visual review before publishing', link: '/development/visual-preview' },
         { text: 'Design decisions', link: '/platform/decisions' },
         { text: 'Roadmap', link: '/platform/roadmap' },
         { text: 'Product proposals', link: '/platform/proposals' },
+        { text: 'Workspace environments design', link: '/platform/environment-design' },
         { text: 'Changelog', link: '/changelog' },
       ] },
     ],

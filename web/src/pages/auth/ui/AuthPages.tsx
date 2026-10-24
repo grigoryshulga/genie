@@ -1,27 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
+import { SocialAuth } from "@/features/social-auth";
 import { sessionKey } from "@/entities/session";
 import { request } from "@/shared/api";
-import { Icon } from "@/shared/ui";
-
-function AuthCard({ title, sub, foot, children }: { title: string; sub?: string; foot?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-head">
-          <span className="logo-mark lg">
-            <Icon.mark size={22} />
-          </span>
-          <h1>{title}</h1>
-          {sub && <p className="auth-sub">{sub}</p>}
-        </div>
-        {children}
-        {foot && <p className="auth-foot">{foot}</p>}
-      </div>
-    </div>
-  );
-}
+import { Button, Field, Input } from "@/shared/ui";
+import { AuthLayout } from "./AuthLayout";
 
 function useSubmit(fn: () => Promise<unknown>) {
   const qc = useQueryClient();
@@ -44,27 +28,42 @@ function useSubmit(fn: () => Promise<unknown>) {
   return { onSubmit, error, busy };
 }
 
+/** The form's own failure (wrong password, a taken login): the server's message, in the danger tone. */
+function FormError({ children }: { children: ReactNode }) {
+  return (
+    <p className="g-error" role="alert">
+      {children}
+    </p>
+  );
+}
+
 export function LoginPage({ note }: { note?: string }) {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const { onSubmit, error, busy } = useSubmit(() => request("POST", "/api/auth/login", { login, password }));
   return (
-    <AuthCard title="Вход в genie" sub={note} foot="Нет аккаунта? Попросите у администратора ссылку-приглашение.">
+    <AuthLayout
+      slogan="Команда уже в потоке"
+      pitch="Задачи, документация и агенты — в одном месте."
+      title="Вход"
+      note={note}
+      foot="Нет аккаунта? Попросите у администратора ссылку-приглашение."
+    >
       <form className="auth-form" onSubmit={onSubmit}>
-        <label className="field">
-          Логин
-          <input autoFocus autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} required />
-        </label>
-        <label className="field">
-          Пароль
-          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        {error && <div className="auth-error">{error === "wrong login or password" ? "Неверный логин или пароль" : error}</div>}
-        <button className="btn primary" disabled={busy}>
+        <Field label="Логин">
+          <Input autoFocus autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} required />
+        </Field>
+        <Field label="Пароль">
+          <Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </Field>
+        {error && <FormError>{error === "wrong login or password" ? "Неверный логин или пароль" : error}</FormError>}
+        <Button type="submit" variant="primary" busy={busy}>
           Войти
-        </button>
+        </Button>
       </form>
-    </AuthCard>
+      <p className="auth-or">или</p>
+      <SocialAuth />
+    </AuthLayout>
   );
 }
 
@@ -79,25 +78,28 @@ export function InvitePage() {
     window.location.assign("/");
   });
   return (
-    <AuthCard title="Приглашение в genie">
+    <AuthLayout
+      slogan="Вас ждут в команде"
+      pitch="Ссылка создаёт аккаунт: логин, имя и пароль."
+      title="Приглашение"
+      note={token ? undefined : "В ссылке нет приглашения — попросите у администратора новую."}
+      foot="Приглашение одноразовое: после него вы входите обычным способом."
+    >
       <form className="auth-form" onSubmit={onSubmit}>
-        <label className="field">
-          Логин (латиница)
-          <input autoFocus autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} required />
-        </label>
-        <label className="field">
-          Как вас называть
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="field">
-          Пароль (не короче 8 символов)
-          <input type="password" autoComplete="new-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        {error && <div className="auth-error">{error}</div>}
-        <button className="btn primary" disabled={busy || !token}>
+        <Field label="Логин (латиница)">
+          <Input autoFocus autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} required />
+        </Field>
+        <Field label="Как вас называть">
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Пароль (не короче 8 символов)">
+          <Input type="password" autoComplete="new-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </Field>
+        {error && <FormError>{error}</FormError>}
+        <Button type="submit" variant="primary" busy={busy} disabled={!token}>
           Присоединиться
-        </button>
+        </Button>
       </form>
-    </AuthCard>
+    </AuthLayout>
   );
 }

@@ -1,0 +1,39 @@
+{
+  "id": "rust-cargo",
+  "revision": 1,
+  "description": "Rust crates built with Cargo. Fills the crate registry and git dependency caches; the toolchain comes from the base.",
+  "params": {
+    "rust": {
+      "default": "",
+      "description": "Required rustc/cargo version, such as 1.85. Empty accepts any version."
+    }
+  },
+  "tools": {
+    "cargo": {
+      "version": "{{rust}}",
+      "probe": "cargo --version"
+    }
+  },
+  "caches": [
+    { "name": "cargo-registry", "path": "~/.cargo/registry", "integrity": "verified" },
+    { "name": "cargo-git", "path": "~/.cargo/git", "integrity": "unverified" }
+  ],
+  "prepare": [
+    {
+      "id": "fetch",
+      "run": "cargo fetch --locked",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "**/Cargo.toml",
+        "rust-toolchain*",
+        ".cargo/config.toml"
+      ]
+    }
+  ],
+  "commands": {
+    "build": "cargo build --locked",
+    "test": "cargo test --locked",
+    "lint": "cargo clippy --locked"
+  }
+}

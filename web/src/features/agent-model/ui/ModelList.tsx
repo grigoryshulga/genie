@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { type ModelOption, useModels } from "@/entities/team";
 import { plural } from "@/shared/lib";
+import { LoadingState } from "@/shared/ui";
 
 /**
  * The search box and the models pi offers, grouped by provider, as a radio
@@ -44,7 +45,7 @@ export function ModelList({ current, pick, onPick, first, note, autoFocus }: { a
             ))}
           </div>
         ))}
-        {models.isPending && <p className="mm-empty">Загрузка моделей…</p>}
+        {models.isPending && <div className="mm-empty"><LoadingState label="Загрузка моделей" lines={3} /></div>}
         {models.data && !groups.length && <p className="mm-empty">{query ? "Ничего не найдено" : "pi не назвал ни одной модели"}</p>}
         {models.data && !models.data.catalogue && <p className="mm-empty">Список pi недоступен: показаны модели из настроек агентов.</p>}
       </div>

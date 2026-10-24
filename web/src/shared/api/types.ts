@@ -46,3 +46,5 @@ export type { TeamState } from "./generated/TeamState.ts";
 export type { TeamWorktree } from "./generated/TeamWorktree.ts";
 export type { UpdateBody } from "./generated/UpdateBody.ts";
 export type { Worktree } from "./generated/Worktree.ts";
+
+export type { SocialProvider } from "./generated/SocialProvider.ts";

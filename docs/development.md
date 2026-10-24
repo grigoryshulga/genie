@@ -11,6 +11,8 @@ Requires stable Rust, Node 22.19+, Git, and bubblewrap for Linux sandbox tests. 
 
 Follow the [repository workflow](development/genie-cli.md) to track a task, isolate changes, and publish a PR with successful CI.
 
+Before publishing a task branch or opening its PR, prepare a [fixed integration preview](development/visual-preview.md) and obtain the owner's visual approval. That guide also documents machine-local T3 Project Actions, combined task candidates and private Tailscale access.
+
 ## Release flow
 
 Feature work enters the protected `dev` branch through pull requests. Releases go from `dev` to the protected `main` branch through a pull request; direct pushes and force pushes to either branch are blocked.
@@ -51,6 +53,28 @@ curl -fsS http://127.0.0.1:7422/api/health
 
 ## Checks
 
+Live-session Rust tests use `pi` from `PATH`. CI installs the same Pi-Bolt version and SHA-256
+as `docker/Dockerfile`; Node is still needed for the fake stdio MCP servers. On Linux x86_64,
+install that build locally without replacing your system's `pi`:
+
+```bash
+bash .github/scripts/install-pi-bolt.sh "$PWD/target/pi-bolt"
+export PATH="$PWD/target/pi-bolt:$PATH"
+pi --version
+```
+
+The live-session tests skip locally when `pi` is absent and fail on CI if it is missing.
+
+With a warm build, `cargo nextest run --workspace --lib --bins --tests --test-threads 8` runs
+all Rust test binaries concurrently; CI uses nextest 0.9.146 to report individual test durations.
+`cargo test` remains available. Timer-sensitive tests
+use a per-application manual clock and completed scheduler/reconciliation passes; real Pi-Bolt,
+MCP, Git and sandbox checks remain in the full suite. Keep subprocess and HTTP I/O timeouts real:
+automatically advancing all Tokio timers can turn ordinary I/O into artificial timeouts.
+
+For a shorter unit/domain feedback loop, run `cargo test --workspace --lib`. Run the full
+suite below before publishing; the short command excludes the HTTP/process integration binaries.
+
 ```bash
 cargo test
 cargo clippy --all-targets -- -D warnings
@@ -62,6 +86,58 @@ npm run build:web
 ```
 
 Rust tests regenerate `web/src/shared/api/generated/`. Commit generated type changes with their source structs. Set `GENIE_WEB_SOURCEMAP=1` when building the web client for browser debugging; source maps are not embedded in the binary.
+
+### Browser tests
+
+The browser tests in `test/ui/` click through the web UI and compare screenshots of key screens with committed baselines. They need Docker, a built server, and a built web client:
+
+```bash
+cargo build -p genie
+npm run build:web
+npm run test:ui
+```
+
+`test/ui/run.ts` seeds two disposable data directories through the CLI (`test/ui/seed.ts`), starts one server on each, and runs Playwright inside `mcr.microsoft.com/playwright` at the version of the installed `@playwright/test`. The screenshots use one server and the flows the other, so flows never change the screenshot data. Running Playwright only in that image keeps fonts and rendering identical locally and in CI. Set `GENIE_BIN` to test another server binary; arguments after `--` go to Playwright, for example `npm run test:ui -- --project flows`.
+
+- `*.flow.ts` files are user flows. Assert what the user sees and, through `test/ui/api.ts`, what the server stored.
+- `*.visual.ts` files take screenshots at desktop and mobile sizes. The page clock is fixed one hour after seeding, so relative times stay stable.
+- After an intended visual change, run `npm run test:ui -- --update-snapshots` and review the changed images in `test/ui/__screenshots__/` before committing them.
+
+### Accessibility
+
+`test/ui/a11y.ts` is a small rule engine that runs inside a rendered page; `test/ui/a11y.visual.ts`
+runs it over every screen the standard seed reaches, in both themes, and fails on anything critical
+or serious. It also walks the keyboard road on `/tasks` and `/board` and fails on a stop with no
+visible focus, checks that nothing still animates under `prefers-reduced-motion`, and checks that the
+phone filter sheet keeps focus while it is open and gives it back when it closes.
+`test/ui/a11y.flow.ts` finishes the jobs themselves with the keyboard alone — create a task, open a
+task, move a card, open a document, answer an owner decision — and reads the server afterwards; these
+tests never click. `test/accessibility.test.ts` and `test/design-tokens.test.ts` cover what needs no
+browser: the focus hook, the decision box's hand-off, and contrast pairs for every colour token.
+
+The rules are the promises the design system makes, not a conformance audit: named controls, sound
+roles, contrast, target size, headings, `image-alt`, duplicate ids, `aria-hidden` focus, nested
+interactive elements, positive `tabindex`, a main landmark, a named modal, and SVG names.
+
+What it does not check: axe or any third-party auditor, full WCAG 2.2 A/AA coverage, screen readers
+or real assistive technology, zoom and reflow at 400 %, text spacing, motion sickness beyond
+`prefers-reduced-motion`, language of parts, tables, live-region announcement ordering, or the
+screens only the capture seed reaches (`npm run ui:capture`). The moderate findings that remain are
+printed, not fatal; the current ones are touch targets under 24×24 px on the section collapse toggle,
+the task-list title link and a few inline links, in both themes.
+
+### Screenshot capture
+
+`npm run ui:capture` photographs every route in `test/ui/routes.ts` and compares nothing. It uses the same server, seed and image as the browser tests, plus extra tasks (`CAPTURE_TASKS` in `test/ui/seed.ts`) so that all eleven statuses, an owner question and an epic with children are present. The seed never touches a real tracker or data directory.
+
+```bash
+npm run ui:capture                                  # the application as it renders
+GENIE_UI_THEMES=ink,paper npm run ui:capture        # one set per data-theme value
+```
+
+PNGs land in `test-results/captures/<route>-<theme>-<1440|390>.png` (ignored by git), at 1440x900 and 390x844, with animations disabled and the clock fixed. Attach the before and after sets to the UI task that changed them. Known gaps: team and agent chat screens need running agents, so they are not captured; full-page shots do not include content scrolled inside a panel (the board's wide lanes are clipped to the viewport); the server health page shows the throwaway data path.
+
+Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. Open a trace with `npx playwright show-trace <path>/trace.zip`.
 
 The [agent benchmark](https://github.com/grigoryshulga/genie/tree/main/bench) compares task outcomes before and after changes to roles, prompts, skills, or team templates.
 

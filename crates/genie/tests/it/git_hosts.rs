@@ -181,7 +181,9 @@ async fn doctor_reports_hosts_and_repositories_that_cannot_work() {
             Ok(())
         })
         .unwrap();
-    let cfg = genie::config::Config::load(h.dir.path()).unwrap();
+    let mut cfg = genie::config::Config::load(h.dir.path()).unwrap();
+    // This diagnostic checks Git configuration, independently of the host's agent installation.
+    cfg.runtime.enabled = false;
     let agents = genie::agent_config::AgentConfig::load(h.dir.path(), &cfg, None);
     let checks = genie::doctor::run(h.dir.path(), &cfg, &agents, None);
     let git: Vec<String> = checks.iter().filter(|c| c.area == "git").map(|c| format!("{:?} {}", c.level, c.text)).collect();
@@ -221,7 +223,8 @@ async fn a_repository_brings_its_own_token_which_is_sealed_and_never_shown() {
     assert_eq!(b["token"], json!({ "set": false }));
     let text = joined(&check::repo(&h.app, "shop", "api", false).await);
     assert!(text.contains("fail the repository has no token"), "{text}");
-    let cfg = genie::config::Config::load(h.dir.path()).unwrap();
+    let mut cfg = genie::config::Config::load(h.dir.path()).unwrap();
+    cfg.runtime.enabled = false;
     let agents = genie::agent_config::AgentConfig::load(h.dir.path(), &cfg, None);
     let doctor: Vec<String> = genie::doctor::run(h.dir.path(), &cfg, &agents, None).iter().map(|c| c.text.clone()).collect();
     assert!(doctor.iter().any(|t| t.contains("repository api has no access token")), "{doctor:?}");

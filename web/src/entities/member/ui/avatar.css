@@ -1,0 +1,40 @@
+/* An avatar says who it is before the initials are read: agents are rounded squares and people are
+   circles (design-system.md, "agents are rounded squares and people are circles"). The arena is the
+   `.av` box below — a circle by default — and the shape lives on the role class, so two classes
+   outrank the bare `.av` rule whatever order the sheets happen to load in.
+   A quarter of the box, not a fixed radius: a 20px avatar with the 9px kit radius is a circle, and the
+   shape is exactly what the task list needs to keep readable at that size. */
+
+/* ---- the arena: a circle with a ring in the page colour ---- */
+.avatars { display: flex; padding-left: 5px; }
+.av { position: relative; width: 20px; height: 20px; border-radius: 50%; color: var(--g-ink); font-size: var(--g-text-eyebrow); font-weight: 600; display: grid; place-items: center; margin-left: -5px; box-shadow: 0 0 0 2px var(--g-bg); flex: none; }
+.av.solo { margin-left: 0; box-shadow: none; }
+.av.more { background: var(--g-surface); color: var(--g-text-2); font-weight: 500; }
+.av.lg { width: 30px; height: 30px; font-size: var(--g-text-caption); margin: 0; box-shadow: none; }
+.av.md { width: 26px; height: 26px; font-size: var(--g-text-caption); margin: 0; box-shadow: none; line-height: normal; }
+.av.working::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--g-focus); border-right-color: var(--g-focus); animation: spin 1s linear infinite; }
+.av.error { box-shadow: 0 0 0 2px var(--g-danger); }
+.av.stopped { opacity: 0.45; }
+
+/* The working dot on an avatar pulses forever; under reduced motion it stays lit and still. */
+@media (prefers-reduced-motion: reduce) {
+  .av.working::after { animation: none; }
+}
+
+/* ---- the shape: a square for agents, a circle for people ---- */
+.av.agent {
+  border-radius: 25%;
+  background: var(--g-accent-soft);
+  color: var(--g-accent-soft-text);
+}
+
+.av.human {
+  border-radius: 50%;
+  background: var(--g-surface-active);
+  color: var(--g-text);
+}
+
+/* The ring of a working agent follows the avatar's own outline instead of drawing a circle around it. */
+.av.agent.working::after {
+  border-radius: inherit;
+}

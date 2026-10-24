@@ -3,14 +3,15 @@
 // `verified`, related/tag chips, banners, Markdown body and the aside with
 // backlinks, `paths`, diagnostics and the on-page table of contents.
 
+import { DocBreadcrumbs } from "./DocBreadcrumbs.tsx";
 import { useRef } from "react";
 import { Link } from "react-router";
-import type { DocPage, DocReadResult } from "@/entities/doc";
+import type { DocPage, DocReadResult, DocSection } from "@/entities/doc";
 import {
   bodyUnderTitle,
   diagnosticText,
   docAgo,
-  docCrumbs,
+  articleTitle,
   DocBody,
   DocDiagBadge,
   DocMarks,
@@ -20,11 +21,13 @@ import {
   firstParagraph,
   staleReasonText,
 } from "@/entities/doc";
-import { BacklinkIcon, DiagIcon, OkIcon, PathsIcon, StaleIcon } from "@/entities/doc";
-import { Icon } from "@/shared/ui";
+import { BacklinkIcon, DeprecatedIcon, DiagIcon, OkIcon, PathsIcon, StaleIcon } from "@/entities/doc";
+import { Button, DisclosureCard, Icon, Tag } from "@/shared/ui";
 
 export function DocView({
   page,
+  navigation,
+  onSection,
   pages,
   onOpen,
   onEdit,
@@ -33,6 +36,8 @@ export function DocView({
   hideAside,
 }: {
   page: DocReadResult;
+  navigation: DocSection;
+  onSection: (path: string) => void;
   pages: DocPage[];
   onOpen: (path: string) => void;
   onEdit: () => void;
@@ -41,7 +46,6 @@ export function DocView({
   hideAside?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const crumbs = docCrumbs(page.path);
   const byPath = new Map(pages.map((p) => [p.path, p]));
 
   const scrollToHeading = (heading: string) => {
@@ -67,44 +71,43 @@ export function DocView({
       <div className="docs-content">
         <header className="docs-topbar">
           {onOpenTree && (
-            <button type="button" className="icon-btn m-only" onClick={onOpenTree} aria-label="Открыть дерево документации">
+            <button type="button" className="g-icon-btn m-only" onClick={onOpenTree} aria-label="Открыть дерево документации">
               <Icon.list size={15} />
             </button>
           )}
-          <nav className="doc-crumbs mono" aria-label="Путь страницы">
-            {crumbs.map((part, i) => (
-              <span key={`${part}-${i}`}>
-                {i > 0 && <span className="sep">/</span>}
-                {part}
-              </span>
-            ))}
-          </nav>
+          <DocBreadcrumbs root={navigation} path={page.path} title={articleTitle(page)} onSection={onSection} />
           <span className="grow" />
-          <button type="button" className="btn" onClick={onEdit}>
+          <Button variant="primary" sm onClick={onEdit}>
             <Icon.file size={13} />
             Редактировать
-          </button>
+          </Button>
         </header>
 
-        <div className="docs-view scroll" ref={scrollRef}>
+        <div className="docs-view doc-reader scroll" ref={scrollRef}>
+          <article className="doc-reading">
           <div className="doc-head">
-            <h2 className="doc-title">
-              {page.title}
+            <div className="doc-head-top">
+            <div className="doc-article-badges" aria-label="Тип и состояние статьи">
               <DocTypeBadge type={page.type} long />
               {page.status && <DocStatusBadge status={page.status} />}
               {page.stale && <DocStaleBadge count={page.staleReasons.length} />}
               {page.diagnostics.length > 0 && <DocDiagBadge count={page.diagnostics.length} />}
-            </h2>
+            </div>
+            {page.tags.length > 0 && <div className="doc-tags" aria-label="Теги статьи">
+              {page.tags.map((tag) => <Tag key={tag} className="doc-tag">{tag}</Tag>)}
+            </div>}
+            </div>
+            <h2 className="doc-title">{articleTitle(page)}</h2>
             <div className="doc-meta">
-              <span>Обновлена {docAgo(page.updated)}</span>
+              <Tag tone="outline">Обновлена {docAgo(page.updated)}</Tag>
               {page.verified ? (
-                <span className="ok">
+                <Tag tone="signal" className="ok">
                   <OkIcon size={12} /> Проверена {page.verified}
-                </span>
+                </Tag>
               ) : badVerified ? (
-                <span className="warn">Дата проверки не распознана</span>
+                <Tag tone="accent" className="warn">Дата проверки не распознана</Tag>
               ) : (
-                <span>Не проверялась</span>
+                <Tag tone="outline">Не проверялась</Tag>
               )}
               {page.related.length > 0 && (
                 <span className="doc-related">
@@ -116,45 +119,49 @@ export function DocView({
                   ))}
                 </span>
               )}
-              {page.tags.map((tag) => (
-                <span key={tag} className="doc-tag">
-                  {tag}
-                </span>
-              ))}
             </div>
           </div>
 
           {page.diagnostics.length > 0 && (
-            <div className="doc-banner diag">
+            <div className="doc-banner diag g-banner danger">
               <DiagIcon size={15} />
               <div className="doc-banner-body">
                 <b>Ошибка во frontmatter:</b> использованы значения по умолчанию. Файл прочитан и доступен, но поля ниже нужно исправить.
                 <ul className="doc-banner-list">
                   {page.diagnostics.map((raw) => (
-                    <li key={raw} title={raw} className="mono">
+                    <li key={raw} title={raw} className="g-mono">
                       {diagnosticText(raw)}
                     </li>
                   ))}
                 </ul>
               </div>
-              <button type="button" className="btn" onClick={onEdit}>
+              <button type="button" className="g-btn secondary" onClick={onEdit}>
                 Исправить в редакторе
               </button>
             </div>
           )}
 
+          {page.status === "deprecated" && (
+            <div className="doc-banner outdated g-banner signal">
+              <DeprecatedIcon size={15} />
+              <div className="doc-banner-body">
+                <b>Страница устарела:</b> оставлена для истории — не опирайтесь на неё при работе.
+              </div>
+            </div>
+          )}
+
           {page.stale && (
-            <div className="doc-banner stale">
+            <div className="doc-banner stale g-banner accent">
               <StaleIcon size={15} />
               <div className="doc-banner-body">
                 <b>Возможно устарела:</b> {staleNote}
-                {page.related.length > 0 && <span className="muted"> · задачи {page.related.join(", ")}</span>}
+                {page.related.length > 0 && <span className="g-muted"> · задачи {page.related.join(", ")}</span>}
               </div>
               {page.diagnostics.length === 0 && (
-                <button type="button" className="btn amber" onClick={onMarkVerified}>
+                <Button sm onClick={onMarkVerified}>
                   <Icon.check size={13} />
                   Отметить проверенной
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -162,22 +169,19 @@ export function DocView({
           {summary && <div className="doc-summary">{summary}</div>}
 
           <DocBody text={body} links={page.links} onOpen={onOpen} empty="Страница пуста" />
+          </article>
         </div>
       </div>
 
       {!hideAside && (
         <aside className="docs-aside">
-          <section className="docs-sec">
-            <h3>
-              <BacklinkIcon size={12} /> Ссылаются сюда <span className="n">{page.backlinks.length}</span>
-            </h3>
+          <DisclosureCard title="Ссылаются сюда" icon={<BacklinkIcon size={12} />} badge={<span className="g-num">{page.backlinks.length}</span>} storageKey="genie.docs.card.backlinks">
             {page.backlinks.length > 0 ? (
               <ul className="doc-links">
                 {page.backlinks.map((path) => (
                   <li key={path}>
                     <button type="button" onClick={() => onOpen(path)}>
                       <span className="nm">{byPath.get(path)?.title ?? path}</span>
-                      <span className="mono sub">{path}</span>
                     </button>
                   </li>
                 ))}
@@ -185,14 +189,11 @@ export function DocView({
             ) : (
               <p className="doc-hint">На страницу пока никто не ссылается.</p>
             )}
-          </section>
+          </DisclosureCard>
 
-          <section className="docs-sec">
-            <h3>
-              <PathsIcon size={12} /> Описывает код
-            </h3>
+          <DisclosureCard title="Описывает код" icon={<PathsIcon size={12} />} storageKey="genie.docs.card.paths">
             {page.paths && page.paths.length > 0 ? (
-              <ul className="doc-paths mono">
+              <ul className="doc-paths g-mono">
                 {page.paths.map((pattern) => (
                   <li key={pattern}>
                     <Icon.file size={12} />
@@ -208,13 +209,10 @@ export function DocView({
             {page.paths && page.paths.length > 0 && (
               <p className={`doc-note${page.stale ? " stale" : ""}`}>{page.stale ? `Изменено после проверки: ${staleNote}` : "Без изменений после проверки"}</p>
             )}
-          </section>
+          </DisclosureCard>
 
           {page.diagnostics.length > 0 && (
-            <section className="docs-sec">
-              <h3>
-                <DiagIcon size={12} /> Диагностика
-              </h3>
+            <DisclosureCard title="Диагностика" icon={<DiagIcon size={12} />} storageKey="genie.docs.card.diagnostics">
               <ul className="doc-diags">
                 {page.diagnostics.map((raw) => (
                   <li key={raw} title={raw}>
@@ -222,12 +220,11 @@ export function DocView({
                   </li>
                 ))}
               </ul>
-            </section>
+            </DisclosureCard>
           )}
 
           {headings.length > 0 && (
-            <section className="docs-sec">
-              <h3>На странице</h3>
+            <DisclosureCard title="На странице" storageKey="genie.docs.card.contents">
               <ul className="doc-toc">
                 {headings.map((heading) => (
                   <li key={heading}>
@@ -237,35 +234,34 @@ export function DocView({
                   </li>
                 ))}
               </ul>
-            </section>
+            </DisclosureCard>
           )}
 
           {page.links.length > 0 && (
-            <section className="docs-sec">
-              <h3>Ссылки со страницы</h3>
+            <DisclosureCard title="Ссылки со страницы" storageKey="genie.docs.card.links">
               <ul className="doc-links">
                 {page.links.map((link) => (
                   <li key={link.target}>
                     {link.resolution === "resolved" && link.targetPath ? (
                       <button type="button" onClick={() => onOpen(link.targetPath!)}>
                         <span className="nm">{link.target}</span>
-                        <span className="mono sub">{link.targetPath}</span>
+                        <span className="g-mono sub">{link.targetPath}</span>
                       </button>
                     ) : (
                       <span className={link.resolution === "ambiguous" ? "unresolved ambiguous" : "unresolved"} title={link.resolution === "ambiguous" ? `Несколько совпадений: ${link.matches.join(", ")}` : "Страница не найдена — ссылка не угадывается"}>
                         {link.target}
-                        <span className="muted"> · {link.resolution === "ambiguous" ? "несколько совпадений" : "нет страницы"}</span>
+                        <span className="g-muted"> · {link.resolution === "ambiguous" ? "несколько совпадений" : "нет страницы"}</span>
                       </span>
                     )}
                   </li>
                 ))}
               </ul>
-            </section>
+            </DisclosureCard>
           )}
 
           <div className="docs-aside-foot">
             <DocMarks page={page} />
-            <span className="mono">{page.path}</span>
+            <span className="g-mono">{page.path}</span>
           </div>
         </aside>
       )}

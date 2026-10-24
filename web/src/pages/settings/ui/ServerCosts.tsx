@@ -19,8 +19,8 @@ import {
 } from "@/entities/usage";
 import { BarChart, useAct } from "@/shared/ui";
 
-const COLORS = ["#7c84f0", "#3aa58a", "#d9a441", "#5ba7e0"];
-const OTHER = "#6b6f78";
+const COLORS = ["var(--g-viz-1)", "var(--g-viz-2)", "var(--g-viz-3)", "var(--g-viz-4)"];
+const OTHER = "var(--g-text-muted)";
 
 type View = "projects" | "epics" | "tasks" | "chats";
 const VIEWS: { id: View; label: string; hint: string }[] = [
@@ -170,10 +170,10 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
         <section className="st-card sv-models" aria-label="По моделям">
           <div className="sv-models-head">
             <b>По моделям</b>
-            <span className="muted">цена за 1 млн токенов: вход / выход / кэш чтение / кэш запись</span>
+            <span className="g-muted">цена за 1 млн токенов: вход / выход / кэш чтение / кэш запись</span>
             <button
               type="button"
-              className="btn"
+              className="g-btn secondary"
               disabled={refreshPrices.isPending}
               onClick={() => void act(() => refreshPrices.mutateAsync(), "Тарифы получены от LiteLLM")}
             >
@@ -191,7 +191,7 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
             {total.models.map((m, i) => (
               <div key={m.model} className="tr">
                 <span className="nm sv-model">
-                  <i style={{ background: m.cost === null ? "var(--line-strong)" : (COLORS[i] ?? OTHER) }} />
+                  <i style={{ background: m.cost === null ? "var(--g-control-border)" : (COLORS[i] ?? OTHER) }} />
                   <span className="sv-mono" title={m.model}>
                     {m.model}
                   </span>
@@ -201,7 +201,7 @@ export function Costs({ list, days }: { list: ProjectStats[]; days: number }) {
                 </span>
                 <span data-l="Токены" title={tokensTitle({ ...total, tokens: m.tokens })}>
                   {tokensText(tokensTotal(m.tokens))}
-                  {(m.unpricedTokens ?? 0) > 0 ? <span className="muted"> · {tokensText(m.unpricedTokens)} без цены</span> : null}
+                  {(m.unpricedTokens ?? 0) > 0 ? <span className="g-muted"> · {tokensText(m.unpricedTokens)} без цены</span> : null}
                 </span>
                 <span data-l="Стоимость" className="num">
                   {m.cost === null ? "—" : moneyText(m.cost)}
@@ -243,14 +243,14 @@ function SpendTable({
     <section className="st-card" aria-label="На что ушло">
       <div className="sv-models-head">
         <b>На что ушло</b>
-        <div className="seg" role="group" aria-label="Разрез">
+        <div className="g-seg" role="group" aria-label="Разрез">
           {VIEWS.map((v) => (
             <button key={v.id} type="button" className={v.id === view ? "on" : ""} aria-pressed={v.id === view} onClick={() => setView(v.id)}>
               {v.label}
             </button>
           ))}
         </div>
-        <span className="muted sv-hint">{VIEWS.find((v) => v.id === view)!.hint}</span>
+        <span className="g-muted sv-hint">{VIEWS.find((v) => v.id === view)!.hint}</span>
       </div>
       <div className="sv-table sv-stable">
         <div className="tr th">
@@ -260,7 +260,7 @@ function SpendTable({
           <span>Доля</span>
           <span className="num">Стоимость</span>
         </div>
-        {rows.length === 0 && <p className="muted sv-pad">Пусто.</p>}
+        {rows.length === 0 && <p className="g-muted sv-pad">Пусто.</p>}
         {rows.map((r) => (
           <div key={r.key} className="tr">
             <span className="nm">
@@ -277,9 +277,9 @@ function SpendTable({
               ) : (
                 <b>{r.name}</b>
               )}
-              <span className="muted">{r.sub}</span>
+              <span className="g-muted">{r.sub}</span>
             </span>
-            <span data-l={cols[1]} className="muted sv-clip" title={r.extra}>
+            <span data-l={cols[1]} className="g-muted sv-clip" title={r.extra}>
               {r.extra}
             </span>
             <span data-l="Токены" title={tokensTitle(r.spend)}>

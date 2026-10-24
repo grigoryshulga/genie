@@ -169,8 +169,8 @@ async fn bots_added_after_start_are_polled_and_offsets_are_persisted() {
     let (base, _, updates) = fake().await;
     let h = Harness::with_config(|cfg| cfg.telegram = Some(TelegramConfig { token: "LEGACY".into(), api_base: Some(base) }));
     h.project("shop");
-    genie::telegram::start(h.app.clone());
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let mut poller = genie::telegram::Poller::new(h.app.clone());
+    poller.reconcile().await.unwrap();
     let (scope, user, code) = h
         .app
         .with_server(|db| {
@@ -185,6 +185,7 @@ async fn bots_added_after_start_are_polled_and_offsets_are_persisted() {
         .lock()
         .unwrap()
         .push(json!({"update_id": 20, "message": {"chat": {"id": 42, "type": "private"}, "text": format!("/start {code}")}}));
+    poller.reconcile().await.unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(8), async {
         loop {
             let bot = h.app.with_server(|db| db.project_bot("shop")).unwrap().unwrap();

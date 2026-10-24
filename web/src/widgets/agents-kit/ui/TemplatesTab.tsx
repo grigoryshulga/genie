@@ -27,7 +27,7 @@ import {
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
 import { plural } from "@/shared/lib";
-import { Badge, ConfirmDialog, Icon, Modal, Section, useAct, useToast } from "@/shared/ui";
+import { Badge, ConfirmDialog, Dialog, Icon, LoadingState, Section, useAct, useToast } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -49,8 +49,8 @@ export function TemplatesTab({
 }) {
   const current = selected ?? cfg.teams[0]?.id;
   return (
-    <div className="split">
-      <section className="split-list" aria-label="Шаблоны команд">
+    <div className="split ag-templates-layout">
+      <section className="split-list ag-list" aria-label="Шаблоны команд">
         <Problems items={sectionProblems(cfg.problems, "templates").filter((p) => p.item !== `team:${current}`)} />
         {cfg.teams.map((t) => (
           <button type="button" key={t.id} className={`pick${t.id === current ? " on" : ""}`} onClick={() => onSelect(t.id)} aria-current={t.id === current}>
@@ -77,7 +77,7 @@ export function TemplatesTab({
         ))}
       </section>
       <section className="split-main" aria-label="Шаблон">
-        {current ? <TemplatePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Шаблонов нет</div>}
+        {current ? <TemplatePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="ag-pane-empty">Шаблонов нет</div>}
       </section>
     </div>
   );
@@ -90,7 +90,10 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
   const remove = useDeleteConfig();
   const act = useAct();
   const d = detail.data;
-  if (!d) return <div className="pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
+  if (!d) {
+    if (detail.error) return <div className="ag-pane-empty">{detail.error.message}</div>;
+    return <div className="ag-pane-empty"><LoadingState label="Загрузка шаблона" lines={3} width={260} /></div>;
+  }
   const t = d.template;
   const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null && d.file.path.startsWith("teams/");
@@ -109,24 +112,27 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
     <>
       <div className="pane-head">
         <div className="ttl">
-          <h2>{t.title}</h2>
+          <h2>
+            {t.title}
+            {!admin && <span className="ag-readonly">Только чтение</span>}
+          </h2>
           <span className="sub">
-            <span className="mono">{t.id}</span> · {ORIGIN_TITLE[t.origin]} · стадия «{STAGE_TITLE[t.stage]}» · {WORKSPACE_TITLE[t.workspace]} · почта {t.mail === "flow" ? "по связям шаблона" : "свободная"}
+            <span className="g-mono">{t.id}</span> · {ORIGIN_TITLE[t.origin]} · стадия «{STAGE_TITLE[t.stage]}» · {WORKSPACE_TITLE[t.workspace]} · почта {t.mail === "flow" ? "по связям шаблона" : "свободная"}
             {t.path ? ` · ${t.path}` : ""}
           </span>
           {t.description && <p className="desc">{t.description}</p>}
         </div>
         {admin && (
           <>
-            <button type="button" className="btn" onClick={() => setMode("form")}>
+            <button type="button" className="g-btn secondary" onClick={() => setMode("form")}>
               Изменить
             </button>
-            <button type="button" className="btn" onClick={() => setMode("file")}>
+            <button type="button" className="g-btn secondary" onClick={() => setMode("file")}>
               <Icon.file size={13} />
               Файл
             </button>
             {hasFile && (
-              <button type="button" className="btn ghost" onClick={() => setConfirmDelete(true)}>
+              <button type="button" className="g-btn ghost" onClick={() => setConfirmDelete(true)}>
                 {d.builtin !== null ? "Вернуть встроенный" : "Удалить"}
               </button>
             )}
@@ -138,7 +144,7 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
         <TemplateGraph members={t.members} relations={t.relations} roles={cfg.roles} problems={[...t.warnings, ...d.problems.map((p) => p.message)]} />
         {(t.relationsDerived || t.warnings.length > 0) && (
           <div className="ag-graph-notes">
-            {t.relationsDerived && <p className="muted ag-note">Связей в шаблоне нет: они выведены из классов участников.</p>}
+            {t.relationsDerived && <p className="g-muted ag-note">Связей в шаблоне нет: они выведены из классов участников.</p>}
             {t.warnings.map((w) => (
               <p key={w} className="ag-warn-line">
                 {w}
@@ -157,10 +163,10 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
                       {(role?.title ?? m.role).slice(0, 1).toUpperCase()}
                     </span>
                     <Link to={`${base}?tab=roles&id=${m.role}`}>{m.name ? `${title(m.key)} — ${roleTitle(m.role).toLowerCase()}` : roleTitle(m.role)}</Link>
-                    {m.key !== m.role && <span className="mono muted">{m.key}</span>}
+                    {m.key !== m.role && <span className="g-mono g-muted">{m.key}</span>}
                     {m.instructions && <span className="ag-tag plus">особенности</span>}
                     <span className="grow" />
-                    {m.model && <span className="muted">{m.model.replace(/^[^/]+\//, "")}</span>}
+                    {m.model && <span className="g-muted">{m.model.replace(/^[^/]+\//, "")}</span>}
                   </li>
                 );
               })}
@@ -178,11 +184,11 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
                       {RELATION_TITLE[r.type]}
                       {r.on ? ` · ${ON_TITLE[r.on] ?? r.on}` : ""}
                     </span>
-                    <span className="muted note">{r.note}</span>
+                    <span className="g-muted note">{r.note}</span>
                   </li>
                 )),
               )}
-              {!t.relations.length && <li className="muted">Связей нет.</li>}
+              {!t.relations.length && <li className="g-muted">Связей нет.</li>}
             </ul>
           </Section>
         </div>
@@ -274,7 +280,7 @@ function KickoffPreview({ template, roles }: { template: string; roles: Catalogu
         }}
       >
         <input value={task} onChange={(e) => setTask(e.target.value)} placeholder="Задача, например SHOP-12 (иначе пример)" aria-label="Задача для предпросмотра" />
-        <button type="submit" className="btn">
+        <button type="submit" className="g-btn secondary">
           Показать
         </button>
       </form>
@@ -282,7 +288,7 @@ function KickoffPreview({ template, roles }: { template: string; roles: Catalogu
       {preview.data?.members.map((m) => (
         <details key={m.key} className="ag-kickoff">
           <summary>
-            {displayName(m.name)} <span className="muted">· {(roles.find((r) => r.id === m.role)?.title ?? m.role).toLowerCase()}</span>
+            {displayName(m.name)} <span className="g-muted">· {(roles.find((r) => r.id === m.role)?.title ?? m.role).toLowerCase()}</span>
           </summary>
           <pre className="view">{m.kickoff}</pre>
         </details>
@@ -349,30 +355,42 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
     }
   };
   return (
-    <Modal label={`Шаблон ${detail.template.id}`} onClose={onClose} wide>
-      <div className="mh">
-        Шаблон команды <span className="mono">{detail.template.id}</span>
-        <span className="grow" />
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </div>
-      <div className="mb ag-template-form">
+    <Dialog
+      title={
+        <>
+          Шаблон команды <span className="g-mono">{detail.template.id}</span>
+        </>
+      }
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <span className="ag-save-note">Идущие команды сохраняют снимок шаблона</span>
+          <button type="button" className="g-btn ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="button" className="g-btn primary" onClick={() => void submit()}>
+            Сохранить
+          </button>
+        </>
+      }
+    >
+      <div className="ag-template-form">
         <div className="ag-row">
-          <label className="field">
+          <label className="g-field">
             Название
-            <input value={String(draft.title ?? "")} onChange={(e) => set("title", e.target.value)} />
+            <input className="g-input" value={String(draft.title ?? "")} onChange={(e) => set("title", e.target.value)} />
           </label>
-          <label className="field">
+          <label className="g-field">
             Стадия
-            <select value={String(draft.stage ?? "delivery")} onChange={(e) => set("stage", e.target.value)}>
+            <select className="g-select" value={String(draft.stage ?? "delivery")} onChange={(e) => set("stage", e.target.value)}>
               <option value="delivery">{STAGE_TITLE.delivery} — задача в ready и дальше</option>
               <option value="refinement">{STAGE_TITLE.refinement} — до ready</option>
             </select>
           </label>
-          <label className="field">
+          <label className="g-field">
             Рабочее место
-            <select value={String(draft.workspace ?? "worktree")} onChange={(e) => set("workspace", e.target.value)}>
+            <select className="g-select" value={String(draft.workspace ?? "worktree")} onChange={(e) => set("workspace", e.target.value)}>
               {(["worktree", "repo", "scratch"] as const).map((w) => (
                 <option key={w} value={w}>
                   {WORKSPACE_TITLE[w]}
@@ -381,9 +399,9 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
             </select>
           </label>
         </div>
-        <label className="field">
+        <label className="g-field">
           Описание — по нему оркестратор выбирает шаблон
-          <textarea rows={2} value={String(draft.description ?? "")} onChange={(e) => set("description", e.target.value)} />
+          <textarea className="g-textarea" rows={2} value={String(draft.description ?? "")} onChange={(e) => set("description", e.target.value)} />
         </label>
 
         <h4>Участники</h4>
@@ -400,21 +418,21 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
             <input value={m.key ?? ""} onChange={(e) => setMember(i, { key: e.target.value || undefined })} placeholder={`ключ: ${m.role}`} aria-label="Ключ" />
             <input value={m.model ?? ""} onChange={(e) => setMember(i, { model: e.target.value || undefined })} placeholder="модель роли" aria-label="Модель" />
             <input value={m.instructions ?? ""} onChange={(e) => setMember(i, { instructions: e.target.value || undefined })} placeholder="инструкции участнику" aria-label="Инструкции" />
-            <button type="button" className="icon-btn" aria-label="Убрать участника" onClick={() => set("members", members.filter((_, j) => j !== i))}>
+            <button type="button" className="g-icon-btn" aria-label="Убрать участника" onClick={() => set("members", members.filter((_, j) => j !== i))}>
               <Icon.trash size={13} />
             </button>
           </div>
         ))}
-        <button type="button" className="btn ghost ag-add" onClick={() => set("members", [...members, { key: "", role: roles[0]?.id ?? "executor" }])}>
+        <button type="button" className="g-btn ghost sm ag-add" onClick={() => set("members", [...members, { key: "", role: roles[0]?.id ?? "executor" }])}>
           <Icon.plus size={13} />
           Участник
         </button>
 
         <h4>Связи</h4>
         {draft.relations === undefined ? (
-          <p className="muted ag-note">
+          <p className="g-muted ag-note">
             Связи выводятся из классов участников.{" "}
-            <button type="button" className="btn" onClick={() => set("relations", detail.template.relations)}>
+            <button type="button" className="g-btn secondary" onClick={() => set("relations", detail.template.relations)}>
               Задать явно
             </button>
           </p>
@@ -438,7 +456,7 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
                   ))}
                 </select>
                 {r.type === "reports" ? (
-                  <span className="mono muted">orchestrator</span>
+                  <span className="g-mono g-muted">orchestrator</span>
                 ) : (
                   <select multiple value={r.to} onChange={(e) => setRelation(i, { to: [...e.target.selectedOptions].map((o) => o.value) })} aria-label="Кому" size={Math.min(3, keys.length)}>
                     {keys
@@ -463,12 +481,12 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
                   <span />
                 )}
                 <input value={r.note ?? ""} onChange={(e) => setRelation(i, { note: e.target.value || undefined })} placeholder="заметка" aria-label="Заметка" />
-                <button type="button" className="icon-btn" aria-label="Убрать связь" onClick={() => set("relations", relations.filter((_, j) => j !== i))}>
+                <button type="button" className="g-icon-btn" aria-label="Убрать связь" onClick={() => set("relations", relations.filter((_, j) => j !== i))}>
                   <Icon.trash size={13} />
                 </button>
               </div>
             ))}
-            <button type="button" className="btn ghost ag-add" onClick={() => set("relations", [...relations, { from: keys[0] ?? "", to: keys.slice(1, 2), type: "handoff" }])}>
+            <button type="button" className="g-btn ghost sm ag-add" onClick={() => set("relations", [...relations, { from: keys[0] ?? "", to: keys.slice(1, 2), type: "handoff" }])}>
               <Icon.plus size={13} />
               Связь
             </button>
@@ -486,19 +504,19 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
           }
         />
         <p className="team-graph-hint">Перетащите связь между участниками; к оркестратору — для доклада.</p>
-        <label className="field">
+        <label className="g-field">
           Общие правила команды
-          <textarea rows={2} value={String(draft.charter ?? "")} onChange={(e) => set("charter", e.target.value)} />
+          <textarea className="g-textarea" rows={2} value={String(draft.charter ?? "")} onChange={(e) => set("charter", e.target.value)} />
         </label>
         <div className="ag-row">
-          <label className="field">
+          <label className="g-field">
             Почта
-            <select value={String(draft.mail ?? "open")} onChange={(e) => set("mail", e.target.value === "open" ? undefined : e.target.value)}>
+            <select className="g-select" value={String(draft.mail ?? "open")} onChange={(e) => set("mail", e.target.value === "open" ? undefined : e.target.value)}>
               <option value="open">{MAIL_TITLE.open}</option>
               <option value="flow">{MAIL_TITLE.flow}</option>
             </select>
           </label>
-          <label className="field">
+          <label className="g-field">
             Проекты — пусто: все
             <input
               value={((draft.projects as string[] | undefined) ?? []).join(", ")}
@@ -514,21 +532,11 @@ function TemplateForm({ detail, cfg, onClose }: { detail: TemplateDetail; cfg: C
           </label>
         </div>
         {error && (
-          <div className="auth-error" role="alert">
+          <div className="ag-form-error" role="alert">
             {error}
           </div>
         )}
       </div>
-      <div className="mf">
-        Идущие команды сохраняют снимок шаблона
-        <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button type="button" className="btn primary" onClick={() => void submit()}>
-          Сохранить
-        </button>
-      </div>
-    </Modal>
+    </Dialog>
   );
 }

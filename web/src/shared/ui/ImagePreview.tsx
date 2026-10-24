@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { Dialog } from "./kit/overlays.tsx";
 import "./ImagePreview.css";
 
 export interface ImagePreviewProps {
@@ -67,17 +67,6 @@ function Lightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: (
     setOffset({ x: 0, y: 0 });
   };
 
-  // Capture phase: the lightbox closes on Esc before a surrounding Modal reacts.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
-
   // Lock page scroll for as long as the lightbox is open.
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -99,52 +88,50 @@ function Lightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: (
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  return createPortal(
-    <div
-      className="lightbox"
-      role="dialog"
-      aria-modal="true"
-      aria-label={alt ?? "Изображение"}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+  return (
+    <Dialog title={alt ?? "Изображение"} onClose={onClose} bare className="lightbox-dialog">
       <div
-        ref={stage}
-        className="lightbox-stage"
+        className="lightbox"
         onMouseDown={(e) => {
-          e.preventDefault();
-          drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+          if (e.target === e.currentTarget) onClose();
         }}
-        onMouseMove={(e) => {
-          const d = drag.current;
-          if (d) setOffset({ x: d.ox + e.clientX - d.x, y: d.oy + e.clientY - d.y });
-        }}
-        onMouseUp={() => {
-          drag.current = undefined;
-        }}
-        onMouseLeave={() => {
-          drag.current = undefined;
-        }}
-        onDoubleClick={reset}
       >
-        <img src={src} alt={alt ?? ""} draggable={false} style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }} />
+        <div
+          ref={stage}
+          className="lightbox-stage"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+          }}
+          onMouseMove={(e) => {
+            const d = drag.current;
+            if (d) setOffset({ x: d.ox + e.clientX - d.x, y: d.oy + e.clientY - d.y });
+          }}
+          onMouseUp={() => {
+            drag.current = undefined;
+          }}
+          onMouseLeave={() => {
+            drag.current = undefined;
+          }}
+          onDoubleClick={reset}
+        >
+          <img src={src} alt={alt ?? ""} draggable={false} style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }} />
+        </div>
+        <div className="lightbox-tools" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Уменьшить">
+            −
+          </button>
+          <button type="button" onClick={reset} aria-label="Сбросить масштаб">
+            {Math.round(scale * 100)}%
+          </button>
+          <button type="button" onClick={() => zoomBy(1.2)} aria-label="Увеличить">
+            +
+          </button>
+          <button type="button" className="lightbox-close" onClick={onClose} aria-label="Закрыть">
+            ✕
+          </button>
+        </div>
       </div>
-      <div className="lightbox-tools" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Уменьшить">
-          −
-        </button>
-        <button type="button" onClick={reset} aria-label="Сбросить масштаб">
-          {Math.round(scale * 100)}%
-        </button>
-        <button type="button" onClick={() => zoomBy(1.2)} aria-label="Увеличить">
-          +
-        </button>
-        <button type="button" className="lightbox-close" onClick={onClose} aria-label="Закрыть">
-          ✕
-        </button>
-      </div>
-    </div>,
-    document.body,
+    </Dialog>
   );
 }

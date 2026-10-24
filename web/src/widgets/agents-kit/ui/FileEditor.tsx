@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { agentKeys, type ConfigKind, type Problem, problemLines, refusalMessages, useSaveConfig } from "@/entities/agent-config";
 import { ApiError } from "@/shared/api";
-import { Icon, Modal, useToast } from "@/shared/ui";
+import { Dialog, useToast } from "@/shared/ui";
 
 /** A text editor with line numbers; the lines problems name are marked and listed. */
 function CodeArea({ value, onChange, marks, label }: { value: string; onChange: (v: string) => void; marks: Map<number, string[]>; label: string }) {
@@ -33,7 +33,7 @@ function CodeArea({ value, onChange, marks, label }: { value: string; onChange: 
         </div>
         <textarea
           ref={area}
-          className="mono code-edit"
+          className="g-mono code-edit"
           rows={24}
           wrap="off"
           value={value}
@@ -107,27 +107,34 @@ export function FileEditor({
     }
   };
   return (
-    <Modal label={title} onClose={onClose} wide>
-      <div className="mh">
-        <Icon.file size={13} />
-        {title}
-        <span className="grow" />
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </div>
-      <div className="mb">
-        {hint && <div className="muted ag-hint">{hint}</div>}
+    <Dialog
+      title={title}
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <span className="ag-save-note">Файл проверяется перед сохранением</span>
+          <button type="button" className="g-btn ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="button" className="g-btn primary" disabled={busy} onClick={() => void submit()}>
+            Сохранить
+          </button>
+        </>
+      }
+    >
+      <div className="ag-file-edit">
+        {hint && <div className="g-muted ag-hint">{hint}</div>}
         <CodeArea value={text} onChange={setText} marks={marks} label="Содержимое файла" />
         {error && (
-          <div className="auth-error" role="alert">
+          <div className="ag-form-error" role="alert">
             {error.text}
             {error.stale && (
               <>
                 {" "}
                 <button
                   type="button"
-                  className="btn"
+                  className="g-btn secondary"
                   onClick={() => {
                     void qc.invalidateQueries({ queryKey: agentKeys.all });
                     onClose();
@@ -140,16 +147,6 @@ export function FileEditor({
           </div>
         )}
       </div>
-      <div className="mf">
-        Файл проверяется перед сохранением
-        <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button type="button" className="btn primary" disabled={busy} onClick={() => void submit()}>
-          Сохранить
-        </button>
-      </div>
-    </Modal>
+    </Dialog>
   );
 }

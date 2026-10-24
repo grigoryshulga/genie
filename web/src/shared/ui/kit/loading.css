@@ -1,0 +1,11 @@
+/* The bars of a LoadingState stack in the shape of the text they stand in for. The wrapper is the
+   polite status a screen reader hears; the bars inside it are decorative Skeleton blocks. */
+.g-loading {
+  display: grid;
+  gap: var(--g-space-2);
+  justify-items: stretch;
+  /* A width is a ceiling, not a fixed box: a fixed one would become the min-content floor of the page
+     column on a phone and push the whole page sideways. Percentage widths add nothing to that floor. */
+  width: 100%;
+  min-width: 0;
+}

@@ -1,0 +1,161 @@
+/* ------------------------------------------------------------ epics (GNE-57) */
+/* The epics list and the epic page in ink and paper: the arcs as a progress motif,
+   an Unbounded count of open work, and children grouped by where they stand. */
+
+/* -- the epic chip, wherever a task names its epic ---------------------------------- */
+.epic-chip { display: inline-flex; align-items: center; gap: var(--g-space-1); height: 20px; padding: 0 var(--g-space-2); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); color: var(--g-accent-soft-text); font-family: var(--g-font-mono); font-size: var(--g-text-eyebrow); white-space: nowrap; text-decoration: none; }
+a.epic-chip:hover { border-color: var(--g-accent); color: var(--g-text); }
+.row .tags { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; }
+.card .foot .epic-chip { height: 18px; }
+
+/* -- progress: one segment per task, or one bar per state when they are many --------- */
+.epic-progress { display: flex; flex-direction: column; gap: var(--g-space-2); min-width: 0; }
+.epic-progress .segs { display: flex; gap: 3px; }
+.epic-progress .segs span { flex: 1; height: 6px; border-radius: var(--g-radius-pill); min-width: 3px; background: var(--g-border-strong); }
+/* Closed work is quiet, active work is accent, and only "your move" earns the orange. */
+.epic-progress .segs span.p-closed { background: var(--g-text-muted); }
+.epic-progress .segs span.p-owner { background: var(--g-signal); }
+.epic-progress .segs span.p-review,
+.epic-progress .segs span.p-working { background: var(--g-accent); }
+.epic-progress .segs span.p-ready { background: color-mix(in srgb, var(--g-accent) 55%, var(--g-surface)); }
+.epic-progress .segs span.p-early { background: var(--g-border-strong); }
+.epic-progress.big .segs span { height: 8px; }
+.epic-progress .legend { display: flex; align-items: center; gap: var(--g-space-1) var(--g-space-4); flex-wrap: wrap; font-size: var(--g-text-dense); color: var(--g-text-muted); }
+.epic-progress .legend b { font-weight: var(--g-weight-semibold); color: var(--g-text); }
+.epic-progress .legend span, .epic-progress .legend-list > span { display: inline-flex; align-items: center; gap: var(--g-space-2); }
+.epic-progress i { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--g-border-strong); }
+.epic-progress i.p-closed { background: var(--g-text-muted); }
+.epic-progress i.p-owner { background: var(--g-signal); }
+.epic-progress i.p-review, .epic-progress i.p-working { background: var(--g-accent); }
+.epic-progress i.p-ready { background: color-mix(in srgb, var(--g-accent) 55%, var(--g-surface)); }
+.epic-progress .legend-list { display: flex; flex-direction: column; gap: var(--g-space-1); font-size: var(--g-text-dense); color: var(--g-text-2); }
+
+/* -- the arcs motif on a card ------------------------------------------------------- */
+.epic-icon { flex: none; }
+.epic-box.link > svg:last-child { margin-left: auto; flex: none; color: var(--g-text-muted); }
+.epic-arcs { flex: none; }
+.epic-arcs .track { stroke: var(--g-border-strong); }
+.epic-arcs .fill { stroke: var(--g-accent); stroke-linecap: round; }
+
+/* -- the list of epics -------------------------------------------------------------- */
+.epics-page .ep-head { flex: none; display: flex; align-items: flex-end; gap: var(--g-space-4); flex-wrap: wrap; padding: var(--g-space-5) var(--g-space-5) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
+.ep-head-text { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
+.ep-title { margin: 0; font-family: var(--g-font-display); font-size: var(--g-text-h1); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
+.ep-lede { margin: 0; max-width: var(--g-measure); color: var(--g-text-muted); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
+.epics-scroll { padding: var(--g-space-5); }
+.epic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: var(--g-space-3); align-content: start; }
+.epic-card { display: flex; flex-direction: column; gap: var(--g-space-3); min-width: 0; color: var(--g-text); text-decoration: none; }
+a.epic-card:hover { border-color: var(--g-border-strong); color: var(--g-text); }
+.epic-card.empty-epic { border-style: dashed; }
+.epic-card.closed { background: var(--g-surface); color: var(--g-text-2); }
+.epic-card-head { display: flex; align-items: flex-start; gap: var(--g-space-3); }
+.epic-card-open { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.epic-card-open .num { font-family: var(--g-font-display); font-size: var(--g-text-h2); font-weight: var(--g-weight-bold); line-height: 1; letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
+.epic-card-open .cap { font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.epic-card.closed .epic-card-open .num { color: var(--g-text-2); }
+.epic-card-status { margin-left: auto; flex: none; }
+.epic-card-status .g-tag { gap: var(--g-space-1); }
+.epic-card-title { font-size: var(--g-text-body-lg); font-weight: var(--g-weight-semibold); line-height: var(--g-leading-ui); letter-spacing: var(--g-tracking-heading); }
+.epic-card-meta { display: flex; align-items: center; gap: var(--g-space-3); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.epic-card-meta .mono { font-family: var(--g-font-mono); color: var(--g-text-2); }
+.epic-card-meta .prio { display: inline-flex; align-items: center; gap: var(--g-space-1); }
+.epic-card-goal { color: var(--g-text-2); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.epic-card-waiting { padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); background: var(--g-surface-raised); font-size: var(--g-text-dense); color: var(--g-text-muted); }
+.epic-card-foot { display: flex; align-items: center; gap: var(--g-space-3); margin-top: auto; padding-top: var(--g-space-2); border-top: 1px solid var(--g-border); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.epic-card-foot > span { display: inline-flex; align-items: center; gap: var(--g-space-1); }
+.epic-card.new { align-items: center; justify-content: center; gap: var(--g-space-2); min-height: 200px; padding: var(--g-space-5); border: 1px dashed var(--g-border-strong); border-radius: var(--g-radius-lg); background: transparent; color: var(--g-text-muted); font: inherit; text-align: center; cursor: pointer; }
+.epic-card.new b { font-weight: var(--g-weight-semibold); color: var(--g-text-2); }
+.epic-card.new > span:last-child { max-width: 34ch; font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
+.epic-card-new-mark { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); color: var(--g-accent-text); }
+.epic-card.new:hover { border-color: var(--g-accent); color: var(--g-text-2); }
+.epic-card.new:hover .epic-card-new-mark { border-color: var(--g-accent); }
+.epic-card .g-skeleton { border-radius: var(--g-radius-sm); }
+
+/* -- the epic page ------------------------------------------------------------------ */
+.epic-page .ep-bar { padding-inline: var(--g-space-3); }
+.epic-page .ep-id { font-size: var(--g-text-caption); color: var(--g-text-2); }
+.epic-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.epic-main { overflow-y: auto; padding: var(--g-space-5) var(--g-space-5) var(--g-space-7); display: flex; flex-direction: column; gap: var(--g-space-5); }
+.epic-main > * { max-width: var(--g-measure); }
+.epic-head { display: flex; flex-direction: column; gap: var(--g-space-3); }
+.epic-head h2.title { margin: 0; font-size: var(--g-text-h2); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); color: var(--g-text); outline: none; border-radius: var(--g-radius-sm); }
+.epic-head h2.title:focus { box-shadow: 0 0 0 2px var(--g-focus); }
+.epic-head h2.title[contenteditable="false"] { cursor: default; }
+/* The goal reads as the page's lede: larger prose, one step below the title. */
+.epic-lede { position: relative; padding-right: var(--g-space-5); font-size: var(--g-text-body-lg); color: var(--g-text-2); line-height: var(--g-leading-prose); }
+.epic-lede .md { font-size: var(--g-text-body-lg); }
+.epic-lede > .md > :first-child, .epic-lede > .empty-md:first-child { margin-top: 0; }
+.epic-lede-edit { position: absolute; top: 0; right: 0; }
+.epic-owner { display: flex; flex-direction: column; gap: var(--g-space-2); }
+.epic-owner p { margin: 0; color: var(--g-text); }
+.epic-owner .actions { display: flex; align-items: center; gap: var(--g-space-2); }
+.epic-aside { border-left: 1px solid var(--g-border); padding: var(--g-space-5) var(--g-space-4); display: flex; flex-direction: column; gap: var(--g-space-5); overflow-y: auto; }
+.epic-props { grid-template-columns: 88px minmax(0, 1fr); gap: var(--g-space-2) var(--g-space-2); font-size: var(--g-text-dense); }
+.epic-props .v { display: flex; align-items: center; gap: var(--g-space-1); min-width: 0; }
+.epic-active-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--g-accent); }
+.epic-main .sec h3 { gap: var(--g-space-2); }
+
+/* Children as a g-row list, grouped by where they stand. */
+.epic-tasks h3 { margin-bottom: var(--g-space-3); }
+.epic-task-groups { display: flex; flex-direction: column; gap: var(--g-space-3); }
+.epic-task-group { display: flex; flex-direction: column; }
+.epic-task-group .g-group-head { padding-inline: var(--g-space-2); }
+.epic-task { width: 100%; border: 0; background: none; color: var(--g-text); font: inherit; text-align: left; }
+.epic-task-id { flex: none; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.epic-task-title { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: var(--g-space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.epic-task-note { font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.epic-task-note.signal { color: var(--g-signal-text); }
+.epic-task-team { flex: none; }
+.epic-task-status { flex: none; min-width: 104px; text-align: right; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.epic-task .cost { flex: none; font-size: var(--g-text-caption); color: var(--g-text-2); font-variant-numeric: tabular-nums; }
+.epic-task.closed .epic-task-title { color: var(--g-text-muted); text-decoration: line-through; }
+.epic-tasks-foot { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; padding-top: var(--g-space-2); }
+.epic-tasks-foot .g-select { width: auto; max-width: 100%; }
+.epic-artifacts { display: flex; flex-direction: column; gap: var(--g-space-2); }
+.artifact.tall { height: auto; min-height: 44px; padding: var(--g-space-2) var(--g-space-3); }
+.artifact .txt { display: flex; flex-direction: column; min-width: 0; }
+.artifact.tall .who { margin-left: 0; white-space: normal; }
+.artifact.small { height: 32px; padding: 0 var(--g-space-2); gap: var(--g-space-2); }
+.sec .hint { margin: var(--g-space-2) 0 0; font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
+.epic-skeleton { display: flex; flex-direction: column; gap: var(--g-space-3); padding: var(--g-space-6) var(--g-space-5); max-width: var(--g-measure); }
+.epic-state { display: flex; flex-direction: column; align-items: flex-start; gap: var(--g-space-3); padding: var(--g-space-5); }
+
+/* -- the epic box inside the task rail ---------------------------------------------- */
+.epic-box { border: 1px solid var(--g-border); background: var(--g-surface); border-radius: var(--g-radius-md); padding: var(--g-space-3); display: flex; flex-direction: column; gap: var(--g-space-2); }
+.epic-box.link { flex-direction: row; align-items: center; gap: var(--g-space-2); color: var(--g-text-2); font-size: var(--g-text-dense); }
+.epic-box.link:hover { border-color: var(--g-accent); color: var(--g-text); }
+.epic-box .h { display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-dense); min-width: 0; }
+.epic-box .kind { color: var(--g-accent-text); }
+.epic-box .nm { font-weight: var(--g-weight-semibold); color: var(--g-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.epic-box .mini { margin-left: auto; display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; }
+.epic-box .mini .epic-progress { width: 72px; }
+.epic-box .mini .segs span { height: 4px; }
+.epic-box .md p:last-child { margin-bottom: 0; }
+.epic-box .shared { display: flex; flex-direction: column; gap: var(--g-space-1); }
+.epic-box .lbl { font-size: var(--g-text-caption); font-weight: var(--g-weight-medium); color: var(--g-text-muted); }
+.epic-box .files { display: flex; flex-wrap: wrap; gap: var(--g-space-2); }
+.epic-box .files .artifact { border-color: var(--g-border); max-width: 100%; }
+
+@media (max-width: 900px) {
+  .row .tags { display: none; }
+  .epics-page .ep-head { padding: var(--g-space-4); align-items: flex-start; }
+  .ep-title { font-size: var(--g-text-h2); }
+  .epics-scroll { padding: var(--g-space-4); }
+  .epic-grid { grid-template-columns: 1fr; }
+  .epic-body { grid-template-columns: minmax(0, 1fr); overflow: visible; }
+  .epic-main, .epic-aside { min-width: 0; overflow-wrap: anywhere; }
+  .epic-main > * { max-width: 100%; }
+  .epic-main { padding: var(--g-space-4) var(--g-space-4) var(--g-space-6); overflow: visible; }
+  .epic-lede { padding-right: 0; }
+  .epic-head h2.title { font-size: var(--g-text-h3); }
+  .epic-lede, .epic-lede .md { font-size: var(--g-text-body); }
+  .epic-aside { border-left: 0; border-top: 1px solid var(--g-border); padding: var(--g-space-4); overflow: visible; }
+  .epic-task-id, .epic-task-team { display: none; }
+  .epic-task { min-height: var(--g-row); }
+  .epic-task-title { white-space: normal; flex-wrap: wrap; overflow-wrap: anywhere; }
+  .epic-task-status { min-width: 0; }
+  .epic-box .mini { display: none; }
+}
+.props select { min-width: 0; text-overflow: ellipsis; }
+.props span:has(> select) { min-width: 0; }
+.props span:has(> select) select { flex: 1 1 auto; width: 0; max-width: max-content; }

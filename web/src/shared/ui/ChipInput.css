@@ -1,10 +1,10 @@
 /* A list of values as chips with a box for one more. */
-.chips { min-height: 36px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 5px 5px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-panel); }
-.chips:focus-within { border-color: var(--accent); }
-.chips .chip { height: 24px; display: inline-flex; align-items: center; gap: 2px; padding: 0 2px 0 9px; border: 1px solid #2a2d34; border-radius: 6px; background: #1c1e24; color: #dadce0; font-size: 12px; }
-.chips.mono .chip, .chips.mono input { font-family: var(--mono); }
-.chips .chip button { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: none; color: var(--muted); }
-.chips .chip button:hover { background: #2a2d34; color: var(--text); }
-.chips input { flex: 1 0 120px; min-width: 0; height: 24px; padding: 0 4px; border: 0; background: none; color: var(--text); font-size: 12.5px; outline: 0; }
-.chips-add { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #1c1e24; color: #6f737c; }
-.chips-add.on { background: var(--accent); color: #fff; }
+.chips { min-height: 36px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--g-space-1); padding: 5px 5px 5px var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-surface); }
+.chips:focus-within { border-color: var(--g-accent); }
+.chips .chip { height: 24px; display: inline-flex; align-items: center; gap: var(--g-space-1); padding: 0 var(--g-space-1) 0 9px; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-surface-active); color: var(--g-text); font-size: var(--g-text-caption); }
+.chips.mono .chip, .chips.mono input { font-family: var(--g-font-mono); }
+.chips .chip button { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: var(--g-radius-xs); background: none; color: var(--g-text-muted); }
+.chips .chip button:hover { background: var(--g-surface-hover); color: var(--g-text); }
+.chips input { flex: 1 0 120px; min-width: 0; height: 24px; padding: 0 var(--g-space-1); border: 0; background: none; color: var(--g-text); font-size: var(--g-text-caption); outline: 0; }
+.chips-add { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: var(--g-radius-sm); background: var(--g-surface-active); color: var(--g-text-muted); }
+.chips-add.on { background: var(--g-accent); color: var(--g-on-accent); }

@@ -665,3 +665,57 @@ async fn task_manager_infers_its_mcp_task_and_cannot_evaluate_or_preview_another
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(s.calls.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn signal_assessment_is_bounded_and_provider_uncertainty_remains_unknown() {
+    let (h, s) = harness().await;
+    let task = ready(&h);
+    let mut p = enabled();
+    p.intelligence.enabled = true;
+    p.intelligence.semantic_assessment = true;
+    save(&h, p);
+    let (status, snapshot, _) =
+        call(&h.router, "POST", &format!("/api/tasks/{task}/intelligence/assess?project=shop")).json(json!({})).send().await;
+    assert_eq!(status, StatusCode::OK, "{snapshot}");
+    assert_eq!(s.calls.load(Ordering::SeqCst), 1);
+    let requests = s.requests.lock().unwrap().clone();
+    let request = &requests[0];
+    assert_eq!(request["questions"].as_object().unwrap().len(), 5);
+    assert!(!request["questions"].as_object().unwrap().contains_key("sensitivity"));
+    assert!(snapshot["profile"]["signals"].as_array().unwrap().iter().any(|v| v["source"] == "jev"));
+    *s.flat.lock().unwrap() = true;
+    // A changed brief produces a different provider cache key.
+    h.app
+        .with_tracker("shop", |t| {
+            t.update(
+                &Actor::new("owner", Role::Human),
+                &task,
+                genie_core::UpdateInput { description: Some("A changed task brief".into()), ..Default::default() },
+            )
+        })
+        .unwrap();
+    let (status, snapshot, _) =
+        call(&h.router, "POST", &format!("/api/tasks/{task}/intelligence/assess?project=shop")).json(json!({})).send().await;
+    assert_eq!(status, StatusCode::OK, "{snapshot}");
+    assert!(snapshot["profile"]["signals"].as_array().unwrap().iter().all(|s| s["value"] == "unknown"));
+}
+
+#[tokio::test]
+async fn unavailable_jev_selects_a_recorded_safe_template_fallback() {
+    let (h, s) = harness().await;
+    let task = ready(&h);
+    let mut p = enabled();
+    p.team = Mode::Select;
+    p.templates = vec!["pair".into()];
+    p.intelligence.enabled = true;
+    p.intelligence.fallback_template = Some("pair".into());
+    save(&h, p);
+    *s.status.lock().unwrap() = Some(StatusCode::SERVICE_UNAVAILABLE);
+    let orchestrator = token(&h, Role::Orchestrator, "orchestrator", None);
+    let (status, team, _) = call(&h.router, "POST", "/api/teams?project=shop").bearer(&orchestrator).json(spawn(&task)).send().await;
+    assert_eq!(status, StatusCode::CREATED, "{team}");
+    assert_eq!(team["template"], "pair");
+    let history = h.app.with_tracker("shop", |t| t.intelligence_history(&task)).unwrap();
+    assert_eq!(history.routing.len(), 1);
+    assert!(matches!(history.routing[0].plan.decision_status, genie_core::intelligence::RoutingStatus::Fallback));
+}

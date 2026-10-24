@@ -1,0 +1,4 @@
+/* The team view's sheets in cascade order: the widget's own sheet, then the phone layer that adjusts it.
+   Inlined into this widget's chunk so the two keep that order instead of being hoisted apart. */
+@import "./team.css";
+@import "../../shared/ui/mobile.css";

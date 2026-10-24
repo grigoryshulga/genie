@@ -47,6 +47,7 @@ macro_rules! str_enum {
         }
     };
 }
+pub(crate) use str_enum;
 
 str_enum!(
     /// Task lifecycle status.

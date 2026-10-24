@@ -11,11 +11,11 @@ export function Problems({ items }: { items: Problem[] }) {
         {items.map((p, i) => (
           <li key={`${p.item}-${i}`} className={p.level}>
             <b>{p.level === "error" ? "Ошибка" : "Предупреждение"}</b>
-            <span>{p.message}<small className="muted">{p.path ?? p.item}</small></span>
+            <span>{p.message}<small className="g-muted">{p.path ?? p.item}</small></span>
           </li>
         ))}
       </ul>
-      {errors > 0 && <p className="muted ag-note">До исправления действует последняя рабочая версия.</p>}
+      {errors > 0 && <p className="g-muted ag-note">До исправления действует последняя рабочая версия.</p>}
     </details>
   );
 }

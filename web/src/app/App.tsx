@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
 import { LEGACY_VIEWS, type PresetId, PRESETS, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
@@ -8,9 +8,28 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
-import { canManageProject, managementDestination, isTyping, readPref, rememberWorkRoute, writePref } from "@/shared/lib";
-import { Sidebar } from "@/widgets/sidebar";
+import { canManageProject, managementDestination, isTyping, rememberWorkRoute } from "@/shared/lib";
+import { Dialog, LoadingState, Skeleton } from "@/shared/ui";
+import { TopBar } from "@/widgets/topbar";
 import { lazyPage } from "./lazyPage.ts";
+import "./task-modal.css";
+// Legacy cross-layer compatibility layer (`#root` height plus old class names other sheets still
+// target). It stays with the app shell until the H33 cleanup retires those rules.
+import "./styles/additions.css";
+// The markdown surface's prose: the shell loads it here, after the avatar and shell primitives it has
+// to override (`.md` also matches the medium avatar size), and before the phone layer, which is the
+// order the central sheet used to give it.
+import "@/shared/ui/markdown.css";
+// The app-wide responsive layer and the desktop centring column: the shell, the eager board screen
+// and every page the shell renders itself. Lazy screens re-inline them in their own chunk (see
+// `<screen>-sheets.css`) so that they still load after that screen's area sheets.
+import "@/shared/ui/mobile.css";
+// The phone replacement for the top bar's search field is rendered by the screens that ask for it,
+// so its rules have to load after `shell.css` (the field is `.search`) and after the phone layer
+// (which widens `.search`): the shared sheet rides the shell's tail here, and the screens that show
+// the field re-inline it in their own chunk.
+import "@/shared/ui/search-and-docs.css";
+import "@/shared/ui/content.css";
 
 // Only the entry screen is eager: the gate (its login page and the shell) and the board,
 // which is what `/` redirects to. Every other page is a chunk fetched when its route is
@@ -35,13 +54,23 @@ const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.Answe
 const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
 const NotificationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.NotificationsPage));
 const ProposalsPage = lazyPage(() => import("@/pages/platform").then((m) => m.ProposalsPage));
+const ObservationsPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationsPage));
+const ObservationPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationPage));
 const TaskDetail = lazyPage(() => import("@/widgets/task-detail").then((m) => m.TaskDetail));
 const CommandPalette = lazyPage(() => import("@/features/command-palette").then((m) => m.CommandPalette));
 const NewTaskDialog = lazyPage(() => import("@/features/create-task").then((m) => m.NewTaskDialog));
 
-/** What a page shows while its chunk loads; the same «Загрузка…» row the pages use. */
+/** What a page shows while its chunk loads: the shape of a page header and its first lines. */
 function PageFallback() {
-  return <div className="empty">Загрузка…</div>;
+  return (
+    <div className="empty">
+      <LoadingState label="Загрузка страницы" width={420}>
+        <Skeleton width={200} height={22} />
+        <Skeleton height={14} />
+        <Skeleton height={14} width="72%" />
+      </LoadingState>
+    </div>
+  );
 }
 
 function Shell() {
@@ -50,17 +79,11 @@ function Shell() {
   const location = useLocation();
   const [sp, setSp] = useSearchParams();
   const [dialog, setDialog] = useState<"new" | "palette" | undefined>();
-  const [sidebarCompact, setSidebarCompact] = useState(() => readPref<string>("sidebar-compact", "false") === "true");
   const [preset, setPreset] = useState<NewTaskPreset | undefined>();
   const newTask = useCallback((p?: NewTaskPreset) => {
     setPreset(p);
     setDialog("new");
   }, []);
-  const toggleSidebar = useCallback(() => {
-    const next = !sidebarCompact;
-    setSidebarCompact(next);
-    writePref("sidebar-compact", String(next));
-  }, [sidebarCompact]);
   const searchRef = useRef<HTMLInputElement>(null);
   const mobileSearchRef = useRef<HTMLInputElement>(null);
   const focusSearch = useCallback(() => {
@@ -68,20 +91,31 @@ function Shell() {
       (mobileSearchRef.current ?? document.querySelector<HTMLInputElement>(".mobile-context-search input"))?.focus();
       return;
     }
-    setSidebarCompact(false);
-    writePref("sidebar-compact", "false");
-    requestAnimationFrame(() => searchRef.current?.focus());
+    searchRef.current?.focus();
   }, []);
   const teams = useTeamMap();
   const tasks = useTasks().data;
   const teamRoute = location.pathname.startsWith("/team/");
   const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
-  const platformRoute = ["/automations", "/agents", "/notifications", "/statistics"].some((p) => location.pathname.startsWith(p));
+  const platformRoute = ["/automations", "/observation", "/agents", "/notifications", "/statistics"].some((p) => location.pathname.startsWith(p));
   // Pages without the task list or board: opening a task from the palette goes to the list.
   const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
   const openTask = tasks?.find((t) => t.id === openTaskId);
+  const taskModalOpen = !!openTaskId;
+
+  // Capture the opener before Dialog.showModal() moves focus. Restore after React removes the
+  // dialog, unless navigation removed the opener or another modal has taken over.
+  useLayoutEffect(() => {
+    if (!taskModalOpen) return;
+    const opener = document.activeElement;
+    return () => {
+      requestAnimationFrame(() => {
+        if (opener instanceof HTMLElement && opener.isConnected && !document.querySelector("dialog:modal")) opener.focus();
+      });
+    };
+  }, [taskModalOpen]);
 
   // The settings mode's «← к работе» returns here (PD21).
   useEffect(() => {
@@ -124,11 +158,8 @@ function Shell() {
         setDialog("palette");
         return;
       }
-      if (dialog) return;
-      if (e.key === "Escape" && openTaskId && !isTyping(e)) {
-        closeTask();
-        return;
-      }
+      // Native dialogs own Escape and focus; background shortcuts must not act on the covered page.
+      if (dialog || openTaskId) return;
       if (isTyping(e)) return;
       if (Date.now() - gPending.current < 1200) {
         const sections: Record<string, "board" | "tasks" | "epics" | "settings"> = { b: "board", t: "tasks", e: "epics", s: "settings" };
@@ -159,17 +190,19 @@ function Shell() {
   }, [dialog, openTaskId, closeTask, actions, navigate, newTask, focusSearch]);
 
   const agentRoute = /^\/team\/[^/]+\/[^/]+/.test(location.pathname);
-  const cls = `${agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : openTaskId ? "app with-detail" : "app"}${sidebarCompact ? " sidebar-compact" : ""}`;
+  const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : "app";
   return (
     <div className={cls}>
-      <Sidebar onNew={() => newTask()} online={online} compact={sidebarCompact} onToggleCompact={toggleSidebar} searchRef={searchRef} onOpenSearch={focusSearch} />
+      <TopBar onNew={() => newTask()} online={online} searchRef={searchRef} onOpenSearch={focusSearch} onOpenPalette={() => setDialog("palette")} />
       <Suspense fallback={<PageFallback />}>
         <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
       </Suspense>
       {openTaskId && (
-        <Suspense fallback={null}>
-          <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />
-        </Suspense>
+        <Dialog bare className="task-modal" title={`Задача ${openTaskId}`} onClose={closeTask}>
+          <Suspense fallback={<PageFallback />}>
+            <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />
+          </Suspense>
+        </Dialog>
       )}
       {dialog === "new" && (
         <Suspense fallback={null}>
@@ -266,7 +299,7 @@ function Gate() {
 /** The server section of the settings: server administrators only. A route-level policy, so it lives with the routes. */
 function RequireServerAdmin({ children }: { children: ReactNode }) {
   const session = useSession();
-  if (session.isLoading) return <div className="empty">Загрузка…</div>;
+  if (session.isLoading) return <div className="empty"><LoadingState label="Загрузка" lines={2} width={320} /></div>;
   if (!session.data?.user.isAdmin) return <div className="empty">Раздел доступен администраторам сервера.</div>;
   return children;
 }
@@ -292,7 +325,7 @@ function LegacyManagement({ scope, legacySection }: { scope: "project" | "server
 /** `/profile/…` — the personal settings before the settings mode (PD21); old notifications still carry these links. */
 function LegacyProfile() {
   const { tab } = useParams();
-  const section = tab === "security" || tab === "telegram" || tab === "keys" || tab === "tokens" ? tab : "account";
+  const section = tab === "appearance" || tab === "security" || tab === "telegram" || tab === "keys" || tab === "tokens" ? tab : "account";
   return <Navigate to={`/settings/me/${section}`} replace />;
 }
 
@@ -337,6 +370,8 @@ export const router = createBrowserRouter([
           { path: "docs/edit", element: <DocsPage /> },
           { path: "docs/proposals", element: <ProposalsPage /> },
           { path: "automations", element: <AutomationsPage /> },
+          { path: "observations", element: <ObservationsPage /> },
+          { path: "observation/:caseId", element: <ObservationPage /> },
           { path: "agents", element: <AgentsPage /> },
           { path: "notifications", element: <NotificationsPage /> },
           { path: "statistics", element: <RequireServerAdmin><ServerStatisticsPage /></RequireServerAdmin> },

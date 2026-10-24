@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useManageTask, useTaskManagement, type Task } from "@/entities/task";
-import { useSession } from "@/entities/session";
-import { Markdown, useToast } from "@/shared/ui";
+import { canWriteProject, useSession } from "@/entities/session";
+import { Button, Markdown, useToast } from "@/shared/ui";
+import { CollapsibleSection } from "./CollapsibleSection.tsx";
 import "./task-manager.css";
 
 const STATES: Record<string, string> = {
@@ -14,11 +15,9 @@ const STATES: Record<string, string> = {
 export function TaskManager({ task }: { task: Task }) {
   const query = useTaskManagement(task.id);
   const action = useManageTask();
-  const session = useSession().data;
   const toast = useToast();
   const [answers, setAnswers] = useState<Record<number, string>>({});
-  const role = session?.projects.find((p) => p.slug === session.project)?.role;
-  const writable = session?.mode === "local" || (role !== undefined && role !== "viewer");
+  const writable = canWriteProject(useSession().data);
   if (query.isPending) return null;
   if (query.isError) return <section className="sec"><h3>Менеджер задачи</h3><p role="alert">{query.error.message}</p></section>;
   const manager = query.data.manager;
@@ -30,27 +29,26 @@ export function TaskManager({ task }: { task: Task }) {
   };
   if (!manager) {
     if (task.status !== "ready" || !writable) return null;
-    return <section className="sec"><h3>Менеджер задачи</h3><button type="button" className="btn" disabled={action.isPending} onClick={() => act("dispatch")}>Отправить в выполнение</button></section>;
+    return <CollapsibleSection title="Менеджер задачи"><Button disabled={action.isPending} onClick={() => act("dispatch")}>Отправить в выполнение</Button></CollapsibleSection>;
   }
   const questions = query.data.clarifications.filter((q) => q.state === "project" || q.state === "owner");
   const report = manager.report ? task.artifacts.find((a) => a.id === manager.report) : undefined;
   return (
-    <section className="sec">
-      <h3>Менеджер задачи</h3>
+    <CollapsibleSection title="Менеджер задачи">
       <p>{STATES[manager.state] ?? manager.state} <span className="muted">· постановка v{manager.briefVersion}</span></p>
       {report && <p>Отчёт: {report.name} · #{report.id} — доступен в артефактах задачи.</p>}
-      {manager.state !== "completed" && writable && <button type="button" className="btn ghost" disabled={action.isPending} onClick={() => act("retry")}>Продолжить работу менеджера</button>}
+      {manager.state !== "completed" && writable && <Button variant="ghost" sm disabled={action.isPending} onClick={() => act("retry")}>Продолжить работу менеджера</Button>}
       {questions.map((q) => (
         <div key={q.id} className="manager-question">
           <p><b>Уточнение #{q.id}</b> · {q.state === "owner" ? "ожидает человека" : "у менеджера проекта"}{q.blocking ? " · блокирует приёмку" : " · работа может продолжаться"}</p>
           <Markdown text={q.question} />
           {writable && <form onSubmit={(e) => { e.preventDefault(); act("answer", { id: q.id, text: answers[q.id] }); }}>
-            <label>Ответ<textarea className="in" required value={answers[q.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))} /></label>
-            <button type="submit" className="btn" disabled={action.isPending || !answers[q.id]?.trim()}>Ответить</button>
-            {q.state === "project" && <button type="button" className="btn ghost" disabled={action.isPending} onClick={() => act("escalate", { id: q.id })}>Запросить решение человека</button>}
+            <label>Ответ<textarea className="g-textarea" required value={answers[q.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))} /></label>
+            <Button type="submit" sm disabled={action.isPending || !answers[q.id]?.trim()}>Ответить</Button>
+            {q.state === "project" && <Button variant="ghost" sm disabled={action.isPending} onClick={() => act("escalate", { id: q.id })}>Запросить решение человека</Button>}
           </form>}
         </div>
       ))}
-    </section>
+    </CollapsibleSection>
   );
 }

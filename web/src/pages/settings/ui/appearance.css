@@ -1,0 +1,34 @@
+.appearance-themes { display: flex; flex-wrap: wrap; gap: var(--g-space-2); }
+.appearance-theme { display: flex; align-items: center; gap: var(--g-space-3); min-width: 142px; height: var(--g-control); padding: 0 var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-bg); color: var(--g-text-2); text-align: left; }
+.appearance-theme:hover { border-color: var(--g-accent); color: var(--g-text); }
+.appearance-theme[aria-pressed="true"] { border-color: var(--g-accent); background: var(--g-accent-soft); color: var(--g-text); }
+/* The swatches show the theme they name, not the theme in use: a specimen of paper next
+   to a specimen of ink. They therefore draw from the fixed neutral ramp, which does not
+   change with the active theme, instead of the semantic surface tokens. */
+.appearance-theme-preview {
+  --theme-preview-light-side: var(--g-n-100);
+  --theme-preview-light-panel: var(--g-n-0);
+  --theme-preview-light-line: var(--g-n-200);
+  --theme-preview-light-active: var(--g-green);
+  --theme-preview-dark-side: var(--g-n-850);
+  --theme-preview-dark-panel: var(--g-n-900);
+  --theme-preview-dark-line: var(--g-n-700);
+  --theme-preview-dark-active: var(--g-green-400);
+  --theme-preview-system-line: var(--g-n-400);
+  width: 30px; height: 22px; display: flex; overflow: hidden; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm);
+}
+.appearance-theme-preview::before { content: ""; width: 8px; border-right: 1px solid; }
+.appearance-theme-preview > span:first-child { flex: 1; border-right: 1px solid; }
+.appearance-theme-preview > span:last-child { width: 6px; }
+.appearance-theme-preview.paper { border-color: var(--theme-preview-light-line); background: var(--theme-preview-light-panel); color: var(--theme-preview-light-line); }
+.appearance-theme-preview.paper::before { background: var(--theme-preview-light-side); }
+.appearance-theme-preview.paper > span:first-child { background: linear-gradient(var(--theme-preview-light-active) 35%, var(--theme-preview-light-panel) 35%); }
+.appearance-theme-preview.paper > span:last-child { background: var(--theme-preview-light-side); }
+.appearance-theme-preview.ink { border-color: var(--theme-preview-dark-line); background: var(--theme-preview-dark-panel); color: var(--theme-preview-dark-line); }
+.appearance-theme-preview.ink::before { background: var(--theme-preview-dark-side); }
+.appearance-theme-preview.ink > span:first-child { background: linear-gradient(var(--theme-preview-dark-active) 35%, var(--theme-preview-dark-panel) 35%); }
+.appearance-theme-preview.ink > span:last-child { background: var(--theme-preview-dark-side); }
+.appearance-theme-preview.system { border-color: var(--theme-preview-system-line); background: linear-gradient(90deg, var(--theme-preview-light-panel) 50%, var(--theme-preview-dark-panel) 50%); color: var(--theme-preview-system-line); }
+.appearance-theme-preview.system::before { background: linear-gradient(var(--theme-preview-light-side) 50%, var(--theme-preview-dark-side) 50%); }
+.appearance-theme-preview.system > span:first-child { background: linear-gradient(90deg, var(--theme-preview-light-active) 50%, var(--theme-preview-dark-active) 50%); }
+.appearance-theme-preview.system > span:last-child { background: linear-gradient(var(--theme-preview-light-side) 50%, var(--theme-preview-dark-side) 50%); }

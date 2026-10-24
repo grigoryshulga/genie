@@ -26,7 +26,7 @@ async fn wait_for(app: &App, what: &str, timeout: Duration, mut done: impl FnMut
         if done(app) {
             return;
         }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
     let turns = app.with_server(|db| db.turns("shop", None, 50)).unwrap();
     let log: Vec<String> =

@@ -126,14 +126,18 @@ test("the template graph puts the orchestrator on top and flags members named by
   assert.deepEqual(
     g.nodes.map((n) => [n.key, !!n.flagged]),
     [
+      ["project-manager", false],
       ["orchestrator", false],
       ["executor", false],
       ["reviewer", true],
     ],
   );
-  const [orch, exec, rev] = g.nodes;
+  const [project, orch, exec, rev] = g.nodes;
+  assert.ok(project.y < orch.y);
+  assert.equal(project.label, "Менеджер проекта");
+  assert.equal(orch.label, "Менеджер задачи");
   assert.ok(orch.y < exec.y && exec.y === rev.y && exec.x < rev.x);
-  assert.equal(g.edges.length, 3, "a relation from an unknown member is not drawn");
+  assert.equal(g.edges.length, 4, "a relation from an unknown member is not drawn");
   const handoff = g.edges.find((e) => e.type === "handoff")!;
   const back = g.edges.find((e) => e.type === "returns")!;
   assert.ok(handoff.ly < exec.y && back.ly > exec.y, "forward above the row, returns below");
@@ -142,9 +146,29 @@ test("the template graph puts the orchestrator on top and flags members named by
     ["a", "b", "c", "d", "e"].map((key) => ({ key, label: key, sub: "" })),
     [{ from: "a", to: ["e"], type: "handoff" }],
   );
-  assert.equal(five.nodeW, 140, "five members get narrower nodes");
-  assert.ok(five.width <= 820, "five members fit a regular page");
-  assert.ok(five.edges[0].ly < five.nodes[1].y - 30, "a long handoff arcs higher");
+  assert.equal(five.nodeW, 240, "cards retain readable widths");
+  assert.equal(five.stages.length, 2, "parallel members share a stage");
+  assert.ok(five.edges.every((edge) => !/[QC]/.test(edge.d)), "connections contain only straight segments");
+});
+
+test("handoff stages follow dependencies regardless of member order and tolerate cycles", () => {
+  const members = ["review", "build", "plan", "test"].map((key) => ({ key, label: key, sub: "" }));
+  const g = layoutTeam(members, [
+    { from: "plan", to: ["build"], type: "handoff" },
+    { from: "build", to: ["review", "test"], type: "handoff" },
+    { from: "review", to: ["build"], type: "returns" },
+  ]);
+  const at = (key: string) => g.nodes.find((n) => n.key === key)!;
+  assert.ok(at("plan").x < at("build").x && at("build").x < at("review").x);
+  assert.equal(at("test").x, at("review").x);
+  assert.notEqual(at("test").y, at("review").y);
+  const cycle = layoutTeam(members, [
+    { from: "plan", to: ["build"], type: "handoff" },
+    { from: "build", to: ["plan"], type: "handoff" },
+  ]);
+  assert.equal(cycle.nodes.length, members.length + 2);
+  assert.ok(cycle.nodes.every((n) => Number.isFinite(n.x) && n.y < cycle.height));
+  assert.equal(layoutTeam([], []).edges.length, 1, "management levels remain connected");
 });
 
 test("a task before ready gets refinement templates, a ready one delivery templates", () => {

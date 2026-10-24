@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { type Catalogue, CLASS_TITLE, newRoleFile, newTemplate, setFrontmatterKey, useSaveConfig } from "@/entities/agent-config";
-import { Icon, Modal } from "@/shared/ui";
+import { Dialog } from "@/shared/ui";
 
 export type CreateKind = "roles" | "templates" | "skills";
 
@@ -47,42 +47,49 @@ export function CreateDialog({ kind, cfg, onClose, onCreated }: { kind: CreateKi
   };
   const label = NEW_LABEL[kind];
   return (
-    <Modal label={label} onClose={onClose}>
+    <Dialog
+      title={label}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="ag-save-note">Файл появится в каталоге данных сервера</span>
+          <button type="button" className="g-btn ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="submit" form="ag-create" className="g-btn primary" disabled={!ID.test(id) || taken}>
+            Создать
+          </button>
+        </>
+      }
+    >
       <form
+        id="ag-create"
+        className="ag-form"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
-        style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
       >
-        <div className="mh">
-          {label}
-          <span className="grow" />
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-            <Icon.close />
-          </button>
-        </div>
-        <div className="mb">
-          <label className="field">
+          <label className="g-field">
             {kind === "skills" ? "Имя навыка" : "Идентификатор"} — латиницей, строчными, через дефис
-            <input value={id} onChange={(e) => setId(e.target.value.trim())} pattern="[a-z][a-z0-9-]*" required autoFocus placeholder={kind === "roles" ? "security-reviewer" : kind === "templates" ? "security-review" : "owasp-review"} />
+            <input className="g-input" value={id} onChange={(e) => setId(e.target.value.trim())} pattern="[a-z][a-z0-9-]*" required autoFocus placeholder={kind === "roles" ? "security-reviewer" : kind === "templates" ? "security-review" : "owasp-review"} />
           </label>
           {id && !ID.test(id) && <span className="ag-warn">Только a–z, цифры и дефис, с буквы.</span>}
           {taken && <span className="ag-warn">Такой уже есть.</span>}
           {kind !== "skills" && (
-            <label className="field">
+            <label className="g-field">
               Название
-              <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder={kind === "roles" ? "Ревьюер безопасности" : "Ревью безопасности"} />
+              <input className="g-input" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder={kind === "roles" ? "Ревьюер безопасности" : "Ревью безопасности"} />
             </label>
           )}
-          <label className="field">
+          <label className="g-field">
             Описание — {kind === "skills" ? "когда агенту им пользоваться" : "по нему оркестратор выбирает"}
-            <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} required />
+            <textarea className="g-textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} required />
           </label>
           {kind === "roles" && (
-            <label className="field">
+            <label className="g-field">
               Основа
-              <select value={base} onChange={(e) => setBase(e.target.value)}>
+              <select className="g-select" value={base} onChange={(e) => setBase(e.target.value)}>
                 <optgroup label="Класс процесса — его разрешения по умолчанию">
                   {(["analyst", "executor", "reviewer", "tester", "documenter"] as const).map((k) => (
                     <option key={k} value={`class:${k}`}>
@@ -103,29 +110,18 @@ export function CreateDialog({ kind, cfg, onClose, onCreated }: { kind: CreateKi
             </label>
           )}
           {kind !== "templates" && (
-            <label className="field">
+            <label className="g-field">
               {kind === "roles" ? "Промпт роли (Markdown)" : "Инструкции навыка (Markdown)"}
-              <textarea rows={6} value={body} onChange={(e) => setBody(e.target.value)} placeholder={kind === "roles" && base.startsWith("role:") ? "Пусто — промпт родительской роли" : ""} />
+              <textarea className="g-textarea" rows={6} value={body} onChange={(e) => setBody(e.target.value)} placeholder={kind === "roles" && base.startsWith("role:") ? "Пусто — промпт родительской роли" : ""} />
             </label>
           )}
-          {kind === "templates" && <p className="muted ag-note">Шаблон начнётся с пары «исполнитель → ревьюер»: состав и связи правятся в редакторе шаблона.</p>}
+          {kind === "templates" && <p className="g-muted ag-note">Шаблон начнётся с пары «исполнитель → ревьюер»: состав и связи правятся в редакторе шаблона.</p>}
           {error && (
-            <div className="auth-error" role="alert">
+            <div className="ag-form-error" role="alert">
               {error}
             </div>
           )}
-        </div>
-        <div className="mf">
-          Файл появится в каталоге данных сервера
-          <span className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>
-            Отмена
-          </button>
-          <button type="submit" className="btn primary" disabled={!ID.test(id) || taken}>
-            Создать
-          </button>
-        </div>
       </form>
-    </Modal>
+    </Dialog>
   );
 }

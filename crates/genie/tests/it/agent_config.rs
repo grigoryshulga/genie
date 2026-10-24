@@ -494,7 +494,11 @@ async fn admins_upload_the_files_of_a_skill_everyone_reads_them() {
 
 #[tokio::test]
 async fn a_person_gives_one_agent_its_own_model_and_takes_it_back() {
-    let h = Harness::new();
+    let h = Harness::with_config(|cfg| {
+        // This menu checks configured role models; do not discover models from a host installation.
+        cfg.runtime.command.clear();
+        cfg.runtime.session_command.clear();
+    });
     h.project("shop");
     let id = ready_task(&h, "Pick a model");
     let r = &h.router;

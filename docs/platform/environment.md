@@ -37,4 +37,4 @@ A server container is not an environment per project. Its agents share the image
 
 The research in G-90 considered mise manifests, devcontainers, project Dockerfiles, and Nix. The proposed first step is a sandboxed setup phase with pinned tools and a cache keyed by dependency manifests. Projects needing services or system packages would later use a rootless container runner.
 
-This is planned work, not an available `environment` configuration API. Revisit it using pilot evidence; do not rely on automatic tool installation today.
+This is planned work, not an available `environment` configuration API. Do not rely on automatic tool installation today. The [workspace environments design](environment-design.md) proposes the model: profiles and recipes, runners, prepared-dependency snapshots, isolation policy, lifecycle, and multi-repository checks.

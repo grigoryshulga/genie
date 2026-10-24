@@ -1,7 +1,11 @@
 import { initial, type Member, memberLabel, ROLE_LETTER } from "../model.ts";
+import "./avatar.css";
+// Legacy avatar primitives (`.av`, `.avatars`, `.more`) still live in the task-list sheet.
 
 export function Avatar({ role, name, activity, state, size }: { role: string; name?: string; activity?: string; state?: string; size?: "md" | "lg" | "solo" }) {
-  const cls = ["av", `r-${role}`, size ?? "", activity === "working" ? "working" : "", activity === "error" ? "error" : "", state === "stopped" ? "stopped" : "", state === "lost" ? "lost" : ""].filter(Boolean).join(" ");
+  // Shape, not colour, says which one this is: a rounded square is an agent, a circle is a person.
+  const shape = role === "human" ? "human" : "agent";
+  const cls = ["av", shape, size ?? "", activity === "working" ? "working" : "", activity === "error" ? "error" : "", state === "stopped" ? "stopped" : "", state === "lost" ? "lost" : ""].filter(Boolean).join(" ");
   const person = role === "human" || role === "orchestrator" || !name;
   const label = `${person ? (name ?? role) : memberLabel(name, role)}${activity === "working" ? " — работает" : activity === "error" ? " — ошибка" : ""}`;
   return (

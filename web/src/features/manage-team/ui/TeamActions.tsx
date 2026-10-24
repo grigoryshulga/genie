@@ -18,18 +18,18 @@ export function TeamActions({ team }: { team: TeamView }) {
   return (
     <>
       {active && (
-        <button type="button" className="btn" onClick={() => setDialog("add")}>
+        <button type="button" className="g-btn secondary" onClick={() => setDialog("add")}>
           <Icon.userPlus size={13} />
           <span className="d-only">Добавить</span>
         </button>
       )}
       {active && (
-        <button type="button" className="btn" onClick={() => setDialog("stop")}>
+        <button type="button" className="g-btn secondary" onClick={() => setDialog("stop")}>
           <Icon.stop size={13} />
           <span className="d-only">Остановить</span>
         </button>
       )}
-      <button type="button" className="icon-btn" onClick={() => setDialog("delete")} aria-label="Удалить команду" title="Удалить команду">
+      <button type="button" className="g-icon-btn" onClick={() => setDialog("delete")} aria-label="Удалить команду" title="Удалить команду">
         <Icon.trash />
       </button>
 

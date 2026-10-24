@@ -868,3 +868,106 @@ async fn the_runtime_view_shows_the_scheduler_queue() {
     assert_eq!(v["membersWaiting"], json!(0));
     assert_eq!(v["jobsWaiting"], json!(0));
 }
+
+#[tokio::test]
+async fn social_auth_is_opt_in_and_start_is_csrf_protected() {
+    let empty = Harness::new();
+    let (_, providers, _) = call(&empty.remote, "GET", "/api/auth/social").send().await;
+    assert_eq!(providers, json!([]));
+    let h = Harness::with_config(|cfg| {
+        cfg.public_url = Some("https://genie.example.com".into());
+        cfg.social_auth.github = Some(genie::config::SocialClient {
+            client_id: "test-client".into(),
+            // The value is used only to check configuration availability; this test sends no network requests.
+            client_secret_env: "PATH".into(),
+        });
+    });
+    let (status, providers, _) = call(&h.remote, "GET", "/api/auth/social").send().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(providers, json!([{"id":"github", "title":"GitHub", "connected":false, "registration":false}]));
+    let (status, _, _) = call(&h.remote, "POST", "/api/auth/social/github/start").no_csrf().json(json!({})).send().await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, _) = call(&h.remote, "POST", "/api/auth/social/github/start").json(json!({"link":true})).send().await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, headers, bytes) = call(&h.remote, "POST", "/api/auth/social/github/start").json(json!({})).send_raw().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["cache-control"], "no-store");
+    let cookie = headers["set-cookie"].to_str().unwrap();
+    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax") && cookie.contains("Secure"));
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let url = reqwest::Url::parse(body["url"].as_str().unwrap()).unwrap();
+    let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
+    assert_eq!(params["redirect_uri"], "https://genie.example.com/api/auth/social/github/callback");
+    assert_eq!(params["code_challenge_method"], "S256");
+    assert_eq!(params["code_challenge"].len(), 43);
+    assert!(params["state"].len() >= 32);
+    assert!(!params.contains_key("client_secret") && !params.contains_key("code_verifier"));
+    let callback = format!("/api/auth/social/github/callback?state={}&error=access_denied", params["state"]);
+    let (_, response, _) = call(&h.remote, "GET", &callback).send_raw().await;
+    assert_eq!(response["location"], "/?socialError=1", "no flow cookie means no login");
+    let (_, response, _) = call(&h.remote, "GET", &callback).cookie(cookie.split(';').next().unwrap()).send_raw().await;
+    assert_eq!(response["location"], "/?socialError=1", "provider cancellation is safe");
+    assert!(response.get_all("set-cookie").iter().all(|h| !h.to_str().unwrap().starts_with("genie_session=")));
+}
+
+#[tokio::test]
+async fn social_auth_refuses_remote_plain_http_configuration() {
+    let h = Harness::with_config(|cfg| {
+        cfg.public_url = Some("http://genie.example.com".into());
+        cfg.social_auth.github = Some(genie::config::SocialClient { client_id: "test".into(), client_secret_env: "PATH".into() });
+    });
+    let (_, providers, _) = call(&h.remote, "GET", "/api/auth/social").send().await;
+    assert_eq!(providers, json!([]));
+    let (status, _, _) = call(&h.remote, "POST", "/api/auth/social/github/start").json(json!({})).send().await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn project_icons_require_membership_to_read_and_administration_to_change() {
+    let h = Harness::new();
+    h.project("shop");
+    h.app
+        .with_server(|db| {
+            for (login, role) in [("owner", ProjectRole::Owner), ("member", ProjectRole::Member), ("viewer", ProjectRole::Viewer)] {
+                let user = db.create_user(login, login, None, Some("password-1"), false)?;
+                db.set_membership("shop", user.id, role)?;
+            }
+            db.create_user("outsider", "Outsider", None, Some("password-1"), false)?;
+            Ok(())
+        })
+        .unwrap();
+    let r = &h.remote;
+    let (_, _, cookies) = call(r, "POST", "/api/auth/login").json(json!({"login":"owner", "password":"password-1"})).send().await;
+    let owner = &cookies[0];
+    let png = b"\x89PNG\r\n\x1a\n icon";
+    let (s, _, _) = call(r, "PUT", "/api/projects/shop/icon").cookie(owner).bytes(b"<svg/>").send().await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    let (s, project, _) = call(r, "PUT", "/api/projects/shop/icon").cookie(owner).bytes(png).send().await;
+    assert_eq!(s, StatusCode::OK);
+    let url = project["icon"].as_str().unwrap();
+    let (_, session, _) = call(r, "GET", "/api/auth/me").cookie(owner).send().await;
+    assert_eq!(session["projects"][0]["icon"], url);
+    for login in ["member", "viewer", "outsider"] {
+        let (_, _, cookies) = call(r, "POST", "/api/auth/login").json(json!({"login":login, "password":"password-1"})).send().await;
+        let cookie = &cookies[0];
+        let (s, _, _) = call(r, "PUT", "/api/projects/shop/icon").cookie(cookie).bytes(png).send().await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{login} may not change icons");
+        let (s, _, _) = call(r, "DELETE", "/api/projects/shop/icon").cookie(cookie).send().await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{login} may not clear icons");
+        let (s, headers, bytes) = call(r, "GET", url).cookie(cookie).send_raw().await;
+        if login == "outsider" {
+            assert_eq!(s, StatusCode::FORBIDDEN);
+        } else {
+            assert_eq!(s, StatusCode::OK);
+            assert_eq!(headers["content-type"], "image/png");
+            assert_eq!(bytes, png);
+        }
+    }
+    let (s, project, _) = call(r, "DELETE", "/api/projects/shop/icon").cookie(owner).send().await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(project.get("icon").is_none());
+    let (_, session, _) = call(r, "GET", "/api/auth/me").cookie(owner).send().await;
+    assert!(session["projects"][0].get("icon").is_none());
+    let (s, _, _) = call(r, "GET", url).cookie(owner).send().await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

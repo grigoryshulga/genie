@@ -1,0 +1,8 @@
+/* The task list's cascade tail, inlined into the tasks chunk so it loads after the page's own sheet
+   instead of in a hoisted shared chunk. Order is the app's sheet order: the list and board chrome the
+   screen shares, the phone layer, the epic chip the rows carry, then the filter sheet it owns. */
+@import "../../../widgets/task-list/ui/list.css";
+@import "../../../widgets/board/ui/board.css";
+@import "../../../shared/ui/mobile.css";
+@import "../../../entities/task/ui/epics.css";
+@import "./filters.css";

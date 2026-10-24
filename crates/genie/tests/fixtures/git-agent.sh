@@ -41,7 +41,8 @@ case "$GENIE_AGENT_ROLE" in
       say refused.txt "$refused"
       say pr.txt "$(g pr open --title 'CSV export' --body 'Adds the export.')"
       g task status review --note "request is open"
-      reviewer=$(g team show | awk '/\(reviewer\)/{print $2; exit}')
+      # Consume the whole response: early exit can break the CLI's stdout under pipefail.
+      reviewer=$(g team show | awk '/\(reviewer\)/ && !found {reviewer=$2; found=1} END {print reviewer}')
       g mail send "$reviewer" "please review" --intent question
     fi
     ;;

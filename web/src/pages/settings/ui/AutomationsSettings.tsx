@@ -11,6 +11,10 @@ import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
 import { Icon, Modal, useRefreshingAct } from "@/shared/ui";
 import "@/shared/ui/settings.css";
+import { SettingsLoading } from "@/widgets/settings-shell";
+// The settings pages share the split-pane rules with the platform pages, then the responsive and
+// centring layers.
+import "./settings-sheets.css";
 
 export function AutomationsSettingsPage() {
   useTick();
@@ -30,11 +34,11 @@ export function AutomationsSettingsPage() {
         <span className="sub">правила проекта</span>
         <span className="grow" />
         {!!playbooks.data?.length && (
-          <button type="button" className="btn" onClick={() => setShowPlaybooks(true)}>
+          <button type="button" className="g-btn secondary" onClick={() => setShowPlaybooks(true)}>
             Плейбуки
           </button>
         )}
-        <button type="button" className="btn primary" onClick={() => setEditing({ text: JSON.stringify(EMPTY_RULE, null, 2) })}>
+        <button type="button" className="g-btn secondary" onClick={() => setEditing({ text: JSON.stringify(EMPTY_RULE, null, 2) })}>
           <Icon.plus size={13} />
           <span className="d-only">Новое правило</span>
         </button>
@@ -55,7 +59,7 @@ export function AutomationsSettingsPage() {
             </button>
           ))}
           {rules.isSuccess && !rules.data.length && (
-            <p className="muted" style={{ margin: 0, padding: "4px 14px 8px" }}>
+            <p className="g-muted" style={{ margin: 0, padding: "var(--g-space-1) var(--g-space-4) var(--g-space-2)" }}>
               Правил пока нет — начните с плейбука: готового правила для частого случая.
             </p>
           )}
@@ -66,7 +70,7 @@ export function AutomationsSettingsPage() {
           ) : (
             <div className="pane-empty">
               <Icon.bolt size={22} />
-              {rules.isPending ? "Загрузка…" : "Выберите правило или добавьте плейбук"}
+              {rules.isPending ? <SettingsLoading /> : "Выберите правило или добавьте плейбук"}
             </div>
           )}
         </section>
@@ -77,7 +81,7 @@ export function AutomationsSettingsPage() {
           <div className="mh">
             Плейбуки — готовые правила для частых случаев
             <span className="grow" />
-            <button type="button" className="icon-btn" onClick={() => setShowPlaybooks(false)} aria-label="Закрыть">
+            <button type="button" className="g-icon-btn" onClick={() => setShowPlaybooks(false)} aria-label="Закрыть">
               <Icon.close />
             </button>
           </div>
@@ -89,9 +93,9 @@ export function AutomationsSettingsPage() {
                   <span className="t">{p.title}</span>
                   <span className="s">{describeTrigger(p.spec)}</span>
                   {added ? (
-                    <span className="muted">добавлен</span>
+                    <span className="g-muted">добавлен</span>
                   ) : (
-                    <button type="button" className="btn" onClick={() => void act(() => request("POST", `/api/automations/playbooks/${p.id}`), "Правило добавлено")}>
+                    <button type="button" className="g-btn secondary" onClick={() => void act(() => request("POST", `/api/automations/playbooks/${p.id}`), "Правило добавлено")}>
                       Добавить
                     </button>
                   )}
@@ -143,12 +147,12 @@ function RuleView({ rule, onEdit }: { rule: Automation; onEdit: () => void }) {
           <input type="checkbox" checked={rule.enabled} onChange={(e) => void act(() => request("POST", `/api/automations/${rule.id}/enabled`, { enabled: e.target.checked }))} />
           Включено
         </label>
-        <button type="button" className="btn" onClick={onEdit}>
+        <button type="button" className="g-btn secondary" onClick={onEdit}>
           Изменить
         </button>
       </div>
       <div className="pane-body">
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="g-muted" style={{ marginTop: 0 }}>
           Запустить правило и посмотреть его запуски — на странице «Автоматизации» в рабочей части.
         </p>
         {steps.length > 0 && (
@@ -183,13 +187,13 @@ function RuleEditor({ initial, onClose }: { initial: { id?: number; text: string
   return (
     <Modal label={initial.id ? "Правило (JSON)" : "Новое правило (JSON)"} onClose={onClose} wide>
       <div className="mb">
-        <p className="muted" style={{ margin: 0 }}>
+        <p className="g-muted" style={{ margin: 0 }}>
           Триггер: <code>event</code> (+ <code>where</code>), <code>schedule</code> (cron, <code>tz</code>), <code>manual</code>, <code>webhook</code>. Шаги: task.status, task.comment, task.create,
           task.update, task.get, task.ready, notify, agent, team, ask, wait, wake_orchestrator, changelog.add, release, http. Подстановки: <code>{"{{ event.task.id }}"}</code>,{" "}
           <code>{"{{ steps.<id>.output.… }}"}</code>.
         </p>
         {agents && (
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="g-muted" style={{ margin: 0 }}>
             Шаблоны для <code>team.template</code>: {agents.teams.map((t) => t.id).join(", ")}. Роли для <code>agent.role</code>:{" "}
             {agents.roles
               .filter((r) => r.class !== "orchestrator")
@@ -198,20 +202,20 @@ function RuleEditor({ initial, onClose }: { initial: { id?: number; text: string
             .
           </p>
         )}
-        <textarea className="mono code-edit" rows={22} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
+        <textarea className="g-mono code-edit" rows={22} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
         {error && <div className="auth-error">{error}</div>}
       </div>
       <div className="mf">
         {initial.id && (
-          <button type="button" className="btn danger" onClick={remove}>
+          <button type="button" className="g-btn danger" onClick={remove}>
             Удалить
           </button>
         )}
         <span className="grow" />
-        <button type="button" className="btn" onClick={onClose}>
+        <button type="button" className="g-btn secondary" onClick={onClose}>
           Отмена
         </button>
-        <button type="button" className="btn primary" onClick={save}>
+        <button type="button" className="g-btn secondary" onClick={save}>
           Сохранить
         </button>
       </div>

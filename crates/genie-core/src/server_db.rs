@@ -39,6 +39,13 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_type TEXT,
   avatar_at TEXT
 );
+CREATE TABLE IF NOT EXISTS social_identities (
+  provider TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (provider, subject),
+  UNIQUE (provider, user)
+);
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -75,6 +82,9 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 CREATE TABLE IF NOT EXISTS projects (
   slug TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  icon BLOB,
+  icon_type TEXT,
+  icon_at TEXT,
   tracker_dir TEXT NOT NULL,
   repo TEXT,
   space TEXT NOT NULL,
@@ -341,10 +351,74 @@ CREATE TABLE IF NOT EXISTS mcp_tools (
   tools TEXT NOT NULL,
   checked TEXT NOT NULL
 );
+-- Workspace environments (`genie::env`, `env::db`): a task's prepared environment, the stages
+-- that built it, prepared snapshots with their leases, what keeps a snapshot or base alive,
+-- and the sealed secrets of a project's environments.
+CREATE TABLE IF NOT EXISTS env_workspaces (
+  id TEXT PRIMARY KEY,
+  project TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  task TEXT,
+  profile TEXT NOT NULL,
+  runner TEXT NOT NULL,
+  state TEXT NOT NULL,
+  failed_stage TEXT,
+  error TEXT,
+  lock TEXT,
+  view_mode TEXT,
+  size_exclusive INTEGER,
+  size_logical INTEGER,
+  created TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  UNIQUE(project, name)
+);
+CREATE TABLE IF NOT EXISTS env_stages (
+  workspace TEXT NOT NULL REFERENCES env_workspaces(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  owner TEXT NOT NULL DEFAULT '',
+  started TEXT NOT NULL,
+  finished TEXT,
+  PRIMARY KEY (workspace, stage)
+);
+CREATE TABLE IF NOT EXISTS env_snapshots (
+  key TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  label TEXT NOT NULL,
+  state TEXT NOT NULL,
+  lease_owner TEXT,
+  lease_until TEXT,
+  attempt INTEGER NOT NULL DEFAULT 0,
+  size INTEGER,
+  files INTEGER,
+  error TEXT,
+  created TEXT NOT NULL,
+  last_used TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS env_pins (
+  workspace TEXT NOT NULL REFERENCES env_workspaces(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  PRIMARY KEY (workspace, kind, ref)
+);
+CREATE TABLE IF NOT EXISTS env_secrets (
+  project TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  sealed TEXT NOT NULL,
+  hint TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  PRIMARY KEY (project, name)
+);
 "#;
 
 /// Columns added after the first server release; applied to existing databases on open.
 pub const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
+    // Project icons use the same bounded raster formats as account photos.
+    ("projects", "icon", "ALTER TABLE projects ADD COLUMN icon BLOB"),
+    ("projects", "icon_type", "ALTER TABLE projects ADD COLUMN icon_type TEXT"),
+    ("projects", "icon_at", "ALTER TABLE projects ADD COLUMN icon_at TEXT"),
     // Agent tokens name the configured role the agent acts in.
     ("api_tokens", "role_id", "ALTER TABLE api_tokens ADD COLUMN role_id TEXT"),
     // How a project's finished work gets integrated unless a task says otherwise.
@@ -371,7 +445,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 6;
+pub const SERVER_SCHEMA_VERSION: i64 = 10;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -502,6 +576,9 @@ pub const AVATAR_MAX_BYTES: usize = 512 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
+    /// Versioned URL of the project's icon, absent when its monogram should be shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     pub slug: String,
     pub name: String,
     pub tracker_dir: String,
@@ -520,8 +597,11 @@ pub struct Project {
 
 impl Project {
     fn from_row(r: &Row<'_>) -> rusqlite::Result<Project> {
+        let slug: String = r.get("slug")?;
+        let icon_at: Option<String> = r.get("icon_at")?;
         Ok(Project {
-            slug: r.get("slug")?,
+            icon: icon_at.map(|at| format!("/api/projects/{slug}/icon?v={}", &hash_secret(&at)[..10])),
+            slug,
             name: r.get("name")?,
             tracker_dir: r.get("tracker_dir")?,
             repo: r.get("repo")?,
@@ -637,6 +717,7 @@ pub struct ServerDb {
 pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
     let db = Db::open_with_schema(path, SERVER_SCHEMA)?;
     db.conn().execute_batch(crate::secrets::SECRETS_SCHEMA)?;
+    db.conn().execute_batch(crate::observation::sources::SCHEMA)?;
     db.conn().execute_batch(crate::decisions::SCHEMA)?;
     db.conn().execute_batch(crate::telegram::SCHEMA)?;
     db.add_columns(SERVER_COLUMN_MIGRATIONS)?;
@@ -1202,6 +1283,32 @@ impl ServerDb {
     pub fn projects(&self) -> Result<Vec<Project>> {
         let mut stmt = self.conn().prepare_cached("SELECT * FROM projects ORDER BY created, slug")?;
         Ok(stmt.query_map([], Project::from_row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Store a project icon using the account photo format and size limits.
+    pub fn set_project_icon(&self, slug: &str, bytes: &[u8]) -> Result<Project> {
+        self.project(slug)?;
+        if bytes.len() > AVATAR_MAX_BYTES {
+            return Err(GenieError::invalid("the icon must be at most 512 KiB"));
+        }
+        let kind = avatar_type(bytes).ok_or_else(|| GenieError::invalid("the icon must be PNG, JPEG or WebP"))?;
+        self.conn()
+            .execute("UPDATE projects SET icon = ?1, icon_type = ?2, icon_at = ?3 WHERE slug = ?4", params![bytes, kind, now(), slug])?;
+        self.project(slug)
+    }
+
+    pub fn clear_project_icon(&self, slug: &str) -> Result<Project> {
+        self.project(slug)?;
+        self.conn().execute("UPDATE projects SET icon = NULL, icon_type = NULL, icon_at = NULL WHERE slug = ?1", [slug])?;
+        self.project(slug)
+    }
+
+    pub fn project_icon(&self, slug: &str) -> Result<Option<(Vec<u8>, String)>> {
+        self.project(slug)?;
+        Ok(self
+            .conn()
+            .query_row("SELECT icon, icon_type FROM projects WHERE slug = ?1 AND icon IS NOT NULL", [slug], |r| Ok((r.get(0)?, r.get(1)?)))
+            .optional()?)
     }
 
     pub fn set_autonomy(&self, slug: &str, autonomy: &str) -> Result<()> {

@@ -95,12 +95,12 @@ export function NewTaskDialog({
           submit();
         }}
         onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && submit()}
-        style={{ display: "flex", flexDirection: "column", minHeight: 0 }}
+        className="dlg-form"
       >
         <div className="mh">
-          <span className="pill">{meta?.project ?? "genie"}</span>
+          <span className="g-tag">{meta?.project ?? "genie"}</span>
           <Icon.chevron size={12} />
-          {talk ? "Обсудить с менеджером проекта" : isEpic ? "Новый эпик во входящие" : "Новая задача во входящие"}
+          <span className="nt-title">{talk ? "Обсудить с менеджером проекта" : isEpic ? "Новый эпик во входящие" : "Новая задача во входящие"}</span>
           <span className="grow" />
           {canTalk && (
             <div role="radiogroup" aria-label="Как завести" className="nt-mode">
@@ -115,14 +115,14 @@ export function NewTaskDialog({
               </button>
             </div>
           )}
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <button type="button" className="g-icon-btn" onClick={onClose} aria-label="Закрыть">
             <Icon.close />
           </button>
         </div>
         {talk ? (
           <div className="mb">
-            <label className="field">
-              Идея как есть
+            <label className="g-field">
+              <span className="g-label">Идея как есть</span>
               <textarea
                 autoFocus
                 rows={7}
@@ -140,12 +140,12 @@ export function NewTaskDialog({
           </div>
         ) : (
           <div className="mb">
-            <label className="field">
-              Название
-              <input className="title-in" autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isEpic ? "Крупная веха: что должно получиться?" : "Что нужно сделать?"} style={{ height: "auto", border: 0 }} />
+            <label className="g-field">
+              <span className="g-label">Название</span>
+              <input className="g-input" autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isEpic ? "Крупная веха: что должно получиться?" : "Что нужно сделать?"} />
             </label>
-            <label className="field">
-              {isEpic ? "Цель" : "Описание"}
+            <label className="g-field">
+              <span className="g-label">{isEpic ? "Цель" : "Описание"}</span>
               <textarea
                 rows={4}
                 value={description}
@@ -153,12 +153,12 @@ export function NewTaskDialog({
                 placeholder={isEpic ? "Зачем эта веха, что входит и что нет. Поддерживается markdown." : "Контекст, ограничения, ссылки. Поддерживается markdown."}
               />
             </label>
-            <label className="field">
-              {isEpic ? "Критерии успеха — по одному в строке (можно оставить оркестратору)" : "Критерии приёмки — по одному в строке (можно оставить оркестратору)"}
+            <label className="g-field">
+              <span className="g-label">{isEpic ? "Критерии успеха — по одному в строке (можно оставить оркестратору)" : "Критерии приёмки — по одному в строке (можно оставить оркестратору)"}</span>
               <textarea rows={2} value={criteria} onChange={(e) => setCriteria(e.target.value)} />
             </label>
             <div className="opts">
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <label className="nt-opt">
                 <PriorityIcon priority={priority} size={13} />
                 <select aria-label="Приоритет" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
                   {PRIORITY_NAME.map((p, i) => (
@@ -176,7 +176,7 @@ export function NewTaskDialog({
                 ))}
               </select>
               {!isEpic && epics.length > 0 && (
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <label className="nt-opt">
                   <EpicIcon size={13} />
                   <select aria-label="Эпик" value={epic} onChange={(e) => setEpic(e.target.value)}>
                     <option value="">Без эпика</option>
@@ -188,7 +188,7 @@ export function NewTaskDialog({
                   </select>
                 </label>
               )}
-              <input aria-label="Метки" placeholder="метки через запятую" value={labels} onChange={(e) => setLabels(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+              <input aria-label="Метки" placeholder="метки через запятую" value={labels} onChange={(e) => setLabels(e.target.value)} className="nt-labels" />
             </div>
           </div>
         )}
@@ -200,11 +200,11 @@ export function NewTaskDialog({
               ? "Менеджер проекта уточнит цель и выделит задачи эпика"
               : "Менеджер проекта получит задачу и уточнит детали"}
           <span className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>
+          <button type="button" className="g-btn ghost" onClick={onClose}>
             Отмена
           </button>
-          <button type="submit" className="btn primary" disabled={talk ? !idea.trim() || start.isPending : !title.trim() || create.isPending}>
-            {talk ? "Начать разговор" : "Создать"} <span style={{ opacity: 0.75, fontSize: 11 }}>⌘↵</span>
+          <button type="submit" className="g-btn primary" disabled={talk ? !idea.trim() || start.isPending : !title.trim() || create.isPending}>
+            {talk ? "Начать разговор" : "Создать"} <span className="nt-kbd">⌘↵</span>
           </button>
         </div>
       </form>

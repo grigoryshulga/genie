@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="a-surprise" viewBox="0 0 880 780" fill="none">
+  <title>Surprise</title>
+  <desc>The character crouches, jumps with its eye wide open as a full ring, lands, and trembles.</desc>
+  <style>
+.a-surprise { --g: #008f6b; --o: #ff873c; --p: #f4f1ea; }
+.a-surprise * { transform-box: view-box; }
+.a-surprise .sparks, .a-surprise .z1, .a-surprise .z2, .a-surprise .z3, .a-surprise .d1, .a-surprise .d2, .a-surprise .d3 { opacity: 0; }
+.a-surprise .lb { transform: scaleY(0); transform-origin: 295px 383px; }
+.a-surprise .all { transform-origin: 270px 750px; animation: surprise-all 3.4s cubic-bezier(.45,0,.25,1) infinite; }
+.a-surprise .head { transform-origin: 280px 550px; animation: surprise-head 3.4s cubic-bezier(.45,0,.25,1) infinite; }
+.a-surprise .handle { transform-origin: 432px 302px; animation: surprise-handle 3.4s cubic-bezier(.45,0,.25,1) infinite; }
+.a-surprise .eye { transform-origin: 295px 383px; animation: surprise-eye 3.4s cubic-bezier(.45,0,.25,1) infinite; }
+.a-surprise .lt { transform-origin: 295px 383px; animation: surprise-lt 3.4s cubic-bezier(.45,0,.25,1) infinite; }
+.a-surprise .lb { transform-origin: 295px 383px; animation: surprise-lb 3.4s cubic-bezier(.45,0,.25,1) infinite; }
+.a-surprise .sparks { transform-origin: 294px 379px; animation: surprise-sparks 3.4s cubic-bezier(.45,0,.25,1) infinite; }
+@keyframes surprise-all { 0% { transform: translate(0,0px) scale(1,1) } 8% { transform: translate(0,0px) scale(1.05,0.93) } 17% { transform: translate(0,-36px) scale(0.96,1.06) } 30% { transform: translate(0,0px) scale(1.08,0.9) } 40% { transform: translate(0,0px) scale(0.98,1.03) } 48% { transform: translate(0,0px) scale(1,1) } 100% { transform: translate(0,0px) scale(1,1) } }
+@keyframes surprise-head { 0% { transform: rotate(0deg) } 17% { transform: rotate(-4deg) } 30% { transform: rotate(2deg) } 48% { transform: rotate(0deg) } 52% { transform: rotate(-1.5deg) } 56% { transform: rotate(1.5deg) } 60% { transform: rotate(-1.5deg) } 64% { transform: rotate(1.5deg) } 68% { transform: rotate(0deg) } 100% { transform: rotate(0deg) } }
+@keyframes surprise-handle { 0% { transform: rotate(0deg) } 17% { transform: rotate(-38deg) } 30% { transform: rotate(16deg) } 40% { transform: rotate(-12deg) } 50% { transform: rotate(0deg) } 54% { transform: rotate(-5deg) } 58% { transform: rotate(5deg) } 62% { transform: rotate(-4deg) } 66% { transform: rotate(0deg) } 100% { transform: rotate(0deg) } }
+@keyframes surprise-eye { 0% { transform: scale(1) } 8% { transform: scale(.8) } 17% { transform: scale(1.28) } 30% { transform: scale(1.1) } 48% { transform: scale(1.18) } 82% { transform: scale(1.18) } 92% { transform: scale(1) } 100% { transform: scale(1) } }
+@keyframes surprise-lt { 0% { transform: scaleY(1); stroke-width: 40px } 8% { transform: scaleY(.75); stroke-width: 40px } 17% { transform: scaleY(1); stroke-width: 40px } 100% { transform: scaleY(1); stroke-width: 40px } }
+@keyframes surprise-lb { 0% { transform: scaleY(0) } 10% { transform: scaleY(0) } 17% { transform: scaleY(1) } 82% { transform: scaleY(1) } 92% { transform: scaleY(0) } 100% { transform: scaleY(0) } }
+@keyframes surprise-sparks { 0% { opacity: 0; transform: scale(.7) } 16% { opacity: 0; transform: scale(.7) } 22% { opacity: 1; transform: scale(1) } 40% { opacity: 1; transform: scale(1.15) } 52% { opacity: 0; transform: scale(1.2) } 100% { opacity: 0; transform: scale(1.2) } }
+.a-surprise.paused * { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .a-surprise * { animation: none !important; } }
+  </style>
+  <g class="all">
+    <g class="body" fill="none" stroke="var(--g)">
+      <rect x="72" y="568" width="390" height="144" rx="72" stroke-width="76"/>
+      <path d="M170 428C110 418 78 470 92 522C96 540 98 550 100 568" stroke-width="66"/>
+    </g>
+    <g class="head" fill="none" stroke="var(--g)">
+      <circle cx="294" cy="379" r="136" stroke-width="70"/>
+      <g class="handle"><path d="M436 304L560 253" stroke-width="56"/></g>
+      <g class="eye" stroke="var(--o)" stroke-width="40">
+        <path class="lt" d="M233 383.5A62 62 0 0 1 357 383.5"/>
+        <g class="lb">
+          <path d="M233 382.5A62 62 0 0 0 357 382.5"/>
+          <!-- Opaque patches over the join with the upper half, so the full ring has no antialiasing seam. -->
+          <path d="M213 378H253V388H213ZM337 378H377V388H337Z" fill="var(--o)" stroke="none"/>
+        </g>
+      </g>
+    </g>
+  </g>
+  <g class="sparks" fill="none" stroke="var(--o)" stroke-width="14" stroke-linecap="round"><path d="M124.3 281.0L82.7 257.0"/><path d="M181.6 218.4L154.0 179.1"/><path d="M260.0 186.0L251.6 138.7"/><path d="M344.7 189.7L357.2 143.3"/></g>
+</svg>
