@@ -49,6 +49,7 @@ jobs:
               - "web/src/shared/api/generated/**"
               - ".github/workflows/**"
             web:
+              - "scripts/ui-preview/**"
               - "web/**"
               - "test/**"
               - "bench/**"
@@ -192,6 +193,8 @@ jobs:
       - run: npm run build:web
       # Seeds two servers and runs Playwright in the image pinned to the installed version.
       - run: npm run test:ui
+      # UI fixture preview must also work without building or starting a Rust server.
+      - run: npm run test:ui-preview
       - name: Upload the report, traces and screenshot diffs
         if: failure()
         uses: actions/upload-artifact@v4

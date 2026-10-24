@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { uiPreview } from "../scripts/ui-preview/plugin.ts";
 
 // Point Vite at an existing Genie server for HMR without rebuilding or restarting it.
 // The default matches the local source-development server; set this to 7422 for genie-tracker.
@@ -9,7 +10,7 @@ const apiProxyTarget = process.env.GENIE_API_PROXY_TARGET ?? "http://127.0.0.1:7
 // Source maps are off by default; GENIE_WEB_SOURCEMAP=1 enables them for local debugging.
 export default defineConfig({
   root: import.meta.dirname,
-  plugins: [react()],
+  plugins: [react(), ...(process.env.GENIE_UI_MOCK === "1" ? [uiPreview()] : [])],
   resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
   build: {
     outDir: "dist",
@@ -35,7 +36,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
+    proxy: process.env.GENIE_UI_MOCK === "1" ? undefined : {
       "/api": {
         target: apiProxyTarget,
         headers: { host: new URL(apiProxyTarget).host },

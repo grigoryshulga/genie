@@ -28,24 +28,24 @@ Before preparing a visual review, configuring T3 Project Actions, or publishing 
 - Follow the coding standards and run checks appropriate to the affected paths. The CI workflow and package scripts are the authority for commands.
 - Review the final diff, including generated files, and commit only this task's changes.
 
-## 4. Prepare owner review before publication
+## 4. Prepare review evidence
 
-- Commit and validate the task, then explicitly mark its exact commit ready and request an integration preview as described in the preview guide. A settled T3 thread triggers a request only when current readiness exists; it is not evidence of task completion or owner approval.
-- Verify that the candidate is ready and healthy. Give the owner its fixed candidate ID, local and Tailscale links when configured, base SHA, included task SHAs, validation evidence, and a short review scenario. Record this evidence in genie. For documentation-only work, include the rendered documentation or the exact committed diff to review.
-- Stop and await the owner's explicit approval of that candidate and permission to publish the task. Keep the task unfinished and record `awaiting_visual_review` in a progress comment; this is a review milestone, not a new tracker status or owner acceptance. A missing preview tool or failed build is a blocker to resolve or report, not permission to skip the gate.
-- Rebuild and obtain approval of a new candidate when the task commit, base, or included task composition changes before publication. Publish the approved task commit, keeping other tasks' changes in their own branches.
+- Validate and commit each task independently. Record its scope, exact commit, test results and limitations in genie. UI-only work can use the fixture preview described in the preview guide; real backend behavior still needs integration checks.
+- The owner chooses when to review a batch, usually after tasks reach `dev`. Build an integration candidate only when the owner requests it, using current fetched `origin/dev` or the explicitly selected task composition. Keep T3 settle and worktree-creation actions free of candidate builds.
+- When a review is requested, provide the owner the exact candidate composition, health, private access details and review scenario in this conversation and genie. Record `awaiting_visual_review` only when that review is an explicit delivery gate for this task. Changed source invalidates an approval tied to an exact candidate.
+- Keep private preview URLs, tailnet hostnames, credentials and local machine paths out of GitHub descriptions and comments. Public PR evidence uses task IDs, candidate IDs/SHAs, check results and portable artifacts.
 
-## 5. Publish an approved pull request
+## 5. Publish a pull request
 
-- After owner approval, load and use the global `pr` skill to prepare the PR description, then publish the approved task branch and open a PR against `dev`. Release PRs target `main` from `dev` only. If the skill is unavailable, report it and obtain access before publishing.
+- Load and use the global `pr` skill to prepare the PR description, then publish the validated task branch and open a PR against `dev`. Release PRs target `main` from `dev` only. If the skill is unavailable, report it and obtain access before publishing.
 - Treat `main` as release-only. The `main` branch is protected and accepts PRs exclusively from `dev` that also bump the shared version in `Cargo.toml`, `package.json`, `Cargo.lock`, `package-lock.json` and add a dated `CHANGELOG.md` section, as enforced by `.github/scripts/release_gate.py`. Opening, merging, or cutting a release is a separate authorized task; do not target `main` for ordinary work and do not add release metadata to a feature PR.
 - Write the PR title, description, and agent-authored PR comments strictly in English. Keep explanations in English even when the conversation and genie task are in Russian.
-- Include the genie task ID, approved candidate ID and composition, scope, validation evidence, and material limitations. Record the PR URL in genie. In T3 Code, register the PR with the thread's pull-request linking tool.
+- Include the genie task ID, scope, validation evidence and material limitations; include candidate ID/composition when a review was requested. Record the PR URL in genie. In T3 Code, register the PR with the thread's pull-request linking tool.
 - Move the task to `review` when its workflow requirements are met. Publication alone does not complete the task.
 
 ## 6. Wait for CI before completion
 
-- Wait for the published PR's latest head commit to finish CI successfully. Fix failed checks, repeat visual review for the changed candidate before pushing, and wait again for that approved new head.
+- Wait for the published PR's latest head commit to finish CI successfully. Fix failed checks and wait again for the changed head. Repeat an explicitly required candidate review when its source changes.
 - Verify both the head SHA and check results on the host. Pending, cancelled, failed, missing, or unreadable checks do not establish success. Jobs deliberately skipped by the workflow's path filters are acceptable when the applicable jobs have passed; a docs-only PR still needs its `Changes` job to pass.
 - When T3 Code provides a PR watcher, register the watch and let it resume this task when results arrive. An interim message must say that CI is pending; it must not claim completion. Otherwise use the host CLI's bounded check-wait facility.
 - Only after successful CI, record the PR URL, verified head SHA, check results, and acceptance evidence in genie. Finish the permitted review/approval transitions before setting `done`. Respect owner-only acceptance in assisted projects; leave the task awaiting that action when required. Never force workflow gates to claim completion.

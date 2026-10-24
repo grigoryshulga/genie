@@ -2,6 +2,16 @@
 
 Notable changes by release. Versions follow [SemVer](https://semver.org/); entries use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Detailed implementation history remains in Git.
 
+## Unreleased
+
+### Added
+
+- Instant, read-only UI preview using disposable API fixtures, Vite HMR, both themes, responsive frames, and populated/empty/loading/error scenarios. Startup needs no Rust binary or backend server.
+
+### Changed
+
+- Integration previews are requested by the owner, normally after task PRs reach `dev`. Candidate builds no longer belong to thread-settle or worktree-creation actions. Private preview addresses stay out of GitHub PR text.
+
 ## [0.6.0] — 2026-10-24
 
 ### Added

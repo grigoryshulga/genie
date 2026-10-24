@@ -1,13 +1,38 @@
 ---
-title: Visual review before publishing
-summary: Prepare combined local previews and obtain owner approval before publishing task branches.
+title: Owner-triggered previews
+summary: Review UI fixtures instantly or explicitly build an integrated dev candidate.
 type: guide
 status: current
 ---
 
-# Visual review before publishing
+# Owner-triggered previews
 
-An agent prepares a committed, validated task and a fixed integration candidate, then waits for the owner to approve that candidate and authorize publication. Feature PRs target `dev`; only release PRs from `dev` target `main`. [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines the mandatory gates, and [the tracker guide](genie-cli.md) defines task commands.
+Agents validate and publish their own task branches to `dev` through PRs and successful CI. The owner chooses when to inspect a batch. Candidate builds run only on an explicit owner request, normally against the current fetched `origin/dev`. A task becoming ready or a thread settling does not start a build. Feature PRs target `dev`; releases go from `dev` to `main`.
+
+## Instant UI fixtures
+
+Run `npm run preview:ui` and open `http://127.0.0.1:5173/__preview`. This starts Vite and a local fixture API without a Rust binary, Cargo, Docker, or a running Genie server. Dependencies must already be installed (`npm ci`). Vite provides HMR; initial browser compilation depends on the screen's modules and is separate from server startup time.
+
+Run `npm run test:ui-preview` for its browser smoke checks in the same pinned Playwright image as the application suite. The mock server itself runs without Docker; Docker is used only for reproducible browser verification.
+
+The control page selects `ink`/`paper`, 1440/768/390 px frames, a route, and populated/empty/loading/error data. Sessions and navigation remain available while the selected page's data changes state. Controls set a browser cookie; separate browser contexts can inspect different scenarios. An iframe's width exercises the application's real responsive CSS.
+
+Fixtures are synthetic, read-only API responses recorded from the disposable browser-test seed, including tasks and epics, documents, catalogue and settings contracts. Unrecorded endpoints and writes return explicit 501 errors and never reach a real server. Team execution, streaming events, authorization, persisted mutations and complete API semantics belong in backend/dev verification. An open SSE connection models connectivity only. Add fixture contracts as new screens need them; a missing fixture is not evidence that a feature is absent.
+
+To regenerate fixtures after API changes, build the normal test binary/web assets and run `npm run preview:ui:fixtures`. This optional generation step uses the existing throwaway seed and requires Rust; launching or editing the fixture preview does not. The exporter normalizes machine paths and timestamps. Review the generated diff for private data before committing it.
+
+## Review integrated dev on request
+
+From a task worktree:
+
+```bash
+git fetch origin dev
+python3 "$(git rev-parse --path-format=absolute --git-common-dir)/genie-preview/preview.py" channel dev
+```
+
+This explicitly queues a fixed candidate of fetched `origin/dev`, independent of pending task readiness. It reuses compatible backend artifacts but may compile Rust when backend sources or version metadata changed. For a pre-merge batch explicitly selected by the owner, use the readiness and combined-candidate commands below. They are manual tools, not publication prerequisites.
+
+Private access links belong in the conversation and local genie evidence. GitHub PR descriptions and comments include candidate IDs, SHAs and validation results without private hostnames or machine paths.
 
 ## Local installation
 
@@ -51,7 +76,9 @@ preview() {
 
 ## T3 Project Actions
 
-Create two project-scoped Actions. Their commands discover the shared git directory from the thread's current worktree; no machine-specific absolute path is required.
+Configure manual project Actions for **UI fixtures** (`npm run preview:ui -- --port 5173 --strictPort`, preview URL `http://127.0.0.1:5173/__preview`) and **Review current dev** (the fetch/channel command above). Keep their settle/worktree triggers disabled. If 5173 is already used, choose another explicit port and matching preview URL for that worktree; strict mode prevents opening a different agent's server.
+
+The optional prepare and selected-batch Actions below remain manual tools. Their commands discover the shared Git directory from the thread's current worktree.
 
 **Prepare preview workspace** command:
 
@@ -59,7 +86,7 @@ Create two project-scoped Actions. Their commands discover the shared git direct
 python3 "$(git rev-parse --path-format=absolute --git-common-dir)/genie-preview/preview.py" prepare
 ```
 
-Enable **Run automatically on worktree creation** and **Wait for it to finish before the agent starts**. Leave **Run when the thread settles** and automatic preview opening disabled. Preparation installs exact npm dependencies only when the lockfile/manifests changed, reuses npm's download cache, and starts the shared preview index. Installed dependencies remain worktree-local.
+Keep **Run automatically on worktree creation**, **Run when the thread settles**, and automatic preview opening disabled. Launch preparation explicitly when the selected-batch tooling is needed. Preparation installs exact npm dependencies only when the lockfile/manifests changed, reuses npm's download cache, and starts the shared preview index. Installed dependencies remain worktree-local.
 
 **Request integration preview** command:
 
@@ -67,9 +94,9 @@ Enable **Run automatically on worktree creation** and **Wait for it to finish be
 python3 "$(git rev-parse --path-format=absolute --git-common-dir)/genie-preview/preview.py" request
 ```
 
-Enable **Run in the thread's worktree when the thread settles** and **Open preview automatically when this action runs**. Leave creation-time execution disabled. Set **Preview URL** to `https://genie-preview.<tailnet>.ts.net/__previews` after the Services setup below, or use `http://genie.localhost:7480` for local-only use. The helper prints the current verified index URL; do not hardcode a previous tailnet name. This Action queues work and returns; compilation runs independently of the thread.
+Keep **Run in the thread's worktree when the thread settles** and creation-time execution disabled. The owner launches this action explicitly; automatic preview opening after that manual launch is optional. Set **Preview URL** to `https://genie-preview.<tailnet>.ts.net/__previews` after the Services setup below, or use `http://genie.localhost:7480` for local-only use. The helper prints the current verified index URL; do not hardcode a previous tailnet name. This Action queues work and returns; compilation runs independently of the thread.
 
-An interruption, question or error can settle a thread. The request Action does nothing unless the worktree has explicitly marked its current clean commit ready. Configure the Actions manually; installing the helper does not modify T3 project settings.
+A manual combined-batch request requires explicitly marked clean task commits. Configure the Actions manually; installing the helper does not modify T3 project settings.
 
 ## Mark a task ready
 
@@ -208,11 +235,9 @@ Public sharing is not a worktree creation or settle action. Obtain the owner's r
 
 ## Owner approval and lifecycle
 
-Before handing off, verify the application URL and its relevant behavior, then record candidate ID, base SHA, all task SHAs, local/remote URLs, check results, limitations and a short review scenario in the task. For a documentation-only task, provide the rendered document or the exact committed diff alongside the preview. Record `awaiting_visual_review` as a progress comment; keep the existing tracker status until a permitted workflow transition applies.
+When the owner requests a visual review, verify the application URL and relevant behavior, then record candidate ID, base SHA, selected task SHAs, check results, limitations and a short review scenario in genie. Share private URLs only in the conversation and local tracker. Documentation can be reviewed as rendered output or the exact committed diff.
 
-The owner's explicit response must identify the reviewed candidate and authorize publication. Local readiness and T3 thread state are not approval. Changed task commits, base or task composition need a new candidate and approval before pushing. An approval of A+B does not establish that A alone works: if a task is removed, review the new composition, and disclose genuine task dependencies in the PRs.
-
-After approval, publish each task's approved branch to `dev`, link its PR and follow the existing CI/review workflow. Visual approval is separate from owner task acceptance and merge authorization.
+Owner-requested review may happen after integration into `dev`. It does not turn every task into a pre-publication visual gate. If the owner explicitly makes an exact candidate approval a gate, record `awaiting_visual_review` and await that response; source/composition changes invalidate that exact approval. Local readiness and T3 state never establish owner acceptance or merge authorization.
 
 ```bash
 preview stop <candidate-id>
