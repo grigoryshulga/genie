@@ -3,6 +3,7 @@ import { useProjectTools, useSaveProjectTools } from "@/entities/agent-config";
 import type { ProjectTools } from "@/shared/api/generated/ProjectTools.ts";
 import { useAct } from "@/shared/ui";
 import { JevSettings } from "./JevSettings.tsx";
+import { SettingsLoading } from "@/widgets/settings-shell";
 
 export function ProjectToolsSection({ slug, tab }: { slug: string; tab: string }) {
   const query = useProjectTools(slug);
@@ -17,7 +18,7 @@ export function ProjectToolsSection({ slug, tab }: { slug: string; tab: string }
           {query.data ? (
             <Selection key={`${slug}:${query.data.hash}`} slug={slug} data={query.data} kind={tab === "mcp" ? "mcp" : "skills"} />
           ) : (
-            <p role="status">{query.error?.message ?? "Загрузка…"}</p>
+            query.error ? <p role="status">{query.error.message}</p> : <SettingsLoading />
           )}
         </div>
       </div>
@@ -77,13 +78,13 @@ function Selection({ slug, data, kind }: { slug: string; kind: "skills" | "mcp";
                   />
                 </label>
               ))}
-              {!items.length && <p className="muted">В каталоге сервера пока нет доступных инструментов.</p>}
+              {!items.length && <p className="g-muted">В каталоге сервера пока нет доступных инструментов.</p>}
               {selected
                 ?.filter((id) => !items.some((item) => item.id === id))
                 .map((id) => (
                   <p key={id}>
                     {id} — недоступен{" "}
-                    <button type="button" className="btn ghost" onClick={() => set({ ...settings, [kind]: selected.filter((s) => s !== id) })}>
+                    <button type="button" className="g-btn ghost" onClick={() => set({ ...settings, [kind]: selected.filter((s) => s !== id) })}>
                       Убрать из проекта
                     </button>
                   </p>
@@ -94,10 +95,10 @@ function Selection({ slug, data, kind }: { slug: string; kind: "skills" | "mcp";
       })}
       <div className="st-foot">
         <span className="grow" />
-        <button type="button" className="btn" disabled={!dirty || busy} onClick={() => set(data.settings)}>
+        <button type="button" className="g-btn secondary" disabled={!dirty || busy} onClick={() => set(data.settings)}>
           Отменить
         </button>
-        <button className="btn primary" disabled={!dirty || busy}>
+        <button className="g-btn secondary" disabled={!dirty || busy}>
           Сохранить
         </button>
       </div>

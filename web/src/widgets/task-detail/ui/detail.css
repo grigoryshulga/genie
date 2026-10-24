@@ -1,0 +1,254 @@
+/* ------------------------------------------------------------ detail */
+.detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--g-bg); }
+.detail .crumbs { font: 12px var(--g-font-mono); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--g-space-5) 36px 56px; display: flex; flex-direction: column; gap: var(--g-space-5); }
+.detail h2.title { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; outline: none; border-radius: var(--g-radius-xs); }
+.detail h2.title:focus { box-shadow: 0 0 0 2px var(--g-accent-soft); }
+.props { display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px minmax(0, 1fr); gap: var(--g-space-3) 14px; align-items: center; font-size: var(--g-text-caption); }
+.props .k { color: var(--g-text-muted); }
+.props .wide { grid-column: span 3; }
+.props .team-cell { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; min-width: 0; }
+.props .team-cell a { font: 12px var(--g-font-mono); }
+.props select, .props input { height: var(--g-control-sm); border: 1px solid transparent; border-radius: var(--g-radius-sm); background: var(--g-surface); color: var(--g-text); padding: 0 var(--g-space-1); max-width: 100%; outline: 0; }
+.props input { width: 100%; }
+.props select:focus, .props input:focus { border-color: var(--g-accent); }
+.owner-box { border: 1px solid color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); background: var(--g-signal-soft); border-radius: var(--g-radius-md); padding: var(--g-space-4); display: flex; flex-direction: column; gap: 14px; }
+.owner-box .h { display: flex; align-items: center; gap: var(--g-space-2); font-weight: 600; color: var(--g-signal-text); }
+.owner-box .h .when { margin-left: auto; font-weight: 400; font-size: var(--g-text-caption); color: var(--g-signal-text); }
+.owner-box p { margin: 0; line-height: 1.55; }
+.owner-box textarea { border: 1px solid color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); background: var(--g-surface); color: var(--g-text); border-radius: var(--g-radius-sm); padding: var(--g-space-2) var(--g-space-3); resize: vertical; outline: 0; min-height: 70px; }
+.owner-box textarea:focus { border-color: var(--g-signal); }
+.owner-box .actions { display: flex; gap: var(--g-space-2); align-items: center; font-size: var(--g-text-eyebrow); color: var(--g-signal-text); }
+.od-options { display: flex; flex-wrap: wrap; gap: var(--g-space-2); }
+.od-options button { min-height: var(--g-control); padding: var(--g-space-1) var(--g-space-3); border: 1px solid var(--g-signal-soft); border-radius: var(--g-radius-sm); background: transparent; color: var(--g-text); text-align: left; line-height: 1.35; }
+.od-options button:hover { border-color: color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); }
+.od-options button.on { border-color: var(--g-signal); background: var(--g-signal-soft); }
+.od-cr { display: flex; flex-direction: column; gap: var(--g-space-2); padding: var(--g-space-3) 14px; border: 1px solid var(--g-signal-soft); border-radius: var(--g-radius-md); background: var(--g-signal-soft); font-size: var(--g-text-caption); }
+.od-cr .l1 { display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-dense); min-width: 0; }
+.od-cr .l1 .mono { font-size: var(--g-text-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.od-cr .l2 { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; }
+.od-why { font-size: var(--g-text-caption); color: var(--g-signal-text); }
+.od-buttons { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; }
+.od-buttons .hint { font-size: var(--g-text-eyebrow); color: var(--g-signal-text); }
+.od-or { font-size: var(--g-text-caption); color: var(--g-signal-text); margin-bottom: -6px; }
+.sec h3 { margin: 0 0 10px; font-size: var(--g-text-dense); font-weight: 600; color: var(--g-text-2); display: flex; align-items: center; gap: var(--g-space-2); }
+.sec h3 .n { font-weight: 400; color: var(--g-text-muted); }
+.sec-head { display: flex; align-items: center; gap: var(--g-space-2); margin-bottom: var(--g-space-2); }
+.sec-head h3 { flex: 1; margin: 0; min-width: 0; }
+.sec-toggle { display: flex; align-items: center; gap: var(--g-space-2); width: 100%; min-height: var(--g-control); padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+.sec-toggle .n { flex: none; margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sec-toggle svg { flex: none; color: var(--g-text-muted); transform: rotate(90deg); transition: transform 140ms ease; }
+.sec-toggle[aria-expanded="false"] svg { transform: rotate(0deg); }
+.sec-toggle:hover { color: var(--g-text); }
+.sec-head > .g-btn { margin-left: auto; flex: none; font-weight: 400; }
+.sec-content[hidden] { display: none; }
+/* Section actions share a trailing column and retain a full control-sized hit area. */
+.sec .sec-edit { flex: none; width: var(--g-control); height: var(--g-control); margin-left: auto; padding: 0; border: 0; border-radius: var(--g-radius-sm); background: none; display: grid; place-items: center; color: var(--g-text-muted); cursor: pointer; }
+.sec .sec-edit:hover { background: var(--g-surface-hover); color: var(--g-text); }
+.md { color: var(--g-text-2); line-height: 1.65; overflow-wrap: anywhere; }
+.md p { margin: 0 0 8px; }
+.md h1, .md h2, .md h3, .md h4 { font-size: var(--g-text-ui); margin: 14px 0 6px; color: var(--g-text); }
+.md ul, .md ol { margin: 0 0 8px; padding-left: 20px; }
+.md code { font: 12px var(--g-font-mono); background: var(--g-surface); padding: 1px 5px; border-radius: var(--g-radius-xs); }
+.md pre { background: var(--g-bg); border: 1px solid var(--g-border); border-radius: var(--g-radius-sm); padding: var(--g-space-2) var(--g-space-3); overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--g-border-strong); color: var(--g-text-muted); }
+.md .empty-md { color: var(--g-text-muted); }
+.criteria { display: flex; flex-direction: column; gap: var(--g-space-2); max-width: var(--g-measure); }
+.criteria label { display: flex; gap: var(--g-space-2); align-items: flex-start; color: var(--g-text-2); }
+.criteria label.done .t { color: var(--g-text-muted); text-decoration: line-through; }
+.criteria input { margin-top: 3px; accent-color: var(--g-accent); }
+.criteria .by { flex: none; white-space: nowrap; font-size: var(--g-text-eyebrow); color: var(--g-text-muted); }
+.artifacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--g-space-2); }
+.artifact { display: flex; align-items: center; gap: var(--g-space-2); height: 38px; padding: 0 var(--g-space-3); border: 1px solid transparent; border-radius: var(--g-radius-sm); background: var(--g-surface-raised); color: var(--g-text); text-align: left; min-width: 0; }
+.artifact:hover { border-color: var(--g-border-strong); }
+.artifact .nm { font: 12px var(--g-font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.artifact .who { margin-left: auto; font-size: var(--g-text-eyebrow); color: var(--g-text-muted); white-space: nowrap; }
+/* Activity reads as a list: the marker and the text on the left, the time against the
+   right edge of the content column. Rows are inset like a comment card's content, so
+   both kinds of row share one left edge and one time column. */
+.ev { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--g-space-2); padding: 6px 14px; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.ev i { width: 6px; height: 6px; border-radius: 50%; background: var(--g-control-border); }
+.ev .txt { min-width: 0; }
+.ev .when { color: var(--g-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.comment { border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); padding: var(--g-space-3) 14px; margin: 10px 0; }
+.comment.mine { border-color: color-mix(in srgb, var(--g-accent) 40%, var(--g-border-strong)); }
+.comment .head { display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-caption); margin-bottom: 4px; }
+.comment .head .k { color: var(--g-text-muted); }
+.comment .head .when { margin-left: auto; color: var(--g-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.composer { display: flex; flex-direction: column; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-md); background: var(--g-surface); margin-top: 8px; }
+.composer:focus-within { border-color: var(--g-accent); }
+.composer textarea { border: 0; outline: 0; background: none; resize: vertical; min-height: 60px; padding: var(--g-space-2) var(--g-space-3); color: var(--g-text); }
+.composer:has(textarea:focus) { outline: 2px solid var(--g-focus); outline-offset: 2px; border-color: transparent; }
+.composer .g-textarea:focus, .composer .g-textarea:focus-visible { outline: none; }
+.composer .bar { display: flex; align-items: center; gap: var(--g-space-2); padding: 0 var(--g-space-2) var(--g-space-2) var(--g-space-3); font-size: var(--g-text-eyebrow); color: var(--g-text-muted); }
+
+/* ---------------------------------------------- task detail in ink and paper (GNE-56) */
+/* The panel and the page share the headline, the property rail and the reading column;
+   only their frame differs (aside versus main), so everything below scopes to `td-`. */
+
+/* The panel's own bar: back, crumbs, follow, the way to the page, close. */
+.detail .detail-body { padding: var(--g-space-4) var(--g-space-4) var(--g-space-7); gap: var(--g-space-5); }
+.detail .detail-head { gap: var(--g-space-4); }
+.td-bar { flex: none; height: var(--g-control); display: flex; align-items: center; gap: var(--g-space-2); padding: 0 var(--g-space-3); border-bottom: 1px solid var(--g-border); overflow: hidden; }
+.td-bar .muted { white-space: nowrap; font-size: var(--g-text-caption); }
+.td-bar .grow { flex: 1; }
+.td-bar .crumbs { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.td-bar .crumbs a { color: var(--g-text-2); }
+.td-link { color: var(--g-accent-text); font-size: var(--g-text-caption); white-space: nowrap; }
+.td-link:hover { color: var(--g-accent-hover); }
+
+/* The headline states the task: id, the exact status with its shape, and the title. */
+.td-headline { display: flex; flex-direction: column; gap: var(--g-space-2); min-width: 0; }
+.td-meta { display: flex; align-items: center; gap: var(--g-space-3); flex-wrap: wrap; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.td-id { font-family: var(--g-font-mono); color: var(--g-text-2); }
+.td-meta-more { display: inline-flex; align-items: center; gap: var(--g-space-1); }
+.detail .td-headline h2.title { margin: 0; font-family: var(--g-font-sans); font-size: var(--g-text-h3); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
+.detail .td-headline h2.title:focus { box-shadow: 0 0 0 2px var(--g-focus); }
+.detail .td-headline h2.title[contenteditable="false"] { cursor: default; }
+
+/* The panel folds its properties under the headline on a phone; the page never does. */
+.td-props > summary { display: flex; align-items: center; gap: var(--g-space-2); min-height: var(--g-control-sm); font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); color: var(--g-text-2); list-style: none; cursor: pointer; }
+.td-props > summary::-webkit-details-marker { display: none; }
+.td-props > summary::after { content: ""; width: 7px; height: 7px; margin-left: auto; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform var(--g-duration) var(--g-ease); }
+.td-props[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+.td-props:not([open]) > summary { margin-bottom: 0; }
+.td-props > .props { margin-top: var(--g-space-3); }
+
+/* The footer: the last thing that happened, then the way to the whole task. */
+.detail .detail-more { gap: var(--g-space-3); padding-top: var(--g-space-3); border-top: 1px solid var(--g-border); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.detail .detail-more a { color: var(--g-accent-text); }
+
+/* Properties: a field per property — the label with the value's shape, then the value.
+   A reader gets text, never a dead control. */
+.td-fields { display: flex; flex-direction: column; gap: var(--g-space-3); }
+.detail .td-fields { gap: var(--g-space-2); }
+.td-prop { gap: var(--g-space-1); }
+.td-prop .g-label { display: flex; align-items: center; gap: var(--g-space-1); font-size: var(--g-text-caption); font-weight: var(--g-weight-medium); color: var(--g-text-muted); }
+.td-prop-value { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); min-width: 0; }
+.td-val { min-width: 0; font-size: var(--g-text-dense); color: var(--g-text); overflow-wrap: anywhere; }
+.td-val.muted { color: var(--g-text-muted); }
+.td-team { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; font-size: var(--g-text-dense); color: var(--g-text-2); }
+.td-branch { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--g-text-caption); }
+
+/* Still used by the epic page's aside, which keeps the compact label/value grid. */
+.props { gap: var(--g-space-2) var(--g-space-3); font-size: var(--g-text-dense); }
+.props .k { color: var(--g-text-muted); }
+.props .v { display: flex; align-items: center; gap: var(--g-space-1); min-width: 0; }
+.props .v > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.props select.g-select.sm, .props input.g-input.sm { margin-left: calc(-1 * var(--g-space-1)); max-width: 100%; }
+
+/* Loading: the shape of the page, never a bare word. */
+.td-skeleton { display: flex; flex-direction: column; gap: var(--g-space-3); padding: var(--g-space-4); }
+.td-skeleton.page { padding: var(--g-space-6) var(--g-space-4); max-width: 70ch; }
+.td-skeleton-body { display: flex; flex-direction: column; gap: var(--g-space-2); margin-top: var(--g-space-3); }
+.td-state { display: flex; flex-direction: column; align-items: flex-start; gap: var(--g-space-3); padding: var(--g-space-4); }
+
+/* A phone is not wide enough for the trail: the way back and the task itself are enough. */
+@media (max-width: 640px) {
+  .detail .td-bar .crumbs { display: none; }
+  .detail .td-bar { gap: var(--g-space-1); }
+}
+
+/* Acceptance criteria: a segmented header, then one checkable line each. */
+.criteria { max-width: var(--g-measure); }
+.criteria .g-segs { margin-bottom: var(--g-space-2); }
+.criteria label.g-check { align-items: flex-start; }
+.criteria label.g-check.done .t { color: var(--g-text-muted); text-decoration: line-through; }
+.criteria .by { font-size: var(--g-text-caption); color: var(--g-text-muted); }
+
+/* Artifacts: a grid of flush cards with a thumbnail and a caption. */
+.artifacts { grid-template-columns: repeat(auto-fill, minmax(calc(var(--g-space-8) * 2 + var(--g-space-4)), 1fr)); gap: var(--g-space-2); }
+.artifacts .artifact { flex-direction: column; align-items: stretch; gap: 0; height: auto; padding: 0; overflow: hidden; border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); color: var(--g-text); }
+.artifacts .artifact:hover { border-color: var(--g-border-strong); }
+.artifacts .artifact .thumb { display: grid; place-items: center; min-height: var(--g-space-8); padding: var(--g-space-2); background: var(--g-surface-raised); color: var(--g-text-muted); overflow: hidden; }
+.artifacts .artifact .thumb img { max-width: 100%; max-height: var(--g-space-9); object-fit: cover; border-radius: var(--g-radius-sm); }
+.artifacts .artifact .cap { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--g-space-2); }
+.artifacts .artifact .nm { font-family: var(--g-font-mono); font-size: var(--g-text-caption); color: var(--g-text); }
+.artifacts .artifact .who { margin: 0; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+
+/* Activity: a timeline of quiet rows and comment sheets; agent and person differ by avatar shape. */
+.timeline { display: flex; flex-direction: column; gap: var(--g-space-1); }
+.timeline .ev { padding: 2px 0; font-size: var(--g-text-dense); }
+.timeline .ev .who { color: var(--g-text-2); font-weight: var(--g-weight-medium); }
+.timeline .comment { margin: var(--g-space-1) 0; }
+.timeline .comment .head { gap: var(--g-space-2); margin-bottom: var(--g-space-2); }
+.timeline .comment .head .who { color: var(--g-text-2); font-weight: var(--g-weight-semibold); }
+.timeline .comment .head .when { margin-left: auto; font-size: var(--g-text-caption); }
+.timeline .comment .md { font-size: var(--g-text-body); }
+/* A comment is a sheet, and the sheet carries its own ink: its prose must not borrow the page's. */
+.timeline .comment.g-sheet { color: var(--sh-t); }
+.timeline .comment.g-sheet .head .who { color: var(--sh-t); }
+.timeline .comment.g-sheet .head .k, .timeline .comment.g-sheet .head .when { color: var(--sh-m); }
+.timeline .comment.g-sheet .md { color: var(--sh-t2); }
+.timeline .comment.g-sheet .md code, .timeline .comment.g-sheet .md pre { background: color-mix(in srgb, var(--sh-t) 10%, transparent); border-color: var(--sh-line); color: var(--sh-t); }
+
+/* The comment composer. */
+.composer { border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-md); background: var(--g-surface); }
+.composer:focus-within { border-color: var(--g-focus); }
+.composer textarea.g-textarea { border: 0; background: none; min-height: var(--g-space-8); }
+.composer .bar { gap: var(--g-space-2); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+
+/* Small inline forms (an observation case, a manager answer). */
+.td-form { display: flex; flex-direction: column; gap: var(--g-space-2); margin-bottom: var(--g-space-3); }
+.td-field { display: flex; flex-direction: column; gap: var(--g-space-1); font-size: var(--g-text-dense); color: var(--g-text-2); }
+.td-cases { display: flex; flex-direction: column; gap: var(--g-space-2); margin: 0; padding: 0; list-style: none; }
+.td-cases .artifact { width: 100%; }
+
+/* Delivery: a repository line, and the CI failure as a banner above it. */
+.td-delivery { display: flex; flex-direction: column; gap: var(--g-space-2); }
+.td-repo { display: flex; flex-direction: column; gap: var(--g-space-2); padding: var(--g-space-2); border: 1px solid transparent; border-radius: var(--g-radius-sm); }
+.td-repo.failed { border-color: var(--g-border); background: var(--g-surface); }
+.td-repo .line { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; min-width: 0; font-size: var(--g-text-dense); color: var(--g-text-2); }
+.td-repo .line b { color: var(--g-text); font-weight: var(--g-weight-semibold); }
+
+/* The owner's move: the page's one signal region. */
+.owner-box { border: 1px solid color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); background: var(--g-signal-soft); border-radius: var(--g-radius-lg); padding: var(--g-space-4); gap: var(--g-space-3); }
+.owner-box .h { color: var(--g-signal-text); font-weight: var(--g-weight-semibold); }
+.owner-box .h .when { color: var(--g-signal-text); font-size: var(--g-text-caption); }
+.owner-box textarea { border: 1px solid color-mix(in srgb, var(--g-signal) 40%, var(--g-border-strong)); background: var(--g-surface); border-radius: var(--g-radius-sm); }
+.owner-box textarea:focus { border-color: var(--g-signal); }
+.owner-box .actions { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; font-size: var(--g-text-caption); color: var(--g-signal-text); }
+.owner-box .actions .grow { flex: 1 1 auto; }
+.od-options button { border: 1px solid color-mix(in srgb, var(--g-signal) 34%, var(--g-border-strong)); border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text); }
+.od-options button:hover { border-color: var(--g-signal); }
+.od-options button.on { border-color: var(--g-signal); background: color-mix(in srgb, var(--g-signal) 16%, transparent); }
+.od-buttons .g-btn.ghost { border-color: color-mix(in srgb, var(--g-signal) 34%, var(--g-border-strong)); color: var(--g-text); }
+.od-why, .od-or { color: var(--g-signal-text); }
+
+/* Sections inside the detail: a heading that folds, a count, an edit affordance. */
+.sec h3 { font-size: var(--g-text-body); font-weight: var(--g-weight-semibold); color: var(--g-text); gap: var(--g-space-2); }
+.sec h3 .n { color: var(--g-text-muted); }
+.sec .sec-edit { color: var(--g-text-muted); }
+.sec .sec-edit:hover { background: var(--g-surface-hover); color: var(--g-text); }
+
+/* ------------------------------------- the detail on a phone and a tablet (H30) */
+/* Folding a section and editing it are the two taps a document view gets; both need a
+   full thumb, and the metadata line's links ride at the same height as the id. */
+@media (max-width: 900px) {
+  .sec-head { min-height: var(--g-control); }
+  .sec-toggle { flex: 1 1 auto; min-height: var(--g-control); gap: var(--g-space-2); }
+  .sec .sec-edit { width: var(--g-control); height: var(--g-control); border-radius: var(--g-radius-pill); }
+  .td-meta a, .td-meta-more a { display: inline-flex; align-items: center; min-height: var(--g-control); }
+  .criteria label.g-check { min-height: var(--g-row); }
+  .owner-box .actions .g-btn { min-height: var(--g-control); }
+  .td-cases .artifact, .td-repo .line a { min-height: var(--g-control); }
+  /* A bar link, a rail link, an epic link and the footer link are all one thumb each. */
+  .td-bar .crumbs a, .td-link, .epic-box .h, .detail .detail-more a { display: inline-flex; align-items: center; min-height: var(--g-control); }
+}
+
+/* Disclosure chevrons and section toggles rotate when opened; that rotation is motion, not information. */
+@media (prefers-reduced-motion: reduce) {
+  .sec-toggle svg, .td-props > summary::after { transition: none; }
+}
+
+/* The preview header owns the identity once; its actions never compete with the title. */
+.detail > .td-bar { height: auto; align-items: flex-start; padding-block: var(--g-space-4); overflow: visible; }
+.detail > .td-bar .td-headline { flex: 1; min-width: 0; }
+.detail > .td-bar .title { margin: 0; overflow-wrap: anywhere; }
+.td-header-actions { display: flex; align-items: center; gap: var(--g-space-1); flex: none; }
+@media (max-width: 640px) {
+  .detail > .td-bar { flex-wrap: wrap; }
+  .detail > .td-bar .td-headline { flex-basis: calc(100% - var(--g-control) - var(--g-space-2)); }
+  .td-header-actions { margin-inline-start: auto; }
+}

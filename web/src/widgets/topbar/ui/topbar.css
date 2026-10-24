@@ -1,0 +1,25 @@
+/* The top bar's own numbers and its project switcher: shell furniture, styled where it lives. */
+
+/* A tab's count rides on a plain background until that tab is the current page; there the pill
+   fills with the accent, and the count needs the pill's foreground instead of the muted caption. */
+.g-topbar .g-tabs .g-topbar-open { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
+.g-topbar .g-tabs > a[aria-current="page"] .g-topbar-open { color: var(--g-on-accent); }
+
+/* Project names are longer than a menu row: the switcher lists one line per project and stays
+   narrower than the window on a phone, so a long name ends in an ellipsis instead of wrapping. */
+.g-topbar-project-switcher { display: inline-flex; min-width: 0; }
+.g-topbar-project-switcher .g-menu { min-width: 240px; max-width: min(340px, calc(100vw - 2 * var(--g-space-5))); }
+.g-topbar-project-switcher .g-menu-item { min-width: 0; }
+.g-topbar-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The grid item and every wrapper must shrink before a long project name can ellipsize. */
+.g-topbar { min-width: 0; }
+.g-topbar-project .name { min-width: 0; }
+.g-topbar-project-switcher .g-popover-host { min-width: 0; }
+@media (max-width: 900px) {
+  .g-topbar-project-switcher { flex: 1 1 0; }
+  .g-topbar-project-switcher > .g-popover-host { width: 100%; }
+  .g-topbar-project-switcher .g-topbar-project { width: 100%; }
+}
+
+.g-topbar .g-topbar-create { color: var(--g-accent-text); flex: none; }

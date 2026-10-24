@@ -1,0 +1,49 @@
+/* The bell's popup: the newest notifications under the bell, a sheet on a phone.
+   Placement comes from the trigger (the anchorPopover helper), so the panel is fixed and
+   never leaves the window; the sheet below the phone breakpoint overrides it. */
+.notif-pop {
+  position: fixed;
+  top: var(--npop-top, -9999px);
+  left: var(--npop-left, 8px);
+  z-index: var(--g-z-dropdown);
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  max-height: var(--npop-max, 60vh);
+  overflow: hidden;
+  border: 1px solid var(--g-border-strong);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface-raised);
+  box-shadow: var(--g-shadow-overlay);
+  outline: none;
+}
+.notif-pop-head { flex: none; display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control); padding: var(--g-space-2) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
+.notif-pop-head strong { font: 600 var(--g-text-ui)/1.2 var(--g-font-sans); color: var(--g-text); }
+.notif-pop-head .g-caption { white-space: nowrap; }
+.notif-pop-readall { margin-left: auto; }
+.notif-pop-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--g-space-2); }
+.notif-pop-body .g-empty { padding: var(--g-space-5) var(--g-space-4); }
+.notif-pop-body .g-banner { margin: var(--g-space-1); }
+.notif-pop-list { display: flex; flex-direction: column; gap: 1px; }
+.notif-pop-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) 52px; gap: var(--g-space-1) var(--g-space-3); align-items: start; width: 100%; padding: var(--g-space-3); border: 0; border-radius: var(--g-radius-md); background: transparent; color: var(--g-text); text-align: left; font: inherit; cursor: pointer; overflow: hidden; }
+.notif-pop-item:hover { background: var(--g-surface-hover); }
+.notif-pop-item[data-unread] { background: var(--g-surface-active); }
+.notif-pop-item[data-unread]:hover { background: var(--g-surface-hover); }
+.notif-pop-kind { display: grid; place-items: center; height: var(--g-text-ui); color: var(--g-text-muted); }
+.notif-pop-item[data-unread] .notif-pop-kind { color: var(--g-accent-text); }
+.notif-pop-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notif-pop-text b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 var(--g-text-ui)/1.35 var(--g-font-sans); }
+.notif-pop-item[data-unread] .notif-pop-text b { font-weight: 600; }
+.notif-pop-body-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: var(--g-text-dense)/1.4 var(--g-font-sans); color: var(--g-text-muted); }
+.notif-pop-when { align-self: start; white-space: nowrap; text-align: right; }
+.notif-pop-skeleton { grid-template-columns: 16px minmax(0, 1fr); align-items: center; cursor: default; }
+.notif-pop-skeleton:hover { background: transparent; }
+.notif-pop-foot { flex: none; display: flex; justify-content: flex-end; padding: var(--g-space-2) var(--g-space-4); border-top: 1px solid var(--g-border); }
+.notif-pop-foot .g-btn { text-decoration: none; }
+
+/* The phone: the popup comes up from the bottom edge, as wide as the screen, with room for thumbs. */
+@media (max-width: 900px) {
+  .notif-pop { top: auto; right: 0; bottom: 0; left: 0; width: auto; max-height: var(--npop-max, 78vh); padding-bottom: env(safe-area-inset-bottom); border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; }
+  .notif-pop-item { min-height: 48px; padding: var(--g-space-3) var(--g-space-4); }
+  .notif-pop-head, .notif-pop-foot { padding-inline: var(--g-space-5); }
+}

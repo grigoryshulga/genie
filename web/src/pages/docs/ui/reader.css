@@ -1,0 +1,14 @@
+/* The article centers in its reader column, independently of the navigation and rail. */
+.docs-grid.view { grid-template-columns: 280px minmax(0, 1fr) calc(var(--g-space-8) * 4); }
+.doc-reading { width: 100%; max-width: var(--g-measure); margin-inline: auto; font-size: var(--g-text-body); }
+.doc-reading .doc-head, .doc-reading .doc-summary, .doc-reading .doc-banner, .doc-reading .doc-body { max-width: none; }
+.doc-head-top { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--g-space-2); }
+.doc-head-top .doc-article-badges { margin-bottom: 0; }
+.doc-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--g-space-2); max-width: 100%; margin-inline-start: auto; }
+.doc-tags .doc-tag { max-width: 100%; min-height: var(--g-space-5); height: auto; white-space: normal; overflow-wrap: anywhere; }
+.docs-aside { gap: var(--g-space-2); padding: var(--g-space-3); border: 0; background: var(--g-bg); }
+.docs-aside-foot { padding: var(--g-space-3); }
+@media (max-width: 900px) {
+  .docs-grid.view { grid-template-columns: minmax(0, 1fr); }
+  .docs-aside { padding: var(--g-space-4); }
+}

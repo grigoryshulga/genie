@@ -1,0 +1,13 @@
+/* The task view's cascade tail, inlined into the task-detail chunk so every sheet it needs loads in the
+   app's own order instead of in a hoisted shared chunk. The list sheet comes first: the row chrome the
+   task table reuses belongs to the task-list widget but sits above the detail rules. Then the detail
+   frame itself, the team sheet the view embeds, the epic and docs chrome it reuses, its page frame, the
+   phone layer and the desktop centring column. */
+@import "../../../widgets/task-list/ui/list.css";
+@import "./detail.css";
+@import "../../team-view/team.css";
+@import "../../../entities/task/ui/epics.css";
+@import "../../../entities/doc/ui/docs.css";
+@import "./task-page.css";
+@import "../../../shared/ui/mobile.css";
+@import "../../../shared/ui/content.css";

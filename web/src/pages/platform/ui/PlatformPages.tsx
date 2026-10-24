@@ -8,9 +8,12 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAutomations, useNotifications, useProposal, useProposals } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { matchesSearch, timeAgo, useTick } from "@/shared/lib";
-import { Icon, Markdown, Modal, useRefreshingAct, useToast } from "@/shared/ui";
-import { ContextSearch } from "@/widgets/sidebar";
+import { Banner, Button, Card, Character, EmptyState, GroupHead, Icon, Markdown, Prose, Radio, Sheet, Skeleton, Tag, Textarea, useRefreshingAct, useToast, WorkingArcs } from "@/shared/ui";
+import { ContextSearch } from "@/widgets/topbar";
 import { Runs } from "@/widgets/runs";
+// The platform pages carry their own sheets: the answer page (`public.css`), the split-pane and
+// notification rules (`pages.css`), then the responsive and centring layers.
+import "./platform-sheets.css";
 
 // ------------------------------------------------------------------ answer page (public)
 
@@ -44,75 +47,122 @@ export function AnswerPage() {
   const qn = data?.questionnaire;
   const closed = done || (qn && qn.status !== "open");
   return (
-    <div className="auth-page">
-      <div className="answer">
-        <span className="logo-mark lg">
-          <Icon.mark size={34} />
-        </span>
-        {error && <div className="auth-error">{error}</div>}
-        {!qn && !error && <div className="muted">Загрузка…</div>}
+    <main className="answer-page">
+      <div className="answer-body">
+        {error && (
+          <>
+            <div className="answer-head">
+              <div className="answer-head-copy">
+                <span className="answer-ctx">вопросы к вам · ссылка из уведомления</span>
+                <h1>Ссылка не открылась</h1>
+                <p className="answer-lead">Проверьте, что она скопирована целиком: ссылка живёт, пока вопрос открыт.</p>
+              </div>
+              <Character state="sleep" size={148} />
+            </div>
+            <Banner tone="danger" title="Не получилось открыть вопросы">
+              {error}
+            </Banner>
+          </>
+        )}
+        {!qn && !error && (
+          <div className="answer-loading">
+            <WorkingArcs size={22} label="Загружаем вопросы" />
+            <span className="g-caption">Загружаем вопросы…</span>
+          </div>
+        )}
         {qn && (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span className="ctx">
-                {qn.task ? <span className="mono">{qn.task}</span> : "genie"} · спрашивает {qn.askedBy}
-              </span>
-              <h1>{closed ? "Ответы получены" : "Нужны ваши ответы"}</h1>
-              {data?.taskTitle && <p className="lead">{data.taskTitle}</p>}
+            <div className="answer-head">
+              <div className="answer-head-copy">
+                <span className="answer-ctx">
+                  {qn.task ? <span className="g-mono">{qn.task}</span> : "genie"} · спрашивает {qn.askedBy}
+                </span>
+                <h1>
+                  {closed ? (
+                    "Ответы получены"
+                  ) : (
+                    <>
+                      Нужны ваши ответы
+                      <span className="g-stop" aria-hidden="true">.</span>
+                    </>
+                  )}
+                </h1>
+                {data?.taskTitle && <p className="answer-lead">{data.taskTitle}</p>}
+              </div>
+              <Character state={closed ? "sleep" : "surprise"} size={148} />
             </div>
             {closed ? (
-              <div className="done">
-                {qn.status === "expired" ? "Срок ответа истёк — вопрос передан владельцу проекта." : "Спасибо! Ответы записаны в задачу, команда продолжит работу."}
-              </div>
+              <Sheet>
+                <p className="answer-done">
+                  {qn.status === "expired" ? "Срок ответа истёк — вопрос передан владельцу проекта." : "Спасибо! Ответы записаны в задачу, команда продолжит работу."}
+                </p>
+              </Sheet>
             ) : (
               <form
+                className="answer-form"
                 onSubmit={(e) => {
                   e.preventDefault();
                   void submit();
                 }}
               >
                 {qn.questions.map((q) => (
-                  <fieldset key={q.n}>
-                    <legend>
-                      <span className="n">{q.n}.</span> {q.text}
-                    </legend>
-                    {q.why && <span className="why">{q.why}</span>}
-                    {q.answer ? (
-                      <span className="answered">
-                        <Icon.check size={13} />
-                        {q.answer}
-                      </span>
-                    ) : (
-                      <>
-                        {q.options.map((o) => (
-                          <label key={o} className={`opt${answers[q.n] === o ? " on" : ""}`}>
-                            <input type="radio" name={`q${q.n}`} checked={answers[q.n] === o} onChange={() => setAnswers({ ...answers, [q.n]: o })} />
-                            {o}
-                          </label>
-                        ))}
-                        <textarea
-                          rows={q.options.length ? 2 : 3}
-                          aria-label={`Ответ на вопрос ${q.n}`}
-                          value={q.options.includes(answers[q.n] ?? "") ? "" : (answers[q.n] ?? "")}
-                          placeholder={q.options.length ? "Или свой ответ" : "Ваш ответ"}
-                          onChange={(e) => setAnswers({ ...answers, [q.n]: e.target.value })}
-                        />
-                      </>
-                    )}
-                  </fieldset>
+                  <Sheet key={q.n}>
+                    <div className="answer-question">
+                      <h2 className="answer-legend">
+                        <span className="answer-num">{q.n}.</span> {q.text}
+                      </h2>
+                      {q.why && <p className="answer-why">{q.why}</p>}
+                      {q.answer ? (
+                        <p className="answer-answered">
+                          <Icon.check size={13} />
+                          {q.answer}
+                        </p>
+                      ) : (
+                        <fieldset className="answer-options">
+                          <legend className="g-sr">Ответ на вопрос {q.n}</legend>
+                          {q.options.map((o) => (
+                            <Radio key={o} name={`q${q.n}`} label={o} checked={answers[q.n] === o} onChange={() => setAnswers({ ...answers, [q.n]: o })} />
+                          ))}
+                          <Textarea
+                            rows={q.options.length ? 2 : 3}
+                            aria-label={`Ответ на вопрос ${q.n}`}
+                            value={q.options.includes(answers[q.n] ?? "") ? "" : (answers[q.n] ?? "")}
+                            placeholder={q.options.length ? "Или свой ответ" : "Ваш ответ"}
+                            onChange={(e) => setAnswers({ ...answers, [q.n]: e.target.value })}
+                          />
+                        </fieldset>
+                      )}
+                    </div>
+                  </Sheet>
                 ))}
-                <button className="btn primary submit">Отправить ответы</button>
-                <span className="note">Вход не нужен — ссылка работает, пока вопрос открыт</span>
+                <div className="answer-actions">
+                  <Button type="submit" variant="primary">
+                    Отправить ответы
+                  </Button>
+                  <span className="answer-note">Вход не нужен — ссылка работает, пока вопрос открыт</span>
+                </div>
               </form>
             )}
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 
 // ------------------------------------------------------------------ notifications
+
+/** The type of a notification in one icon, so a list of many reads by shape first. */
+function notificationIcon(kind: string) {
+  if (kind.startsWith("task.comment")) return <Icon.send size={14} />;
+  if (kind.startsWith("task.merge") || kind.startsWith("task.pr")) return <Icon.merge size={14} />;
+  if (kind.startsWith("task.status")) return <Icon.bolt size={14} />;
+  if (kind.startsWith("proposal")) return <Icon.proposal size={14} />;
+  if (kind.startsWith("doc")) return <Icon.file size={14} />;
+  if (kind.startsWith("agent") || kind.startsWith("team")) return <Icon.user size={14} />;
+  if (kind.startsWith("observation")) return <Icon.info size={14} />;
+  return <Icon.bell size={14} />;
+}
 
 export function NotificationsPage() {
   useTick();
@@ -120,53 +170,79 @@ export function NotificationsPage() {
   const act = useRefreshingAct();
   const navigate = useNavigate();
   const [search] = useSearchParams();
-  const items = (q.data?.items ?? []).filter((n) => matchesSearch(search.get("q") ?? "", n.title, n.body));
+  const query = search.get("q") ?? "";
+  const items = (q.data?.items ?? []).filter((n) => matchesSearch(query, n.title, n.body));
   const days: { day: string; items: Notification[] }[] = [];
   for (const n of items) {
     const day = dayName(n.created);
     if (days.at(-1)?.day !== day) days.push({ day, items: [] });
     days.at(-1)!.items.push(n);
   }
+  const unread = q.data?.unread ?? 0;
   return (
     <main className="main">
       <header className="topbar">
         <h1>Уведомления</h1>
-        {(q.data?.unread ?? 0) > 0 && <span className="sub">{q.data?.unread} непрочитанных</span>}
+        {unread > 0 && <span className="sub">{unread} непрочитанных</span>}
         <span className="grow" />
-        {(q.data?.unread ?? 0) > 0 && (
-          <button type="button" className="btn" onClick={() => void act(() => request("POST", "/api/notifications/read", {}))}>
-            Прочитать все
-          </button>
+        {unread > 0 && (
+          <Button onClick={() => void act(() => request("POST", "/api/notifications/read", {}))}>Прочитать все</Button>
         )}
       </header>
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="scroll">
-        {!items.length && <div className="empty">{q.isPending ? "Загрузка…" : search.get("q") ? "Ничего не найдено" : "Уведомлений нет"}</div>}
-        {items.length > 0 && (
+        {q.isPending ? (
+          <div className="notifs" aria-hidden="true">
+            <div className="g-card flush notif-skeletons">
+              {[0, 1, 2, 3].map((i) => (
+                <div className="notif-row" key={i}>
+                  <Skeleton width={14} height={14} />
+                  <Skeleton width={`${58 - i * 7}%`} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : !items.length ? (
+          <div className="notif-empty">
+            <Character state="sleep" size={132} />
+            {query ? (
+              <EmptyState title="Ничего не найдено">Измените запрос или очистите поиск.</EmptyState>
+            ) : (
+              <EmptyState title="Уведомлений нет">Здесь появятся ответы агентов, решения владельцев и упоминания.</EmptyState>
+            )}
+          </div>
+        ) : (
           <div className="notifs">
             {days.map((d) => (
               <section key={d.day} className="notif-day">
-                <h2>{d.day}</h2>
-                {d.items.map((n) => (
-                  <button
-                    type="button"
-                    key={n.id}
-                    className={`notif${n.readAt ? "" : " unread"}`}
-                    onClick={() =>
-                      void act(async () => {
-                        if (!n.readAt) await request("POST", "/api/notifications/read", { id: n.id });
-                        if (n.link) navigate(n.link);
-                      })
-                    }
-                  >
-                    <span className="dot" aria-label={n.readAt ? undefined : "не прочитано"} />
-                    <span className="txt">
-                      <b>{n.title}</b>
-                      {n.body && <span className="notif-body">{n.body}</span>}
-                    </span>
-                    <span className="when">{timeAgo(n.created)}</span>
-                  </button>
-                ))}
+                <GroupHead count={d.items.length}>{d.day}</GroupHead>
+                <Card flush>
+                  {d.items.map((n) => (
+                    <button
+                      type="button"
+                      key={n.id}
+                      className="g-row notif-row"
+                      data-unread={n.readAt ? undefined : "true"}
+                      onClick={() =>
+                        void act(async () => {
+                          if (!n.readAt) await request("POST", "/api/notifications/read", { id: n.id });
+                          if (n.link) navigate(n.link);
+                        })
+                      }
+                    >
+                      <span className="notif-dot" aria-hidden="true" />
+                      {!n.readAt && <span className="g-sr">не прочитано</span>}
+                      <span className="notif-kind" aria-hidden="true">
+                        {notificationIcon(n.kind)}
+                      </span>
+                      <span className="notif-text">
+                        <b>{n.title}</b>
+                        {n.body && <span className="notif-body">{n.body}</span>}
+                      </span>
+                      <span className="notif-when g-caption">{timeAgo(n.created)}</span>
+                    </button>
+                  ))}
+                </Card>
               </section>
             ))}
           </div>
@@ -209,41 +285,47 @@ export function AutomationsPage() {
         <span className="sub">запуск и наблюдение · правила меняют в настройках проекта</span>
         <span className="grow" />
         {current?.trigger === "manual" && (
-          <button type="button" className="btn primary" onClick={() => runNow(current)}>
+          <Button variant="primary" onClick={() => runNow(current)}>
             <Icon.bolt size={13} />
             <span className="d-only">Запустить</span>
-          </button>
+          </Button>
         )}
       </header>
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="split">
         <section className="split-list" aria-label="Правила">
+          {rules.isPending && (
+            <div className="split-skeletons" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} height={44} />
+              ))}
+            </div>
+          )}
+          {rules.isError && <Banner tone="danger" title="Не получилось прочитать правила">{rules.error.message}</Banner>}
           {rules.data?.length ? (
-            <button type="button" className={`pick${current ? "" : " on"}`} onClick={() => selectRule()}>
-              <span className="t">
-                <Icon.list size={13} />
-                <span>Все правила · общий журнал</span>
+            <button type="button" className="g-row split-row" aria-selected={!current} onClick={() => selectRule()}>
+              <Icon.list size={13} />
+              <span className="split-row-text">
+                <span className="split-row-title">Все правила</span>
+                <span className="split-row-sub">общий журнал</span>
               </span>
-              <span className="s">запуски всех правил подряд, с отменой</span>
             </button>
           ) : null}
           {filtered?.map((r) => (
-            <button type="button" key={r.id} className={`pick${r.id === current?.id ? " on" : ""}`} onClick={() => selectRule(r.id)}>
-              <span className="t">
-                <span className={`state-dot ${r.enabled ? "ok" : "off"}`} />
-                <span>{r.name}</span>
-              </span>
-              <span className="s">{describeTrigger(r.spec, r.enabled, r.dryRun)}</span>
-              <span className="s">
-                {r.lastRun ? `последний запуск ${timeAgo(r.lastRun.started)} · ${(RUN_STATUS[r.lastRun.status] ?? r.lastRun.status).toLowerCase()}` : "ещё не запускалось"}
+            <button type="button" key={r.id} className="g-row split-row" aria-selected={r.id === current?.id} onClick={() => selectRule(r.id)}>
+              <span className={`state-dot ${r.enabled ? "ok" : "off"}`} aria-hidden="true" />
+              <span className="split-row-text">
+                <span className="split-row-title">{r.name}</span>
+                <span className="split-row-sub">{describeTrigger(r.spec, r.enabled, r.dryRun)}</span>
+                <span className="split-row-sub">
+                  {r.lastRun ? `последний запуск ${timeAgo(r.lastRun.started)} · ${(RUN_STATUS[r.lastRun.status] ?? r.lastRun.status).toLowerCase()}` : "ещё не запускалось"}
+                </span>
               </span>
             </button>
           ))}
-          {rules.isSuccess && rules.data.length > 0 && !filtered?.length && <p className="muted" style={{ padding: "4px 14px" }}>Ничего не найдено</p>}
+          {rules.isSuccess && rules.data.length > 0 && !filtered?.length && <p className="split-hint">Ничего не найдено</p>}
           {rules.isSuccess && !rules.data.length && (
-            <p className="muted" style={{ margin: 0, padding: "4px 14px 8px" }}>
-              Правил пока нет — их добавляют в настройках проекта, на разделе «Автоматизации».
-            </p>
+            <p className="split-hint">Правил пока нет — их добавляют в настройках проекта, на разделе «Автоматизации».</p>
           )}
         </section>
         <section className="split-main" aria-label="Запуски">
@@ -252,11 +334,7 @@ export function AutomationsPage() {
               <h2>{current ? current.name : "Все правила"}</h2>
               <span className="sub">{current ? describeTrigger(current.spec, current.enabled, current.dryRun) : "журнал запусков всех правил"}</span>
             </div>
-            {current?.trigger === "manual" && (
-              <button type="button" className="btn" onClick={() => runNow(current)}>
-                Запустить
-              </button>
-            )}
+            {current?.trigger === "manual" && <Button onClick={() => runNow(current)}>Запустить</Button>}
           </div>
           <div className="pane-body">
             <Runs automation={current?.id} />
@@ -275,7 +353,9 @@ function PageBody({ text }: { text: string }) {
   return (
     <>
       {m && <pre className="frontmatter">{m[1]}</pre>}
-      <Markdown text={m ? text.slice(m[0].length) : text} />
+      <Prose>
+        <Markdown text={m ? text.slice(m[0].length) : text} />
+      </Prose>
     </>
   );
 }
@@ -300,24 +380,39 @@ export function ProposalsPage() {
         <h1>Предложения</h1>
         <span className="sub d-only">агенты предлагают правки знаний, владельцы раздела решают</span>
         <span className="grow" />
-        <Link className="btn" to="/docs">
+        <Link className="g-btn secondary" to="/docs">
           К документации
         </Link>
       </header>
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="split narrow">
         <section className="split-list" aria-label="Открытые предложения">
-          {list.isSuccess && !list.data.length && <p className="muted" style={{ margin: 0, padding: "4px 14px" }}>Открытых предложений нет.</p>}
-          {list.isSuccess && list.data.length > 0 && !filtered?.length && <p className="muted" style={{ padding: "4px 14px" }}>Ничего не найдено</p>}
+          {list.isPending && (
+            <div className="split-skeletons" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} height={44} />
+              ))}
+            </div>
+          )}
+          {list.isError && <Banner tone="danger" title="Не получилось прочитать предложения">{list.error.message}</Banner>}
+          {list.isSuccess && !list.data.length && <p className="split-hint">Открытых предложений нет.</p>}
+          {list.isSuccess && list.data.length > 0 && !filtered?.length && <p className="split-hint">Ничего не найдено</p>}
           {filtered?.map((x) => (
-            <button type="button" key={x.id} className={`pick plain${selected === x.id ? " on" : ""}`} onClick={() => setSp((previous) => { const next = new URLSearchParams(previous); next.set("proposal", String(x.id)); return next; })}>
-              <span className="t">
-                <span>{pageTitle(x.path)}</span>
-              </span>
-              <span className="s">
-                {x.author}
-                {x.authorKind === "agent" ? " (агент)" : ""}
-                {x.task ? ` · по задаче ${x.task}` : ""} · {timeAgo(x.created)}
+            <button
+              type="button"
+              key={x.id}
+              className="g-row split-row"
+              aria-selected={selected === x.id}
+              onClick={() => setSp((previous) => { const next = new URLSearchParams(previous); next.set("proposal", String(x.id)); return next; })}
+            >
+              <Icon.proposal size={13} />
+              <span className="split-row-text">
+                <span className="split-row-title">{pageTitle(x.path)}</span>
+                <span className="split-row-sub">
+                  {x.author}
+                  {x.authorKind === "agent" ? " (агент)" : ""}
+                  {x.task ? ` · по задаче ${x.task}` : ""} · {timeAgo(x.created)}
+                </span>
               </span>
             </button>
           ))}
@@ -326,7 +421,14 @@ export function ProposalsPage() {
           {!p ? (
             <div className="pane-empty">
               <Icon.proposal size={22} />
-              {list.isPending || (selected && one.isPending) ? "Загрузка…" : "Здесь появятся правки, которые ждут вашего решения"}
+              {list.isPending || (selected && one.isPending) ? (
+                <>
+                  <WorkingArcs size={22} label="Загружаем предложение" />
+                  <span>Загружаем предложение…</span>
+                </>
+              ) : (
+                <span>Здесь появятся правки, которые ждут вашего решения</span>
+              )}
             </div>
           ) : (
             <>
@@ -334,23 +436,21 @@ export function ProposalsPage() {
                 <div className="ttl">
                   <h2>{pageTitle(p.path)}</h2>
                   <span className="sub">
-                    <span className="mono">{p.path}</span>
+                    <span className="g-mono">{p.path}</span>
                     {one.data!.owners.length > 0 ? ` · владельцы раздела: ${one.data!.owners.join(", ")}` : ""}
                   </span>
                 </div>
-                <button type="button" className="btn" onClick={() => void decide("reject")}>
-                  Отклонить
-                </button>
-                <button type="button" className="btn" onClick={() => void decide("approve", true)} title="Если страница изменилась после предложения">
+                <Button onClick={() => void decide("reject")}>Отклонить</Button>
+                <Button onClick={() => void decide("approve", true)} title="Если страница изменилась после предложения">
                   Опубликовать поверх
-                </button>
-                <button type="button" className="btn primary" onClick={() => void decide("approve")}>
+                </Button>
+                <Button variant="primary" onClick={() => void decide("approve")}>
                   Опубликовать
-                </button>
+                </Button>
               </div>
               <div className="proposal-state">
-                <span className={`state-dot ${one.data!.current == null ? "running" : "ok"}`} />
-                {one.data!.current == null ? "Новая страница" : "Правка существующей страницы — при конфликте сервер попросит опубликовать поверх"}
+                <Tag tone={one.data!.current == null ? "accent" : "neutral"}>{one.data!.current == null ? "Новая страница" : "Правка страницы"}</Tag>
+                <span>{one.data!.current == null ? "страницы ещё нет — предложение создаст её" : "при конфликте сервер попросит опубликовать поверх"}</span>
               </div>
               {p.note && <p className="proposal-note">{p.note}</p>}
               <div className="compare">

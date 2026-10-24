@@ -1,35 +1,80 @@
-/* Table styles for the shared Markdown renderer (G-7).
-   Co-located with the component so it owns its own styling;
-   web/src/app/styles.css is owned by task G-12 and is not touched here. */
+/* Shared Markdown renderer. The shell imports it (`App.tsx`) rather than the component, because the
+   prose typography below has to land after the primitives it refines: the same `.md` class also names
+   the medium avatar size, and `.g-prose` in components.css sets the generic typography.
+   Ink and paper: g-tokens only. The additive rules are the ones the renderer's own markup needs. */
 
 .md .md-table-wrap {
-  margin: 0 0 10px;
+  margin: 0 0 var(--g-space-3);
   max-width: 100%;
   overflow-x: auto;
 }
 
 .md table.md-table {
   border-collapse: collapse;
+  /* Tables size to their content and the wrapper scrolls: a squeezed table of narrow
+     columns is harder to read than one that continues sideways inside its block. */
   width: max-content;
-  max-width: 100%;
-  font-size: var(--font-size-body);
+  min-width: 100%;
+  font-size: var(--g-text-ui);
 }
 
 .md table.md-table th,
 .md table.md-table td {
-  border: 1px solid var(--line-strong);
-  padding: 5px var(--space-5);
+  border: 1px solid var(--g-border);
+  padding: var(--g-space-2) var(--g-space-3);
   vertical-align: top;
   text-align: left;
 }
 
 .md table.md-table thead th {
-  background: var(--bg-raised);
-  color: var(--text);
-  font-weight: 600;
+  background: var(--g-surface-active);
+  color: var(--g-text);
+  font-weight: var(--g-weight-bold);
   white-space: nowrap;
 }
 
 .md table.md-table tbody tr:nth-child(even) {
-  background: var(--bg-panel);
+  background: var(--g-surface);
 }
+
+/* Long code and long tables scroll inside their own block, never the page. */
+.md pre,
+.g-prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.md blockquote,
+.g-prose blockquote {
+  color: var(--g-text-2);
+}
+
+.md a,
+.g-prose a {
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.md code,
+.g-prose code {
+  overflow-wrap: anywhere;
+}
+
+/* ---- the prose itself ---- */
+/* The renderer owns the markup, so its typography lives here instead of in the task detail sheet that
+   used to carry it: the docs reader renders the same `.md` blocks outside any task view. The rules
+   below are the sheet's, unchanged, in the order they had there. */
+.md { color: var(--g-text-2); line-height: 1.65; overflow-wrap: anywhere; }
+.md p { margin: 0 0 8px; }
+.md h1, .md h2, .md h3, .md h4 { font-size: var(--g-text-ui); margin: 14px 0 6px; color: var(--g-text); }
+.md ul, .md ol { margin: 0 0 8px; padding-left: 20px; }
+.md code { font: 12px var(--g-font-mono); background: var(--g-surface); padding: 1px 5px; border-radius: var(--g-radius-xs); }
+.md pre { background: var(--g-bg); border: 1px solid var(--g-border); border-radius: var(--g-radius-sm); padding: var(--g-space-2) var(--g-space-3); overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--g-border-strong); color: var(--g-text-muted); }
+.md .empty-md { color: var(--g-text-muted); }
+
+/* ---- overrides the surface needs on top of the prose above ---- */
+.md { color: var(--g-text-2); line-height: var(--g-leading-prose); }
+.md code { background: var(--g-surface-raised); }
+.md pre { background: var(--g-surface); border: 1px solid var(--g-border); }

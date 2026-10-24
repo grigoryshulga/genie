@@ -32,7 +32,18 @@ Notable changes by release. Versions follow [SemVer](https://semver.org/); entri
 
 ### Added
 
+- Ink-and-paper redesign of the web interface: a two-theme design system (`ink` default, `paper` light, plus a system preference) with semantic `--g-` tokens, self-hosted Unbounded/Manrope/Geist Mono, and a shared kit of `g-*` primitives (buttons, fields, tabs, menus, dialogs, tags, banners, empty and error states) that carry keyboard and focus behaviour. Dense 32 px controls cover lists and toolbars; 40 px controls are the default.
+- Project icons, a rebuilt task board, new task and documentation pages, and redesigned observation pages, all on the new system.
 - Observation plane, Phase 1: outcome cases that watch delivered tasks with guardrails or hypothesis checks, versioned contracts, Prometheus- and Sentry-compatible sources, guardrail incidents, follow-up tasks, and deterministic conclusions. Includes `genie observe` CLI and MCP operations, HTTP routes, journal events, web pages and a task section, project settings for sources, the project manager's observation guidance, and additive tracker schema 8 and server schema 7.
+
+### Changed
+
+- Web styles name semantic design tokens only (`--g-bg`, `--g-surface`, `--g-text`, `--g-accent`, `--g-signal`, `--g-danger`, `--g-viz-*`), so every screen renders correctly in both themes. The documentation site mirrors the same palette.
+- `design-system/tokens.json` is generated from the two themes instead of the twelve earlier accent combinations, and the design-system specimen renders the real kit.
+
+### Removed
+
+- The GNE-25 design tokens, their compatibility aliases, the six accent choices, the legacy `btn`/`icon-btn`/`seg`/`pill`/`field` class names, unused sidebar and layout rules, and the Geist body font. Geist Mono remains for identifiers, code, and numeric metadata.
 
 ## [0.5.1] — 2026-10-17
 

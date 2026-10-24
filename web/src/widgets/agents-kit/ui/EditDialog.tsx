@@ -3,7 +3,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { setFrontmatterKey, type RoleDetail, useSaveConfig } from "@/entities/agent-config";
-import { Icon, Modal, useToast } from "@/shared/ui";
+import { Dialog, useToast } from "@/shared/ui";
 
 /** Changed frontmatter fields of a role file: a key with its new value (`undefined` removes it). */
 type RoleFields = [string, string | string[] | undefined][];
@@ -48,17 +48,25 @@ export function EditDialog({ title, note, busy, error, narrow, onClose, onSave, 
     if (error) form.current?.scrollTo({ top: 0 });
   }, [error]);
   return (
-    <Modal label={title} onClose={onClose} wide={!narrow}>
-      <div className="mh">
-        {title}
-        <span className="grow" />
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
-          <Icon.close />
-        </button>
-      </div>
+    <Dialog
+      title={title}
+      onClose={onClose}
+      wide={!narrow}
+      footer={
+        <>
+          {note && <span className="ag-save-note">{note}</span>}
+          <button type="button" className="g-btn ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="submit" form="ag-edit" className="g-btn primary" disabled={busy}>
+            Сохранить
+          </button>
+        </>
+      }
+    >
       <form
         ref={form}
-        className="mb ag-form"
+        className="ag-form"
         id="ag-edit"
         onSubmit={(e) => {
           e.preventDefault();
@@ -68,16 +76,6 @@ export function EditDialog({ title, note, busy, error, narrow, onClose, onSave, 
         {error && <div className="ag-warn" role="alert">{error}</div>}
         <fieldset className="ag-edit-fields" disabled={busy}>{children}</fieldset>
       </form>
-      <div className="mf">
-        {note && <span className="ag-save-note">{note}</span>}
-        <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button type="submit" form="ag-edit" className="btn primary" disabled={busy}>
-          Сохранить
-        </button>
-      </div>
-    </Modal>
+    </Dialog>
   );
 }

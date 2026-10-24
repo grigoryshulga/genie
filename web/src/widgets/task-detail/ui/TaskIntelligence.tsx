@@ -1,6 +1,6 @@
 import type { Snapshot } from "@/shared/api/generated/Snapshot.ts";
 import { useSession } from "@/entities/session";
-import { useToast } from "@/shared/ui";
+import { Button, Skeleton, useToast } from "@/shared/ui";
 import { useState } from "react";
 import { useAssessTaskSignals, useResolveTaskSignals, useTaskIntelligence } from "@/entities/task";
 import { CollapsibleSection } from "./CollapsibleSection.tsx";
@@ -10,7 +10,7 @@ export function TaskIntelligence({ task }: { task: string }) {
   const [open, setOpen] = useState(false);
   const history = useTaskIntelligence(task, open);
   return <CollapsibleSection title="Оценка задачи и история маршрутизации" open={open} onOpenChange={setOpen}>
-    {history.isError ? <p role="alert">{history.error.message}</p> : !history.data ? <p className="muted">Загрузка…</p> : <>
+    {history.isError ? <p role="alert">{history.error.message}</p> : !history.data ? <Skeleton height={32} /> : <>
       <SignalActions task={task} latest={history.data.snapshots.at(-1)} />
       {!history.data.snapshots.length && <p className="muted">Для этой задачи сигналы не записаны. Исторические оценки не восстанавливаются предположениями.</p>}
       {history.data.snapshots.map((s) => <details key={s.id}><summary>Brief v{s.profile.briefVersion || "?"} → S-{s.id} · ревизия {s.revision} · {new Date(s.createdAt).toLocaleString("ru-RU")}</summary>
@@ -48,15 +48,15 @@ function SignalActions({ task, latest }: { task: string; latest?: Snapshot }) {
   if (!writable) return null;
   return <div>
     <form onSubmit={(e) => { e.preventDefault(); assess.mutate({ id: task, body: { affectedPaths: paths.split(",").map((p) => p.trim()).filter(Boolean) } }, { onError: (e) => toast(e.message, "error"), onSuccess: () => toast("Оценка задачи сохранена") }); }}>
-      <label>Подтверждённые пути изменения<input className="st-input" value={paths} maxLength={4000} placeholder="src/auth/login.rs, src/api/orders.rs" onChange={(e) => setPaths(e.target.value)} /></label>
+      <label>Подтверждённые пути изменения<input className="g-input" value={paths} maxLength={4000} placeholder="src/auth/login.rs, src/api/orders.rs" onChange={(e) => setPaths(e.target.value)} /></label>
       <p className="muted">Пути от корня репозитория, через запятую. Пустое поле сохраняет неизвестную область и все защитные проверки.</p>
-      <button className="btn ghost sm" type="submit" disabled={assess.isPending}>Зафиксировать область и оценить</button>
+      <Button type="submit" variant="secondary" sm disabled={assess.isPending}>Зафиксировать область и оценить</Button>
     </form>
     {latest?.profile.signals.some((s) => s.source === "runtime") && <form onSubmit={(e) => { e.preventDefault(); resolve.mutate({ id: task, body: { snapshotId: latest.id, reason, evidenceRefs: evidence.split(",").map((v) => v.trim()).filter(Boolean) } }, { onError: (e) => toast(e.message, "error"), onSuccess: () => { setReason(""); setEvidence(""); toast("Решение зафиксировано; команду можно возобновить отдельно"); } }); }}>
       <h4>Решение по обнаруженным ограничениям</h4>
-      <label>Что проверено и решено<textarea className="st-input" required minLength={12} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
-      <label>Ссылки на подтверждения, через запятую<input className="st-input" required value={evidence} maxLength={4000} onChange={(e) => setEvidence(e.target.value)} /></label>
-      <button className="btn ghost sm" type="submit" disabled={resolve.isPending}>Зафиксировать решение человека</button>
+      <label>Что проверено и решено<textarea className="g-textarea" required minLength={12} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+      <label>Ссылки на подтверждения, через запятую<input className="g-input" required value={evidence} maxLength={4000} onChange={(e) => setEvidence(e.target.value)} /></label>
+      <Button type="submit" variant="secondary" sm disabled={resolve.isPending}>Зафиксировать решение человека</Button>
     </form>}
   </div>;
 }

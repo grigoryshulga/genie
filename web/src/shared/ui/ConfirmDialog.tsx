@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from "react";
+import { Checkbox } from "./kit/forms.tsx";
 import { Modal } from "./Modal.tsx";
 
 /** Confirmation for destructive actions, with an optional extra checkbox. */
@@ -26,20 +27,15 @@ export function ConfirmDialog({
     <Modal label={title} onClose={onClose}>
       <div className="mh">{title}</div>
       <div className="mb">
-        <div style={{ lineHeight: 1.55, color: "var(--text-2)" }}>{children}</div>
-        {option && (
-          <label style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--text-2)" }}>
-            <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
-            {option}
-          </label>
-        )}
+        <div className="cf-text">{children}</div>
+        {option && <Checkbox label={option} checked={checked} onChange={(e) => setChecked(e.target.checked)} />}
       </div>
       <div className="mf">
         <span className="grow" />
-        <button type="button" className="btn ghost" onClick={onClose}>
+        <button type="button" className="g-btn ghost" onClick={onClose}>
           Отмена
         </button>
-        <button type="button" className={`btn ${danger ? "danger" : "primary"}`} disabled={busy} onClick={() => onConfirm(checked)} autoFocus>
+        <button type="button" className={`g-btn ${danger ? "danger" : "primary"}`} disabled={busy} onClick={() => onConfirm(checked)} autoFocus>
           {confirmLabel}
         </button>
       </div>

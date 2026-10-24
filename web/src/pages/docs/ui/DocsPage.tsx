@@ -2,8 +2,8 @@
 // column layout (tree | page | aside, search, editor, empty state), the mobile
 // drawer and the docs change signal.
 
-import { lazy, Suspense, useMemo, useState } from "react";
-import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   buildDocNavigation,
   docSections,
@@ -19,15 +19,42 @@ import {
   useDocsVersion,
   useSaveDoc,
 } from "@/entities/doc";
+import { useProposals } from "@/entities/platform";
 import { useSession } from "@/entities/session";
-import { ContextSearch } from "@/widgets/sidebar";
-import { useToast, Icon } from "@/shared/ui";
+import { ContextSearch } from "@/widgets/topbar";
+import { useToast, Banner, EmptyState, ErrorState, Icon, LoadingState, Skeleton, useModalFocus } from "@/shared/ui";
 import { DocsOverview } from "./DocsOverview.tsx";
 import { DocSearchList } from "./DocSearchList.tsx";
 import { DocView } from "./DocView.tsx";
 import { NewDocDialog } from "./NewDocDialog.tsx";
+// The docs workspace: the reader/editor layout, the overview cards and the mobile drawer, then the
+// responsive and centring layers.
+import "./docs-sheets.css";
 
 const DocEditor = lazy(() => import("./DocEditor.tsx").then((module) => ({ default: module.DocEditor })));
+
+/**
+ * Pages / Proposals segment of the documentation header (screens.md, section 0): proposals keep
+ * their own route, the segment is the way in and the count next to it. Links rather than tabs,
+ * because each side is a route with its own URL state.
+ */
+function ViewTabs() {
+  const proposals = useProposals().data?.length ?? 0;
+  const { pathname } = useLocation();
+  const onProposals = pathname.startsWith("/docs/proposals");
+  return (
+    <nav className="docs-view-tabs" aria-label="Документация и предложения">
+      <div className="g-tabs">
+        <Link to="/docs" aria-current={onProposals ? undefined : "page"}>
+          Страницы
+        </Link>
+        <Link to="/docs/proposals" aria-current={onProposals ? "page" : undefined}>
+          Предложения{proposals > 0 ? ` ${proposals}` : ""}
+        </Link>
+      </div>
+    </nav>
+  );
+}
 
 export function DocsPage() {
   const [sp, setSp] = useSearchParams();
@@ -59,6 +86,10 @@ export function DocsPage() {
 
   const [drawer, setDrawer] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState("");
+  // The mobile drawer is the tree on a phone: it covers the page, so it takes focus, keeps Tab inside,
+  // closes on Escape and hands focus back to the button that opened it.
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useModalFocus(drawerRef, drawer, () => setDrawer(false));
 
   const setParam = (patch: Record<string, string | null>, replace = false) => {
     const next = new URLSearchParams(sp);
@@ -91,7 +122,7 @@ export function DocsPage() {
     if (!pagePath) return <Navigate to="/docs" replace />;
     return (
       <main className="main docs-main">
-        <Suspense fallback={<div className="docs-view muted">Загрузка редактора…</div>}>
+        <Suspense fallback={<div className="docs-view"><LoadingState label="Загрузка редактора" lines={4} /></div>}>
         <DocEditor
           path={pagePath}
           pages={pages}
@@ -118,23 +149,34 @@ export function DocsPage() {
       <div className={`docs-grid ${grid}`}>
         <div className="docs-tree-col">
           <header className="docs-col-head">
-            <button type="button" className="icon-btn m-only" onClick={() => setDrawer(true)} aria-label="Открыть навигацию по документации">
+            <button type="button" className="g-icon-btn m-only" onClick={() => setDrawer(true)} aria-label="Открыть навигацию по документации">
               <Icon.list size={15} />
             </button>
             <h1>Документация</h1>
             {searchMode ? <span className="doc-col-tag">поиск</span> : <span className="count">{loading ? "" : pages.length}</span>}
             <span className="grow" />
-            <button type="button" className="btn ghost" onClick={() => setParam({ new: "page" })}>
+            <button type="button" className="g-btn ghost" onClick={() => setParam({ new: "page" })}>
               <Icon.plus size={12} />
               Статья
             </button>
           </header>
 
+          {searchMode ? null : <ViewTabs />}
 
           {loading ? (
-            <div className="doc-tree-empty muted">Загрузка…</div>
+            <div className="doc-tree-empty" aria-busy="true">
+              <Skeleton width="82%" height={20} />
+              <Skeleton width="64%" height={20} />
+              <Skeleton width="74%" height={20} />
+              <Skeleton width="58%" height={20} />
+              <Skeleton width="70%" height={20} />
+            </div>
           ) : tree.isError ? (
-            <div className="doc-tree-empty muted">Не удалось загрузить документацию: {tree.error.message}</div>
+            <div className="doc-tree-empty">
+              <Banner tone="danger" title="Не удалось загрузить документацию">
+                {tree.error.message}
+              </Banner>
+            </div>
           ) : searchMode ? (
             <DocSearchList
               navigation={navigation}
@@ -152,29 +194,59 @@ export function DocsPage() {
         </div>
 
         {tree.isError ? (
-          <div className="docs-content"><div className="docs-view muted">Не удалось загрузить пространство документации.</div></div>
+          <div className="docs-content"><div className="docs-view"><ErrorState message={tree.error.message} onRetry={() => void tree.refetch()} /></div></div>
         ) : loading ? (
-          <div className="docs-content"><div className="docs-view muted">Загрузка пространства…</div></div>
+          <div className="docs-content"><div className="docs-view" aria-busy="true">
+            <div className="doc-head">
+              <Skeleton width="12ch" height={20} />
+              <Skeleton width="70%" height={36} />
+              <Skeleton width="40%" height={20} />
+            </div>
+            <Skeleton width="100%" height={16} />
+            <Skeleton width="92%" height={16} />
+            <Skeleton width="96%" height={16} />
+            <Skeleton width="60%" height={16} />
+          </div></div>
         ) : !pagePath && !searchMode ? (
           roots.length === 0 ? (
-            <div className="docs-content"><div className="docs-view muted">Для проекта не настроен корень документации. Администратор может привязать пространство в настройках хранилища знаний.</div></div>
+            <div className="docs-content"><div className="docs-view">
+              <EmptyState title="Пространство документации не настроено">
+                Администратор может привязать корень документации в настройках хранилища знаний. Пока корня нет, страницы читать нечего.
+              </EmptyState>
+            </div></div>
           ) : section ? (
             <DocsOverview root={navigation} section={section} projectName={projectName} onSection={openSection} onOpen={openPage} onCreate={createInSection} onOpenTree={() => setDrawer(true)} />
           ) : (
             <div className="docs-content"><div className="docs-view">
-              <p>Раздел не найден в этом проекте.</p>
-              <button type="button" className="btn" onClick={() => openSection(navigation.path)}>К обзору пространства</button>
+              <EmptyState
+                title="Раздел не найден в этом проекте"
+                action={<button type="button" className="g-btn secondary" onClick={() => openSection(navigation.path)}>К обзору пространства</button>}
+              >
+                Возможно, раздел переименовали или удалили. Обзор пространства покажет, что есть сейчас.
+              </EmptyState>
             </div></div>
           )
         ) : searchMode && !results.length ? (
           <div className="docs-content" />
         ) : activePath && pageQ.isPending && !showPage ? (
           <div className="docs-content">
-            <div className="docs-view muted">Загрузка страницы…</div>
+            <div className="docs-view" aria-busy="true">
+              <div className="doc-head">
+                <Skeleton width="10ch" height={20} />
+                <Skeleton width="62%" height={36} />
+                <Skeleton width="34%" height={20} />
+              </div>
+              <Skeleton width="100%" height={16} />
+              <Skeleton width="88%" height={16} />
+              <Skeleton width="94%" height={16} />
+              <Skeleton width="52%" height={16} />
+            </div>
           </div>
         ) : pageQ.isError ? (
           <div className="docs-content">
-            <div className="docs-view muted">Не удалось открыть страницу: {pageQ.error.message}</div>
+            <div className="docs-view">
+              <ErrorState message={`Не удалось открыть страницу: ${pageQ.error.message}`} onRetry={() => void pageQ.refetch()} />
+            </div>
           </div>
         ) : pageQ.data ? (
           <DocView
@@ -190,14 +262,16 @@ export function DocsPage() {
           />
         ) : (
           <div className="docs-content">
-            <div className="docs-view muted">Выберите статью в результатах поиска.</div>
+            <div className="docs-view">
+              <EmptyState title="Выберите статью в результатах поиска">Результаты слева: стрелки выбирают, Enter открывает.</EmptyState>
+            </div>
           </div>
         )}
       </div>
 
       {drawer && (
         <div className="docs-drawer-overlay" onMouseDown={(event) => event.target === event.currentTarget && setDrawer(false)}>
-          <div className="docs-drawer" role="dialog" aria-modal="true" aria-label="Навигация по документации">
+          <div ref={drawerRef} className="docs-drawer" role="dialog" aria-modal="true" aria-label="Навигация по документации">
             <div className="docs-drawer-grab" />
             <header className="docs-col-head">
               <h1>Документация</h1>
@@ -205,7 +279,7 @@ export function DocsPage() {
               <span className="grow" />
               <button
                 type="button"
-                className="btn ghost"
+                className="g-btn ghost"
                 onClick={() => {
                   setDrawer(false);
                   setParam({ new: "page" });
@@ -217,7 +291,9 @@ export function DocsPage() {
             </header>
             <label className="docs-filter">
               <Icon.search size={13} />
-              <input value={drawerFilter} aria-label="Фильтр статей" placeholder="Фильтр и поиск" onChange={(event) => setDrawerFilter(event.target.value)} autoFocus />
+              {/* No autoFocus: the drawer's own focus trap puts the keyboard inside, and a field that
+                  grabs focus during mount would leave the trap without an opener to restore to. */}
+              <input value={drawerFilter} aria-label="Фильтр статей" placeholder="Фильтр и поиск" onChange={(event) => setDrawerFilter(event.target.value)} />
             </label>
             <div className="docs-drawer-tree scroll">
               <DocsTree

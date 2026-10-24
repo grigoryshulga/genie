@@ -1,6 +1,7 @@
 import { type LiveState, liveTeam, type TeamSpecView, TemplateGraph, useAgentConfig } from "@/entities/agent-config";
 import { displayName, ROLE_TITLE_RU } from "@/entities/member";
 import type { TeamDetail } from "@/entities/team";
+import { Button, WorkingArcs } from "@/shared/ui";
 
 /** What the team is busy with, in one line: who works, who waits for whom. */
 function summary(spec: TeamSpecView, live: Record<string, { state: LiveState; note?: string }>, active: boolean): { text: string; tone: "" | "working" | "waiting" | "error" } {
@@ -31,17 +32,17 @@ export function TeamScheme({ team, open, onToggle }: { team: TeamDetail; open: b
   const now = summary(spec, live, active);
   const head = (
     <>
-      <span className={`team-now ${now.tone}`}>
-        {now.tone === "working" ? <span className="spin" /> : <i />}
+      <span className={`tv-now ${now.tone}`}>
+        {now.tone === "working" ? <WorkingArcs size={14} label="Идёт работа" /> : <i />}
         {now.text}
       </span>
-      <button type="button" className="btn ghost sm" aria-expanded={open} onClick={onToggle}>
+      <Button variant="ghost" sm aria-expanded={open} onClick={onToggle}>
         {open ? "Свернуть схему" : "Показать схему"}
-      </button>
+      </Button>
     </>
   );
   return (
-    <section className="team-scheme" aria-label="Схема команды">
+    <section className="tv-scheme" aria-label="Схема команды">
       {open ? (
         <TemplateGraph
           members={spec.members.map((m) => ({ key: m.key, role: m.role, name: displayName(m.name) }))}
@@ -66,7 +67,7 @@ export function TeamScheme({ team, open, onToggle }: { team: TeamDetail; open: b
           head={head}
         />
       ) : (
-        <div className="team-scheme-folded">{head}</div>
+        <div className="tv-scheme-folded">{head}</div>
       )}
     </section>
   );

@@ -1,13 +1,15 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router";
 import { type LiveState, liveTeam, MAIL_TITLE, useAgentConfig } from "@/entities/agent-config";
-import { Avatar, displayName, ROLE_TITLE_RU } from "@/entities/member";
+import { displayName, ROLE_TITLE_RU } from "@/entities/member";
 import { RemoveMemberButton, RestartMemberButton, TeamActions } from "@/features/manage-team";
 import { StageBars, STAGES, stageOf, STATUS_NAME } from "@/entities/task";
-import { type LiveSession, type Mail, type MailLevel, MessageText, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
+import { type LiveSession, type Mail, type MailLevel, MessageText, memberActivity, PartyAvatar, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
+import { useOnline } from "@/shared/api";
 import { clock, dayLabel, plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
-import { Icon, useToast } from "@/shared/ui";
+import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, Select, Segmented, Sheet, Skeleton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
 import { TeamScheme } from "./TeamScheme.tsx";
+import "./team-view-sheets.css";
 
 /** One chat entry: broadcast rows (one per recipient) and kickoffs are merged. */
 interface Entry {
@@ -40,8 +42,8 @@ const STOPPED: Record<string, string> = {
 function MailBadges({ level, intent }: { level: MailLevel; intent?: Mail["intent"] }) {
   return (
     <>
-      {(level === "high" || level === "interrupt") && <span className="urgent-tag">{level === "interrupt" ? "прерывание" : "важное"}</span>}
-      {intent && <span className="mail-kind">{INTENT_LABEL[intent]}</span>}
+      {(level === "high" || level === "interrupt") && <Tag tone="signal">{level === "interrupt" ? "прерывание" : "важное"}</Tag>}
+      {intent && <Tag tone="outline">{INTENT_LABEL[intent]}</Tag>}
     </>
   );
 }
@@ -112,10 +114,13 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   const q = useTeam(teamId);
   const cfg = useAgentConfig().data;
   const send = useSendMail();
+  const online = useOnline();
   const toast = useToast();
   const [to, setTo] = useState("all");
   const [level, setLevel] = useState<MailLevel>("normal");
   const [draft, setDraft] = useState("");
+  // On a phone the members and the journal open as a bottom sheet.
+  const [sheet, setSheet] = useState(false);
   // On a phone the scheme starts folded: the mail comes first there.
   const [scheme, setScheme] = useState(() => readPref("genie.teamScheme", window.innerWidth < 900 ? "closed" : "open") === "open");
   const chatRef = useRef<HTMLDivElement>(null);
@@ -123,7 +128,16 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   const team = q.data;
   const entries = useMemo(() => (team ? toEntries(team.mail) : []), [team]);
 
-  useEffect(() => setTo("all"), [teamId]);
+  useEffect(() => {
+    setTo("all");
+    setSheet(false);
+  }, [teamId]);
+  useEffect(() => {
+    const phone = window.matchMedia("(max-width: 900px)");
+    const closeOnDesktop = () => { if (!phone.matches) setSheet(false); };
+    phone.addEventListener("change", closeOnDesktop);
+    return () => phone.removeEventListener("change", closeOnDesktop);
+  }, []);
   // An interrupt stops one agent's step: not for a broadcast or the orchestrator.
   useEffect(() => {
     if (level === "interrupt" && (to === "all" || to === "orchestrator")) setLevel("high");
@@ -133,8 +147,8 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [entries.length, teamId]);
 
-  if (q.isPending) return <div className="empty">Загрузка…</div>;
-  if (q.isError || !team) return <div className="empty">Команда не найдена</div>;
+  if (q.isPending) return <TeamSkeleton />;
+  if (q.isError || !team) return <div className="tv-page-state"><ErrorState message={q.error?.message ?? "Команда не найдена"} onRetry={() => void q.refetch()} /></div>;
   if (!embedded) return <Navigate to={`/task/${encodeURIComponent(team.task)}/team`} replace />;
 
   const status = team.taskInfo?.status;
@@ -145,6 +159,9 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   const live = spec ? liveTeam(spec, team.members, status ?? "ready", active, displayName).live : {};
   const keyOf = (name: string) => spec?.members.find((m) => m.name === name)?.key ?? name;
   const templateKnown = !!spec?.template && !!cfg?.teams.some((t) => t.id === spec.template);
+  // The character reports the team: it thinks while someone works, is surprised when the owner is needed.
+  const pose = characterState({ working: active ? working.length : 0, waiting: active && status === "needs_owner" ? 1 : 0 });
+  const offline = !online;
 
   const submit = () => {
     const text = draft.trim();
@@ -154,12 +171,49 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   };
 
   let lastDay = "";
+  const levels = (["low", "normal", "high", "interrupt"] as MailLevel[]).filter((l) => l !== "interrupt" || (to !== "all" && to !== "orchestrator"));
+
+  const participants = (
+    <aside className="tv-aside" aria-label="Участники и журнал">
+      <div className="tv-aside-head">
+        <Character state={pose} size={44} />
+        <span>Участники</span>
+        <IconButton label="Закрыть" className="m-only" onClick={() => setSheet(false)}>
+          <Icon.close size={14} />
+        </IconButton>
+      </div>
+      {team.templateChanged && (
+        <div className="tv-note">
+          <b>Шаблон изменили после запуска</b>
+          <span>Команда работает по снимку, взятому при старте. Новые настройки роли участник получит после перезапуска.</span>
+        </div>
+      )}
+      <div className="tv-members">
+        {team.members.map((m) => (
+          <MemberCard key={m.name} team={team} member={m} live={live[keyOf(m.name)]} session={active ? team.sessions?.[m.name] : undefined} />
+        ))}
+      </div>
+      <h3 className="tv-cap">Журнал</h3>
+      <ol className="tv-events">
+        {[...team.log]
+          .filter((e) => e.event !== "mail" && !(e.event === "status" && e.status === "starting"))
+          .reverse()
+          .slice(0, 40)
+          .map((e, i) => (
+            <li key={i}>
+              <span className="tv-time">{clock(e.at)}</span>
+              <span>{(EVENT_TEXT[e.event] ?? (() => e.event))(e)}</span>
+            </li>
+          ))}
+      </ol>
+    </aside>
+  );
 
   return (
-    <div className="task-team">
-      <section className="team-main" aria-label="Команда">
-        <div className="team-title">
-          <div className="sub">
+    <div className="task-team tv">
+      <section className="tv-main" aria-label="Команда">
+        <div className="tv-head">
+          <div className="tv-meta">
             {spec &&
               (spec.title ? (
                 <span>
@@ -171,13 +225,16 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
             {spec && <span>{spec.mail === "flow" ? "почта по связям шаблона" : `почта: ${MAIL_TITLE[spec.mail]}`}</span>}
             {team.worktree && (
               <span title={team.worktree.path}>
-                ветка <span className="mono">{team.worktree.branch}</span>
+                ветка <span className="tv-mono">{team.worktree.branch}</span>
               </span>
             )}
             {active ? <span>работает {timeAgo(team.created) === "сейчас" ? "меньше минуты" : timeAgo(team.created)}</span> : <span>{STOPPED[team.stopReason ?? ""] ?? "остановлена"}</span>}
-            {active && status === "needs_owner" && <span className="amber">нужно решение владельца</span>}
+            {active && status === "needs_owner" && <Tag tone="signal">нужно решение владельца</Tag>}
             <i className="grow" />
-            <span className="team-acts">
+            <span className="tv-acts">
+              <Button variant="ghost" sm className="m-only" aria-haspopup="dialog" onClick={() => setSheet(true)}>
+                Участники · {team.members.length}
+              </Button>
               <TeamActions team={team} />
             </span>
           </div>
@@ -200,8 +257,8 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
           }}
         />
 
-        <div className="chat" ref={chatRef} role="log" aria-label="Почта команды" onScroll={(e) => (stick.current = e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 60)}>
-          <div className="inner">
+        <div className="tv-log" ref={chatRef} role="log" aria-label="Почта команды" onScroll={(e) => (stick.current = e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 60)}>
+          <div className="tv-inner">
             {entries.map((m, i) => {
               const day = dayLabel(m.at);
               const showDay = day !== lastDay;
@@ -210,51 +267,57 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
               const next = entries[i + 1];
               const same = (a?: Entry) => !!a && a.kind === m.kind && a.from === m.from && a.to.join() === m.to.join() && a.level === m.level && a.intent === m.intent && dayLabel(a.at) === day;
               const cont = same(prev) && !showDay;
+              const body = (
+                <>
+                  {!cont && (
+                    <div className="tv-from">
+                      <b title={m.kind === "agent" && m.fromRole !== "orchestrator" ? ROLE_TITLE_RU[m.fromRole] : undefined}>
+                        {m.kind === "mine" ? "Вы" : m.fromRole === "orchestrator" ? "Оркестратор" : displayName(m.from)}
+                      </b>
+                      <span className="tv-to-line">→ {recipients(m.to, team)}</span>
+                      <MailBadges level={m.level} intent={m.intent} />
+                    </div>
+                  )}
+                  <div className="tv-text">
+                    <MessageText text={m.text} team={team.id} />
+                  </div>
+                </>
+              );
               return (
                 <Fragment key={m.key}>
-                  {showDay && <div className="day">{day}</div>}
+                  {showDay && <div className="tv-day">{day}</div>}
                   {m.kind === "system" ? (
-                    <div className="sys">
-                      <span />
-                      {m.title ? (
-                        <span className="body">
-                          {m.title}: {m.to.map(displayName).join(", ")}
-                        </span>
-                      ) : (
-                        <span className="body">
-                          <b>{m.fromRole === "orchestrator" ? "Оркестратор" : displayName(m.from)} → {recipients(m.to, team)}:</b> {m.text}
-                        </span>
-                      )}
-                      <span className="t">{clock(m.at)}</span>
+                    <div className="tv-sys">
+                      <span className="tv-body">
+                        {m.title ? (
+                          <>
+                            {m.title}: {m.to.map(displayName).join(", ")}
+                          </>
+                        ) : (
+                          <>
+                            <b>{m.fromRole === "orchestrator" ? "Оркестратор" : displayName(m.from)} → {recipients(m.to, team)}:</b> {m.text}
+                          </>
+                        )}
+                      </span>
+                      <span className="tv-time">{clock(m.at)}</span>
                     </div>
                   ) : (
-                    <article className={`mail${cont ? " cont" : ""}${m.urgent ? " urgent" : ""}${m.kind === "mine" ? " mine" : ""}`}>
-                      <span className="slot">{!cont && <Avatar role={m.kind === "mine" ? "human" : m.fromRole} name={m.from} size="md" />}</span>
-                      <div className="body">
-                        {!cont && (
-                          <div className="meta">
-                            <b title={m.kind === "agent" && m.fromRole !== "orchestrator" ? ROLE_TITLE_RU[m.fromRole] : undefined}>
-                              {m.kind === "mine" ? "Вы" : m.fromRole === "orchestrator" ? "Оркестратор" : displayName(m.from)}
-                            </b>
-                            <span className="muted">→ {recipients(m.to, team)}</span>
-                            <MailBadges level={m.level} intent={m.intent} />
-                          </div>
-                        )}
-                        <div className="text">
-                          <MessageText text={m.text} team={team.id} />
-                        </div>
-                        {m.kind === "mine" && !same(next) && <span className="receipt">{m.delivered ? "получено" : "ещё не прочитано"}</span>}
+                    <article className={`tv-mail${cont ? " cont" : ""}${m.urgent ? " urgent" : ""}${m.kind === "mine" ? " mine" : ""}`}>
+                      <span className="tv-slot">{!cont && <PartyAvatar role={m.kind === "mine" ? "human" : m.fromRole} name={m.kind === "mine" ? "Вы" : m.from} />}</span>
+                      <div className="tv-body">
+                        {m.kind === "mine" ? <Sheet className="tv-bubble">{body}</Sheet> : <div className="tv-bubble">{body}</div>}
+                        {m.kind === "mine" && !same(next) && <span className="tv-receipt">{m.delivered ? "получено" : "ещё не прочитано"}</span>}
                       </div>
-                      <span className="t">{clock(m.at)}</span>
+                      <span className="tv-time">{clock(m.at)}</span>
                     </article>
                   )}
                 </Fragment>
               );
             })}
-            {!entries.length && <div className="empty">Писем пока нет</div>}
+            {!entries.length && <p className="tv-quiet">Писем пока нет. Первое придёт, когда команда начнёт работу.</p>}
             {active && working.length > 0 && (
-              <div className="typing" aria-live="polite">
-                <span className="spin" />
+              <div className="tv-typing" aria-live="polite">
+                <WorkingArcs size={14} label="Идёт работа" />
                 {working.map((w) => displayName(w.name)).join(", ")} {working.length > 1 ? "работают" : "работает"}
               </div>
             )}
@@ -263,80 +326,82 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
 
         {active && (
           <form
-            className="team-composer"
+            className="tv-composer"
             onSubmit={(e) => {
               e.preventDefault();
               submit();
             }}
           >
-            <label className="tc-to">
-              Кому
-              <select value={to} onChange={(e) => setTo(e.target.value)}>
-                <option value="all">всем</option>
-                {team.members.map((m) => (
-                  <option key={m.name} value={m.name}>
-                    {displayName(m.name)} — {ROLE_TITLE_RU[m.role] ?? m.role}
-                  </option>
-                ))}
-                <option value="orchestrator">оркестратору</option>
-              </select>
-            </label>
-            <select className="tc-level" aria-label="Важность" title="«Прервать шаг» остановит текущую команду" value={level} onChange={(e) => setLevel(e.target.value as MailLevel)}>
-              {(["low", "normal", "high", "interrupt"] as MailLevel[])
-                .filter((l) => l !== "interrupt" || (to !== "all" && to !== "orchestrator"))
-                .map((l) => (
-                  <option key={l} value={l}>
-                    {LEVEL_LABEL[l]}
-                  </option>
-                ))}
-            </select>
-            <textarea
-              aria-label="Сообщение"
-              rows={1}
-              value={draft}
-              placeholder={to === "all" ? "Сообщение всей команде" : to === "orchestrator" ? "Сообщение оркестратору" : `Сообщение для ${displayName(to)}`}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = `${Math.min(140, e.target.scrollHeight)}px`;
-              }}
-              onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
-            />
-            <button type="submit" className="send" aria-label="Отправить" title="Отправить (⌘↵)" disabled={!draft.trim() || send.isPending}>
-              <Icon.send size={15} style={{ color: "var(--on-accent)" }} />
-            </button>
+            <div className="tv-composer-opts">
+              <label className="tv-to">
+                Кому
+                <Select sm value={to} onChange={(e) => setTo(e.target.value)}>
+                  <option value="all">всем</option>
+                  {team.members.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {displayName(m.name)} — {ROLE_TITLE_RU[m.role] ?? m.role}
+                    </option>
+                  ))}
+                  <option value="orchestrator">оркестратору</option>
+                </Select>
+              </label>
+              <span title="«Прервать шаг» остановит текущую команду">
+                <Segmented label="Важность" value={level} onChange={setLevel} items={levels.map((l) => ({ id: l, label: LEVEL_LABEL[l] }))} />
+              </span>
+            </div>
+            <div className="tv-composer-row">
+              <Textarea
+                className="tv-input"
+                aria-label="Сообщение"
+                rows={1}
+                value={draft}
+                placeholder={to === "all" ? "Сообщение всей команде" : to === "orchestrator" ? "Сообщение оркестратору" : `Сообщение для ${displayName(to)}`}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(140, e.target.scrollHeight)}px`;
+                }}
+                onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
+              />
+              <IconButton type="submit" label="Отправить" title={offline ? "Нет связи с сервером" : "Отправить (⌘↵)"} className="tv-send" disabled={!draft.trim() || send.isPending || offline}>
+                <Icon.send size={15} />
+              </IconButton>
+            </div>
           </form>
         )}
       </section>
 
-      <aside className="team-aside" aria-label="Участники и журнал">
-        <div className="hd">Участники</div>
-        {team.templateChanged && (
-          <div className="aside-note">
-            <b>Шаблон изменили после запуска</b>
-            <span>Команда работает по снимку, взятому при старте. Новые настройки роли участник получит после перезапуска.</span>
+      {sheet ? <Dialog title="Участники и журнал" onClose={() => setSheet(false)} bare sheet className="tv-participants-dialog">{participants}</Dialog> : participants}
+    </div>
+  );
+}
+
+/** The team page while it loads: the head, a few messages and the composer as placeholders. */
+function TeamSkeleton() {
+  return (
+    <div className="task-team tv" aria-busy="true" aria-label="Команда загружается">
+      <section className="tv-main">
+        <div className="tv-head">
+          <Skeleton width="40%" height={16} />
+          <Skeleton height={8} />
+        </div>
+        <div className="tv-log">
+          <div className="tv-inner">
+            {[72, 48, 64].map((w, i) => (
+              <div key={i} className="tv-mail">
+                <Skeleton width={28} height={28} />
+                <Skeleton width={`${w}%`} height={44} />
+              </div>
+            ))}
           </div>
-        )}
-        <div className="members">
-          {team.members.map((m) => (
-            <MemberCard key={m.name} team={team} member={m} live={live[keyOf(m.name)]} session={active ? team.sessions?.[m.name] : undefined} />
+        </div>
+      </section>
+      <aside className="tv-aside">
+        <div className="tv-members">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} height={64} />
           ))}
         </div>
-        <div className="nav-section" style={{ margin: "14px 18px 8px" }}>
-          Журнал
-        </div>
-        <ol className="events">
-          {[...team.log]
-            .filter((e) => e.event !== "mail" && !(e.event === "status" && e.status === "starting"))
-            .reverse()
-            .slice(0, 40)
-            .map((e, i) => (
-              <li key={i}>
-                <span className="t">{clock(e.at)}</span>
-                <span>{(EVENT_TEXT[e.event] ?? (() => e.event))(e)}</span>
-              </li>
-            ))}
-        </ol>
       </aside>
     </div>
   );
@@ -346,69 +411,52 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
 function MemberCard({ team, member: m, live, session: s }: { team: TeamDetail; member: TeamDetail["members"][number]; live?: { state: LiveState; note?: string }; session?: LiveSession }) {
   useTick();
   const active = team.state === "active";
-  const paused = active && m.state === "paused";
-  const state: LiveState = !active || m.state === "stopped" ? "stopped" : paused ? "waiting" : m.activity === "error" || m.state === "error" ? "error" : m.activity === "working" ? "working" : (live?.state ?? "idle");
-  const text =
-    state === "working"
-      ? s?.tool
-        ? `работает · ${s.tool.name} ${timeAgo(s.tool.since)}`
-        : "работает"
-      : paused
-        ? "на паузе"
-        : state === "waiting"
-          ? (live?.note ?? "ждёт")
-        : state === "error"
-          ? "ошибка"
-          : state === "stopped"
-            ? "остановлен"
-            : "свободен";
+  const { state, text } = memberActivity(team, m, live, s);
   const queued = team.pending[m.name] ?? 0;
   const status = m.status && m.status !== "starting" ? m.status : "";
   const said = state !== "working" && s?.lastText && s.lastText !== status ? s.lastText : "";
   return (
-    <div className={`mcard ${state}`}>
-      <Avatar role={m.role} name={m.name} activity={active ? m.activity : undefined} state={m.state} size="md" />
-      <div className="info">
-        <div className="nm">
-          <Link to={`/team/${encodeURIComponent(team.id)}/${encodeURIComponent(m.name)}`} className="mcard-open" title="Открыть разговор с агентом">
+    <div className={`tv-member ${state}`}>
+      <PartyAvatar role={m.role} name={m.name} activity={active ? m.activity : undefined} state={m.state} />
+      <div className="tv-info">
+        <div className="tv-nm">
+          <Link to={`/team/${encodeURIComponent(team.id)}/${encodeURIComponent(m.name)}`} className="tv-open" title="Открыть разговор с агентом">
             <b>{displayName(m.name)}</b>
           </Link>
-          <span className="muted">{ROLE_TITLE_RU[m.role] ?? m.role}</span>
+          <span className="tv-role">{ROLE_TITLE_RU[m.role] ?? m.role}</span>
           {active && (
-            <span className="acts">
+            <span className="tv-member-acts">
               <RestartMemberButton team={team.id} name={m.name} />
               <RemoveMemberButton team={team.id} name={m.name} role={m.role} />
             </span>
           )}
         </div>
-        <div className="state">
-          {state === "working" && <span className="spin" />}
+        <div className="tv-state">
+          {state === "working" && <WorkingArcs size={13} label="Работает" />}
           <span>{text}</span>
           {queued > 0 && (
-            <span className="muted" title={`${queued} ${plural(queued, "письмо ждёт", "письма ждут", "писем ждут")} доставки`}>
-              · ✉ {queued}
-            </span>
+            <span title={`${queued} ${plural(queued, "письмо ждёт", "письма ждут", "писем ждут")} доставки`}>· ✉ {queued}</span>
           )}
         </div>
         {s?.tool && (
-          <div className="tool" title={s.tool.args}>
+          <div className="tv-tool" title={s.tool.args}>
             {s.tool.args}
           </div>
         )}
-        {status && <div className="st">{status}</div>}
+        {status && <div className="tv-status">{status}</div>}
         {said && (
-          <div className="said" title={said}>
+          <div className="tv-said" title={said}>
             «{said}»
           </div>
         )}
         {m.model && (
-          <div className="model">
+          <div className="tv-model">
             {m.model.replace(/^[^/]+\//, "")}
             {m.thinking ? ` · ${m.thinking}` : ""}
           </div>
         )}
       </div>
-      <span className="when">{timeAgo(m.activityAt ?? m.statusAt)}</span>
+      <span className="tv-when">{timeAgo(m.activityAt ?? m.statusAt)}</span>
     </div>
   );
 }

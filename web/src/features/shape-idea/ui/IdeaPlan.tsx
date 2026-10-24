@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { EpicIcon } from "@/entities/task";
 import { clock } from "@/shared/lib";
-import { Icon, useToast } from "@/shared/ui";
+import { Icon, LoadingState, useToast } from "@/shared/ui";
 import { useApplyIdea, useIdeaPlan } from "../api.ts";
 import { applyLabel, depLabel, IDEA_LABEL, planToApply } from "../model.ts";
 import "./idea.css";
@@ -56,7 +56,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
           </span>
         )}
         {onClose && (
-          <button type="button" className="icon-btn m-only" aria-label="Закрыть план" onClick={onClose}>
+          <button type="button" className="g-icon-btn m-only" aria-label="Закрыть план" onClick={onClose}>
             <Icon.close />
           </button>
         )}
@@ -72,14 +72,20 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
             </span>
           </div>
         ) : !plan ? (
-          <div className="ip-note">
-            <b>{loading ? "Загрузка плана…" : unreadable ? "План не читается" : "Плана пока нет"}</b>
-            <span>
-              {unreadable
-                ? `${planner} сохранил план в неверном виде. Попросите его сохранить план ещё раз.`
-                : `${planner} сначала задаст пару вопросов, потом предложит задачи. План появится здесь и будет обновляться по ходу разговора.`}
-            </span>
-          </div>
+          loading ? (
+            <div className="ip-note">
+              <LoadingState label="Загрузка плана" lines={3} />
+            </div>
+          ) : (
+            <div className="ip-note">
+              <b>{unreadable ? "План не читается" : "Плана пока нет"}</b>
+              <span>
+                {unreadable
+                  ? `${planner} сохранил план в неверном виде. Попросите его сохранить план ещё раз.`
+                  : `${planner} сначала задаст пару вопросов, потом предложит задачи. План появится здесь и будет обновляться по ходу разговора.`}
+              </span>
+            </div>
+          )
         ) : (
           <>
             {plan.epic && (
@@ -166,7 +172,7 @@ export function IdeaPlan({ taskId, planner, onClose }: { taskId: string; planner
 
       {plan && !filed && (
         <div className="ip-ft">
-          <button type="button" className="btn primary" onClick={submit} disabled={!left || apply.isPending}>
+          <button type="button" className="g-btn primary" onClick={submit} disabled={!left || apply.isPending}>
             {apply.isPending ? "Заводим…" : applyLabel(!!plan.epic, left)}
           </button>
           <span className="ac-help">

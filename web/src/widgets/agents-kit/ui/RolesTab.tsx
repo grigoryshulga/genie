@@ -17,7 +17,7 @@ import {
   useDeleteConfig,
   useRole,
 } from "@/entities/agent-config";
-import { Badge, ConfirmDialog, Icon, Section, useAct } from "@/shared/ui";
+import { Badge, ConfirmDialog, Icon, LoadingState, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -59,15 +59,15 @@ export function RolesTab({
   return (
     <div className="split ag-roles-layout">
       <section className="split-list ag-list" aria-label="Роли">
-        <div className="ag-list-search"><input type="search" className="in" aria-label="Поиск ролей" placeholder="Найти роль…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        <div className="ag-list-search"><input type="search" className="g-input" aria-label="Поиск ролей" placeholder="Найти роль…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
         <Problems items={sectionProblems(cfg.problems, "roles").filter((p) => p.item !== `role:${current}`)} />
         {team.filter(matches).map(pick)}
         {orch.filter(matches).length > 0 && <span className="label">Оркестратор</span>}
         {orch.filter(matches).map(pick)}
-        {!cfg.roles.some(matches) && <p className="muted ag-list-note">Ничего не найдено.</p>}
+        {!cfg.roles.some(matches) && <p className="g-muted ag-list-note">Ничего не найдено.</p>}
       </section>
       <section className="split-main" aria-label="Роль">
-        {current ? <RolePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="pane-empty">Ролей нет</div>}
+        {current ? <RolePane key={current} id={current} cfg={cfg} readOnly={readOnly} base={base} /> : <div className="ag-pane-empty">Ролей нет</div>}
       </section>
     </div>
   );
@@ -81,7 +81,10 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
   const remove = useDeleteConfig();
   const act = useAct();
   const d = detail.data;
-  if (!d) return <div className="pane-empty">{detail.error ? detail.error.message : "Загрузка…"}</div>;
+  if (!d) {
+    if (detail.error) return <div className="ag-pane-empty">{detail.error.message}</div>;
+    return <div className="ag-pane-empty"><LoadingState label="Загрузка роли" lines={3} width={260} /></div>;
+  }
   const r = d.role;
   const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null;
@@ -103,11 +106,14 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
     <>
       <div className="pane-head">
         <div className="ttl">
-          <h2>{r.title}</h2>
+          <h2>
+            {r.title}
+            {!admin && <span className="ag-readonly">Только чтение</span>}
+          </h2>
           {r.description && <p className="desc">{r.description}</p>}
         </div>
-        {admin && <button type="button" className="btn primary" onClick={() => setDialog("settings")}><Icon.gear size={13} />Настроить роль</button>}
-        <button type="button" className="btn" onClick={() => setDialog("prompt")}>
+        {admin && <button type="button" className="g-btn primary" onClick={() => setDialog("settings")}><Icon.gear size={13} />Настроить роль</button>}
+        <button type="button" className="g-btn secondary" onClick={() => setDialog("prompt")}>
           Промпт
         </button>
       </div>
@@ -115,7 +121,7 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
         <Problems items={d.problems} />
         {r.class === "orchestrator" ? (
           <Section title="Разрешённые действия">
-            <p className="muted ag-empty">Права оркестратора фиксированы: он разбирает задачи, собирает команды и принимает работу.</p>
+            <p className="g-muted ag-empty">Права оркестратора фиксированы: он разбирает задачи, собирает команды и принимает работу.</p>
           </Section>
         ) : (
           <Permissions detail={d} />
@@ -142,21 +148,21 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
         </p>
         <details className="ag-advanced">
           <summary>Технические сведения и обслуживание</summary>
-          <p className="muted ag-note"><code>{r.id}</code> · {ORIGIN_TITLE[r.origin]} · {CLASS_TITLE[r.class]}{parent ? ` · на основе «${parent}»` : ""}{r.path ? ` · ${r.path}` : ""}</p>
+          <p className="g-muted ag-note"><code>{r.id}</code> · {ORIGIN_TITLE[r.origin]} · {CLASS_TITLE[r.class]}{parent ? ` · на основе «${parent}»` : ""}{r.path ? ` · ${r.path}` : ""}</p>
           <div className="ag-actions">
             {admin && (
-              <button type="button" className="btn" onClick={() => setDialog("file")}>
+              <button type="button" className="g-btn secondary" onClick={() => setDialog("file")}>
                 <Icon.file size={13} />
                 Файл
               </button>
             )}
             {admin && hasFile && d.builtin !== null && (
-              <button type="button" className="btn ghost" onClick={() => void act(() => remove("role", r.id, d.file.hash), "Роль снова встроенная")}>
+              <button type="button" className="g-btn ghost" onClick={() => void act(() => remove("role", r.id, d.file.hash), "Роль снова встроенная")}>
                 Вернуть встроенную
               </button>
             )}
             {admin && hasFile && d.builtin === null && (
-              <button type="button" className="btn ghost" onClick={() => setDialog("delete")}>
+              <button type="button" className="g-btn ghost" onClick={() => setDialog("delete")}>
                 <Icon.trash size={13} />
                 Удалить
               </button>
@@ -241,7 +247,7 @@ function Workplace({ role: r, sandbox }: { role: RoleDef; sandbox?: Catalogue["s
         <dd>
           {r.denyCommands.length ? (
             <>
-              нельзя <span className="mono">{r.denyCommands.join(", ")}</span>
+              нельзя <span className="g-mono">{r.denyCommands.join(", ")}</span>
               {soft}
             </>
           ) : (
@@ -264,7 +270,7 @@ function Workplace({ role: r, sandbox }: { role: RoleDef; sandbox?: Catalogue["s
         <dd>{r.stages.map((s) => STAGE_TITLE[s]).join(", ") || "ни одной"}</dd>
         <dt>Модель</dt>
         <dd title={r.model ? undefined : "Модель из roleModels сервера, иначе модель pi по умолчанию"}>
-          {r.model ? `${r.model}${r.thinking ? ` · ${r.thinking}` : ""}` : <span className="muted">по умолчанию</span>}
+          {r.model ? `${r.model}${r.thinking ? ` · ${r.thinking}` : ""}` : <span className="g-muted">по умолчанию</span>}
         </dd>
         {r.projects && (
           <>
@@ -296,7 +302,7 @@ function SkillsCard({ role: r, cfg }: { role: RoleDef; cfg: Catalogue }) {
           ))}
         </div>
       ) : null}
-      <p className="muted ag-empty">{r.skills === undefined ? "Все навыки pi и навыки репозитория." : r.skills.length ? "Только эти и навыки репозитория." : "Только навыки репозитория."}</p>
+      <p className="g-muted ag-empty">{r.skills === undefined ? "Все навыки pi и навыки репозитория." : r.skills.length ? "Только эти и навыки репозитория." : "Только навыки репозитория."}</p>
       {missing.length > 0 && <p className="ag-warn">Не установлены: {missing.join(", ")} — агент их не получит.</p>}
     </Card>
   );
@@ -315,15 +321,15 @@ function McpCard({ role: r, cfg }: { role: RoleDef; cfg: Catalogue }) {
             const s = cfg.mcp.find((x) => x.id === server);
             return (
               <li key={g} title={s?.description}>
-                <span className="mono">{g === "*" ? "все" : server}</span>
-                <span className="muted">{tools || "все инструменты"}</span>
+                <span className="g-mono">{g === "*" ? "все" : server}</span>
+                <span className="g-muted">{tools || "все инструменты"}</span>
                 {s && <Badge tone={s.gateway ? "green" : undefined}>{s.gateway ? "через genie" : "напрямую"}</Badge>}
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="muted ag-empty">Подключений нет.</p>
+        <p className="g-muted ag-empty">Подключений нет.</p>
       )}
     </Card>
   );

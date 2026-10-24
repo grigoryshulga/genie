@@ -89,7 +89,7 @@ export function DocContentEditor({ value, onChange, title }: { value: string; on
 
   return <div className="doc-content-editor">
     <div className="doc-editor-controls">
-      <div className="seg doc-editor-modes" role="group" aria-label="Режим редактора">
+      <div className="g-seg doc-editor-modes" role="group" aria-label="Режим редактора">
         {MODES.map((item) => <button type="button" key={item.id} aria-pressed={effectiveMode === item.id} disabled={item.id === "visual" && !!issue} title={item.id === "visual" ? issue : undefined} className={effectiveMode === item.id ? "on" : ""} onClick={() => { setMode(item.id); setLink(null); }}>{item.label}</button>)}
       </div>
       {issue && <span className="doc-editor-format-hint">{issue}</span>}
@@ -103,15 +103,15 @@ export function DocContentEditor({ value, onChange, title }: { value: string; on
     </div>
     {link !== null && <form className="doc-link-form" onSubmit={(e) => { e.preventDefault(); apply("link", link); setLink(null); }}>
       <label>Адрес ссылки <input autoFocus aria-label="Адрес ссылки" value={link} onChange={(e) => setLink(e.target.value)} /></label>
-      <button type="submit" className="btn">Применить</button><button type="button" className="btn ghost" onClick={() => setLink(null)}>Отмена</button>
+      <button type="submit" className="g-btn secondary sm">Применить</button><button type="button" className="g-btn ghost sm" onClick={() => setLink(null)}>Отмена</button>
     </form>}
     {effectiveMode === "visual" ? <div className="doc-rich-editor scroll doc-body"><EditorContent editor={editor} /></div> : <div className={`doc-split doc-content-${effectiveMode}`}>
       <section className="doc-pane">
-        <header className="doc-pane-head"><span>MARKDOWN</span><span>Исходный текст</span></header>
+        <header className="doc-pane-head"><span>Markdown</span><span>Исходный текст</span></header>
         <textarea ref={source} className="doc-textarea" aria-label="Markdown статьи" spellCheck={false} value={value} onChange={(e) => { onChange(e.target.value); rememberSelection(); }} onSelect={rememberSelection} onKeyDown={shortcut} />
       </section>
       {effectiveMode === "split" && <section className="doc-pane">
-        <header className="doc-pane-head"><span>ПРЕДПРОСМОТР</span><span>{title}</span></header>
+        <header className="doc-pane-head"><span>Предпросмотр</span><span>{title}</span></header>
         <div className="doc-preview scroll"><DocBody text={value} empty="Пусто" /></div>
       </section>}
     </div>}

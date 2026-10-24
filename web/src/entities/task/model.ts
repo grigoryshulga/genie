@@ -171,25 +171,6 @@ export const LEGACY_VIEWS: Record<string, { statuses?: Status[]; who?: string }>
   done: { statuses: ["done", "cancelled"] },
 };
 
-export interface Column {
-  id: string;
-  name: string;
-  statuses: Status[];
-  /** Status a card gets when dropped into the column. */
-  target: Status;
-}
-
-export const COLUMNS: Column[] = [
-  { id: "inbox", name: "Входящие", statuses: ["inbox"], target: "inbox" },
-  { id: "prep", name: "Подготовка", statuses: ["draft", "refining"], target: "refining" },
-  { id: "ready", name: "Готово к работе", statuses: ["ready"], target: "ready" },
-  { id: "in_progress", name: "В работе", statuses: ["in_progress", "changes_requested"], target: "in_progress" },
-  { id: "review", name: "На ревью", statuses: ["review"], target: "review" },
-  { id: "approved", name: "Одобрено", statuses: ["approved"], target: "approved" },
-  { id: "needs_owner", name: "Нужно решение", statuses: ["needs_owner"], target: "needs_owner" },
-  { id: "done", name: "Готово", statuses: ["done", "cancelled"], target: "done" },
-];
-
 export const PRIORITY_NAME = ["Срочно", "Высокий", "Средний", "Низкий", "Без приоритета"];
 
 export const STAGES = ["Уточнение", "Готово к работе", "В работе", "Ревью", "Одобрено", "Принято"];
@@ -209,16 +190,16 @@ export function inTaskViews(t: TaskSummary): boolean {
   return t.type !== "epic" || t.status === "inbox" || t.status === "needs_owner";
 }
 
-/** Where a task of an epic stands, for the epic's progress bar. */
+/** Where a task of an epic stands, for the epic's progress bar: green is system state, orange is your move. */
 export type Progress = "closed" | "owner" | "review" | "working" | "ready" | "early";
 
 export const PROGRESS: { id: Progress; name: string; color: string }[] = [
-  { id: "closed", name: "Закрыто", color: "var(--status-done)" },
-  { id: "owner", name: "Ждёт вашего решения", color: "var(--status-needs-owner)" },
-  { id: "review", name: "На ревью", color: "var(--status-review)" },
-  { id: "working", name: "В работе", color: "var(--status-in-progress)" },
-  { id: "ready", name: "Готово к работе", color: "var(--status-ready)" },
-  { id: "early", name: "Черновик", color: "var(--status-draft)" },
+  { id: "closed", name: "Закрыто", color: "var(--g-accent)" },
+  { id: "owner", name: "Ждёт вашего решения", color: "var(--g-signal-text)" },
+  { id: "review", name: "На ревью", color: "var(--g-text-2)" },
+  { id: "working", name: "В работе", color: "var(--g-accent-soft-text)" },
+  { id: "ready", name: "Готово к работе", color: "var(--g-text-muted)" },
+  { id: "early", name: "Черновик", color: "var(--g-progress-early)" },
 ];
 
 export function progressOf(status: Status): Progress {

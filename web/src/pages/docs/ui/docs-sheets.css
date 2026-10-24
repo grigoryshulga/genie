@@ -1,0 +1,7 @@
+/* The docs screens' cascade tail, inlined so the sheets keep the app's order: the docs sheet, the shared
+   search field it shares with other screens, and the desktop centring column last. The phone layer is in
+   the app's foundation and loads before this chunk, which is where the cascade wants it. */
+@import "../../../entities/doc/ui/docs.css";
+@import "../../../shared/ui/search-and-docs.css";
+@import "../../../shared/ui/content.css";
+@import "./reader.css";

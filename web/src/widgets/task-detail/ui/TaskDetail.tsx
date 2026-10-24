@@ -2,7 +2,7 @@ import { TaskIntelligence } from "./TaskIntelligence.tsx";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
-import { Avatar, Avatars } from "@/entities/member";
+import { Avatars, displayName, ROLE_TITLE_RU } from "@/entities/member";
 import type { DocsImpact, DocsImpactReason } from "@/shared/api";
 import {
   ArtifactThumb,
@@ -28,21 +28,42 @@ import {
   useTask,
   useTasks,
 } from "@/entities/task";
-import { useAgentConfig } from "@/entities/agent-config";
+import { liveTeam, useAgentConfig } from "@/entities/agent-config";
 import { PersonAvatar, responsibleChoices, useMembers } from "@/entities/project";
-import { useSession } from "@/entities/session";
-import type { Team } from "@/entities/team";
+import { canWriteProject, useSession } from "@/entities/session";
+import { type Team, memberActivity, PartyAvatar, useTeam } from "@/entities/team";
 import { SpendText, useTaskUsage } from "@/entities/usage";
 import { IDEA_TEMPLATE } from "@/features/shape-idea";
 import { OwnerDecision } from "@/features/owner-decision";
 import { SpawnTeamDialog } from "@/features/spawn-team";
 import { plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
-import { ConfirmDialog, Icon, Markdown, useToast } from "@/shared/ui";
+import {
+  Avatar as KitAvatar,
+  Banner,
+  Button,
+  Character,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Icon,
+  IconButton,
+  Input,
+  Markdown,
+  Segments,
+  Select,
+  Skeleton,
+  Tag,
+  useToast,
+} from "@/shared/ui";
 import { FollowTask } from "@/features/follow-task";
 import { TaskDelivery } from "./TaskDelivery.tsx";
 import { TaskManager } from "./TaskManager.tsx";
 import { TaskObservation } from "./TaskObservation.tsx";
 import { CollapsibleSection } from "./CollapsibleSection.tsx";
+// The task panel renders its own cascade: detail first, then the sheets that refine parts of it,
+// then the responsive and centring layers. `docs.css` covers the doc-impact box, `team.css` the
+// team sheet inside the panel and `epics.css` the epic box.
+import "./task-detail-sheets.css";
 
 const KIND_NAME: Record<string, string> = { note: "заметка", progress: "прогресс", question: "вопрос", decision: "решение", review: "ревью", handoff: "передача", owner: "владелец" };
 
@@ -76,12 +97,14 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const [spawning, setSpawning] = useState(false);
   const agents = useAgentConfig();
   const epics = useEpicMap();
+  const allTasks = useTasks().data;
   const impactEnabled = q.data?.status === "review" || q.data?.status === "done";
   const impact = useDocsImpact(id, impactEnabled);
   const session = useSession().data;
   const me = session?.mode === "users" ? session.user.login : undefined;
   const myRole = session?.projects.find((p) => p.slug === session.project)?.role;
   const canDelete = myRole === "admin" || myRole === "owner";
+  const writable = canWriteProject(session);
   const members = useMembers(me ? session?.project : undefined).data;
 
   useEffect(() => {
@@ -92,10 +115,20 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
 
   const fail = (e: Error) => toast(`Не удалось: ${e.message}`, "error");
   const viewer = useArtifactViewer(fail);
+  // Every hook runs before the early returns below, or React loses the order between renders.
+  const narrow = useNarrow();
 
   const Shell = variant === "page" ? "main" : "aside";
-  if (q.isPending) return <Shell className={variant === "page" ? "main" : "detail"}><div className="empty">Загрузка…</div></Shell>;
-  if (q.isError) return <Shell className={variant === "page" ? "main" : "detail"}><div className="empty">{q.error.message}</div></Shell>;
+  if (q.isPending) return <Shell className={variant === "page" ? "main task-page" : "detail"} aria-busy="true" aria-label="Задача загружается"><TaskSkeleton page={variant === "page"} /></Shell>;
+  if (q.isError)
+    return (
+      <Shell className={variant === "page" ? "main task-page" : "detail"}>
+        <div className="td-state">
+          <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
+          <Button variant="ghost" sm onClick={onClose}>Закрыть</Button>
+        </div>
+      </Shell>
+    );
   const t: Task = q.data;
   const isEpic = t.type === "epic";
   const canSpawn = agents.isSuccess && !isEpic && team?.state !== "active" && !["done", "cancelled"].includes(t.status);
@@ -132,10 +165,14 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const title = (
     <h2
       className="title"
-      contentEditable
+      contentEditable={writable}
       suppressContentEditableWarning
       spellCheck={false}
+      // Reachable for a programmatic hand-off (the decision box hands focus here when it closes);
+      // it stays out of the Tab order.
+      tabIndex={-1}
       onBlur={(e) => {
+        if (!writable) return;
         const title = e.currentTarget.textContent?.trim() ?? "";
         if (title && title !== t.title) patch.mutate({ id: t.id, patch: { title } }, { onError: fail });
       }}
@@ -145,77 +182,154 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     </h2>
   );
 
-  // The page shows every property in its rail; the preview only what a glance needs.
-  const props = (
-    <div className={page ? "props rail" : "props"}>
-      <span className="k">Статус</span>
-      <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <StatusIcon status={t.status} size={13} />
-        <select aria-label="Статус" value={t.status} onChange={(e) => setStatus(e.target.value as Status)}>
-          {(Object.keys(STATUS_NAME) as Status[]).map((s) => (
-            <option key={s} value={s}>
-              {STATUS_NAME[s]}
-            </option>
-          ))}
-        </select>
-      </span>
-      <span className="k">Приоритет</span>
-      <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <PriorityIcon priority={t.priority} size={13} />
-        <select aria-label="Приоритет" value={t.priority} onChange={(e) => patch.mutate({ id: t.id, patch: { priority: Number(e.target.value) } }, { onError: fail })}>
-          {PRIORITY_NAME.map((p, i) => (
-            <option key={p} value={i}>
-              {p}
-            </option>
-          ))}
-        </select>
-      </span>
-      {people.length > 0 && (
+  // What keeps the task from moving: open dependencies, a block, a cancellation. Said in words, above the text.
+  const openDeps = t.deps.filter((d) => {
+    const dep = allTasks?.find((x) => x.id === d);
+    return !dep || (dep.status !== "done" && dep.status !== "cancelled");
+  });
+  const states = (
+    <>
+      {t.status === "cancelled" && (
+        <Banner tone="neutral" title="Задача отменена">
+          Работа над ней остановлена; вернуть её можно сменой статуса.
+        </Banner>
+      )}
+      {t.status !== "cancelled" && t.status !== "done" && openDeps.length > 0 && (
+        <Banner tone="neutral" title="Ждёт другие задачи">
+          Не начнётся, пока не закрыты: <TaskLinks ids={openDeps} />
+        </Banner>
+      )}
+      {t.blocked && t.status !== "cancelled" && (
+        <Banner tone="signal" title="Задача заблокирована">
+          {t.blocked.reason}
+        </Banner>
+      )}
+    </>
+  );
+
+  const crumbs = (
+    <span className="crumbs">
+      {page && (
         <>
-          <span className="k">Ответственный</span>
-          <span className="wide" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-            {t.assignee && <PersonAvatar login={t.assignee} name={responsibleName} prefix="" />}
-            <select aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Получает вопросы агентов">
+          <Link to="/tasks" className="d-only">
+            Задачи
+          </Link>
+          <span className="d-only"> / </span>
+        </>
+      )}
+      {t.parent && (
+        <>
+          {epic ? <Link to={`/epic/${encodeURIComponent(t.parent)}`}>{t.parent}</Link> : t.parent}
+          {" / "}
+        </>
+      )}
+      <span className="here">{t.id}</span>
+    </span>
+  );
+
+
+  // The headline: the id, the status as text with its shape, and the title under it.
+  const headline = (
+    <div className="td-headline">
+      <div className="td-meta">
+        {page ? crumbs : <span className="mono td-id">{t.id}</span>}
+        <span className="g-status">
+          <StatusIcon status={t.status} size={16} />
+          {STATUS_NAME[t.status]}
+        </span>
+        {isEpic && <Tag tone="outline">эпик</Tag>}
+        {!page && (
+          <span className="td-meta-more">
+            <PriorityIcon priority={t.priority} size={14} />
+            {PRIORITY_NAME[t.priority]}
+          </span>
+        )}
+      </div>
+      {title}
+    </div>
+  );
+
+  // The properties read top-down as fields: a label with the value's shape, then the value itself,
+  // which is a control only for someone allowed to write. The page keeps the whole set; the
+  // preview only what a glance needs.
+  const props = (
+    <div className={page ? "td-fields rail" : "td-fields"}>
+      <Prop label="Статус" icon={<StatusIcon status={t.status} size={13} />}>
+        {writable ? (
+          <Select sm aria-label="Статус" value={t.status} onChange={(e) => setStatus(e.target.value as Status)}>
+            {(Object.keys(STATUS_NAME) as Status[]).map((s) => (
+              <option key={s} value={s}>
+                {STATUS_NAME[s]}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <span className="td-val">{STATUS_NAME[t.status]}</span>
+        )}
+      </Prop>
+      <Prop label="Приоритет" icon={<PriorityIcon priority={t.priority} size={13} />}>
+        {writable ? (
+          <Select sm aria-label="Приоритет" value={t.priority} onChange={(e) => patch.mutate({ id: t.id, patch: { priority: Number(e.target.value) } }, { onError: fail })}>
+            {PRIORITY_NAME.map((p, i) => (
+              <option key={p} value={i}>
+                {p}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <span className="td-val">{PRIORITY_NAME[t.priority]}</span>
+        )}
+      </Prop>
+      {(people.length > 0 || t.assignee) && (
+        <Prop label="Ответственный" icon={t.assignee ? <PersonAvatar login={t.assignee} name={responsibleName} prefix="" /> : undefined}>
+          {writable ? (
+            <Select sm aria-label="Ответственный" value={t.assignee ?? ""} onChange={(e) => assign(e.target.value)} title="Получает вопросы агентов">
               <option value="">Не назначен</option>
               {people.map((p) => (
                 <option key={p.login} value={p.login}>
                   {p.login === me ? `${p.label} — я` : p.label}
                 </option>
               ))}
-            </select>
-          </span>
-        </>
+            </Select>
+          ) : (
+            <span className="td-val">{responsibleName ?? t.assignee ?? "Не назначен"}</span>
+          )}
+        </Prop>
       )}
-      {!page && <><span className="k">Команда</span><span className="wide team-cell">
-        {team ? (
-          <>
-            <Avatars members={team.members} max={6} />
-            <Link to={page ? `${pageLink}/team` : teamLink(team)}>{team.state === "active" ? workingText(team.members.filter((m) => m.activity === "working").length) : "остановлена"}</Link>
-          </>
-        ) : (
-          !canSpawn && <span className="muted">не собрана</span>
-        )}
-        {canSpawn && (
-          <button type="button" className="btn ghost" style={{ height: 26 }} onClick={() => setSpawning(true)}>
-            <Icon.userPlus size={12} />
-            Собрать команду
-          </button>
-        )}
-      </span></>}
+      {!page && (
+        <Prop label="Команда">
+          {team ? (
+            <span className="td-team">
+              <Avatars members={team.members} max={6} />
+              <Link to={teamLink(team)}>{team.state === "active" ? workingText(team.members.filter((m) => m.activity === "working").length) : "остановлена"}</Link>
+            </span>
+          ) : canSpawn && writable ? (
+            <Button variant="ghost" sm onClick={() => setSpawning(true)}>
+              <Icon.userPlus size={12} />
+              Собрать команду
+            </Button>
+          ) : (
+            <span className="td-val muted">не собрана</span>
+          )}
+        </Prop>
+      )}
       {!isEpic && (
-        <>
-          <span className="k">Эпик</span>
-          <span className="wide" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-            <EpicIcon size={13} empty={!epic} />
-            <select
+        <Prop label="Эпик" icon={<EpicIcon size={13} empty={!epic} />}>
+          {writable ? (
+            <Select
+              sm
               aria-label="Эпик"
               value={epic ? epic.id : ""}
-              onChange={(e) =>
+              onChange={(e) => {
+                // Read the chosen parent once, before the request: the controlled select keeps showing the
+                // saved epic until the refetch lands, so the callback would name the previous epic.
+                const parent = e.target.value || null;
+                const taskId = t.id;
                 patch.mutate(
-                  { id: t.id, patch: { parent: e.target.value || null } },
-                  { onSuccess: () => toast(e.target.value ? `${t.id} теперь в эпике ${e.target.value}` : `${t.id} больше не в эпике`), onError: fail },
-                )
-              }
+                  { id: taskId, patch: { parent } },
+                  { onSuccess: () => toast(parent ? `${taskId} теперь в эпике ${parent}` : `${taskId} больше не в эпике`), onError: fail },
+                );
+              }}
             >
               <option value="">Без эпика</option>
               {epicChoices.map((e) => (
@@ -223,14 +337,15 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
                   {e.id} · {e.title}
                 </option>
               ))}
-            </select>
-          </span>
-        </>
+            </Select>
+          ) : (
+            <span className="td-val">{epic ? `${epic.id} · ${epic.title}` : "Без эпика"}</span>
+          )}
+        </Prop>
       )}
       {(t.deps.length > 0 || (!isEpic && t.children.length > 0)) && (
-        <>
-          <span className="k">Связи</span>
-          <span className="wide muted">
+        <Prop label="Связи">
+          <span className="td-val muted">
             {t.deps.length > 0 && (
               <>
                 зависит от <TaskLinks ids={t.deps} />
@@ -243,33 +358,33 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
               </>
             )}
           </span>
-        </>
+        </Prop>
       )}
       {(page || t.labels.length > 0) && (
-        <>
-          <span className="k">Метки</span>
-          <span className="wide">{t.labels.length ? <Labels labels={t.labels} /> : <span className="muted">нет</span>}</span>
-        </>
+        <Prop label="Метки">{t.labels.length ? <Labels labels={t.labels} /> : <span className="td-val muted">нет</span>}</Prop>
       )}
       {page && (
         <>
-          <span className="k">Интеграция</span>
-          <span className="wide">
-            <input
-              key={`${t.id}-merge-${t.mergeStrategy}`}
-              aria-label="Интеграция"
-              defaultValue={t.mergeStrategy}
-              placeholder="не задана"
-              onBlur={(e) => e.target.value !== t.mergeStrategy && patch.mutate({ id: t.id, patch: { mergeStrategy: e.target.value } }, { onError: fail })}
-            />
-          </span>
+          <Prop label="Интеграция">
+            {writable ? (
+              <Input
+                sm
+                key={`${t.id}-merge-${t.mergeStrategy}`}
+                aria-label="Интеграция"
+                defaultValue={t.mergeStrategy}
+                placeholder="не задана"
+                onBlur={(e) => e.target.value !== t.mergeStrategy && patch.mutate({ id: t.id, patch: { mergeStrategy: e.target.value } }, { onError: fail })}
+              />
+            ) : (
+              <span className={t.mergeStrategy ? "td-val" : "td-val muted"}>{t.mergeStrategy || "не задана"}</span>
+            )}
+          </Prop>
           {t.worktree && (
-            <>
-              <span className="k">Ветка</span>
-              <span className="wide mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }} title={t.worktree.path}>
+            <Prop label="Ветка">
+              <span className="td-val mono td-branch" title={t.worktree.path}>
                 {t.worktree.branch ?? t.worktree.path}
               </span>
-            </>
+            </Prop>
           )}
           <TaskSpend id={t.id} epic={isEpic} />
         </>
@@ -280,47 +395,49 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const description = (
     <CollapsibleSection
       title={isEpic ? "Цель" : "Описание"}
-      action={editDesc === undefined ? (
-        <button type="button" className="sec-edit" onClick={() => setEditDesc(t.description)} aria-label={isEpic ? "Изменить цель" : "Изменить описание"} title={isEpic ? "Изменить цель" : "Изменить описание"}>
-            <Icon.pencil size={13} />
-        </button>
+      action={editDesc === undefined && writable ? (
+        <IconButton label={isEpic ? "Изменить цель" : "Изменить описание"} className="sec-edit" onClick={() => setEditDesc(t.description)}>
+          <Icon.pencil size={14} />
+        </IconButton>
       ) : null}
     >
       {editDesc === undefined ? (
         <Markdown text={t.description} empty="Описания нет" />
       ) : (
         <div className="composer">
-          <textarea aria-label="Описание" rows={8} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+          <textarea className="g-textarea" aria-label="Описание" rows={8} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
           <div className="bar">
             markdown
             <span className="grow" />
-            <button type="button" className="btn ghost" onClick={() => setEditDesc(undefined)}>
+            <Button variant="ghost" sm onClick={() => setEditDesc(undefined)}>
               Отмена
-            </button>
-            <button
-              type="button"
-              className="btn primary"
+            </Button>
+            <Button
+              variant="secondary"
+              sm
               onClick={() => patch.mutate({ id: t.id, patch: { description: editDesc } }, { onSuccess: () => setEditDesc(undefined), onError: fail })}
             >
               Сохранить
-            </button>
+            </Button>
           </div>
         </div>
       )}
     </CollapsibleSection>
   );
 
+  const criteriaDone = t.acceptance.filter((a) => a.done).length;
   const criteria = (
     <CollapsibleSection title={isEpic ? "Критерии успеха" : "Критерии приёмки"} badge={
         <span className="n">
-          {t.acceptance.filter((a) => a.done).length} из {t.acceptance.length}
+          {criteriaDone} из {t.acceptance.length}
         </span>
       }>
       {t.acceptance.length ? (
         <div className="criteria">
+          <Segments total={t.acceptance.length} done={criteriaDone} label="Критерии" />
           {t.acceptance.map((a) => (
-            <label key={a.id} className={a.done ? "done" : ""}>
-              <input type="checkbox" checked={a.done} onChange={(e) => check.mutate({ id: t.id, n: a.id, done: e.target.checked }, { onError: fail })} />
+            <label key={a.id} className={`g-check${a.done ? " done" : ""}`}>
+              <input type="checkbox" checked={a.done} disabled={!writable} onChange={(e) => check.mutate({ id: t.id, n: a.id, done: e.target.checked }, { onError: fail })} />
               <span className="t">{a.text}</span>
               {a.checkedBy && <span className="by">{a.checkedBy}</span>}
             </label>
@@ -336,7 +453,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     <Link className="epic-box link" to={`/epic/${encodeURIComponent(t.id)}`}>
       <EpicIcon />
       Это эпик: его задачи, прогресс и общие артефакты — на странице эпика
-      <Icon.chevron size={12} style={{ marginLeft: "auto" }} />
+      <Icon.chevron size={12} />
     </Link>
   );
 
@@ -373,49 +490,33 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     </>
   );
 
-  const crumbs = (
-    <span className="crumbs">
-      {page && (
-        <>
-          <Link to="/tasks" className="d-only">
-            Задачи
-          </Link>
-          <span className="d-only"> / </span>
-        </>
-      )}
-      {t.parent && (
-        <>
-          {epic ? <Link to={`/epic/${encodeURIComponent(t.parent)}`}>{t.parent}</Link> : t.parent}
-          {" / "}
-        </>
-      )}
-      <span className="here">{t.id}</span>
-    </span>
-  );
 
   if (!page)
     return (
       <aside className="detail" aria-label={`Задача ${t.id}`}>
-        <header className="topbar">
-          <button type="button" className="icon-btn m-only" onClick={onClose} aria-label="Назад">
+        <header className="td-bar">
+          <IconButton label="Назад" className="m-only" onClick={onClose}>
             <Icon.back />
-          </button>
-          {crumbs}
-          <FollowTask task={t.id} />
-          <span className="grow" />
-          <Link className="btn" to={pageLink}>
-            <Icon.external size={12} />
-            Открыть страницу
-          </Link>
-          <button type="button" className="icon-btn d-only" onClick={onClose} aria-label="Закрыть">
-            <Icon.close />
-          </button>
+          </IconButton>
+          {headline}
+          <div className="td-header-actions">
+            <FollowTask task={t.id} />
+            <Link className="g-icon-btn" to={pageLink} aria-label="Открыть страницу" title="Открыть страницу">
+              <Icon.external size={16} />
+            </Link>
+            <IconButton label="Закрыть" className="d-only" onClick={onClose}>
+              <Icon.close />
+            </IconButton>
+          </div>
         </header>
 
         <div className="detail-body">
           <div className="detail-head">
-            {title}
-            {props}
+            {states}
+            <details className="td-props" open={!narrow}>
+              <summary>Свойства</summary>
+              {props}
+            </details>
           </div>
           {epicLink}
           {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
@@ -437,53 +538,41 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
 
   return (
     <main className="main task-page" aria-label={`Задача ${t.id}`}>
-      <header className="topbar">
-        <Link to="/tasks" className="icon-btn m-only" aria-label="Назад">
+      <header className="td-bar tp-page-header">
+        <Link to={tab === "team" ? pageLink : "/tasks"} className={`g-icon-btn ${tab === "team" ? "tp-back" : "m-only"}`} aria-label={tab === "team" ? "К описанию задачи" : "Назад"} title={tab === "team" ? "К описанию задачи" : "Назад"}>
           <Icon.back />
         </Link>
-        {crumbs}
-        <FollowTask task={t.id} />
-        <span className="grow" />
-        {team?.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] && (
-          // An idea being shaped: back to the conversation with its planner.
-          <Link to={teamLink(team)} style={{ fontSize: 12 }}>
-            Разговор о плане
-          </Link>
-        )}
-        {canDelete && (
-          <button type="button" className="icon-btn" onClick={() => setDeleting(true)} aria-label="Удалить задачу" title="Удалить задачу">
-            <Icon.trash />
-          </button>
-        )}
-      </header>
-
-      <div className="tp-head">
-        <div className="tp-title-row">
-          {tab === "team" && !isEpic && (
-            <Link className="icon-btn tp-back" to={pageLink} aria-label="К описанию задачи" title="К описанию задачи">
-              <Icon.back />
-            </Link>
+        {headline}
+        <div className="td-header-actions">
+          <FollowTask task={t.id} />
+          {team?.template === IDEA_TEMPLATE && team.state === "active" && team.members[0] && (
+            <Link to={teamLink(team)} className="td-link">Разговор о плане</Link>
           )}
-          {title}
+          {canDelete && (
+            <IconButton label="Удалить задачу" onClick={() => setDeleting(true)}>
+              <Icon.trash />
+            </IconButton>
+          )}
         </div>
-      </div>
+      </header>
 
       {tab === "team" && !isEpic ? (
         (teamPane ?? (
           <div className="tp-noteam">
-            <SadRobot />
-            <b>Команда не собрана</b>
-            <span className="muted">Соберите команду агентов: здесь появятся её почта, схема и участники.</span>
-            {canSpawn && (
-              <button type="button" className="btn primary" onClick={() => setSpawning(true)}>
-                Собрать команду
-              </button>
-            )}
+            <EmptyState
+              title="Команда не собрана"
+              character="sleep"
+              characterLabel="Команда ещё не собрана"
+              action={canSpawn && writable ? <Button variant="primary" onClick={() => setSpawning(true)}>Собрать команду</Button> : undefined}
+            >
+              Соберите команду агентов: здесь появятся её почта, схема и участники.
+            </EmptyState>
           </div>
         ))
       ) : (
         <div className="tp-body">
           <div className="tp-main">
+            {states}
             {epicLink}
             {impactEnabled && <DocsImpactBlock result={impact.data} />}
             {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
@@ -507,11 +596,15 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
               <CollapsibleSection title="Артефакты" badge={<span className="n">{t.artifacts.length}</span>}>
                 <div className="artifacts">
                   {t.artifacts.map((a) => (
-                    <button type="button" key={a.id} className="artifact" onClick={() => viewer.show(t.id, a.id)}>
-                      <ArtifactThumb task={t.id} artifact={a} />
-                      <span className="nm">{a.name}</span>
-                      <span className="who">
-                        {a.kind} · {a.author}
+                    <button type="button" key={a.id} className="artifact g-card flush" onClick={() => viewer.show(t.id, a.id)}>
+                      <span className="thumb">
+                        <ArtifactThumb task={t.id} artifact={a} />
+                      </span>
+                      <span className="cap">
+                        <span className="nm">{a.name}</span>
+                        <span className="who">
+                          {a.kind} · {a.author}
+                        </span>
                       </span>
                     </button>
                   ))}
@@ -519,57 +612,64 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
               </CollapsibleSection>
             )}
             <CollapsibleSection className="tp-activity" title="Активность">
-              {activity.map((a) =>
-                a.kind === "event" ? (
-                  <div key={`h${a.at}${a.h.event}`} className="ev">
-                    <i />
-                    <span className="txt">
-                      <span style={{ color: "var(--text-2)" }}>{a.h.actor}</span> {historyText(a.h, isEpic)}
-                    </span>
-                    <span className="when">{timeAgo(a.at)}</span>
-                  </div>
-                ) : (
-                  <div key={`c${a.c.id}`} className={`comment${a.c.role === "human" ? " mine" : ""}`}>
-                    <div className="head">
-                      <Avatar role={a.c.role} name={a.c.author} size="solo" />
-                      <span style={{ fontWeight: 500 }}>{a.c.author}</span>
-                      <span className="k">{KIND_NAME[a.c.kind] ?? a.c.kind}</span>
-                      <span className="when">{timeAgo(a.c.at)}</span>
+              <div className="timeline">
+                {activity.map((a) =>
+                  a.kind === "event" ? (
+                    <div key={`h${a.at}${a.h.event}`} className="ev">
+                      <i />
+                      <span className="txt">
+                        <span className="who">{a.h.actor}</span> {historyText(a.h, isEpic)}
+                      </span>
+                      <span className="when">{timeAgo(a.at)}</span>
                     </div>
-                    <Markdown text={a.c.text} />
-                  </div>
-                ),
-              )}
-              <div className="composer">
-                <textarea
-                  aria-label="Комментарий"
-                  placeholder="Комментарий для оркестратора и команды"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail });
-                  }}
-                />
-                <div className="bar">
-                  ⌘↵ отправить · оркестратор получит уведомление
-                  <span className="grow" />
-                  <button
-                    type="button"
-                    className="btn primary"
-                    disabled={!draft.trim() || comment.isPending}
-                    onClick={() => comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
-                  >
-                    Отправить
-                  </button>
-                </div>
+                  ) : (
+                    <div key={`c${a.c.id}`} className={`comment g-sheet${a.c.role === "human" ? " mine" : ""}`}>
+                      <div className="head">
+                        <KitAvatar kind={a.c.role === "human" ? "human" : "agent"} name={a.c.author} sm />
+                        <span className="who">{a.c.author}</span>
+                        <span className="k">{KIND_NAME[a.c.kind] ?? a.c.kind}</span>
+                        <span className="when">{timeAgo(a.c.at)}</span>
+                      </div>
+                      <Markdown text={a.c.text} />
+                    </div>
+                  ),
+                )}
               </div>
+              {writable ? (
+                <div className="composer">
+                  <textarea
+                    className="g-textarea"
+                    aria-label="Комментарий"
+                    placeholder="Комментарий для оркестратора и команды"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail });
+                    }}
+                  />
+                  <div className="bar">
+                    <span>⌘↵ отправить · оркестратор получит уведомление</span>
+                    <span className="grow" />
+                    <Button
+                      variant="secondary"
+                      sm
+                      disabled={!draft.trim() || comment.isPending}
+                      onClick={() => comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
+                    >
+                      Отправить
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="muted">У вас доступ только для чтения: комментировать нельзя.</p>
+              )}
             </CollapsibleSection>
           </div>
           <aside className="tp-rail" aria-label="Свойства задачи">
             <RailCard id="properties" title="Свойства" className="tp-properties">
               {props}
             </RailCard>
-            <TeamCard task={t.id} team={team} canSpawn={canSpawn} onSpawn={() => setSpawning(true)} />
+            <TeamCard task={t.id} status={t.status} team={team} canSpawn={canSpawn && writable} onSpawn={() => setSpawning(true)} />
             {epic && (
               <RailCard id="epic" title="Эпик">
                 <EpicBox id={epic.id} onArtifact={viewer.show} />
@@ -589,10 +689,24 @@ function teamLink(team: Team): string {
   return `/task/${encodeURIComponent(team.task)}/team`;
 }
 
+/** A phone-sized window; matches the 640px breakpoint of the design system and follows resizes. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 640px)").matches);
+  useEffect(() => {
+    const m = window.matchMedia("(max-width: 640px)");
+    const on = () => setNarrow(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
+
 /** A rail card that folds to its title; the choice is remembered per card. */
 function RailCard({ id, title, className, children }: { id: string; title: string; className?: string; children: ReactNode }) {
   const key = `genie.railCard.${id}`;
-  const [open, setOpen] = useState(() => readPref(key, "open") === "open");
+  // On a phone the properties fold under the headline like an accordion until opened.
+  const narrow = useNarrow();
+  const [open, setOpen] = useState(() => readPref(key, id === "properties" && narrow ? "closed" : "open") === "open");
   return (
     <section className={`tp-card${className ? ` ${className}` : ""}${open ? "" : " collapsed"}`}>
       <button
@@ -616,44 +730,48 @@ function RailCard({ id, title, className, children }: { id: string; title: strin
   );
 }
 
-function TeamCard({ task, team, canSpawn, onSpawn }: { task: string; team?: Team; canSpawn: boolean; onSpawn: () => void }) {
+function TeamCard({ task, status, team, canSpawn, onSpawn }: { task: string; status: Status; team?: Team; canSpawn: boolean; onSpawn: () => void }) {
+  const detail = useTeam(team?.id).data;
+  const current = detail ?? team;
+  const spec = detail?.spec;
+  const active = current?.state === "active";
+  const live = current && spec ? liveTeam(spec, current.members, status, active, displayName).live : {};
   return (
     <RailCard id="team" title="Команда" className="tp-team-card">
-      {team?.members.length ? (
+      {current?.members.length ? (
         <>
-          <div className="tp-team-members">
-            <Avatars members={team.members} max={6} />
-            <span>{team.members.length} {plural(team.members.length, "участник", "участника", "участников")}</span>
+          <div className="tp-team-roster" aria-label="Участники команды">
+            {current.members.map((member) => {
+              const key = spec?.members.find((entry) => entry.name === member.name)?.key ?? member.name;
+              const activity = memberActivity(current, member, live[key], active ? detail?.sessions?.[member.name] : undefined);
+              const queued = detail?.pending[member.name] ?? 0;
+              return (
+                <Link className={`tp-member ${activity.state}`} key={member.name} to={`/team/${encodeURIComponent(current.id)}/${encodeURIComponent(member.name)}`}>
+                  <PartyAvatar role={member.role} name={member.name} activity={active ? member.activity : undefined} state={member.state} />
+                  <span className="tp-member-info">
+                    <span className="tp-member-name"><b>{displayName(member.name)}</b><span>{ROLE_TITLE_RU[member.role] ?? member.role}</span></span>
+                    <span className="tp-member-state">{activity.text}{queued > 0 && <span title="Писем ждёт доставки"> · ✉ {queued}</span>}</span>
+                  </span>
+                  <span className="tp-member-when">{timeAgo(member.activityAt ?? member.statusAt)}</span>
+                </Link>
+              );
+            })}
           </div>
-          <div className="tp-team-names">
-            {team.members.map((member) => <span key={member.name}>{member.name}</span>)}
-          </div>
-          <Link className="btn" to={`/task/${encodeURIComponent(task)}/team`}>
+          <Link className="g-btn secondary sm" to={`/task/${encodeURIComponent(task)}/team`}>
             Перейти к команде <Icon.chevron size={12} />
           </Link>
         </>
       ) : (
         <div className="tp-team-empty">
-          <SadRobot />
+          <Character state="sleep" size={56} />
           <b>Команда не собрана</b>
-          <Link className="btn" to={`/task/${encodeURIComponent(task)}/team`}>
+          <Link className="g-btn secondary sm" to={`/task/${encodeURIComponent(task)}/team`}>
             Перейти к команде <Icon.chevron size={12} />
           </Link>
-          {canSpawn && <button type="button" className="btn primary" onClick={onSpawn}><Icon.userPlus size={12} />Собрать команду</button>}
+          {canSpawn && <Button variant="primary" sm onClick={onSpawn}><Icon.userPlus size={12} />Собрать команду</Button>}
         </div>
       )}
     </RailCard>
-  );
-}
-
-function SadRobot() {
-  return (
-    <svg className="sad-robot" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <path d="M24 6v5M21 6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="24" cy="5" r="2" fill="currentColor" />
-      <rect x="7" y="12" width="34" height="27" rx="8" stroke="currentColor" strokeWidth="2" />
-      <path d="M13 19h-3M38 19h-3M17 24h.01M31 24h.01M18 33c1.7-2 3.7-3 6-3s4.3 1 6 3" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -810,17 +928,45 @@ function workingText(n: number): string {
   return n ? `${n} ${plural(n, "работает", "работают", "работают")}` : "сейчас никто не работает";
 }
 
+/** A property of the task: the label with the value's shape, then the value under it. */
+function Prop({ label, icon, children }: { label: string; icon?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="g-field td-prop">
+      <span className="g-label">
+        {icon}
+        {label}
+      </span>
+      <span className="td-prop-value">{children}</span>
+    </div>
+  );
+}
+
 /** What the agents spent on the task (with its subtasks; an epic, with its tasks); nothing until they spend. */
 function TaskSpend({ id, epic }: { id: string; epic: boolean }) {
   const usage = useTaskUsage(id).data;
   if (!usage?.spend.calls) return null;
   const tasks = usage.tasks.length;
   return (
-    <>
-      <span className="k">Расходы</span>
-      <span className="wide">
+    <Prop label="Расходы">
+      <span className="td-val">
         <SpendText spend={usage.spend} extra={tasks > 1 ? (epic ? `${tasks} ${plural(tasks, "задача", "задачи", "задач")}` : "вместе с подзадачами") : undefined} />
       </span>
-    </>
+    </Prop>
+  );
+}
+
+/** The task's layout while it loads: the headline, the description lines, and the rail. */
+function TaskSkeleton({ page }: { page: boolean }) {
+  return (
+    <div className={page ? "td-skeleton page" : "td-skeleton"}>
+      <Skeleton width={120} height={16} />
+      <Skeleton width="70%" height={page ? 36 : 24} />
+      <div className="td-skeleton-body">
+        <Skeleton height={14} />
+        <Skeleton width="92%" height={14} />
+        <Skeleton width="80%" height={14} />
+        <Skeleton height={96} />
+      </div>
+    </div>
   );
 }

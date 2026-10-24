@@ -3,12 +3,19 @@ import { useSearchParams } from "react-router";
 import { useSession } from "@/entities/session";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
-import { plural, readPref, writePref } from "@/shared/lib";
-import { Icon } from "@/shared/ui";
+import { useOnline } from "@/shared/api";
+import { readPref, writePref } from "@/shared/lib";
+import { Banner, Button, Chip, EmptyState, ErrorState, Icon, Kbd, Skeleton, cx } from "@/shared/ui";
 import { Board } from "@/widgets/board";
-import { ContextSearch, TeamsSummary } from "@/widgets/sidebar";
+import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 
-/** «Доска»: the project's Kanban board, narrowed by filters («Мои задачи», an epic). */
+/**
+ * The board offers the same "new task" action as the C shortcut, so one code path opens the dialog.
+ * The shortcut lives in the app shell, where it also serves every other screen.
+ */
+const pressC = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
+
+/** «Доска»: the project's six lanes, narrowed by filters («Мои задачи», an epic). */
 export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
   const query = sp.get("q") ?? "";
@@ -16,6 +23,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
   const [mineOnly, setMineOnly] = useState(() => readPref<string>("genie.board.mine", "0") === "1");
   const tasksQ = useTasks();
   const teams = useTeamMap();
+  const online = useOnline();
   const session = useSession().data;
   const login = session?.mode === "users" ? session.user.login : undefined;
   const epicFilter = sp.get("epic") ?? undefined;
@@ -30,7 +38,6 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
       (!mine || t.assignee === login) &&
       (!q || t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q) || t.labels.some((l) => l.includes(q))),
   );
-  const openCount = tasks.filter((t) => OPEN.includes(t.status)).length;
   const myOpen = login ? all.filter((t) => inTaskViews(t) && t.assignee === login && OPEN.includes(t.status)).length : 0;
 
   const setParam = (key: string, value?: string) => {
@@ -49,17 +56,22 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
   };
 
   return (
-    <main className="main" aria-label="Доска">
+    <main className="main g-board-page" aria-label="Доска">
+      {!online && (
+        <Banner tone="signal" title="Нет связи с сервером">
+          Перетаскивать карточки нельзя, пока соединение не вернётся. Доска обновится сама.
+        </Banner>
+      )}
 
-      <div className="filters board-filters page-toolbar" role="toolbar" aria-label="Фильтры доски">
+      <div className="g-toolbar" role="toolbar" aria-label="Фильтры доски">
         {login && (
-          <button type="button" className={`fbtn${mine ? " on" : ""}`} aria-pressed={mine} onClick={toggleMine}>
+          <Chip pressed={mine} onClick={toggleMine}>
             <Icon.user size={13} />
             Мои задачи
-            <span className="k">{myOpen || ""}</span>
-          </button>
+            {myOpen > 0 && <span className="k g-num">{myOpen}</span>}
+          </Chip>
         )}
-        <label className={`fbtn select${epicFilter ? " on" : ""}`}>
+        <label className={cx("g-chip g-chip-select", epicFilter && "on")}>
           <EpicIcon size={12} />
           <span className="k">Эпик</span>
           <select value={epicFilter ?? ""} onChange={(e) => setParam("epic", e.target.value || undefined)} aria-label="Эпик">
@@ -71,34 +83,83 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
             ))}
           </select>
         </label>
-        <span className="muted d-only" style={{ fontSize: 12 }}>
-          {openCount} {plural(openCount, "задача", "задачи", "задач")}
-        </span>
         <span className="grow" />
         <ContextSearch inputRef={searchRef} className="mobile-context-search" />
       </div>
 
       {tasksQ.isPending ? (
-        <div className="empty">Загрузка…</div>
+        <div className="g-board g-board-skeleton" aria-busy="true" aria-label="Загрузка доски">
+          {[0, 1, 2, 3].map((lane) => (
+            <div key={lane} className="g-lane">
+              <Skeleton width={120} height={14} />
+              {[0, 1, 2].map((card) => (
+                <Skeleton key={card} height={104} />
+              ))}
+            </div>
+          ))}
+        </div>
       ) : tasksQ.isError ? (
-        <div className="empty">Не удалось загрузить задачи: {tasksQ.error.message}</div>
+        <div className="g-board-state">
+          <ErrorState message={`Не удалось загрузить задачи: ${tasksQ.error.message}`} onRetry={() => void tasksQ.refetch()} />
+        </div>
+      ) : !tasks.length ? (
+        <div className="g-board-state">
+          {q || mine ? (
+            <EmptyState
+              title="Ничего не нашлось"
+              action={
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    writePref("genie.board.mine", "0");
+                    setMineOnly(false);
+                    perReset(setSp, sp);
+                  }}
+                >
+                  Сбросить фильтры
+                </Button>
+              }
+            >
+              По этому поиску и фильтрам на доске нет задач.
+            </EmptyState>
+          ) : (
+            <EmptyState
+              title="Здесь тихо"
+              action={
+                <Button variant="primary" onClick={pressC}>
+                  Создать задачу
+                </Button>
+              }
+            >
+              Открытых задач нет. Создайте новую, и Genie возьмётся за дело.
+            </EmptyState>
+          )}
+        </div>
       ) : (
-        <Board tasks={tasks} teams={teams} showDone={showDone} onDoneVisibilityChange={setDoneVisibility} onOpen={(id) => setParam("task", id)} />
+        <Board tasks={tasks} teams={teams} showDone={showDone} onDoneVisibilityChange={setDoneVisibility} onOpen={(id) => setParam("task", id)} offline={!online} />
       )}
 
-      <footer className="hints">
+      <footer className="g-hints" aria-label="Подсказки клавиш">
         <span>
-          <kbd>G</kbd> <kbd>T</kbd> список задач
+          <Kbd>G</Kbd> <Kbd>T</Kbd> список задач
         </span>
         <span>
-          <kbd>C</kbd> новая
+          <Kbd>C</Kbd> новая
         </span>
         <span>
-          <kbd>⌘K</kbd> команды
+          <Kbd>⌘K</Kbd> команды
         </span>
         <span className="grow" />
         <TeamsSummary teams={teams} />
       </footer>
     </main>
   );
+}
+
+/** Drops the query and the epic, keeping the open task in the address. */
+function perReset(setSp: ReturnType<typeof useSearchParams>[1], sp: URLSearchParams) {
+  const next = new URLSearchParams(sp);
+  next.delete("q");
+  next.delete("epic");
+  setSp(next, { replace: true });
 }

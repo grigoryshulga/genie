@@ -1,0 +1,7 @@
+/* The frame a party avatar sits in: a square for agents, a circle for people, with a ring while the
+   agent works and a dimmed face when it stopped. The entity owns the markup it draws here, so the
+   rules live next to it instead of inside the team-view widget that renders it most. */
+.tv-av { display: inline-grid; place-items: center; flex: none; }
+.tv-av.working > .g-avatar { box-shadow: 0 0 0 2px var(--g-accent); }
+.tv-av.error > .g-avatar { box-shadow: 0 0 0 2px var(--g-danger); }
+.tv-av.stopped { opacity: 0.6; }

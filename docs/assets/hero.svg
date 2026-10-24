@@ -1,85 +1,34 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
   <title id="title">genie</title>
   <desc id="desc">genie: a self-hosted server where people set tasks and an orchestrator assembles focused teams of AI agents to do them.</desc>
-  <defs>
-    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.55">
-      <stop offset="0" stop-color="#7c84f0" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#7c84f0" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#25272e"/>
-      <stop offset="1" stop-color="#1c1e23"/>
-    </linearGradient>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M32 0H0V32" fill="none" stroke="#17181c" stroke-width="1"/>
-    </pattern>
-    <clipPath id="panel"><rect x="0" y="0" width="1280" height="400" rx="16"/></clipPath>
-  </defs>
-
+  <defs><clipPath id="panel"><rect width="1280" height="400" rx="16"/></clipPath></defs>
   <g clip-path="url(#panel)">
-    <rect width="1280" height="400" fill="#0c0d0f"/>
-    <rect width="1280" height="400" fill="url(#grid)"/>
-    <rect width="1280" height="400" fill="url(#glow)"/>
+    <rect width="1280" height="400" fill="#09090d"/>
+    <!-- brand arcs, anchored to the bottom-right corner -->
+    <g transform="translate(1280 400)">
+      <path fill="#008f6b" d="M-400 0A400 400 0 0 1 0-400V-288A288 288 0 0 0-288 0Z"/>
+      <path fill="#ff873c" d="M-200 0A200 200 0 0 1 0-200V-112A112 112 0 0 0-112 0Z"/>
+      <path fill="#008f6b" d="M-84 0A84 84 0 0 1 0-84V0Z"/>
+    </g>
   </g>
-  <rect x="0.5" y="0.5" width="1279" height="399" rx="16" fill="none" stroke="url(#edge)"/>
-
-  <!-- wordmark -->
-  <g font-family="Geist, Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
-    <g transform="translate(80 103)">
-      <rect width="44" height="44" rx="11" fill="#1a1c2b" stroke="#2e3150"/>
-      <svg x="7" y="6.5" width="30" height="31.5" viewBox="90 30 665 700" fill="none" stroke="#A4A0F5" stroke-width="44">
+  <rect x="0.5" y="0.5" width="1279" height="399" rx="16" fill="none" stroke="#2f2e30"/>
+  <g font-family="Unbounded, Manrope, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <g transform="translate(80 96)">
+      <rect width="56" height="56" rx="14" fill="#19191c"/>
+      <svg x="9" y="8" width="38" height="40" viewBox="90 30 665 700" fill="none" stroke="#2fbf94" stroke-width="44">
         <path d="M 290 442 C 178 442 161 337 246 307"/>
         <rect x="122" y="442" width="536" height="256" rx="96"/>
         <g transform="translate(410 236)">
           <circle r="176"/>
           <path d="M 162 -51 L 322 -109" stroke-linecap="butt"/>
-          <path d="M -33 0 A 64 64 0 0 1 95 0" stroke-width="34" stroke-linecap="butt"/>
+          <path d="M -33 0 A 64 64 0 0 1 95 0" stroke="#ff873c" stroke-width="34" stroke-linecap="butt"/>
         </g>
       </svg>
     </g>
-    <text x="80" y="217" fill="#ecedef" font-size="76" font-weight="600" letter-spacing="-2">genie</text>
-    <text x="82" y="265" fill="#b4b7be" font-size="24">Tasks, knowledge and teams of AI agents,</text>
-    <text x="82" y="297" fill="#b4b7be" font-size="24">on one self-hosted server.</text>
+    <text x="80" y="232" fill="#f4f1ea" font-size="84" font-weight="700" letter-spacing="-3">genie</text>
   </g>
-
-  <!-- links orchestrator → team -->
-  <g stroke="#2e3150" stroke-width="1.5" fill="none">
-    <path d="M900 200C960 200 960 96 1030 96"/>
-    <path d="M900 200C970 200 980 148 1060 148"/>
-    <path d="M900 200H1084"/>
-    <path d="M900 200C970 200 980 252 1060 252"/>
-    <path d="M900 200C960 200 960 304 1030 304"/>
-  </g>
-  <path d="M900 200H1084" stroke="#7c84f0" stroke-width="1.5" stroke-dasharray="4 6" fill="none"/>
-
-  <!-- orchestrator -->
-  <circle cx="860" cy="200" r="58" fill="#7c84f0" opacity="0.08"/>
-  <circle cx="860" cy="200" r="40" fill="#16171b" stroke="#7c84f0" stroke-width="2"/>
-  <circle cx="860" cy="200" r="14" fill="#7c84f0"/>
-
-  <!-- people -->
-  <g fill="#8b8f98">
-    <circle cx="700" cy="150" r="9"/>
-    <circle cx="700" cy="200" r="9"/>
-    <circle cx="700" cy="250" r="9"/>
-  </g>
-  <g stroke="#25272e" stroke-width="1.5" fill="none">
-    <path d="M712 150C770 150 780 200 820 200"/>
-    <path d="M712 200H820"/>
-    <path d="M712 250C770 250 780 200 820 200"/>
-  </g>
-
-  <g font-family="'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#5c606a" text-anchor="middle" letter-spacing="1">
-    <text x="700" y="300">PEOPLE</text>
-    <text x="860" y="300">ORCHESTRATOR</text>
-  </g>
-
-  <!-- team: analyst, executor, tester, reviewer, documenter -->
-  <g font-family="'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#8a8e97">
-    <circle cx="1044" cy="96" r="13" fill="#4ea7fc"/><text x="1068" y="101">analyst</text>
-    <circle cx="1074" cy="148" r="13" fill="#f2994a"/><text x="1098" y="153">executor</text>
-    <circle cx="1098" cy="200" r="13" fill="#4cb782"/><text x="1122" y="205">tester</text>
-    <circle cx="1074" cy="252" r="13" fill="#9b8afb"/><text x="1098" y="257">reviewer</text>
-    <circle cx="1044" cy="304" r="13" fill="#e0b84a"/><text x="1068" y="309">documenter</text>
+  <g font-family="Manrope, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="26" fill="#c0beb9">
+    <text x="82" y="283">Tasks, knowledge and teams of AI agents,</text>
+    <text x="82" y="318">on one self-hosted server.</text>
   </g>
 </svg>

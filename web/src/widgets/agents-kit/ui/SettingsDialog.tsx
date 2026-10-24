@@ -16,9 +16,9 @@ const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"]
 /** One choice of a few, as a segmented control. */
 function Segments({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
   return (
-    <div role="radiogroup" aria-label={label} className="mm-seg ag-seg">
+    <div role="radiogroup" aria-label={label} className="g-seg ag-seg">
       {options.map(([v, title]) => (
-        <button key={v || "default"} type="button" role="radio" aria-checked={value === v} className={value === v ? "on" : ""} onClick={() => onChange(v)}>
+        <button key={v || "default"} type="button" role="radio" aria-checked={value === v} aria-pressed={value === v} onClick={() => onChange(v)}>
           {title}
         </button>
       ))}
@@ -84,11 +84,11 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
         <section>
           <h4>О роли</h4>
           <label htmlFor="rs-title">Название</label>
-          <input id="rs-title" className="in" value={f.title} onChange={(e) => set("title", e.target.value)} required />
+          <input id="rs-title" className="g-input" value={f.title} onChange={(e) => set("title", e.target.value)} required />
           <label htmlFor="rs-desc">
             Описание
           </label>
-          <textarea id="rs-desc" className="in" rows={2} value={f.description} onChange={(e) => set("description", e.target.value)} />
+          <textarea id="rs-desc" className="g-textarea" rows={2} value={f.description} onChange={(e) => set("description", e.target.value)} />
         </section>
         <section>
           <h4>Модель</h4>
@@ -125,7 +125,7 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
         </section>
         {r.class !== "orchestrator" && <section className="ag-settings-stack">
           <h4>Разрешённые действия</h4>
-          <p className="muted ag-note">Действуют сразу. Пояснения — в подсказках и технических сведениях.</p>
+          <p className="g-muted ag-note">Действуют сразу. Пояснения — в подсказках и технических сведениях.</p>
           <PermissionFields wanted={f.capabilities} onChange={(v) => set("capabilities", v)} />
           <PermissionReference />
         </section>}
@@ -155,7 +155,7 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
             Особенности роли
             {hint("Дописываются к промпту")}
           </label>
-          <textarea id="rs-extra" className="in" rows={3} value={f.instructions} onChange={(e) => set("instructions", e.target.value)} />
+          <textarea id="rs-extra" className="g-textarea" rows={3} value={f.instructions} onChange={(e) => set("instructions", e.target.value)} />
         </section>
       </div>
     </EditDialog>

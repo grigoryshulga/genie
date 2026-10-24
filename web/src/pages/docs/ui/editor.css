@@ -1,0 +1,15 @@
+/* Editing is a viewport workspace; the route's shell navigation is hidden from view and focus. */
+.app:has(.doc-editor-fullscreen) > .g-topbar { display: none; }
+.docs-editor.doc-editor-fullscreen { position: fixed; inset: 0; z-index: var(--g-z-sticky); overflow: hidden; }
+.doc-editor-workspace { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--g-space-8) * 5); min-height: 0; }
+.doc-editor-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.doc-editor-sidebar { overflow-y: auto; min-width: 0; padding: var(--g-space-3); background: var(--g-bg); }
+.doc-editor-properties { display: grid; gap: var(--g-space-2); }
+.doc-editor-fields { display: grid; gap: var(--g-space-3); }
+.doc-editor-fullscreen > .doc-banner { max-width: none; margin: 0; border-radius: 0; }
+@media (max-width: 900px) {
+  .doc-editor-workspace { grid-template-columns: minmax(0, 1fr); }
+  .doc-editor-fullscreen > .docs-topbar { padding: var(--g-space-2) var(--g-space-3); }
+  .doc-editor-fullscreen > .docs-topbar .doc-crumbs { flex: 1; min-width: 0; }
+  .doc-editor-canvas .doc-rich-editor { padding: var(--g-space-5) var(--g-space-4); }
+}

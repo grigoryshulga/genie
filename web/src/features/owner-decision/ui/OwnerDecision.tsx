@@ -2,13 +2,14 @@
 // and a free answer that is always there. Each action kind is a card in CARDS; a kind
 // this web does not know yet shows as a plain question, so new kinds never break it.
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type TaskRepo, useMergeRequest, useRepos, useTaskRepos } from "@/entities/repo";
 import { STATUS_NAME, type Status, StatusIcon, type Task, useComment, useMoveTask } from "@/entities/task";
 import type { OwnerAction } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { ConfirmDialog, Icon, useToast } from "@/shared/ui";
-import { answerText, cardKind, type Kind, mergeHeld } from "../model.ts";
+import { ConfirmDialog, Icon, Tag, useToast } from "@/shared/ui";
+import "./owner-decision.css";
+import { answerText, cardKind, type Kind, mergeHeld, radioIndex } from "../model.ts";
 
 type ActionOf<K extends Kind> = Extract<OwnerAction, { kind: K }>;
 
@@ -33,16 +34,35 @@ const HEADER: Record<Kind, string> = {
 };
 
 function QuestionCard({ action, picked, setPicked }: CardProps<"ask-owner-question">) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const checked = action.options.findIndex((o) => picked.line === o);
+  // A radiogroup is one tab stop, not one per option: the checked option (or the first, while nothing
+  // is chosen) is reachable with Tab, and every arrow moves focus and selection together, as the
+  // WAI-ARIA pattern has it. Options wrap into a row, so left/right work alongside up/down.
+  const move = (at: number, key: string) => {
+    const next = radioIndex(at, key, action.options.length);
+    if (next === at) return false;
+    setPicked({ line: action.options[next] });
+    refs.current[next]?.focus();
+    return true;
+  };
   return (
     <div className="od-options" role="radiogroup" aria-label="Варианты ответа">
-      {action.options.map((o) => (
+      {action.options.map((o, i) => (
         <button
           key={o}
           type="button"
           role="radio"
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
           aria-checked={picked.line === o}
+          tabIndex={checked === i || (checked < 0 && i === 0) ? 0 : -1}
           className={picked.line === o ? "on" : ""}
           onClick={() => setPicked(picked.line === o ? {} : { line: o })}
+          onKeyDown={(e) => {
+            if (move(i, e.key)) e.preventDefault();
+          }}
         >
           {o}
         </button>
@@ -84,7 +104,7 @@ function MergeCard({ task, action, resolve }: CardProps<"ask-for-merge-pr">) {
           {row?.branch && <span className="mono muted">{row.branch}</span>}
         </div>
         <div className="l2">
-          <span className={`pill ${ci === "passed" ? "ok" : ci === "failed" ? "fail" : ci === "pending" ? "warn" : ""}`}>{CI_TEXT[ci]}</span>
+          <Tag tone={ci === "passed" ? "accent" : ci === "failed" ? "danger" : ci === "pending" ? "signal" : "neutral"}>{CI_TEXT[ci]}</Tag>
           <span className="muted">
             Политика: {policy?.method ? `${policy.method}, ` : ""}
             {requireCi ? "нужны зелёные проверки" : "проверки не обязательны"}
@@ -99,11 +119,11 @@ function MergeCard({ task, action, resolve }: CardProps<"ask-for-merge-pr">) {
       )}
       <div className="od-buttons">
         {url && (
-          <a className="btn ghost" href={url} target="_blank" rel="noreferrer">
+          <a className="g-btn ghost" href={url} target="_blank" rel="noreferrer">
             <Icon.external size={13} /> Посмотреть PR
           </a>
         )}
-        <button type="button" className="btn amber" disabled={!!held || merge.isPending} onClick={() => setConfirm(true)}>
+        <button type="button" className="g-btn primary" disabled={!!held || merge.isPending} onClick={() => setConfirm(true)}>
           <Icon.merge size={13} /> Слить PR
         </button>
         <span className="hint">После слияния задача вернётся в «{STATUS_NAME[task.needsOwner?.previous ?? "approved"]}»</span>
@@ -155,6 +175,7 @@ export function OwnerDecision({ task }: { task: Task }) {
   const toast = useToast();
   const move = useMoveTask();
   const comment = useComment();
+  const box = useRef<HTMLElement>(null);
   const [words, setWords] = useState("");
   const [picked, setPicked] = useState<Picked>({});
   const owner = task.needsOwner;
@@ -177,9 +198,15 @@ export function OwnerDecision({ task }: { task: Task }) {
       {
         onSuccess: () => {
           setWords("");
+          // The box leaves the page once the answer is recorded, and a focused control that goes away drops
+          // focus on the document: a keyboard user would tab through the page again. The answer was given
+          // here, so focus moves to the task's headline — found before the box unmounts.
+          const page = box.current?.closest(".task-page, .detail") ?? document;
+          const headline = page.querySelector<HTMLElement>(".td-headline .title");
           setPicked({});
           if (andReturn) back(owner.previous, "Owner answered");
           else toast("Ответ отправлен оркестратору");
+          if (andReturn) requestAnimationFrame(() => headline?.focus());
         },
         onError: fail,
       },
@@ -187,7 +214,7 @@ export function OwnerDecision({ task }: { task: Task }) {
   };
   const hasCard = kind !== "ask-free-form";
   return (
-    <section className="owner-box" aria-label="Нужно ваше решение">
+    <section className="owner-box" aria-label="Нужно ваше решение" ref={box}>
       <div className="h">
         <StatusIcon status="needs_owner" size={15} />
         {HEADER[kind]}
@@ -205,14 +232,13 @@ export function OwnerDecision({ task }: { task: Task }) {
         onChange={(e) => setWords(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && send(true)}
       />
-      <div className="actions">
-        <span>⌘↵ ответить и вернуть в «{STATUS_NAME[owner.previous]}»</span>
-        <span className="grow" />
-        <button type="button" className="btn ghost" disabled={!text} onClick={() => send(false)}>
-          Только ответить
-        </button>
-        <button type="button" className={`btn ${kind === "ask-for-merge-pr" ? "ghost" : "amber"}`} disabled={!text} onClick={() => send(true)}>
+      <p className="od-hint">⌘↵ ответить и вернуть в «{STATUS_NAME[owner.previous]}»</p>
+      <div className="od-buttons">
+        <button type="button" className={`g-btn ${kind === "ask-for-merge-pr" ? "ghost" : "primary"}`} disabled={!text} onClick={() => send(true)}>
           Ответить и вернуть в работу
+        </button>
+        <button type="button" className="g-btn ghost" disabled={!text} onClick={() => send(false)}>
+          Только ответить
         </button>
       </div>
     </section>

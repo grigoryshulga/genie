@@ -11,7 +11,7 @@ import { useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
+import { Icon, useModalFocus, useRefreshingAct as useAct } from "@/shared/ui";
 import { PersonalTelegram } from "./TelegramSettings.tsx";
 import { TokensTab } from "./TokensTab.tsx";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
@@ -135,10 +135,10 @@ function AccountTab({ user }: { user: SessionUser }) {
         </div>
         <div className="st-foot">
           <span className="grow">{dirty ? "Есть несохранённые изменения" : ""}</span>
-          <button type="button" className="btn ghost" disabled={!dirty} onClick={() => setForm(initial)}>
+          <button type="button" className="g-btn ghost" disabled={!dirty} onClick={() => setForm(initial)}>
             Отменить
           </button>
-          <button className="btn primary" disabled={!dirty || !loginOk || patch.isPending}>
+          <button className="g-btn secondary" disabled={!dirty || !loginOk || patch.isPending}>
             Сохранить
           </button>
         </div>
@@ -177,6 +177,8 @@ async function cropImage(file: Blob, zoom: number, x: number, y: number, side = 
   canvas.height = side;
   const g = canvas.getContext("2d");
   if (!g) throw new Error("Браузер не умеет обрабатывать картинки");
+  // The JPEG backing of a cropped avatar: a canvas fill, not a UI colour, and it has to
+  // be opaque because JPEG has no alpha.
   g.fillStyle = "#16171b";
   g.fillRect(0, 0, side, side);
   g.drawImage(bitmap, left, top, cut, cut, 0, 0, side, side);
@@ -198,19 +200,23 @@ function Photo({ user }: { user: SessionUser }) {
     setZoom(1); setX(0); setY(0);
   };
   const closeCrop = () => { if (source) URL.revokeObjectURL(source.url); setSource(undefined); };
+  // The crop panel covers the rest of the page: it takes focus, keeps Tab inside, closes on Escape and
+  // puts focus back on the control that opened it — the same contract a native dialog has.
+  const cropRef = useRef<HTMLElement>(null);
+  useModalFocus(cropRef, !!source, closeCrop);
   return (
     <div className="st-photo">
       <PersonAvatar login={user.login} name={user.name} src={user.avatar} size="xl" prefix="Ваше фото" />
       <div className="acts">
         <div>
-          <button type="button" className="btn" disabled={set.isPending} onClick={() => input.current?.click()}>
+          <button type="button" className="g-btn secondary" disabled={set.isPending} onClick={() => input.current?.click()}>
             <Icon.upload size={13} />
             {user.avatar ? "Заменить" : "Загрузить фото"}
           </button>
           {user.avatar && (
             <>
-              <button type="button" className="btn ghost" disabled={set.isPending} onClick={() => void act(async () => openCrop(await (await fetch(user.avatar!)).blob()), "")}>Настроить кадр</button>
-              <button type="button" className="btn ghost" disabled={set.isPending} onClick={() => void act(() => set.mutateAsync({ id: user.id, image: null }), "Фото убрано")}>Убрать</button>
+              <button type="button" className="g-btn ghost" disabled={set.isPending} onClick={() => void act(async () => openCrop(await (await fetch(user.avatar!)).blob()), "")}>Настроить кадр</button>
+              <button type="button" className="g-btn ghost" disabled={set.isPending} onClick={() => void act(() => set.mutateAsync({ id: user.id, image: null }), "Фото убрано")}>Убрать</button>
             </>
           )}
         </div>
@@ -231,14 +237,14 @@ function Photo({ user }: { user: SessionUser }) {
           }}
         />
       </div>
-      {source && <div className="st-crop-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) closeCrop(); }}>
-        <section className="st-crop" role="dialog" aria-modal="true" aria-labelledby="crop-title">
+      {source && <div className="g-scrim st-crop-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) closeCrop(); }}>
+        <section ref={cropRef} className="st-crop" role="dialog" aria-modal="true" aria-labelledby="crop-title">
           <h2 id="crop-title">Настройка фото</h2>
           <div className="st-crop-preview"><img src={source.url} alt="Предпросмотр кадра" style={{ transform: `scale(${zoom}) translate(${x * (zoom - 1) * 50 / zoom}%, ${y * (zoom - 1) * 50 / zoom}%)` }} /></div>
           <label>Масштаб <input type="range" min="1" max="3" step="0.01" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
           <label>По горизонтали <input type="range" min="-1" max="1" step="0.01" value={x} onChange={(e) => setX(Number(e.target.value))} /></label>
           <label>По вертикали <input type="range" min="-1" max="1" step="0.01" value={y} onChange={(e) => setY(Number(e.target.value))} /></label>
-          <footer><button type="button" className="btn ghost" onClick={closeCrop}>Отмена</button><button type="button" className="btn primary" disabled={set.isPending} onClick={() => void act(async () => { await set.mutateAsync({ id: user.id, image: await cropImage(source.blob, zoom, x, y) }); closeCrop(); }, "Фото обновлено")}>Сохранить</button></footer>
+          <footer><button type="button" className="g-btn ghost" onClick={closeCrop}>Отмена</button><button type="button" className="g-btn secondary" disabled={set.isPending} onClick={() => void act(async () => { await set.mutateAsync({ id: user.id, image: await cropImage(source.blob, zoom, x, y) }); closeCrop(); }, "Фото обновлено")}>Сохранить</button></footer>
         </section>
       </div>}
     </div>
@@ -290,7 +296,7 @@ function SecurityTab() {
         </div>
         <div className="st-foot">
           <span className="grow" />
-          <button className="btn primary" disabled={!pw.current || pw.password.length < 8}>
+          <button className="g-btn secondary" disabled={!pw.current || pw.password.length < 8}>
             Сменить пароль
           </button>
         </div>
@@ -339,7 +345,7 @@ function KeysTab() {
               )}
               <button
                 type="button"
-                className="btn ghost"
+                className="g-btn ghost"
                 onClick={() => void act(() => request("DELETE", `/api/me/llm-keys/${p.id}`), `Ключ ${p.title} удалён`)}
               >
                 Удалить
@@ -362,7 +368,7 @@ function KeysTab() {
               <span>{login.unreadable ? "Учётные данные сохранены, но их нельзя расшифровать. Подключите провайдера заново." : `Вход подключён ${timeAgo(login.updated)}.`}</span>
             </div>
             <div className="ctl" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
-              <button type="button" className="btn ghost" onClick={() => void act(() => request("DELETE", `/api/me/llm-oauth/provider/${p.id}`), `OAuth ${p.title} отключён`)}>Отключить OAuth</button>
+              <button type="button" className="g-btn ghost" onClick={() => void act(() => request("DELETE", `/api/me/llm-oauth/provider/${p.id}`), `OAuth ${p.title} отключён`)}>Отключить OAuth</button>
             </div>
           </div>
         )}
@@ -387,7 +393,7 @@ function KeysTab() {
             </div>
             <div className="st-foot">
               <span className="grow" />
-              <button className="btn primary" disabled={!value.trim()}>
+              <button className="g-btn secondary" disabled={!value.trim()}>
                 {key ? `Заменить ключ ${p.title}` : server ? "Сохранить личный ключ" : `Сохранить ключ ${p.title}`}
               </button>
             </div>
@@ -402,7 +408,7 @@ function KeysTab() {
       <div className="st-head">
         <div className="provider-headline">
           <h2>Провайдеры и ключи</h2>
-          {providers.length > 0 && <button type="button" className="btn primary provider-add" aria-label="Подключить провайдера" title="Подключить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
+          {providers.length > 0 && <button type="button" className="g-btn secondary provider-add" aria-label="Подключить провайдера" title="Подключить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
         </div>
         <p>Подключите провайдера через OAuth или сохраните API-ключ. Личные ключи имеют приоритет над ключами сервера.</p>
       </div>
