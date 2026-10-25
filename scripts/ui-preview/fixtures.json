@@ -3652,10 +3652,70 @@
     "since": "2026-05-01T12:00:00Z"
   },
   "/api/auth/tokens": [],
-  "/api/repos": [],
+  "/api/repos": [
+    {
+      "project": "demo",
+      "name": "api",
+      "remote": "acme/api",
+      "mount": ".",
+      "defaultBranch": "main",
+      "access": "write",
+      "policy": {},
+      "policyValid": true,
+      "created": "2026-05-01T12:00:00Z",
+      "host": {
+        "id": "github",
+        "kind": "github",
+        "url": "https://github.com",
+        "webUrl": "https://github.com/acme/api"
+      },
+      "connection": "gc_demo",
+      "providerRepoId": 501,
+      "token": {
+        "set": false
+      }
+    },
+    {
+      "project": "demo",
+      "name": "web",
+      "remote": "acme/web",
+      "mount": "web",
+      "defaultBranch": "main",
+      "access": "write",
+      "policy": {},
+      "policyValid": true,
+      "created": "2026-05-01T12:00:00Z",
+      "host": {
+        "id": "gitlab",
+        "kind": "gitlab",
+        "url": "https://gitlab.com",
+        "webUrl": "https://gitlab.com/acme/web"
+      },
+      "token": {
+        "set": true,
+        "hint": "…a1b2",
+        "updated": "2026-05-01T12:00:00Z"
+      }
+    }
+  ],
   "/api/git/hosts": {
     "errors": [],
-    "hosts": []
+    "hosts": [
+      {
+        "id": "github",
+        "kind": "github",
+        "url": "https://github.com",
+        "transport": "https",
+        "problems": []
+      },
+      {
+        "id": "gitlab",
+        "kind": "gitlab",
+        "url": "https://gitlab.com",
+        "transport": "https",
+        "problems": []
+      }
+    ]
   },
   "/api/model-prices": {
     "fetchedAt": null,
@@ -7194,5 +7254,116 @@
   "/api/tasks/DM-16/repos": {
     "repos": [],
     "task": "DM-16"
+  },
+  "/api/git/connections": {
+    "github": {
+      "configured": true,
+      "slug": "genie-demo",
+      "host": "github"
+    },
+    "canConnect": true,
+    "connections": [
+      {
+        "id": "gc_demo",
+        "provider": "github",
+        "host": "github",
+        "owner": 1,
+        "ownerLogin": "owner",
+        "accountId": 7,
+        "accountType": "Organization",
+        "permissions": {},
+        "statusNote": "",
+        "checked": "2026-05-01T12:00:00Z",
+        "created": "2026-05-01T12:00:00Z",
+        "updated": "2026-05-01T12:00:00Z",
+        "blocked": null,
+        "manageUrl": "https://github.com/settings/installations/42",
+        "accountLogin": "acme",
+        "installationId": 42,
+        "selection": "selected",
+        "health": "ok",
+        "repos": 1
+      },
+      {
+        "id": "gc_orphan",
+        "provider": "github",
+        "host": "github",
+        "owner": null,
+        "ownerLogin": null,
+        "accountId": 7,
+        "accountType": "User",
+        "permissions": {},
+        "statusNote": "",
+        "checked": "2026-05-01T12:00:00Z",
+        "created": "2026-05-01T12:00:00Z",
+        "updated": "2026-05-01T12:00:00Z",
+        "blocked": "the connection to labs-guild (github) cannot be used: its owner was removed or disabled; an administrator must reassign the connection",
+        "manageUrl": "https://github.com/settings/installations/43",
+        "accountLogin": "labs-guild",
+        "installationId": 43,
+        "selection": "all",
+        "health": "owner_removed",
+        "repos": 0
+      }
+    ]
+  },
+  "/api/git/connections/gc_demo/repositories": {
+    "connection": "gc_demo",
+    "repositories": [
+      {
+        "id": 501,
+        "fullName": "acme/api",
+        "defaultBranch": "main",
+        "private": true,
+        "canPush": true,
+        "boundAs": "api",
+        "boundElsewhere": false
+      },
+      {
+        "id": 502,
+        "fullName": "acme/web",
+        "defaultBranch": "main",
+        "private": true,
+        "canPush": true,
+        "boundAs": null,
+        "boundElsewhere": false
+      },
+      {
+        "id": 503,
+        "fullName": "acme/docs",
+        "defaultBranch": "main",
+        "private": false,
+        "canPush": true,
+        "boundAs": null,
+        "boundElsewhere": false
+      },
+      {
+        "id": 504,
+        "fullName": "acme/infrastructure-and-deployment-manifests-for-every-environment",
+        "defaultBranch": "trunk",
+        "private": true,
+        "canPush": true,
+        "boundAs": null,
+        "boundElsewhere": false
+      },
+      {
+        "id": 505,
+        "fullName": "acme/mobile",
+        "defaultBranch": "main",
+        "private": true,
+        "canPush": false,
+        "boundAs": null,
+        "boundElsewhere": false
+      },
+      {
+        "id": 506,
+        "fullName": "acme/billing",
+        "defaultBranch": "main",
+        "private": true,
+        "canPush": true,
+        "boundAs": null,
+        "boundElsewhere": true
+      }
+    ]
   }
 }

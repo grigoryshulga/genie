@@ -85,6 +85,8 @@ export function keysFor(e: JournalEvent): KeyPrefix[] | null {
     case "git.pushed":
     case "git.denied":
       return [["task-repos"]];
+    case "git.connection":
+      return [["repos"], ["git-connections"], ["git-connection-repos"]];
     case "cr.opened":
     case "cr.merged":
     case "cr.closed":

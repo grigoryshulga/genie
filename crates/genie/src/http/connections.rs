@@ -45,7 +45,7 @@ const FLOW_COOKIE: &str = "genie_git_flow";
 const FLOW_TTL: Duration = Duration::from_secs(600);
 const PICK_TTL: Duration = Duration::from_secs(900);
 /// Where the person lands after the flow: the project's repositories.
-const LANDING: &str = "/settings/project/repositories";
+const LANDING: &str = "/manage/project/repos?tab=repositories";
 
 enum Purpose {
     Connect,
@@ -171,7 +171,7 @@ async fn list(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let configured = github(&app).ok();
     let admin = app.blocking({
         let user = user.clone();
-        move |app| Ok(app.with_server(|db| db.administers_a_project(&user))?)
+        move |app| app.with_server(|db| db.administers_a_project(&user))
     });
     let can_connect = admin.await?;
     let conns = app.blocking(move |app| app.with_server(|db| db.connections(if user.is_admin { None } else { Some(user.id) }))).await?;
@@ -222,7 +222,7 @@ async fn connect(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Response> {
     }
     let allowed = app.blocking({
         let user = user.clone();
-        move |app| Ok(app.with_server(|db| db.administers_a_project(&user))?)
+        move |app| app.with_server(|db| db.administers_a_project(&user))
     });
     if !allowed.await? {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only an administrator of a project can connect an account"));
@@ -288,7 +288,7 @@ fn authorize_url(app: &App, cfg: &GithubApp, host: &Host, state: &str, verifier:
 /// The connection when the caller owns it (server administrators may act on any).
 async fn own_connection(app: &Arc<App>, user: &genie_core::server_db::User, id: &str) -> ApiResult<Connection> {
     let id = id.to_string();
-    let conn = app.blocking(move |app| Ok(app.with_server(|db| db.connection(&id))?)).await?;
+    let conn = app.blocking(move |app| app.with_server(|db| db.connection(&id))).await?;
     if conn.owner != Some(user.id) && !user.is_admin {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "this connection belongs to someone else"));
     }
@@ -308,13 +308,13 @@ async fn callback(State(app): State<Arc<App>>, Query(query): Query<Callback>, he
     let mut response = match proceed(&app, query, &headers).await {
         Ok(Next::Authorize(url)) => Redirect::to(&url).into_response(),
         Ok(Next::Done(connection)) => {
-            let mut r = Redirect::to(&format!("{LANDING}?connection={connection}")).into_response();
+            let mut r = Redirect::to(&format!("{LANDING}&connection={connection}")).into_response();
             r.headers_mut().append(header::SET_COOKIE, cookie(FLOW_COOKIE, "", 0, secure, "Lax"));
             r
         }
         // Keep provider errors and credentials out of URLs, HTML and logs.
         Err(_) => {
-            let mut r = Redirect::to(&format!("{LANDING}?gitError=1")).into_response();
+            let mut r = Redirect::to(&format!("{LANDING}&gitError=1")).into_response();
             r.headers_mut().append(header::SET_COOKIE, cookie(FLOW_COOKIE, "", 0, secure, "Lax"));
             r
         }
@@ -358,7 +358,7 @@ async fn proceed(app: &Arc<App>, q: Callback, headers: &HeaderMap) -> ApiResult<
         Purpose::Connect => (flow.installation.ok_or_else(|| ApiError::bad("the installation was not claimed"))?, None),
         Purpose::Pick(id) => {
             let id = id.clone();
-            let conn = app.blocking(move |app| Ok(app.with_server(|db| db.connection(&id))?)).await?;
+            let conn = app.blocking(move |app| app.with_server(|db| db.connection(&id))).await?;
             (conn.installation_id, Some(conn))
         }
     };
@@ -435,7 +435,7 @@ async fn repositories(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<Stri
     let bound = app
         .blocking({
             let id = id.clone();
-            move |app| Ok(app.with_server(|db| db.connection_repos(&id))?)
+            move |app| app.with_server(|db| db.connection_repos(&id))
         })
         .await?;
     Ok(Json(json!({
@@ -530,7 +530,7 @@ pub async fn refresh(app: &Arc<App>, id: &str) -> ApiResult<Value> {
     let (cfg, _, host) = github(app)?;
     let conn = {
         let id = id.to_string();
-        app.blocking(move |app| Ok(app.with_server(|db| db.connection(&id))?)).await?
+        app.blocking(move |app| app.with_server(|db| db.connection(&id))).await?
     };
     let answer = github_app::installation(&host, &cfg, conn.installation_id).await;
     let id = id.to_string();
@@ -564,7 +564,7 @@ pub fn spawn_health(app: Arc<App>) {
         tokio::time::sleep(Duration::from_secs(60)).await;
         loop {
             if github(&app).is_ok()
-                && let Ok(conns) = app.blocking(|app| Ok(app.with_server(|db| db.connections(None))?)).await
+                && let Ok(conns) = app.blocking(|app| app.with_server(|db| db.connections(None))).await
             {
                 for c in conns.into_iter().filter(|c| c.provider == "github" && c.health != Health::Revoked) {
                     if let Err(e) = refresh(&app, &c.id).await {

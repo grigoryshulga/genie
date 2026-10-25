@@ -408,4 +408,31 @@ mod tests {
         assert!(db.connection(&c.id).unwrap().blocked().is_none());
         assert!(db.set_connection_health(&c.id, Health::OwnerRemoved, "").is_err());
     }
+
+    #[test]
+    fn a_schema_10_database_gains_connections_and_keeps_its_repositories() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.db");
+        {
+            let db = ServerDb::open(&path).unwrap();
+            db.create_project("shop", "Shop", "tracker", None, None).unwrap();
+            db.add_repo(
+                "shop",
+                crate::repos::NewRepo { name: "api".into(), host: "h".into(), remote: "acme/api".into(), ..Default::default() },
+            )
+            .unwrap();
+            db.conn()
+                .execute_batch(
+                    "DROP TABLE git_connections;
+                     ALTER TABLE project_repos DROP COLUMN connection;
+                     ALTER TABLE project_repos DROP COLUMN provider_repo_id;
+                     UPDATE meta SET value = '10' WHERE key = 'schema';",
+                )
+                .unwrap();
+        }
+        let db = ServerDb::open(&path).unwrap();
+        let repo = db.repo("shop", "api").unwrap();
+        assert_eq!((repo.connection, repo.provider_repo_id), (None, None), "an existing repository keeps its own token");
+        assert!(db.connections(None).unwrap().is_empty());
+    }
 }

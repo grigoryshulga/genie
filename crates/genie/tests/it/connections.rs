@@ -134,7 +134,7 @@ async fn a_person_connects_picks_a_repository_and_the_project_reaches_it_with_a_
     assert_eq!(status, StatusCode::FORBIDDEN);
 
     let location = browser_flow(&r, 42).await;
-    assert!(location.starts_with("/settings/project/repositories?connection=gc_"), "{location}");
+    assert!(location.starts_with("/manage/project/repos?tab=repositories&connection=gc_"), "{location}");
     let id = connection_id(&location);
 
     let (_, list, _) = api(&r, "GET", "/api/git/connections", &r.ann).send().await;
@@ -201,7 +201,7 @@ async fn a_forged_installation_is_not_accepted() {
     let r = rig().await;
     // GitHub's setup address can be hit by anyone with any installation id: the person's own list decides.
     let location = browser_flow(&r, 777).await;
-    assert_eq!(location, "/settings/project/repositories?gitError=1");
+    assert_eq!(location, "/manage/project/repos?tab=repositories&gitError=1");
     let (_, list, _) = api(&r, "GET", "/api/git/connections", &r.ann).send().await;
     assert_eq!(list["connections"].as_array().unwrap().len(), 0);
     // A wrong browser (no flow cookie) gets nothing either.
@@ -211,7 +211,7 @@ async fn a_forged_installation_is_not_accepted() {
         .send_raw()
         .await;
     assert!(status.is_redirection());
-    assert_eq!(headers.get(header::LOCATION).unwrap(), "/settings/project/repositories?gitError=1");
+    assert_eq!(headers.get(header::LOCATION).unwrap(), "/manage/project/repos?tab=repositories&gitError=1");
 }
 
 async fn connected(r: &Rig) -> String {
