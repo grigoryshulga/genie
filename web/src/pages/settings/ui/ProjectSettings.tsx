@@ -117,7 +117,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
   return (
     <div className="st-body">
       <div className="st-head">
-        <h2>Общие настройки</h2>
+        <h1 className="g-page-title">Общие настройки</h1>
         {!admin && <p>Изменять настройки могут администраторы и владельцы проекта.</p>}
       </div>
       <form

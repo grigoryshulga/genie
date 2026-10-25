@@ -608,7 +608,12 @@ impl Vault {
             return Err(GenieError::invalid("pages cannot live in hidden folders"));
         }
         let abs = self.root.join(rel);
-        // Refuse writing through symlinks that leave the vault.
+        self.refuse_symlinks(rel)?;
+        Ok((p, abs))
+    }
+
+    /// Refuse writing through symlinks that leave the vault.
+    fn refuse_symlinks(&self, rel: &Path) -> Result<()> {
         let mut cur = self.root.clone();
         for c in rel.components() {
             cur.push(c);
@@ -618,7 +623,7 @@ impl Vault {
                 return Err(GenieError::invalid("refusing to use a symlinked vault path"));
             }
         }
-        Ok((p, abs))
+        Ok(())
     }
 
     fn space_of(&self, path: &str) -> Option<(String, &Space)> {
@@ -1099,6 +1104,76 @@ impl Vault {
         Ok(WriteOutcome::Saved { created: current.is_none(), hash: sha(content.as_bytes()) })
     }
 
+    /// Remove a section folder with every page under it, as one commit. Only folders inside the
+    /// project's space qualify: the space root is the project's binding and stays. Returns the
+    /// pages that were removed. Sections under a `review` or `locked` policy are refused, as writes are.
+    pub fn remove_section(
+        &mut self,
+        project: &str,
+        path: &str,
+        kind: AuthorKind,
+        author: (&str, &str),
+        message: &str,
+    ) -> Result<Vec<String>> {
+        let p = path.trim().trim_matches('/').replace('\\', "/");
+        let rel = Path::new(&p);
+        if p.is_empty() || rel.components().any(|c| !matches!(c, Component::Normal(_)) || c.as_os_str().to_string_lossy().starts_with('.'))
+        {
+            return Err(GenieError::invalid(format!("invalid section path {path}")));
+        }
+        let Some((space, _)) = self.space_of(&p) else {
+            return Err(GenieError::not_found("documentation section not found in this project"));
+        };
+        if self.project_of(&p).as_deref() != Some(project) {
+            return Err(GenieError::not_found("documentation section not found in this project"));
+        }
+        if p == space {
+            return Err(GenieError::invalid("a space's root cannot be removed; remove its sections instead"));
+        }
+        self.refuse_symlinks(rel)?;
+        let abs = self.root.join(rel);
+        if !abs.is_dir() {
+            return Err(GenieError::not_found("documentation section not found in this project"));
+        }
+        let prefix = format!("{p}/");
+        let pages: Vec<String> = self.scan().into_iter().map(|(rel, ..)| rel).filter(|rel| rel.starts_with(&prefix)).collect();
+        self.check_removal(&p, &format!("{prefix}index.md"), kind)?;
+        std::fs::remove_dir_all(&abs)?;
+        self.git_commit(&[p.as_str()], message, author.0, author.1)?;
+        self.refresh()?;
+        Ok(pages)
+    }
+
+    /// Remove one page as one commit, under the same publishing policy as a write. Returns its path.
+    pub fn remove_page(&mut self, project: &str, path: &str, kind: AuthorKind, author: (&str, &str), message: &str) -> Result<String> {
+        let (rel, abs) = self.resolve_for_project(project, path)?;
+        if !abs.is_file() {
+            return Err(GenieError::not_found("documentation page not found in this project"));
+        }
+        self.check_removal(&rel, &rel, kind)?;
+        std::fs::remove_file(&abs)?;
+        self.git_commit(&[rel.as_str()], message, author.0, author.1)?;
+        self.refresh()?;
+        Ok(rel)
+    }
+
+    /// Removal honours the publishing policy that governs the path: locked and reviewed areas refuse it, as they refuse writes.
+    fn check_removal(&self, label: &str, policy_path: &str, kind: AuthorKind) -> Result<()> {
+        let policy = self.policy_for(policy_path);
+        let rule = match kind {
+            AuthorKind::Human => policy.humans,
+            AuthorKind::Agent => policy.agents,
+            AuthorKind::System => Publish::Direct,
+        };
+        match rule {
+            Publish::Locked => {
+                Err(GenieError::Denied(format!("{label} is locked for {}", if kind == AuthorKind::Agent { "agents" } else { "you" })))
+            }
+            Publish::Review => Err(GenieError::Denied(format!("{label} is reviewed by its owners; removing it is not available here"))),
+            Publish::Direct => Ok(()),
+        }
+    }
+
     fn git_commit(&self, paths: &[&str], message: &str, name: &str, login: &str) -> Result<()> {
         if !self.commit || !self.root.join(".git").exists() {
             return Ok(());
@@ -1259,6 +1334,21 @@ mod tests {
         assert!(s.content.starts_with("## Сессии") && !s.content.contains("Как выдаются"));
         assert!(v.read("../etc/passwd", None, None).is_err());
         assert!(v.resolve(".genie/vault.json").is_err());
+    }
+
+    #[test]
+    fn removes_sections_but_keeps_space_roots_and_other_projects() {
+        let (_d, mut v) = vault();
+        v.ensure_space("shop", None).unwrap();
+        v.write("shop/guides/setup.md", "# S\n\nx", AuthorKind::Human, ("a", "a"), None, "m").unwrap();
+        v.write("shop/guides/deep/more.md", "# M\n\nx", AuthorKind::Human, ("a", "a"), None, "m").unwrap();
+        v.write("shop/notes.md", "# N\n\nx", AuthorKind::Human, ("a", "a"), None, "m").unwrap();
+        assert!(v.remove_section("shop", "shop", AuthorKind::Human, ("a", "a"), "m").is_err(), "a space root stays");
+        assert!(v.remove_section("other", "shop/guides", AuthorKind::Human, ("a", "a"), "m").is_err(), "another project's section stays");
+        let removed = v.remove_section("shop", "shop/guides/", AuthorKind::Human, ("a", "a"), "remove guides").unwrap();
+        assert_eq!(removed.len(), 2, "{removed:?}");
+        assert!(v.current_hash("shop/guides/setup.md").unwrap().is_none());
+        assert!(v.current_hash("shop/notes.md").unwrap().is_some());
     }
 
     #[test]

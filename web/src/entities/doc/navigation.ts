@@ -54,11 +54,16 @@ export function buildDocNavigation(pages: DocPage[], roots: string[]): DocSectio
   const order = (node: DocSection): number => {
     node.sections.sort((a, b) => a.title.localeCompare(b.title, "ru"));
     node.pages.sort((a, b) => articleTitle(a).localeCompare(articleTitle(b), "ru"));
-    node.count = node.pages.length + (node.landing ? 1 : 0) + node.sections.reduce((n, s) => n + order(s), 0);
+    node.count = node.pages.length + node.sections.reduce((n, s) => n + order(s), 0);
     return node.count;
   };
   order(root);
   return root;
+}
+
+/** Index pages give a section its name and description; they are the section itself, not articles to list. */
+export function sectionLandingPaths(root: DocSection): Set<string> {
+  return new Set(docSections(root).flatMap((section) => (section.landing ? [section.landing.path] : [])));
 }
 
 export function docSections(root: DocSection): DocSection[] {

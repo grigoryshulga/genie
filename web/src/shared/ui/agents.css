@@ -1,8 +1,7 @@
 /* «Агенты»: roles, team templates, skills, MCP connections.
    Ink and paper: every colour, type size and font family comes from g-tokens.css. */
 
-.agents .topbar { flex-wrap: nowrap; gap: var(--g-space-5); padding: 0 var(--g-space-7); border-bottom: 1px solid var(--g-border); }
-.agents .topbar h1 { font-family: var(--g-font-display); font-size: var(--g-text-h3); font-weight: var(--g-weight-bold); letter-spacing: var(--g-tracking-heading); }
+.agents .topbar { flex-wrap: nowrap; gap: var(--g-space-5); padding: 0 var(--g-space-5); border-bottom: 1px solid var(--g-border); }
 .agents .topbar .g-tabs { margin-left: var(--g-space-1); overflow-x: auto; }
 .agents .topbar .g-tabs > button { white-space: nowrap; flex: none; }
 
@@ -308,7 +307,7 @@ fieldset:disabled .ag-perm { cursor: default; }
 
 /* The catalogue's list and detail panes: the same two-pane shape as before, in the new spacing and type. */
 .agents .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
-.agents .split-list { border-right: 1px solid var(--g-border); padding: var(--g-space-3) var(--g-space-3) var(--g-space-7); display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; }
+.agents .split-list { border-right: 1px solid var(--g-border); padding: 0 var(--g-space-3) var(--g-space-7); display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; }
 .agents .split-list .label { padding: var(--g-space-4) var(--g-space-3) var(--g-space-2); font-size: var(--g-text-eyebrow); font-weight: var(--g-weight-semibold); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
 .agents .split-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .agents .pane-head { padding: var(--g-space-6) var(--g-space-7) 0; gap: var(--g-space-3); align-items: flex-start; flex-wrap: wrap; }
@@ -336,3 +335,6 @@ fieldset:disabled .ag-perm { cursor: default; }
   .agents .pane-head { padding: var(--g-space-4) var(--g-space-4) 0; }
   .agents .pane-body { padding: var(--g-space-4) var(--g-space-4) var(--g-space-6); }
 }
+
+/* A role's title being renamed: the field takes the title's size and stops short of the actions. */
+.ag-role-rename { max-width: 420px; height: auto; padding: 2px var(--g-space-2); font: 700 var(--g-text-h3) / 1.25 var(--g-font-display); letter-spacing: var(--g-tracking-heading); }

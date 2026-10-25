@@ -3,7 +3,7 @@ import { useMeta } from "@/entities/project";
 import { EpicIcon, PRIORITY_NAME, PriorityIcon, StatusIcon, useCreateTask, useEpicMap } from "@/entities/task";
 import { useStartIdea } from "@/features/shape-idea";
 import type { TaskType } from "@/shared/api";
-import { Icon, Modal, useToast } from "@/shared/ui";
+import { Icon, Modal, ResizableTextarea, useToast } from "@/shared/ui";
 import "@/features/shape-idea/ui/idea.css";
 
 const TYPES: [TaskType, string][] = [
@@ -88,7 +88,7 @@ export function NewTaskDialog({
   };
 
   return (
-    <Modal label={talk ? "Обсудить с менеджером проекта" : isEpic ? "Новый эпик" : "Новая задача"} onClose={onClose}>
+    <Modal label={talk ? "Обсудить с менеджером проекта" : isEpic ? "Новый эпик" : "Новая задача"} onClose={onClose} className="nt-dialog">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -123,7 +123,7 @@ export function NewTaskDialog({
           <div className="mb">
             <label className="g-field">
               <span className="g-label">Идея как есть</span>
-              <textarea
+              <ResizableTextarea
                 autoFocus
                 rows={7}
                 required
@@ -146,7 +146,7 @@ export function NewTaskDialog({
             </label>
             <label className="g-field">
               <span className="g-label">{isEpic ? "Цель" : "Описание"}</span>
-              <textarea
+              <ResizableTextarea
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -155,7 +155,7 @@ export function NewTaskDialog({
             </label>
             <label className="g-field">
               <span className="g-label">{isEpic ? "Критерии успеха — по одному в строке (можно оставить оркестратору)" : "Критерии приёмки — по одному в строке (можно оставить оркестратору)"}</span>
-              <textarea rows={2} value={criteria} onChange={(e) => setCriteria(e.target.value)} />
+              <ResizableTextarea rows={2} value={criteria} onChange={(e) => setCriteria(e.target.value)} />
             </label>
             <div className="opts">
               <label className="nt-opt">

@@ -84,7 +84,7 @@
 .task-page .td-states .g-banner { max-width: var(--g-measure); }
 .tp-body { grid-template-columns: minmax(0, 1fr); }
 .tp-main { gap: var(--g-space-5); padding: var(--g-space-5) var(--g-space-5) var(--g-space-7); }
-.tp-main > * { max-width: var(--g-measure); }
+.tp-main > * { max-width: 72ch; }
 .tp-rail { inset-inline-end: var(--g-space-3); width: calc(var(--rail) + var(--g-space-5)); padding: var(--g-space-5) var(--g-space-3) var(--g-space-5) 0; gap: var(--g-space-2); }
 .tp-card { padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); box-shadow: none; }
 .tp-card-title { font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); }

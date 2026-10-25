@@ -93,28 +93,33 @@ export function TaskList({
                 <StatusIcon status={t.status} size={14} />
                 <span className="tl-id g-mono">{t.id}</span>
                 <span className="tl-main">
-                  <button
-                    type="button"
-                    className="tl-title"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpen(t.id);
-                    }}
-                  >
-                    {t.priority <= 1 && <PriorityIcon priority={t.priority} />}
-                    {t.type === "epic" && (
-                      <span className="tl-epic-mark">
-                        <EpicIcon size={12} />
-                        эпик
-                      </span>
-                    )}
-                    {t.title}
-                  </button>
+                  <span className="tl-title-row">
+                    <button
+                      type="button"
+                      className="tl-title"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpen(t.id);
+                      }}
+                    >
+                      {t.priority <= 1 && <PriorityIcon priority={t.priority} />}
+                      {t.type === "epic" && (
+                        <span className="tl-epic-mark">
+                          <EpicIcon size={12} />
+                          эпик
+                        </span>
+                      )}
+                      {t.title}
+                    </button>
+                    <span className="tl-labels d-only">
+                      <Labels labels={t.labels.slice(0, 3)} />
+                      {t.labels.length > 3 && <span className="tl-more g-muted">+{t.labels.length - 3}</span>}
+                    </span>
+                  </span>
                   {note && <span className="tl-note">{note}</span>}
                 </span>
                 <span className="tl-tags d-only">
                   <EpicChip id={t.parent} />
-                  <Labels labels={t.labels} />
                 </span>
                 <span className="tl-ac">
                   {t.acceptanceTotal > 0 && (

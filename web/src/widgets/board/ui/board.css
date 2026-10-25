@@ -59,12 +59,18 @@
 .g-lane-drop.here { opacity: 0.45; }
 /* Cards are centered in their lane, and the scrollbar gutter is reserved on BOTH edges: the card
    does not lean left, and nothing shifts sideways the moment a lane gains its scrollbar. */
-.g-lane-cards { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: var(--g-space-3); overflow-y: auto; padding: 0 var(--g-space-1) var(--g-space-1); scrollbar-gutter: stable both-edges; }
+.g-lane-cards { position: relative; isolation: isolate; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: var(--g-space-3); overflow-y: auto; padding: var(--g-space-2) var(--g-space-1) var(--g-space-1); scrollbar-gutter: stable both-edges; }
+/* The first card lifts 2px on hover: the list keeps room above it so the lift is not clipped. */
 .g-lane-empty { align-self: stretch; margin: var(--g-space-2) 0; padding: var(--g-space-5) var(--g-space-3); border: 1.5px dashed var(--g-border); border-radius: var(--g-radius-lg); text-align: center; font-size: var(--g-text-caption); color: var(--g-text-muted); }
 
 /* ---- a card: a paper sheet on the canvas (ink on a paper theme), never resized by its content ---- */
 .bd-card { position: relative; flex: none; width: var(--g-board-card-width); height: var(--g-board-card-height); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--g-space-2); padding: var(--g-space-3); border-radius: var(--g-radius-lg); }
-.bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent); }
+/* Cards are calm tints of their lane rather than the page's strongest contrast: the title still carries the card. */
+.g-sheet.bd-card { --sh-t: var(--g-n-100); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: rgb(244 241 234 / 0.12); background: var(--g-n-800); }
+[data-theme="paper"] .g-sheet.bd-card { --sh-t: var(--g-n-850); --sh-t2: var(--g-n-600); --sh-m: var(--g-n-550); --sh-accent: var(--g-green-800); --sh-soft: var(--g-green-100); --sh-line: rgb(9 9 13 / 0.1); background: var(--g-n-100); }
+/* A light lift for cards on the canvas; the dragged copy keeps its overlay shadow, a selected card keeps its ring. */
+.g-sheet.bd-card:not(.bd-ghost) { box-shadow: var(--g-shadow-card); }
+.bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent), var(--g-shadow-card); }
 .bd-card.dragging { opacity: 0.35; }
 .bd-ghost { display: flex; flex-direction: column; width: var(--g-board-card-width); box-shadow: var(--g-shadow-overlay); cursor: grabbing; }
 .bd-main { display: flex; flex-direction: column; align-items: stretch; min-height: 0; overflow: hidden; gap: var(--g-space-1); min-width: 0; padding: 0; border: 0; border-radius: var(--g-radius-md); background: transparent; color: inherit; text-align: left; cursor: grab; touch-action: none; }
@@ -99,6 +105,9 @@
 /* ---- the hints bar at the foot of the page ---- */
 .g-hints { flex: none; min-width: 0; display: flex; align-items: center; gap: var(--g-space-5); height: 40px; padding: 0 var(--g-space-6); border-top: 1px solid var(--g-border); font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; }
 .g-hints .g-kbd { height: 20px; min-width: 20px; font-size: 10.5px; }
+
+/* Cards move in and out of a stack with the scroll; reduced motion moves them at once. */
+.g-lane-cards > .bd-card { transition: transform 280ms var(--g-ease), opacity 280ms var(--g-ease); }
 
 @media (prefers-reduced-motion: reduce) {
   .g-lane, .g-lane-chev, .bd-card { transition: none; }

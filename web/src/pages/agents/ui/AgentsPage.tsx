@@ -1,31 +1,39 @@
-// «Агенты» — the catalogue of the server's agents: roles, team templates,
-// skills and MCP connections (PD13). Everyone reads it (PD14) — even a server
-// administrator: the editing lives in the settings mode (PD21, S6), and the
-// «Настроить» link leads there.
+// «Агенты» — the server's agents: roles, team templates, skills and the history of changes. Everyone reads
+// them; a server administrator edits roles, templates and skills here too (the global settings no longer
+// carry them). MCP connections stay in the server's MCP settings, which «Настроить» opens for administrators.
 
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { matchesSearch } from "@/shared/lib";
 import { ContextSearch } from "@/widgets/topbar";
-import { ErrorState, Icon, Skeleton } from "@/shared/ui";
-import { McpTab, RolesTab, SkillsTab, TemplatesTab } from "@/widgets/agents-kit";
+import { ErrorState, Icon, PageHeader, Skeleton } from "@/shared/ui";
+import { CreateDialog, History, McpTab, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
 import "./agents-sheets.css";
 import "@/shared/ui/agents.css";
 
-type Tab = "roles" | "templates" | "skills" | "mcp";
-const TABS: { id: Tab; title: string }[] = [
+type Tab = "roles" | "templates" | "skills" | "mcp" | "history";
+const TABS: { id: Tab; title: string; adminOnly?: boolean }[] = [
   { id: "roles", title: "Роли" },
   { id: "templates", title: "Шаблоны команд" },
   { id: "skills", title: "Навыки" },
   { id: "mcp", title: "MCP" },
+  { id: "history", title: "История", adminOnly: true },
 ];
+const NEW: Partial<Record<Tab, { kind: CreateKind; label: string }>> = {
+  roles: { kind: "roles", label: "Новая роль" },
+  templates: { kind: "templates", label: "Новый шаблон" },
+  skills: { kind: "skills", label: "Новый навык" },
+};
 
 export function AgentsPage() {
   const [sp, setSp] = useSearchParams();
   const cfg = useAgentConfig();
   const isAdmin = !!useSession().data?.user.isAdmin;
-  const tab = (TABS.some((t) => t.id === sp.get("tab")) ? sp.get("tab") : "roles") as Tab;
+  const [creating, setCreating] = useState<CreateKind>();
+  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+  const tab = (tabs.some((t) => t.id === sp.get("tab")) ? sp.get("tab") : "roles") as Tab;
   const selected = sp.get("id") ?? undefined;
   const update = (nextTab: Tab, id?: string) => setSp((previous) => {
     const next = new URLSearchParams(previous);
@@ -41,25 +49,33 @@ export function AgentsPage() {
     skills: tab === "skills" ? cfg.data.skills.filter((s) => matchesSearch(query, s.name, s.description)) : cfg.data.skills,
     mcp: tab === "mcp" ? cfg.data.mcp.filter((m) => matchesSearch(query, m.id, m.description, ...m.tools?.map((t) => `${t.name} ${t.description ?? ""}`) ?? [])) : cfg.data.mcp,
   } : undefined;
+  const create = isAdmin ? NEW[tab] : undefined;
   return (
     <main className="main agents">
-      <header className="topbar">
-        <h1>Агенты</h1>
-        <div className="g-tabs" role="tablist" aria-label="Разделы">
-          {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => update(t.id)}>
-              {t.title}
+      <PageHeader
+        title="Агенты"
+        toolbar={<>
+          <div className="g-tabs" role="tablist" aria-label="Разделы">
+            {tabs.map((t) => (
+              <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => update(t.id)}>
+                {t.title}
+              </button>
+            ))}
+          </div>
+          {tab === "mcp" && isAdmin && (
+            <Link to="/manage/server/tools?tab=mcp" className="g-btn secondary sm">
+              <Icon.gear size={13} />
+              <span className="d-only">Настроить</span>
+            </Link>
+          )}
+          {create && c && (
+            <button type="button" className="g-btn secondary" onClick={() => setCreating(create.kind)}>
+              <Icon.plus size={13} />
+              <span className="d-only">{create.label}</span>
             </button>
-          ))}
-        </div>
-        <span className="grow" />
-        {isAdmin && (
-          <Link to={`/manage/server/${tab}${selected ? `?id=${encodeURIComponent(selected)}` : ""}`} className="g-btn secondary sm">
-            <Icon.gear size={13} />
-            <span className="d-only">Настроить</span>
-          </Link>
-        )}
-      </header>
+          )}
+        </>}
+      />
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       {!c ? (
         cfg.error ? (
@@ -71,13 +87,28 @@ export function AgentsPage() {
           </div>
         )
       ) : tab === "roles" ? (
-        <RolesTab cfg={c} selected={selected} onSelect={select} readOnly />
+        <RolesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
       ) : tab === "templates" ? (
-        <TemplatesTab cfg={c} selected={selected} onSelect={select} readOnly />
+        <TemplatesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
       ) : tab === "skills" ? (
-        <SkillsTab cfg={c} selected={selected} onSelect={select} readOnly />
-      ) : (
+        <SkillsTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
+      ) : tab === "mcp" ? (
         <McpTab cfg={c} readOnly />
+      ) : (
+        <div className="ag-page">
+          <History admin />
+        </div>
+      )}
+      {creating && c && (
+        <CreateDialog
+          kind={creating}
+          cfg={c}
+          onClose={() => setCreating(undefined)}
+          onCreated={(id) => {
+            setCreating(undefined);
+            update(creating, id);
+          }}
+        />
       )}
     </main>
   );

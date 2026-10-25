@@ -241,8 +241,8 @@ function EditableTitle({ epic, writable }: { epic: Task; writable: boolean }) {
   const patch = usePatchTask();
   const toast = useToast();
   return (
-    <h2
-      className="title"
+    <h1
+      className="title g-page-title"
       contentEditable={writable}
       suppressContentEditableWarning
       spellCheck={false}
@@ -254,7 +254,7 @@ function EditableTitle({ epic, writable }: { epic: Task; writable: boolean }) {
       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
     >
       {epic.title}
-    </h2>
+    </h1>
   );
 }
 

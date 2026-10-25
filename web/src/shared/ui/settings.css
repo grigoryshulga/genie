@@ -154,8 +154,6 @@ details.st-card > .st-roles { padding: 0 var(--g-space-5) var(--g-space-4); }
 .st-rail-id { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
 .st-rail-id b { font: 700 var(--g-text-ui)/1.25 var(--g-font-display); letter-spacing: var(--g-tracking-display); overflow-wrap: anywhere; }
 .st-rail-id .g-muted { font-size: var(--g-text-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.st-rail-switch select { width: 100%; height: var(--g-control-sm); padding: 0 var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-sm); background: var(--g-bg); color: var(--g-text); font-size: var(--g-text-dense); }
-.st-rail-switch select:focus-visible { border-color: var(--g-accent); }
 .st-rail-nav a, .st-rail-back { font-size: var(--g-text-dense); color: var(--g-text-2); }
 .st-rail-back { display: flex; align-items: center; gap: var(--g-space-3); width: 100%; min-height: var(--g-control); padding: 0 var(--g-space-4); border: 0; border-radius: var(--g-radius-md); background: transparent; font: 600 var(--g-text-dense) var(--g-font-sans); text-align: left; margin-bottom: var(--g-space-1); }
 .st-rail-back:hover { background: var(--g-surface-hover); color: var(--g-text); }

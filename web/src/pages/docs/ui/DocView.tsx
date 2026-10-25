@@ -4,10 +4,17 @@
 // backlinks, `paths`, diagnostics and the on-page table of contents.
 
 import { DocBreadcrumbs } from "./DocBreadcrumbs.tsx";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import type { DocPage, DocReadResult, DocSection } from "@/entities/doc";
 import {
+  fieldsFromPage,
+  sectionTrail,
+  serializeDoc,
+  slugify,
+  useRemoveDocPage,
+  useRenameDoc,
+  useSaveDoc,
   bodyUnderTitle,
   diagnosticText,
   docAgo,
@@ -22,7 +29,9 @@ import {
   staleReasonText,
 } from "@/entities/doc";
 import { BacklinkIcon, DeprecatedIcon, DiagIcon, OkIcon, PathsIcon, StaleIcon } from "@/entities/doc";
-import { Button, DisclosureCard, Icon, Tag } from "@/shared/ui";
+import { canWriteProject, useSession } from "@/entities/session";
+import { DocViewSwitch } from "@/widgets/docs-view-switch";
+import { Button, ConfirmDialog, DisclosureCard, Icon, IconButton, RenameButton, RenameField, Tag, useToast } from "@/shared/ui";
 
 export function DocView({
   page,
@@ -47,6 +56,41 @@ export function DocView({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const byPath = new Map(pages.map((p) => [p.path, p]));
+  const toast = useToast();
+  const session = useSession();
+  const save = useSaveDoc();
+  const remove = useRemoveDocPage();
+  const [removing, setRemoving] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const rename = useRenameDoc();
+  const writable = canWriteProject(session.data);
+
+  // A copy lives beside the original, as a draft with its own title, slug and no aliases or verification date.
+  const clone = async () => {
+    const title = `${page.title} (копия)`;
+    const dir = page.path.slice(0, page.path.lastIndexOf("/") + 1);
+    const content = serializeDoc({ ...fieldsFromPage(page), title, status: "draft", verified: "", aliases: [] }, page.content);
+    try {
+      const saved = await save.mutateAsync({ path: `${dir}${slugify(title)}.md`, content, mode: "create" });
+      toast(`Создана копия: ${saved.page.title}`);
+      onOpen(saved.page.path);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), "error");
+    }
+  };
+
+  // Once the page is gone, its section is the place to be.
+  const confirmRemove = () => remove.mutate(page.path, {
+    onSuccess: () => {
+      toast(`Статья «${page.title}» удалена`);
+      setRemoving(false);
+      onSection(sectionTrail(navigation, page.path).at(-1)?.path ?? navigation.path);
+    },
+    onError: (error) => {
+      setRemoving(false);
+      toast(`Не удалось удалить статью: ${error.message}`, "error");
+    },
+  });
 
   const scrollToHeading = (heading: string) => {
     const blocks = scrollRef.current?.querySelectorAll(".doc-body h1, .doc-body h2, .doc-body h3, .doc-body h4");
@@ -68,21 +112,31 @@ export function DocView({
 
   return (
     <>
+      {/* The top row spans the reader and the aside, so the aside starts under it (see docs.css). */}
+      <header className="docs-topbar">
+        {onOpenTree && (
+          <button type="button" className="g-icon-btn m-only" onClick={onOpenTree} aria-label="Открыть дерево документации">
+            <Icon.list size={15} />
+          </button>
+        )}
+        <DocBreadcrumbs root={navigation} path={page.path} title={articleTitle(page)} onSection={onSection} />
+        <span className="grow" />
+        <IconButton label="Редактировать" onClick={onEdit}>
+          <Icon.pencil size={14} />
+        </IconButton>
+        {writable && (
+          <IconButton label="Клонировать" onClick={() => void clone()} disabled={save.isPending}>
+            <Icon.copy size={14} />
+          </IconButton>
+        )}
+        {writable && (
+          <IconButton label="Удалить" onClick={() => setRemoving(true)}>
+            <Icon.trash size={14} />
+          </IconButton>
+        )}
+        <DocViewSwitch />
+      </header>
       <div className="docs-content">
-        <header className="docs-topbar">
-          {onOpenTree && (
-            <button type="button" className="g-icon-btn m-only" onClick={onOpenTree} aria-label="Открыть дерево документации">
-              <Icon.list size={15} />
-            </button>
-          )}
-          <DocBreadcrumbs root={navigation} path={page.path} title={articleTitle(page)} onSection={onSection} />
-          <span className="grow" />
-          <Button variant="primary" sm onClick={onEdit}>
-            <Icon.file size={13} />
-            Редактировать
-          </Button>
-        </header>
-
         <div className="docs-view doc-reader scroll" ref={scrollRef}>
           <article className="doc-reading">
           <div className="doc-head">
@@ -97,7 +151,11 @@ export function DocView({
               {page.tags.map((tag) => <Tag key={tag} className="doc-tag">{tag}</Tag>)}
             </div>}
             </div>
-            <h2 className="doc-title">{articleTitle(page)}</h2>
+            {renaming ? (
+              <RenameField className="doc-title" value={articleTitle(page)} label="Название статьи" onCommit={(title) => { setRenaming(false); rename.mutate({ path: page.path, title }); }} onCancel={() => setRenaming(false)} />
+            ) : (
+              <h2 className="doc-title g-rename-host">{articleTitle(page)}<RenameButton label="Переименовать статью" onClick={() => setRenaming(true)} /></h2>
+            )}
             <div className="doc-meta">
               <Tag tone="outline">Обновлена {docAgo(page.updated)}</Tag>
               {page.verified ? (
@@ -264,6 +322,11 @@ export function DocView({
             <span className="g-mono">{page.path}</span>
           </div>
         </aside>
+      )}
+      {removing && (
+        <ConfirmDialog title={`Удалить статью «${page.title}»?`} confirmLabel="Удалить" danger busy={remove.isPending} onClose={() => setRemoving(false)} onConfirm={() => confirmRemove()}>
+          Статья будет удалена из пространства. Из интерфейса это не отменить.
+        </ConfirmDialog>
       )}
     </>
   );

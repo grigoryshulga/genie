@@ -36,7 +36,7 @@ import { useSession } from "@/entities/session";
 import { ContextSearch } from "@/widgets/topbar";
 import { matchesSearch, settingsTabHref } from "@/shared/lib";
 import { request } from "@/shared/api";
-import { BarChart, ConfirmDialog, Icon, Menu, useAct, useToast } from "@/shared/ui";
+import { BarChart, ConfirmDialog, Icon, Menu, PageHeader, useAct, useToast } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
 import { FirstAdmin } from "./ProjectSettings.tsx";
 import { SettingsTabs, useSettingsTab } from "./SettingsTabs.tsx";
@@ -51,7 +51,7 @@ export function ServerSettingsPage() {
   const { section = "health" } = useParams();
   const local = session?.mode === "local";
   const tab = useSettingsTab("server", section);
-  if (section === "tools" && (tab === "agents" || tab === "health" || tab === "vault"))
+  if (section === "tools" && (tab === "health" || tab === "vault"))
     return <Navigate to={settingsTabHref("server", "tools", tab)} replace />;
   return (
     <main className="main">
@@ -79,9 +79,7 @@ export function ServerSettingsPage() {
 export function ServerStatisticsPage() {
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Статистика</h1>
-      </header>
+      <PageHeader title="Статистика" />
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="scroll">
         <Statistics />
@@ -103,7 +101,7 @@ function Health() {
   return (
     <div className="st-body sv-wide">
       <div className="st-head">
-        <h2>Состояние</h2>
+        <h1 className="g-page-title">Состояние</h1>
       </div>
       <section className="st-card">
         {doctor.isPending ? (
@@ -423,7 +421,7 @@ function Projects({ current, tab }: { current?: string; tab: string }) {
     <div className="st-body">
       <div className="st-col" hidden={tab !== "list"}>
         <div className="st-head">
-          <h2>Проекты</h2>
+          <h1 className="g-page-title">Проекты</h1>
         </div>
         <section className="st-card">
           <ul className="sv-list">

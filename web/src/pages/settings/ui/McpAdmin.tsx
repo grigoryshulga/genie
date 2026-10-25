@@ -45,8 +45,7 @@ export function McpAdminSection() {
   return (
     <div className="st-body sv-wide">
       <div className="st-head">
-        <h2>MCP</h2>
-        <p>Доступ ролей к инструментам настраивается на странице «Агенты».</p>
+        <h1 className="g-page-title">MCP</h1>
       </div>
       {!d ? (
         admin.error ? <p className="g-muted">{admin.error.message}</p> : <SettingsLoading />

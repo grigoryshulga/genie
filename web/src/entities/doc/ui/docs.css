@@ -3,23 +3,22 @@
    g-tokens.css; nothing in this file may use the legacy token sheet. */
 
 .docs-main { min-width: 0; min-height: 0; }
-.docs-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr) 216px; }
+.docs-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr) 216px; }
 .docs-grid.docs-search-mode { grid-template-columns: minmax(340px, 460px) minmax(0, 1fr); }
 .docs-grid.empty { grid-template-columns: minmax(0, 1fr); }
 
 /* tree column */
 .docs-tree-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--g-border); }
 .docs-col-head { flex: none; min-height: 56px; display: flex; align-items: center; gap: var(--g-space-3); padding: 0 var(--g-space-4); border-bottom: 1px solid var(--g-border); }
-.docs-col-head h1 { margin: 0; font-family: var(--g-font-sans); font-size: var(--g-text-h4); font-weight: var(--g-weight-bold); letter-spacing: var(--g-tracking-heading); color: var(--g-text); white-space: nowrap; }
 .docs-col-head .count { font-size: var(--g-text-dense); font-weight: var(--g-weight-medium); color: var(--g-text-muted); }
 .doc-col-tag { font-size: var(--g-text-eyebrow); font-weight: var(--g-weight-semibold); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); background: var(--g-surface-active); border-radius: var(--g-radius-pill); padding: 2px var(--g-space-2); }
 .docs-col-head .g-btn { flex: none; height: var(--g-control-sm); padding: 0 var(--g-space-3); font-size: var(--g-text-dense); white-space: nowrap; }
-/* Pages / Proposals segment under the column head: two equal halves, the current route filled. */
-.docs-view-tabs { flex: none; padding: var(--g-space-3) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
-.docs-view-tabs .g-tabs { display: flex; width: 100%; }
-.docs-view-tabs .g-tabs > a { flex: 1; display: inline-flex; align-items: center; justify-content: center; height: var(--g-control-sm); padding: 0 var(--g-space-3); border-radius: var(--g-radius-pill); font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); color: var(--g-text-2); text-decoration: none; white-space: nowrap; }
-.docs-view-tabs .g-tabs > a:hover { color: var(--g-text); background: var(--g-surface-hover); }
-.docs-view-tabs .g-tabs > a[aria-current="page"] { background: var(--g-accent); color: var(--g-on-accent); }
+/* Pages / Proposals switch in the top row's toolbar: a pill with the current route filled. */
+.docs-view-switch { flex: none; }
+.docs-view-switch .g-tabs { display: flex; }
+.docs-view-switch .g-tabs > a { display: inline-flex; align-items: center; justify-content: center; height: var(--g-control-sm); padding: 0 var(--g-space-3); border-radius: var(--g-radius-pill); font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); color: var(--g-text-2); text-decoration: none; white-space: nowrap; }
+.docs-view-switch .g-tabs > a:hover { color: var(--g-text); background: var(--g-surface-hover); }
+.docs-view-switch .g-tabs > a[aria-current="page"] { background: var(--g-accent); color: var(--g-on-accent); }
 
 .docs-filter { display: flex; align-items: center; gap: var(--g-space-2); flex: none; height: var(--g-control-sm); margin: var(--g-space-3) var(--g-space-3); padding: 0 var(--g-space-3); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-muted); }
 .docs-filter:focus-within { outline: 2px solid var(--g-focus); outline-offset: 2px; border-color: transparent; }
@@ -65,6 +64,16 @@
 /* page column */
 .docs-content { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--g-bg); }
 .docs-topbar { flex: none; min-height: 56px; display: flex; align-items: center; gap: var(--g-space-3); padding: var(--g-space-2) var(--g-space-6); border-bottom: 1px solid var(--g-border); }
+/* The overview's top row is the height of the navigation column's head, so the two rules line up. */
+.docs-topbar.page-head { height: 56px; min-height: 0; padding-block: 0; box-sizing: border-box; }
+/* An article: the top row runs across the reader and the aside, the navigation column keeps its full height. */
+@media (min-width: 901px) {
+  .docs-grid.view { grid-template-rows: auto minmax(0, 1fr); }
+  .docs-grid.view > .docs-tree-col { grid-row: 1 / span 2; }
+  .docs-grid.view > .docs-topbar { grid-column: 2 / 4; grid-row: 1; height: 56px; box-sizing: border-box; padding-block: 0; }
+  .docs-grid.view > .docs-content { grid-column: 2; grid-row: 2; min-height: 0; }
+  .docs-grid.view > .docs-aside { grid-column: 3; grid-row: 2; min-height: 0; }
+}
 .doc-crumbs { font-size: var(--g-text-dense); font-weight: var(--g-weight-medium); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-crumbs button { border: 0; background: none; padding: 0; color: inherit; font: inherit; cursor: pointer; }
 .doc-crumbs button:hover { color: var(--g-text); }
@@ -75,6 +84,9 @@
 .docs-search-mode .docs-content .docs-view:has(> .g-empty) { display: grid; align-content: center; justify-items: center; }
 
 .doc-head { display: flex; flex-direction: column; gap: var(--g-space-3); margin-bottom: var(--g-space-4); max-width: 70ch; }
+/* A row being renamed keeps the row's text cursor; its field takes the row's height. */
+.doc-row-rename .g-rename-input { height: var(--g-control-sm); }
+.doc-section-row.g-rename-host > .doc-section-link { flex: 1; min-width: 0; }
 .doc-title { display: flex; align-items: center; gap: var(--g-space-3); flex-wrap: wrap; margin: 0; font-family: var(--g-font-display); font-size: var(--g-text-h1); font-weight: var(--g-weight-bold); letter-spacing: var(--g-tracking-heading); line-height: var(--g-leading-heading); color: var(--g-text); text-wrap: balance; }
 .doc-article-badges { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; }
 .doc-meta { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; }
@@ -150,6 +162,8 @@
 .doc-chip button { display: grid; place-items: center; width: var(--g-space-4); height: var(--g-space-4); padding: 0; border: 0; border-radius: var(--g-radius-pill); background: none; color: var(--g-text-muted); cursor: pointer; }
 .doc-chip button:hover { background: var(--g-surface-hover); color: var(--g-danger-text); }
 .doc-split { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Markdown alone fills the width; the split view keeps two columns. */
+.doc-split.doc-content-source { grid-template-columns: minmax(0, 1fr); }
 .doc-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--g-border); }
 .doc-pane:last-child { border-right: 0; }
 .doc-pane-head { flex: none; min-height: var(--g-control-sm); display: flex; align-items: center; justify-content: space-between; gap: var(--g-space-3); padding: 0 var(--g-space-4); border-bottom: 1px solid var(--g-border); background: var(--g-surface); font-size: var(--g-text-eyebrow); font-weight: var(--g-weight-semibold); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }

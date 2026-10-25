@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use genie_core::vault::{AuthorKind, SearchOptions, Space};
 use genie_core::{Capability, GenieError};
@@ -30,8 +30,9 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/docs/version", get(version))
         .route("/docs/tree", get(tree))
         .route("/docs/search", get(search))
-        .route("/docs/page", get(read).post(write))
+        .route("/docs/page", get(read).post(write).delete(remove_page))
         .route("/docs/note", post(note))
+        .route("/docs/section", delete(remove_section))
         .route("/docs/proposals", get(proposals))
         .route("/docs/proposals/{id}", get(proposal))
         .route("/docs/proposals/{id}/approve", post(approve))
@@ -201,6 +202,41 @@ async fn write(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<WriteBody>) 
             }
         })??;
     Ok((result.0, Json(result.1)))
+}
+
+#[derive(Deserialize, Default)]
+struct PathQuery {
+    path: Option<String>,
+}
+
+/// Remove one page; the same write permission and publishing policy as an edit.
+async fn remove_page(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<PathQuery>) -> ApiResult<Json<Value>> {
+    let access = ctx.access(&app, None).await?;
+    access.write()?;
+    access.can(Capability::DocsWrite)?;
+    let path = q.path.filter(|p| !p.trim().is_empty()).ok_or_else(|| ApiError::bad("missing docs path"))?;
+    let (name, login, kind) = author_of(&access);
+    let project = access.project.clone();
+    let removed = app
+        .blocking(move |app| knowledge::remove_page(app, &project, &path, Author { name: &name, login: &login, kind }))
+        .await
+        .map_err(docs_error)?;
+    Ok(Json(json!({ "removed": removed })))
+}
+
+/// Remove a section and everything under it. Project admins only: it is the one destructive docs route.
+async fn remove_section(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<PathQuery>) -> ApiResult<Json<Value>> {
+    let access = ctx.access(&app, None).await?;
+    access.admin()?;
+    access.can(Capability::DocsWrite)?;
+    let path = q.path.filter(|p| !p.trim().is_empty()).ok_or_else(|| ApiError::bad("missing section path"))?;
+    let (name, login, kind) = author_of(&access);
+    let project = access.project.clone();
+    let pages = app
+        .blocking(move |app| knowledge::remove_section(app, &project, &path, Author { name: &name, login: &login, kind }))
+        .await
+        .map_err(docs_error)?;
+    Ok(Json(json!({ "removed": pages.len(), "pages": pages })))
 }
 
 #[derive(Deserialize)]

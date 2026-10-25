@@ -14,8 +14,7 @@ export function AppearanceSettings() {
   return (
     <div className="st-body appearance-settings">
       <div className="st-head">
-        <h2>Оформление</h2>
-        <p>Эти настройки сохраняются в браузере и влияют только на этот браузер.</p>
+        <h1 className="g-page-title">Оформление</h1>
       </div>
 
       <section className="st-card">
