@@ -13,7 +13,7 @@
    (`.g-field select`, `.search input`) that hide the browser's own outline in favour of this one. */
 .app :focus-visible, .g-root :focus-visible, .g-focusable:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
 /* A field that frames itself on focus (its wrapper gets the ring) gives its own input no ring: one frame, not two. */
-.app :is(.chips, .doc-chips, .g-search, .docs-filter, .search, .ac-composer, .tv-composer, .composer) :focus-visible { outline: 0; }
+.app :is(.doc-chips, .g-search, .docs-filter, .search, .ac-composer, .tv-composer, .composer) :focus-visible { outline: 0; }
 
 /* ---- type roles ---- */
 .g-display, .g-h1, .g-h2 { margin: 0; font-family: var(--g-font-display); text-wrap: balance; }
