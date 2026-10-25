@@ -1,13 +1,13 @@
 ---
 title: Visual review before publishing
-summary: Prepare combined local previews and obtain owner approval before publishing task branches.
+summary: Prepare combined local previews and obtain owner approval before publishing UI changes.
 type: guide
 status: current
 ---
 
 # Visual review before publishing
 
-An agent prepares a committed, validated task and a fixed integration candidate, then waits for the owner to approve that candidate and authorize publication. Feature PRs target `dev`; only release PRs from `dev` target `main`. [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines the mandatory gates, and [the tracker guide](genie-cli.md) defines task commands.
+For a UI change, an agent prepares a committed, validated task and a fixed integration candidate, then waits for the owner to approve that candidate and authorize publication. Feature PRs target `dev`; only release PRs from `dev` target `main`. [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines what counts as a UI change and the mandatory gates (other changes skip the preview), and [the tracker guide](genie-cli.md) defines task commands.
 
 ## Local installation
 
@@ -99,7 +99,7 @@ The candidate ID is derived from the base SHA and ordered task IDs/SHAs. Duplica
 
 Each candidate retains its own binary, static web assets, integration worktree and database. Source versions behind a candidate link do not change. Review interactions can change its disposable database; it is not a read-only data snapshot. Build caches are shared only by the serialized builder. Backend artifacts are keyed by backend sources and compiler identity; UI-only changes reuse that backend, while web assets are rebuilt from the exact combined source. Rust uses the development profile for local review, not a release optimization build.
 
-The backend runs with `--no-agents`, its own home/data directories, no inherited tracker credentials or model keys, and a seeded manual project. These previews cover UI/API interaction, not live agent/provider behavior. A private `credentials.txt` next to the candidate manifest contains the generated `preview` account password; read it locally without putting it into task comments or logs. Supply additional representative test data in the disposable preview when a review scenario needs it.
+The backend runs with `--no-agents`, its own home/data directories, no inherited tracker credentials or model keys, and a seeded manual project. These previews cover UI/API interaction, not live agent/provider behavior. Every demo environment uses **login `preview`, password `preview123`**. These are public demo credentials for disposable data, not a real account secret. No per-candidate password lookup is needed. Restarting a retained candidate migrates its old random password once, preserving its mock data; subsequent starts leave sessions intact. A local `credentials.txt` records the same pair for compatibility. Supply additional representative test data in the disposable preview when a review scenario needs it.
 
 The index exposes `/api/status` with candidate manifests and readiness, not passwords, databases or filesystem browsing. Candidate gateways keep authentication cookies separate even when multiple candidates use different ports on the same Tailscale hostname. Browser API requests and event streams stay on the candidate's origin.
 
@@ -204,11 +204,11 @@ Existing LAN mDNS aliases remain available for devices without Tailscale. The na
 
 [Tailscale Funnel](https://tailscale.com/docs/features/tailscale-funnel) can give people without Tailscale a public HTTPS URL in the tailnet's `ts.net` domain. It is separate from private Serve access and does not make `.local` names public. Supported public ports are 443, 8443 and 10000. Preserve existing private listeners; reserve 10000 for an explicitly requested public share of one fixed candidate, never the environment index or live tracker.
 
-Public sharing is not a worktree creation or settle action. Obtain the owner's requested candidate and expiry before enabling it. Keep application authentication enabled and provide access only to disposable preview data. A time limit must be enforced by a local gateway and cleanup timer; Funnel itself is not an expiring invitation. Public-share activation is not part of the installed automatic Actions, and no Funnel is enabled by this workflow.
+Public sharing is not a worktree creation or settle action. Obtain the owner's requested candidate and expiry before enabling it. The documented demo credentials are public, so any public share must contain only disposable mock data. A time limit must be enforced by a local gateway and cleanup timer; Funnel itself is not an expiring invitation. Public-share activation is not part of the installed automatic Actions, and no Funnel is enabled by this workflow.
 
 ## Owner approval and lifecycle
 
-Before handing off, verify the application URL and its relevant behavior, then record candidate ID, base SHA, all task SHAs, local/remote URLs, check results, limitations and a short review scenario in the task. For a documentation-only task, provide the rendered document or the exact committed diff alongside the preview. Record `awaiting_visual_review` as a progress comment; keep the existing tracker status until a permitted workflow transition applies.
+Before handing off, verify the application URL and its relevant behavior, then record candidate ID, base SHA, all task SHAs, local/remote URLs, check results, limitations and a short review scenario in the task. Record `awaiting_visual_review` as a progress comment; keep the existing tracker status until a permitted workflow transition applies.
 
 The owner's explicit response must identify the reviewed candidate and authorize publication. Local readiness and T3 thread state are not approval. Changed task commits, base or task composition need a new candidate and approval before pushing. An approval of A+B does not establish that A alone works: if a task is removed, review the new composition, and disclose genuine task dependencies in the PRs.
 
@@ -219,6 +219,21 @@ preview stop <candidate-id>
 preview restart <candidate-id>
 ```
 
-Stopping terminates only recorded preview processes after checking their process identity. Restart reuses the same binary, web assets, port and disposable data. Candidate ports and Tailscale routes stay reserved for their original candidate so old links are never silently repointed. Stop unused candidates to release memory. Removing retained artifacts, git worktrees or reserved Serve mappings is an explicit local maintenance operation; the helper never deletes another task's worktree or database.
+Stopping waits for the recorded preview processes to exit after checking their identity. Restart reuses the same binary, web assets, port and disposable data. Stop unused candidates to release memory. After a confirmed merge, use the scoped cleanup command below to remove their files and Serve mappings; compact tombstones keep the old ports reserved so links cannot silently change ownership.
 
 Local logs and diagnostic manifests live under the shared `genie-preview` directory. A successful health check confirms startup, not correctness of the task's acceptance criteria. Run the repository's applicable checks and manually verify the intended review scenario before requesting approval.
+
+## Clean up after merge
+
+After the owner merges a task PR into `dev`, run the following from a stable checkout outside the task worktree. The default command only prints the verified plan:
+
+```bash
+preview cleanup-merged --pr 123 --task GNE-123 --worktree /path/to/task-worktree
+preview cleanup-merged --pr 123 --task GNE-123 --worktree /path/to/task-worktree --execute
+```
+
+The helper verifies GitHub's merged PR state, `dev` target, exact branch/head, fetched merge ancestry and clean task/candidate worktrees. It retires this task's candidates only when every other included task commit is also proven merged; mixed candidates with unmerged or unverifiable commits remain available. Older task revisions must belong to the merged PR's history. It stops gateways/backends before deleting files, removes only matching candidate Serve mappings, removes candidate integration worktrees through Git, withdraws task readiness, then removes the task worktree without `--force`. Repeating a successful cleanup is safe. Shared caches, baseline environments, networking state and tracker volumes remain.
+
+In T3 Code, inspect the current binding with `t3_worktree_status` and ensure other active threads are not using the target. Move/release the binding through the app before workspace removal. The current MCP handoff cannot move an already attached thread. While that binding remains, use `--keep-worktree --execute` to retire candidates and withdraw readiness, record the retained worktree/reason in genie, then rerun without `--keep-worktree` once the app releases it. Never delete a still-bound workspace behind the app's back.
+
+Record removed and retained paths in the task. A closed PR without a merge is insufficient proof. Do not delete candidate directories directly: doing so leaves server processes, ports and Git worktree registrations behind. Preview retirement ends those fixed links; their source identity remains in the tombstone, task evidence and merged Git history.

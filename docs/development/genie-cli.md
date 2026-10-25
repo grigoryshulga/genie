@@ -33,6 +33,8 @@ Create a personal token through the server's account settings, or during initial
 
 Docker is needed for server lifecycle and initial bootstrap only. From a checkout of this repository:
 
+When the [verified dev updater](tracker-auto-update.md) is enabled, it owns tracker deployments. Stop its timer before manual recovery or recreation, and resume it only after checking the deployed revision and retained volumes. Its private Tailscale Service opens the same persistent tracker; the native CLI can continue using loopback.
+
 ```bash
 docker compose -f docker/docker-compose.tracker.yml up -d
 curl --fail http://127.0.0.1:7422/api/health
@@ -45,7 +47,7 @@ On a fresh volume only, create the project, then set its mode:
 ```bash
 docker exec -i genie-tracker genie project add genie --name Genie --prefix GNE
 docker exec -i genie-tracker genie project update genie --autonomy manual \
-  --integration 'External agents prepare fixed previews, await owner approval before publishing English PRs to dev, and wait for successful CI; the owner merges them.'
+  --integration 'External agents publish English PRs to dev and wait for successful CI; for UI changes they first prepare a fixed preview and await owner approval; the owner merges the PRs.'
 ```
 
 A local web administrator `gshulga` was created during setup. Its initial password is stored on this machine at `~/.local/share/genie-tracker/admin-password` with owner-only permissions; keep that file outside git. On a fresh installation, create your own administrator with `genie user add <login> --admin --password-stdin` through `docker exec -i`. Passwords and tokens belong in neither task comments nor commits.
@@ -63,9 +65,9 @@ genie --project genie task show <task-id>
 genie --project genie task create 'Describe the intended result' \
   --description 'Scope, context, and constraints' \
   --ac 'The requested behavior is implemented and verified' \
-  --ac 'The owner approves the fixed preview before branch and PR publication' \
+  --ac 'For a UI change, the owner approves the fixed preview before branch and PR publication' \
   --ac 'A PR is published and CI passes for its latest head' \
-  --plan 'Implement; validate; prepare preview; await owner approval; publish PR; wait for CI'
+  --plan 'Implement; validate; for a UI change prepare preview and await owner approval; publish PR; wait for CI'
 ```
 
 Use the returned task ID in subsequent commands (`--json` is available for automation). Creation status depends on the caller: people normally create inbox tasks, agents create drafts, and team members may create only subtasks of their assignment (`--parent <task-id>`). `GENIE_TASK` can supply a default task, but explicit IDs make the target clear.
@@ -87,13 +89,13 @@ The status command is an example for a task ready to start, not a shortcut past 
 
 ## Review and completion
 
-Before publishing a branch or creating a PR, follow [visual review before publishing](visual-preview.md). Record `awaiting_visual_review`, the candidate ID, base and included task SHAs, local/Tailscale links, validation and the review scenario in a progress comment. Keep the task unfinished while awaiting the owner's explicit candidate approval and publication authorization. This milestone is not a new tracker status and does not replace owner acceptance. Record the approval reference before continuing; changes to the candidate composition require renewed approval.
+Before publishing a UI change (defined in [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md)), follow [visual review before publishing](visual-preview.md); any other change is published once its checks pass. For a UI change, record `awaiting_visual_review`, the candidate ID, base and included task SHAs, local/Tailscale links, validation and the review scenario in a progress comment. Keep the task unfinished while awaiting the owner's explicit candidate approval and publication authorization. This milestone is not a new tracker status and does not replace owner acceptance. Record the approval reference before continuing; changes to the candidate composition require renewed approval.
 
-After approval, publish the approved task commit in a PR to `dev` (release PRs go from `dev` to `main`), then:
+After approval (or, for a change that is not a UI change, after validation), publish the task commit in a PR to `dev` (release PRs go from `dev` to `main`), then:
 
 ```bash
 genie --project genie task comment --task <task-id> --kind progress \
-  'Approved candidate: <id>; owner approval: <reference>; PR: <url>; head: <sha>; local checks: <results>; CI pending'
+  'Approved candidate (UI changes): <id>; owner approval: <reference>; PR: <url>; head: <sha>; local checks: <results>; CI pending'
 genie --project genie task status review --task <task-id> \
   --note 'PR published; verification evidence attached; awaiting review and CI'
 ```

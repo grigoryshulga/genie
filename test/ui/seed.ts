@@ -21,6 +21,14 @@ export interface SeedTask {
   action?: string;
   /** ask-owner-question: the options the owner picks from. */
   options?: string[];
+  /** Comments added after the statuses, in order (the stand only). */
+  comments?: { kind?: "note" | "progress" | "question" | "decision" | "review" | "handoff"; text: string }[];
+  /** Artifacts attached after the statuses (the stand only). */
+  artifacts?: { name: string; kind?: string; text: string }[];
+  /** A blocking reason (the stand only). */
+  blocked?: string;
+  /** Acceptance criteria to tick, by index (the stand only). */
+  checked?: number[];
 }
 
 // Created in this order on an empty project, so the first is DM-1.
