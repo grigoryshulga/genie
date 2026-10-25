@@ -179,12 +179,20 @@ pub struct Effective {
     /// Why the agent cannot write (when it cannot).
     pub write_denied: Option<String>,
     pub policy: Policy,
+    /// The repository is reached through a provider connection: the task manager opens and merges its requests.
+    pub connected: bool,
 }
 
 /// The effective policy of `repo` for an agent whose role allows `role`, working on `task`
 /// (`None` for the orchestrator), given the access the task names for the repository.
 pub fn effective(repo: &ProjectRepo, task: Option<&str>, role: RoleGit, task_access: Option<&str>) -> Result<Effective, String> {
-    let policy = Policy::parse(&repo.policy).map_err(|e| format!("repository {}: {e}", repo.name))?;
+    let mut policy = Policy::parse(&repo.policy).map_err(|e| format!("repository {}: {e}", repo.name))?;
+    if repo.connection.is_some() {
+        // A repository reached through a provider connection never sees a rewritten or deleted branch,
+        // whatever its stored policy says (older policies and presets cannot widen this).
+        policy.force_push = false;
+        policy.delete_branches = false;
+    }
     let read = policy.read && role != RoleGit::None;
     let write_denied = if !read {
         Some("this role or the policy gives no access to the repository".to_string())
@@ -210,6 +218,7 @@ pub fn effective(repo: &ProjectRepo, task: Option<&str>, role: RoleGit, task_acc
         write: write_denied.is_none(),
         write_denied,
         policy,
+        connected: repo.connection.is_some(),
     })
 }
 
@@ -341,6 +350,16 @@ impl Effective {
         }
         out.push_str(" Force-push and branch deletion are ");
         out.push_str(if self.policy.force_push || self.policy.delete_branches { "restricted by the policy." } else { "not allowed." });
+        if self.connected {
+            // Reached through a provider connection: the task manager delivers; the agents of a task only push.
+            out.push_str(" You only push the branch: the task manager opens the request");
+            out.push_str(match self.policy.change_request.merge {
+                Merge::Human => ", and a person merges it.",
+                Merge::AgentAfterApproval => " and, once the task is approved and the checks pass, merges it.",
+                Merge::Auto => "; the server merges it once the task is approved and the checks pass.",
+            });
+            return out;
+        }
         if self.policy.change_request.open && self.policy.push != Push::Direct {
             out.push_str(" Open the request with `genie pr open`.");
         }
@@ -408,6 +427,8 @@ mod tests {
             access: "write".into(),
             policy,
             created: String::new(),
+            connection: None,
+            provider_repo_id: None,
         }
     }
 
@@ -510,5 +531,25 @@ mod tests {
         assert!(d.contains("genie/S-7") && d.contains("A person merges it"), "{d}");
         let ro = effective(&repo(json!({})), Some("S-7"), RoleGit::Read, None).unwrap().describe();
         assert!(ro.contains("read only"), "{ro}");
+    }
+
+    #[test]
+    fn agents_of_a_task_only_push_to_a_connected_repository() {
+        let mut r = repo(serde_json::json!({}));
+        let own = effective(&r, Some("S-7"), RoleGit::Write, Some("write")).unwrap().describe();
+        assert!(own.contains("genie pr open"), "{own}");
+        r.connection = Some("gc_1".into());
+        let connected = effective(&r, Some("S-7"), RoleGit::Write, Some("write")).unwrap().describe();
+        assert!(connected.contains("the task manager opens the request") && !connected.contains("genie pr open"), "{connected}");
+    }
+
+    #[test]
+    fn a_connected_repository_never_allows_force_push_or_deleting_branches() {
+        let mut r = repo(serde_json::json!({"force_push": true, "delete_branches": true}));
+        let plain = effective(&r, Some("S-7"), RoleGit::Write, Some("write")).unwrap();
+        assert!(plain.policy.force_push && plain.policy.delete_branches);
+        r.connection = Some("gc_1".into());
+        let connected = effective(&r, Some("S-7"), RoleGit::Write, Some("write")).unwrap();
+        assert!(!connected.policy.force_push && !connected.policy.delete_branches);
     }
 }

@@ -73,6 +73,11 @@ impl FakeHost {
 
 /// A fake of `kind` (`github` or `gitlab`) accepting `token`, serving the repository `acme/api`.
 pub async fn spawn(kind: &'static str, token: &str) -> FakeHost {
+    spawn_with(kind, token, None).await
+}
+
+/// Like [`spawn`], serving `extra` routes (the GitHub App's endpoints) on the same address.
+pub async fn spawn_with(kind: &'static str, token: &str, extra: Option<Router>) -> FakeHost {
     let state: Shared = Arc::new(Mutex::new(Fake {
         kind,
         token: token.into(),
@@ -93,7 +98,10 @@ pub async fn spawn(kind: &'static str, token: &str) -> FakeHost {
         merge_sha: Some("2222222222222222222222222222222222222222".into()),
         calls: Vec::new(),
     }));
-    let app = if kind == "github" { github(state.clone()) } else { gitlab(state.clone()) };
+    let mut app = if kind == "github" { github(state.clone()) } else { gitlab(state.clone()) };
+    if let Some(extra) = extra {
+        app = app.merge(extra);
+    }
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

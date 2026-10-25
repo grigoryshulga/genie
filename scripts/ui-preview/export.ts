@@ -1,5 +1,6 @@
 // Called only by the disposable browser-test seed runner, never against a live tracker.
 import { globSync, readFileSync, writeFileSync } from "node:fs";
+import { synthetic } from "./synthetic.ts";
 
 export async function exportFixtures(base: string, output: string) {
   const login = await fetch(`${base}/api/auth/login`, {
@@ -33,6 +34,7 @@ export async function exportFixtures(base: string, output: string) {
     const url = new URL(path, base); url.searchParams.sort();
     fixtures[url.pathname + url.search] = data;
   }
+  Object.assign(fixtures, synthetic);
   const text = JSON.stringify(fixtures, null, 2)
     .replace(/\/tmp\/genie-ui-[^"\s]+/g, "/preview/demo")
     .replace(/\/home\/[^"\s]+/g, "/preview/source")

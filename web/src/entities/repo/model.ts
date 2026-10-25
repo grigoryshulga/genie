@@ -35,6 +35,9 @@ export interface RepoToken {
 }
 
 export interface ProjectRepo {
+  /** The provider connection the repository is reached through; absent for one with its own token. */
+  connection?: string | null;
+  providerRepoId?: number | null;
   project: string;
   name: string;
   host: RepoHost;
@@ -204,3 +207,56 @@ export const CI_NAME: Record<string, string> = {
   stalled: "проверки зависли",
 };
 export const CR_NAME: Record<string, string> = { open: "открыт", merged: "слит", closed: "закрыт без слияния" };
+
+export type ConnectionHealth = "ok" | "needs_attention" | "revoked" | "suspended" | "permission_missing" | "owner_removed";
+
+/** An account connected through the deployment's GitHub App. Holds no credential. */
+export interface GitConnection {
+  id: string;
+  provider: string;
+  host: string;
+  owner: number | null;
+  ownerLogin: string | null;
+  accountLogin: string;
+  accountType: string;
+  installationId: number;
+  /** What the installer chose on GitHub. */
+  selection: "all" | "selected";
+  health: ConnectionHealth;
+  statusNote: string;
+  checked: string;
+  /** How many repositories of projects use it. */
+  repos: number;
+  /** Why operations are refused, when they are. */
+  blocked: string | null;
+  /** The installation's page on the provider. */
+  manageUrl?: string;
+}
+
+export interface GitConnections {
+  github: { configured: boolean; slug: string | null; host: string | null };
+  /** The caller may connect an account (an administrator of a project). */
+  canConnect: boolean;
+  connections: GitConnection[];
+}
+
+/** A repository the person and the installation both reach. */
+export interface ProviderRepo {
+  id: number;
+  fullName: string;
+  defaultBranch: string;
+  private: boolean;
+  canPush: boolean;
+  /** The name it has in this project, when it is already attached. */
+  boundAs: string | null;
+  boundElsewhere: boolean;
+}
+
+export const HEALTH_NAME: Record<ConnectionHealth, string> = {
+  ok: "работает",
+  needs_attention: "нужно внимание",
+  revoked: "отключено",
+  suspended: "приостановлено на GitHub",
+  permission_missing: "не хватает прав",
+  owner_removed: "нет владельца",
+};

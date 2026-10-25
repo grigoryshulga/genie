@@ -223,6 +223,7 @@ pub async fn run() -> Result<(), String> {
             app.print_agent_errors();
             crate::runtime::start(&app);
             crate::git::delivery::spawn_poller(app.clone());
+            crate::http::connections::spawn_health(app.clone());
             crate::observation::scheduler::start(&app);
             crate::serve(app).await?;
         }

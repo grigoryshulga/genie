@@ -163,6 +163,6 @@ pub fn prompt_section(app: &App, project: &str, a: &AgentId) -> String {
     for e in &all {
         out.push_str(&format!("- {}\n", e.describe()));
     }
-    out.push_str("\nWhen your work is committed: `git push` your task's branch, then `genie pr open --repo <name> --title \"…\" --body \"…\"` for each repository you changed.\n");
+    out.push_str("\nWhen your work is committed: `git push` your task's branch, then `genie pr open --repo <name> --title \"…\" --body \"…\"` for each repository you changed. In a repository whose rule says the task manager opens the request, only push: the task manager delivers it.\n");
     out
 }

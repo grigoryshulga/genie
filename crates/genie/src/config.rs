@@ -501,9 +501,39 @@ pub struct SocialClient {
     pub client_secret_env: String,
 }
 
+/// The applications people connect their git accounts through (`docs/platform/git-repositories.md`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GitApps {
+    pub github: Option<GithubApp>,
+}
+
+/// The GitHub App an operator registered for this deployment. Configuration names the secrets;
+/// it never contains them.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubApp {
+    /// The host of `git.json` the app is installed on (default `github`).
+    #[serde(default = "default_github_host")]
+    pub host: String,
+    pub app_id: i64,
+    /// The app's URL name: `https://github.com/apps/<slug>`.
+    pub slug: String,
+    pub client_id: String,
+    /// Name of a process environment variable holding the app's client secret.
+    pub client_secret_env: String,
+    /// Path of the app's private key (PEM), readable by the server only.
+    pub private_key_file: String,
+}
+
+fn default_github_host() -> String {
+    "github".into()
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
+    pub git_apps: GitApps,
     pub social_auth: SocialAuth,
     pub decisions: crate::decisions::Config,
     pub port: u16,
@@ -529,6 +559,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            git_apps: Default::default(),
             social_auth: Default::default(),
             decisions: crate::decisions::Config::default(),
             port: 7420,

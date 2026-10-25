@@ -13,21 +13,25 @@
 
 pub mod check;
 pub mod delivery;
+pub mod github_app;
 pub mod hosts;
 pub mod policy;
 pub mod provider;
 pub mod service;
 pub mod store;
+pub mod tokens;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 /// Shared state of the repository layer: a lock per mirror and when it was last fetched.
 #[derive(Default)]
 pub struct Git {
     locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     fetched: Mutex<HashMap<String, Instant>>,
+    /// Installation tokens by `connection:repository`, in memory only ([`tokens`]).
+    tokens: Mutex<HashMap<String, (String, SystemTime)>>,
 }
 
 impl Git {
@@ -43,5 +47,23 @@ impl Git {
 
     pub(crate) fn mark_fetched(&self, key: &str) {
         self.fetched.lock().unwrap_or_else(|e| e.into_inner()).insert(key.to_string(), Instant::now());
+    }
+
+    /// A cached installation token that is still good.
+    pub(crate) fn cached_token(&self, key: &str) -> Option<String> {
+        let tokens = self.tokens.lock().unwrap_or_else(|e| e.into_inner());
+        tokens.get(key).filter(|(_, expires)| *expires > SystemTime::now()).map(|(t, _)| t.clone())
+    }
+
+    pub(crate) fn cache_token(&self, key: &str, token: String, expires: SystemTime) {
+        let mut tokens = self.tokens.lock().unwrap_or_else(|e| e.into_inner());
+        tokens.retain(|_, (_, e)| *e > SystemTime::now());
+        tokens.insert(key.to_string(), (token, expires));
+    }
+
+    /// Drop every cached token of a connection (it was revoked or changed hands).
+    pub(crate) fn forget_tokens(&self, connection: &str) {
+        let prefix = format!("{connection}:");
+        self.tokens.lock().unwrap_or_else(|e| e.into_inner()).retain(|k, _| !k.starts_with(&prefix));
     }
 }

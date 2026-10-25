@@ -51,7 +51,10 @@ pub fn host_of(app: &App, repo: &ProjectRepo) -> Result<Host, String> {
         let why = all.errors.iter().find(|e| e.starts_with(&format!("host {}:", repo.host))).cloned();
         why.unwrap_or_else(|| format!("host {} is not configured in git.json (repository {})", repo.host, repo.name))
     })?;
-    if let Some(token) = app.with_server(|db| db.repo_token(&repo.project, &repo.name)).map_err(|e| e.to_string())? {
+    if repo.connection.is_some() {
+        // A connected repository is reached with a token of its connection, never with a stored one.
+        host.token = Some(super::tokens::resolve(app, repo, &host)?);
+    } else if let Some(token) = app.with_server(|db| db.repo_token(&repo.project, &repo.name)).map_err(|e| e.to_string())? {
         host.token = Some(token);
     }
     Ok(host)

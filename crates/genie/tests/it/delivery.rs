@@ -57,7 +57,8 @@ async fn rig_with_clock(
     let hosts = h.dir.path().join("hosts");
     std::fs::create_dir_all(&hosts).unwrap();
     upstream(&hosts, "acme/api", &[("README.md", "api\n")]);
-    let fake = fakehost::spawn(kind, "secret").await;
+    // The host also speaks the GitHub App's endpoints (a test may bind the repository to a connection).
+    let fake = fakehost::spawn_with(kind, "secret", Some(common::fakeapp::routes(common::fakeapp::state("secret")))).await;
     let cfg = json!({ "hosts": { "h": {
         "kind": kind, "url": fake.url,
         "clone_urls": { "https": format!("file://{}/{{remote}}.git", hosts.display()) }
@@ -1070,4 +1071,65 @@ async fn a_github_failure_without_actions_runs_is_explained() {
     assert!(b["error"].as_str().unwrap().contains("commit statuses"), "{b}");
     assert_eq!(r.fake.lock().reruns, 0);
     assert_eq!(row(&r, &id).ci_reruns, 0, "a host that cannot rerun spends no limit");
+}
+
+/// A repository reached through a provider connection is delivered by the task manager: the
+/// executor of the task pushes its branch and may not open, merge or rerun the request.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn on_a_connected_repository_only_the_task_manager_opens_and_merges() {
+    unsafe { std::env::set_var("GENIE_TEST_GH_APP_SECRET", "shh") };
+    let key_dir = tempfile::tempdir().unwrap();
+    let key = common::fakeapp::private_key(key_dir.path());
+    let r = rig_with("github", json!({ "change_request": { "merge": "agent_after_approval" } }), |c| {
+        c.git_apps.github = Some(genie::config::GithubApp {
+            host: "h".into(),
+            app_id: 4242,
+            slug: "genie-test".into(),
+            client_id: "cid".into(),
+            client_secret_env: "GENIE_TEST_GH_APP_SECRET".into(),
+            private_key_file: key,
+        });
+    })
+    .await;
+    // Bind the repository to a connection: from now on it is reached with a minted token, not the PAT.
+    r.h.app
+        .with_server(|db| {
+            let owner = db.create_user("ann", "ann", None, Some("a-long-enough-password"), false)?.id;
+            let c = db.upsert_connection(genie_core::connections::NewConnection {
+                provider: "github".into(),
+                host: "h".into(),
+                owner,
+                account_login: "acme".into(),
+                account_id: 7,
+                account_type: "Organization".into(),
+                installation_id: 42,
+                selection: "selected".into(),
+                permissions: json!({}),
+            })?;
+            db.conn().execute("UPDATE project_repos SET connection = ?1, provider_repo_id = 501", [&c.id])?;
+            db.delete_repo_token("shop", "api")?;
+            Ok(())
+        })
+        .unwrap();
+    let t = team(&r, "Delivered by the manager").await;
+    let id = t.task.clone();
+    commit_and_push(&t);
+
+    let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), Some(json!({}))).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{b}");
+    assert!(b["error"].as_str().unwrap().contains("task manager"), "{b}");
+    assert!(r.fake.lock().prs.is_empty());
+
+    let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/cr"), Some(&r.orchestrator), Some(json!({}))).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    assert_eq!(r.fake.lock().prs.len(), 1);
+
+    for path in ["cr/merge", "cr/rerun"] {
+        let (s, b) = http(&r, "POST", &format!("/api/tasks/{id}/repos/api/{path}"), Some(&t.executor), Some(json!({}))).await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{path}: {b}");
+        assert!(b["error"].as_str().unwrap().contains("task manager"), "{path}: {b}");
+    }
+    // The executor still sees the request and can talk about it.
+    let (s, _) = http(&r, "GET", &format!("/api/tasks/{id}/repos/api/cr"), Some(&t.executor), None).await;
+    assert_eq!(s, StatusCode::OK);
 }

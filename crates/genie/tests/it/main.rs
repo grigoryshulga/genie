@@ -9,6 +9,7 @@ mod agent_config;
 mod api;
 mod catalog;
 mod channels;
+mod connections;
 mod console;
 mod decisions;
 mod delivery;

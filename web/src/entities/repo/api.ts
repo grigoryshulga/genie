@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { keysForAll, request, useInvalidating } from "@/shared/api";
-import type { CheckLine, GitHostInfo, ProjectRepo, RepoPolicy, TaskRepo } from "./model.ts";
+import type { CheckLine, GitConnection, GitConnections, GitHostInfo, ProjectRepo, ProviderRepo, RepoPolicy, TaskRepo } from "./model.ts";
 
 const enc = encodeURIComponent;
 
@@ -24,8 +24,12 @@ export const useGitHosts = (enabled: boolean) =>
 
 export interface NewRepoInput {
   name: string;
-  host: string;
-  remote: string;
+  /** Not needed with a connection: the provider says where the repository is. */
+  host?: string;
+  remote?: string;
+  /** Attach a repository of a connected account instead of one reached with a token. */
+  connection?: string;
+  providerRepoId?: number;
   mount?: string;
   access?: "read" | "write";
   policy?: RepoPolicy;
@@ -68,3 +72,33 @@ export const useMergeRequest = () =>
       request("POST", `/api/tasks/${enc(task)}/repos/${enc(repo)}/cr/merge`, { policy: !!policy }),
     MERGE,
   );
+
+// --- accounts connected through the GitHub App ----------------------------------------------
+
+const CONNECTIONS = [["git-connections"], ["git-connection-repos"], ["repos"]];
+
+export const useGitConnections = () =>
+  useQuery({ queryKey: ["git-connections"], queryFn: () => request<GitConnections>("GET", "/api/git/connections"), retry: false });
+
+/** The address of the app's installation page; the browser goes there and comes back to the settings. */
+export const useConnectGitHub = () => useMutation({ mutationFn: () => request<{ url: string }>("POST", "/api/git/github/connect", {}) });
+
+/** Confirm access on GitHub again, to list the repositories the person and the installation both reach. */
+export const useAuthorizeConnection = () =>
+  useMutation({ mutationFn: (id: string) => request<{ url: string }>("POST", `/api/git/connections/${enc(id)}/authorize`, {}) });
+
+/** The picker's list. A 409 starting with "authorize" means the person must confirm on GitHub first. */
+export const useConnectionRepos = (id: string) =>
+  useQuery({
+    queryKey: ["git-connection-repos", id],
+    queryFn: () => request<{ connection: string; repositories: ProviderRepo[] }>("GET", `/api/git/connections/${enc(id)}/repositories`),
+    retry: false,
+    staleTime: 0,
+  });
+
+export const useDisconnect = () => useInvalidating((id: string) => request<GitConnection>("DELETE", `/api/git/connections/${enc(id)}`), CONNECTIONS);
+
+export const useCheckConnection = () => useInvalidating((id: string) => request<GitConnection>("POST", `/api/git/connections/${enc(id)}/check`, {}), CONNECTIONS);
+
+export const useReassignConnection = () =>
+  useInvalidating(({ id, login }: { id: string; login: string }) => request<GitConnection>("POST", `/api/git/connections/${enc(id)}/reassign`, { login }), CONNECTIONS);
