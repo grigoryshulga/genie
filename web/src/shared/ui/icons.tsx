@@ -192,6 +192,13 @@ export const Icon = {
       <circle cx="8" cy="5" r="0.8" fill="currentColor" stroke="none" />
     </svg>
   ),
+  alert: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.5}>
+      <circle cx="8" cy="8" r="6.2" />
+      <path d="M8 4.8V8.6" />
+      <circle cx="8" cy="11.1" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+  ),
   branch: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)} strokeWidth={1.5}>
       <circle cx="4.5" cy="3.5" r="1.6" />

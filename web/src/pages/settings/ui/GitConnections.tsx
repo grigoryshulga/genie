@@ -21,7 +21,7 @@ import {
   useRepos,
 } from "@/entities/repo";
 import { ApiError } from "@/shared/api";
-import { ConfirmDialog, Icon, useAct } from "@/shared/ui";
+import { ConfirmDialog, Icon, Modal, useAct } from "@/shared/ui";
 
 const DEFAULT_POLICY = PRESETS.find((p) => p.id === "pr-human")!.policy;
 
@@ -32,6 +32,30 @@ const LEVEL: Record<ConnectionHealth, "ok" | "warn" | "fail"> = {
   suspended: "fail",
   revoked: "fail",
   owner_removed: "fail",
+};
+
+/** What a state means for the people who see it, and what to do about it. */
+const PROBLEM: Record<Exclude<ConnectionHealth, "ok">, { what: string; todo: string }> = {
+  owner_removed: {
+    what: "Человека, который подключил этот аккаунт, удалили или отключили. Пока у подключения нет владельца, сервер не выполняет с ним никаких операций.",
+    todo: "Администратор сервера передаёт подключение другому человеку. После этого работа возобновится.",
+  },
+  revoked: {
+    what: "Подключение отключено, или GitHub сообщает, что установки приложения больше нет. Сервер не обращается к GitHub от его имени; репозитории, задачи и ссылки на запросы на слияние сохранены.",
+    todo: "Подключите аккаунт заново: установка вернёт тот же доступ и те же репозитории.",
+  },
+  suspended: {
+    what: "Владелец аккаунта на GitHub приостановил установку приложения. Операции с этим подключением остановлены.",
+    todo: "Снимите приостановку в настройках установки на GitHub, затем нажмите «Проверить».",
+  },
+  permission_missing: {
+    what: "Приложению не хватает права, нужного для операции. Подключение работает, но часть действий GitHub отклонит.",
+    todo: "Откройте настройки установки на GitHub и примите запрошенные приложением права, затем нажмите «Проверить».",
+  },
+  needs_attention: {
+    what: "Последний обмен с GitHub не удался: возможно, сеть или лимит запросов. Сервер продолжает пробовать.",
+    todo: "Нажмите «Проверить». Если ошибка повторяется, посмотрите подробности ниже.",
+  },
 };
 
 /** Go to GitHub (installation page or confirmation) and come back to the settings. */
@@ -97,10 +121,9 @@ export function ConnectionsCard({ admin, picking, failed }: { admin: boolean; pi
 function Connection({ c, onPick, picking }: { c: GitConnection; onPick: () => void; picking: boolean }) {
   const check = useCheckConnection();
   const disconnect = useDisconnect();
-  const reassign = useReassignConnection();
   const act = useAct();
   const [confirm, setConfirm] = useState(false);
-  const [login, setLogin] = useState("");
+  const [problem, setProblem] = useState(false);
   const level = LEVEL[c.health];
   const usable = !c.blocked;
 
@@ -113,10 +136,23 @@ function Connection({ c, onPick, picking }: { c: GitConnection; onPick: () => vo
         <div className="rp-id">
           <span className="rp-title">
             <b>{c.accountLogin}</b>
-            <span className={`rp-status ${level}`} title={c.statusNote || undefined}>
-              <i />
-              {HEALTH_NAME[c.health]}
-            </span>
+            {c.health === "ok" ? (
+              <span className="rp-status ok">
+                <i />
+                {HEALTH_NAME.ok}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className={`gc-alert ${level}`}
+                aria-haspopup="dialog"
+                aria-label={`${c.accountLogin}: ${HEALTH_NAME[c.health]}. Подробности`}
+                title={HEALTH_NAME[c.health]}
+                onClick={() => setProblem(true)}
+              >
+                <Icon.alert size={16} />
+              </button>
+            )}
           </span>
           <span className="rp-meta">
             <span>GitHub</span>
@@ -154,29 +190,7 @@ function Connection({ c, onPick, picking }: { c: GitConnection; onPick: () => vo
         )}
       </div>
 
-      {c.blocked && (
-        <p className="gc-note fail" role="alert">
-          <i />
-          {c.blocked}
-        </p>
-      )}
-      {c.health === "owner_removed" && (
-        <form
-          className="gc-reassign"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!login.trim()) return;
-            void act(() => reassign.mutateAsync({ id: c.id, login: login.trim() }), `${c.accountLogin}: передано ${login.trim()}`).then((ok) => ok && setLogin(""));
-          }}
-        >
-          <label htmlFor={`gc-login-${c.id}`}>Передать подключение</label>
-          <input id={`gc-login-${c.id}`} className="st-input" placeholder="логин нового владельца" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" />
-          <button className="g-btn secondary sm" disabled={reassign.isPending || !login.trim()}>
-            Передать
-          </button>
-          <span className="rp-hint">Доступно администратору сервера. Пока подключение без владельца, операции с ним остановлены.</span>
-        </form>
-      )}
+      {problem && c.health !== "ok" && <ConnectionProblem c={c} onClose={() => setProblem(false)} />}
 
       {confirm && (
         <ConfirmDialog
@@ -310,5 +324,72 @@ function PickRow({ connection, repo, first }: { connection: GitConnection; repo:
         </form>
       )}
     </li>
+  );
+}
+
+/** What is wrong with a connection, what it means and what to do; the server's own words come last. */
+function ConnectionProblem({ c, onClose }: { c: GitConnection; onClose: () => void }) {
+  const check = useCheckConnection();
+  const reassign = useReassignConnection();
+  const act = useAct();
+  const [login, setLogin] = useState("");
+  if (c.health === "ok") return null;
+  const text = PROBLEM[c.health];
+  const detail = c.blocked ?? c.statusNote;
+  return (
+    <Modal label={`${c.accountLogin}: ${HEALTH_NAME[c.health]}`} onClose={onClose}>
+      <div className="mh">
+        {c.accountLogin}: {HEALTH_NAME[c.health]}
+      </div>
+      <div className="mb gc-problem">
+        <p>{text.what}</p>
+        <p>
+          <b>Что делать.</b> {text.todo}
+        </p>
+        {c.health === "owner_removed" && (
+          <form
+            className="gc-reassign"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!login.trim()) return;
+              void act(() => reassign.mutateAsync({ id: c.id, login: login.trim() }), `${c.accountLogin}: передано ${login.trim()}`).then((ok) => ok && onClose());
+            }}
+          >
+            <label htmlFor={`gc-login-${c.id}`}>Передать подключение</label>
+            <input id={`gc-login-${c.id}`} className="st-input" placeholder="логин нового владельца" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" autoFocus />
+            <button className="g-btn secondary sm" disabled={reassign.isPending || !login.trim()}>
+              Передать
+            </button>
+            <span className="rp-hint">Доступно администратору сервера.</span>
+          </form>
+        )}
+        {c.manageUrl && c.health !== "owner_removed" && (
+          <a href={c.manageUrl} target="_blank" rel="noreferrer" className="gc-link">
+            Настройки установки на GitHub
+            <Icon.external size={11} />
+          </a>
+        )}
+        {detail && (
+          <details className="gc-detail">
+            <summary>Подробности от сервера</summary>
+            <p className="g-mono">{detail}</p>
+          </details>
+        )}
+      </div>
+      <div className="mf">
+        <span className="grow" />
+        <button type="button" className="g-btn ghost" onClick={onClose}>
+          Закрыть
+        </button>
+        <button
+          type="button"
+          className="g-btn secondary"
+          disabled={check.isPending}
+          onClick={() => void act(() => check.mutateAsync(c.id), `${c.accountLogin}: состояние обновлено`).then((ok) => ok && onClose())}
+        >
+          {check.isPending ? "Проверяю…" : "Проверить сейчас"}
+        </button>
+      </div>
+    </Modal>
   );
 }
