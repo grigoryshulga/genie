@@ -137,7 +137,7 @@ GENIE_UI_THEMES=ink,paper npm run ui:capture        # one set per data-theme val
 
 PNGs land in `test-results/captures/<route>-<theme>-<1440|390>.png` (ignored by git), at 1440x900 and 390x844, with animations disabled and the clock fixed. Attach the before and after sets to the UI task that changed them. Known gaps: team and agent chat screens need running agents, so they are not captured; full-page shots do not include content scrolled inside a panel (the board's wide lanes are clipped to the viewport); the server health page shows the throwaway data path.
 
-Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. Open a trace with `npx playwright show-trace <path>/trace.zip`.
+Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. CI runs that job (`.github/workflows/browser-tests.yml`) only on pull requests into `main` (releases), because it is slow, and every night on `dev`; it can also be started by hand from the Actions tab. Run `npm run test:ui` locally before a change that touches screens. Open a trace with `npx playwright show-trace <path>/trace.zip`.
 
 The [agent benchmark](https://github.com/grigoryshulga/genie/tree/main/bench) compares task outcomes before and after changes to roles, prompts, skills, or team templates.
 
