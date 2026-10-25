@@ -86,6 +86,13 @@ class InstallationTests(unittest.TestCase):
         with patch.dict(os.environ, {"XDG_RUNTIME_DIR": "/run/user/4321"}):
             self.assertEqual(config.service_config(self.home)["socket"], "/run/user/4321/genie-services/tailscaled.sock")
 
+    def test_channel_cli_queues_a_baseline_from_the_current_repository(self):
+        with patch.object(sys, "argv", ["preview.py", "--root", str(self.root), "channel", "dev"]), \
+             patch.object(preview.Preview, "ensure_index"), patch.object(preview, "spawn") as spawn:
+            preview.main()
+        self.assertIn("--channel", spawn.call_args.args[0])
+        self.assertIn(self.home, spawn.call_args.args[0])
+
     def test_generated_units_derive_identity_paths_and_addresses(self):
         with patch.object(config, "lan_interface", return_value="eth-test"), \
              patch.object(config, "lan_address", return_value="192.168.8.9"), \

@@ -19,7 +19,8 @@
     "docs:dev": "npm --prefix docs run dev --",
     "docs:check": "npm --prefix docs run check",
     "docs:build": "npm --prefix docs run build",
-    "docs:preview": "npm --prefix docs run preview --"
+    "docs:preview": "npm --prefix docs run preview --",
+    "dev:stand": "node test/ui/stand.ts"
   },
   "engines": {
     "node": ">=22.19.0"
