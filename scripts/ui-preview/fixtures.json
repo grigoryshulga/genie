@@ -1,0 +1,7198 @@
+{
+  "/api/auth/me": {
+    "mode": "users",
+    "project": "demo",
+    "projects": [
+      {
+        "autonomy": "autonomous",
+        "hasRepo": false,
+        "name": "Демо",
+        "role": "owner",
+        "slug": "demo"
+      }
+    ],
+    "user": {
+      "created": "2026-05-01T12:00:00Z",
+      "disabled": false,
+      "id": 1,
+      "isAdmin": true,
+      "login": "owner",
+      "name": "Анна Смирнова"
+    }
+  },
+  "/api/meta": {
+    "access": "owner",
+    "counts": {
+      "approved": 1,
+      "cancelled": 1,
+      "changes_requested": 1,
+      "done": 1,
+      "draft": 2,
+      "in_progress": 1,
+      "inbox": 4,
+      "needs_owner": 1,
+      "ready": 1,
+      "review": 1
+    },
+    "created": "2026-05-01T12:00:00Z",
+    "prefix": "DM",
+    "project": "Демо",
+    "roleModels": {
+      "analyst": {
+        "model": null,
+        "thinking": null
+      },
+      "documenter": {
+        "model": null,
+        "thinking": null
+      },
+      "executor": {
+        "model": null,
+        "thinking": null
+      },
+      "orchestrator": {
+        "model": null,
+        "thinking": null
+      },
+      "planner": {
+        "model": null,
+        "thinking": null
+      },
+      "project-manager": {
+        "model": null,
+        "thinking": null
+      },
+      "researcher": {
+        "model": null,
+        "thinking": null
+      },
+      "reviewer": {
+        "model": null,
+        "thinking": null
+      },
+      "tester": {
+        "model": null,
+        "thinking": null
+      }
+    },
+    "roles": [
+      "analyst",
+      "documenter",
+      "executor",
+      "planner",
+      "researcher",
+      "reviewer",
+      "tester"
+    ],
+    "server": "rust",
+    "slug": "demo",
+    "statuses": [
+      "inbox",
+      "draft",
+      "refining",
+      "ready",
+      "in_progress",
+      "review",
+      "changes_requested",
+      "approved",
+      "needs_owner",
+      "done",
+      "cancelled"
+    ],
+    "types": [
+      "epic",
+      "task",
+      "bug",
+      "spike"
+    ],
+    "user": "owner"
+  },
+  "/api/projects": [
+    {
+      "autonomy": "autonomous",
+      "created": "2026-05-01T12:00:00Z",
+      "integration": "",
+      "name": "Демо",
+      "role": "owner",
+      "slug": "demo",
+      "space": "demo",
+      "trackerDir": "/preview/demo"
+    }
+  ],
+  "/api/users": [
+    {
+      "created": "2026-05-01T12:00:00Z",
+      "disabled": false,
+      "id": 1,
+      "isAdmin": true,
+      "login": "owner",
+      "name": "Анна Смирнова"
+    }
+  ],
+  "/api/teams": [],
+  "/api/tasks?closed=1": [
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-4",
+      "labels": [
+        "mobile"
+      ],
+      "openDeps": [],
+      "priority": 0,
+      "status": "inbox",
+      "title": "Кнопка закрытия диалога не реагирует на мобильном",
+      "type": "bug",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 5,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-1",
+      "labels": [],
+      "openDeps": [],
+      "priority": 1,
+      "status": "inbox",
+      "title": "Веб-интерфейс: проверка экранов",
+      "type": "epic",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 2,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-2",
+      "labels": [
+        "auth"
+      ],
+      "openDeps": [],
+      "parent": "DM-1",
+      "priority": 1,
+      "status": "in_progress",
+      "title": "Форма входа показывает ошибку при неверном пароле",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-10",
+      "labels": [],
+      "openDeps": [],
+      "parent": "DM-1",
+      "priority": 1,
+      "status": "changes_requested",
+      "title": "Исправить порядок колонок на доске",
+      "type": "bug",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 1,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-12",
+      "labels": [],
+      "needsOwner": {
+        "action": {
+          "kind": "ask-free-form"
+        },
+        "at": "2026-05-01T12:00:00Z",
+        "by": "owner",
+        "previous": "in_progress",
+        "question": "Какого провайдера почты использовать для уведомлений?"
+      },
+      "openDeps": [],
+      "priority": 1,
+      "status": "needs_owner",
+      "title": "Выбрать провайдера почты",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 2,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-3",
+      "labels": [
+        "tasks"
+      ],
+      "openDeps": [],
+      "parent": "DM-1",
+      "priority": 2,
+      "status": "ready",
+      "title": "Список задач фильтруется по поиску",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-9",
+      "labels": [],
+      "openDeps": [],
+      "parent": "DM-1",
+      "priority": 2,
+      "status": "review",
+      "title": "Проверить сборку образа",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-11",
+      "labels": [],
+      "openDeps": [],
+      "parent": "DM-1",
+      "priority": 2,
+      "status": "approved",
+      "title": "Добавить экспорт отчёта",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-5",
+      "labels": [],
+      "openDeps": [],
+      "priority": 3,
+      "status": "draft",
+      "title": "Изучить визуальную регрессию",
+      "type": "spike",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-7",
+      "labels": [],
+      "openDeps": [],
+      "priority": 3,
+      "status": "draft",
+      "title": "Черновик: описать правила уведомлений",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-13",
+      "labels": [],
+      "openDeps": [],
+      "priority": 3,
+      "status": "done",
+      "title": "Обновить зависимости клиента",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-6",
+      "labels": [
+        "docs"
+      ],
+      "openDeps": [],
+      "priority": 4,
+      "status": "inbox",
+      "title": "Обновить документацию по запуску",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-8",
+      "labels": [],
+      "openDeps": [],
+      "priority": 4,
+      "status": "inbox",
+      "title": "Входящая идея: тёмная тема для документации",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    },
+    {
+      "acceptanceDone": 0,
+      "acceptanceTotal": 0,
+      "artifacts": 0,
+      "children": 0,
+      "childrenClosed": 0,
+      "comments": 0,
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "id": "DM-14",
+      "labels": [],
+      "openDeps": [],
+      "priority": 4,
+      "status": "cancelled",
+      "title": "Старая задача, отменена",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  ],
+  "/api/notifications": {
+    "items": [],
+    "unread": 0
+  },
+  "/api/agent-config": {
+    "admin": true,
+    "automations": {
+      "roles": {},
+      "templates": {}
+    },
+    "classes": {
+      "analyst": [
+        "status.refine",
+        "status.start",
+        "task.scope",
+        "task.plan",
+        "task.create",
+        "task.block",
+        "docs.read",
+        "docs.write",
+        "mail.team",
+        "mail.orchestrator",
+        "team.peek"
+      ],
+      "documenter": [
+        "task.block",
+        "docs.read",
+        "docs.write",
+        "mail.team",
+        "mail.orchestrator",
+        "team.peek"
+      ],
+      "executor": [
+        "status.start",
+        "status.rework",
+        "status.submit",
+        "task.plan",
+        "task.block",
+        "docs.read",
+        "docs.write",
+        "mail.team",
+        "mail.orchestrator",
+        "team.peek"
+      ],
+      "reviewer": [
+        "status.approve",
+        "status.return",
+        "task.check",
+        "task.block",
+        "docs.read",
+        "docs.write",
+        "mail.team",
+        "mail.orchestrator",
+        "team.peek"
+      ],
+      "tester": [
+        "status.return",
+        "task.block",
+        "docs.read",
+        "docs.write",
+        "mail.team",
+        "mail.orchestrator",
+        "team.peek"
+      ]
+    },
+    "mcp": [],
+    "mcpGateway": true,
+    "permissions": [
+      "status.refine",
+      "status.start",
+      "status.rework",
+      "status.submit",
+      "status.approve",
+      "status.return",
+      "task.scope",
+      "task.plan",
+      "task.check",
+      "task.create",
+      "task.block",
+      "docs.read",
+      "docs.write",
+      "mail.team",
+      "mail.orchestrator",
+      "team.peek"
+    ],
+    "problems": [
+      {
+        "item": "role:analyst",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:documenter",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:executor",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:orchestrator",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:planner",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:project-manager",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:researcher",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:reviewer",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      },
+      {
+        "item": "role:tester",
+        "level": "error",
+        "message": "the role has no model: assign one (the `model` field of the role file) — there are no class defaults any more"
+      }
+    ],
+    "project": "demo",
+    "roles": [
+      {
+        "allow": [],
+        "capabilities": [
+          "status.refine",
+          "status.start",
+          "task.scope",
+          "task.plan",
+          "task.create",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "analyst",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Уточняет задачу, изучает код и систему и пишет план реализации.",
+        "files": "read",
+        "id": "analyst",
+        "mcp": [],
+        "names": [
+          "sherlock",
+          "poirot",
+          "marple",
+          "columbo",
+          "scully",
+          "mulder",
+          "watson",
+          "clouseau"
+        ],
+        "origin": "builtin",
+        "stages": [
+          "refinement",
+          "delivery"
+        ],
+        "title": "Аналитик"
+      },
+      {
+        "allow": [],
+        "capabilities": [
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "documenter",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Пишет и обновляет документацию по сданному изменению.",
+        "files": "write",
+        "id": "documenter",
+        "mcp": [],
+        "names": [
+          "tolkien",
+          "homer",
+          "shakespeare",
+          "pushkin",
+          "dickens",
+          "chekhov"
+        ],
+        "origin": "builtin",
+        "stages": [
+          "refinement",
+          "delivery"
+        ],
+        "title": "Документатор"
+      },
+      {
+        "allow": [],
+        "capabilities": [
+          "status.start",
+          "status.rework",
+          "status.submit",
+          "task.plan",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "executor",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Реализует задачу по плану и сдаёт её на ревью.",
+        "files": "write",
+        "id": "executor",
+        "mcp": [],
+        "names": [
+          "bender",
+          "baymax",
+          "walle",
+          "optimus",
+          "johnny5",
+          "r2d2",
+          "tars",
+          "robocop"
+        ],
+        "origin": "builtin",
+        "stages": [
+          "delivery"
+        ],
+        "title": "Исполнитель"
+      },
+      {
+        "allow": [],
+        "capabilities": [
+          "status.refine",
+          "status.start",
+          "status.rework",
+          "status.submit",
+          "status.approve",
+          "status.return",
+          "task.scope",
+          "task.plan",
+          "task.check",
+          "task.create",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "orchestrator",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Ведёт одну задачу — собирает команду, принимает результат и публикует обязательное ретро.",
+        "files": "read",
+        "id": "orchestrator",
+        "mcp": [],
+        "names": [
+          "agent"
+        ],
+        "origin": "builtin",
+        "stages": [],
+        "title": "Менеджер задачи"
+      },
+      {
+        "allow": [],
+        "capabilities": [
+          "status.refine",
+          "status.start",
+          "task.scope",
+          "task.plan",
+          "task.create",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "analyst",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Режим диалога менеджера проекта — общая память и подготовка задач или эпика из идеи.",
+        "files": "read",
+        "id": "planner",
+        "mcp": [],
+        "names": [
+          "socrates",
+          "hypatia",
+          "ada",
+          "turing",
+          "lovelace",
+          "darwin",
+          "curie",
+          "tesla"
+        ],
+        "origin": "builtin",
+        "stages": [
+          "refinement"
+        ],
+        "title": "Менеджер проекта — обсуждение"
+      },
+      {
+        "allow": [],
+        "capabilities": [
+          "status.refine",
+          "status.start",
+          "status.rework",
+          "status.submit",
+          "status.approve",
+          "status.return",
+          "task.scope",
+          "task.plan",
+          "task.check",
+          "task.create",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "orchestrator",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Держит общий контекст, обсуждает цели, готовит постановки и выпускает задачи в работу.",
+        "files": "read",
+        "id": "project-manager",
+        "mcp": [],
+        "names": [
+          "agent"
+        ],
+        "origin": "builtin",
+        "stages": [],
+        "title": "Менеджер проекта"
+      },
+      {
+        "allow": [
+          "status.submit"
+        ],
+        "capabilities": [
+          "status.refine",
+          "status.start",
+          "status.submit",
+          "task.scope",
+          "task.plan",
+          "task.create",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "analyst",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Исследует вопрос без изменения кода (спайк) и сдаёт выводы на ревью.",
+        "files": "read",
+        "id": "researcher",
+        "mcp": [],
+        "names": [
+          "sherlock",
+          "poirot",
+          "marple",
+          "columbo",
+          "scully",
+          "mulder",
+          "watson",
+          "clouseau"
+        ],
+        "origin": "builtin",
+        "stages": [
+          "refinement",
+          "delivery"
+        ],
+        "title": "Исследователь"
+      },
+      {
+        "allow": [],
+        "capabilities": [
+          "status.approve",
+          "status.return",
+          "task.check",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "reviewer",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Независимо проверяет результат по критериям приёмки и качеству кода.",
+        "files": "read",
+        "id": "reviewer",
+        "mcp": [],
+        "names": [
+          "gandalf",
+          "yoda",
+          "hermione",
+          "spock",
+          "galadriel",
+          "dumbledore",
+          "morpheus",
+          "picard"
+        ],
+        "origin": "builtin",
+        "stages": [
+          "refinement",
+          "delivery"
+        ],
+        "title": "Ревьюер"
+      },
+      {
+        "allow": [],
+        "capabilities": [
+          "status.return",
+          "task.block",
+          "docs.read",
+          "docs.write",
+          "mail.team",
+          "mail.orchestrator",
+          "team.peek"
+        ],
+        "class": "tester",
+        "deny": [],
+        "denyCommands": [],
+        "description": "Проверяет поведение тестами по критериям приёмки.",
+        "files": "write",
+        "id": "tester",
+        "mcp": [],
+        "names": [
+          "murphy",
+          "gremlin",
+          "loki",
+          "jinx",
+          "chaos",
+          "moriarty"
+        ],
+        "origin": "builtin",
+        "stages": [
+          "delivery"
+        ],
+        "title": "Тестировщик"
+      }
+    ],
+    "sandbox": {
+      "active": true,
+      "note": "agents run in a bubblewrap sandbox"
+    },
+    "skills": [],
+    "teams": [
+      {
+        "description": "Работа с ABAP: система SAP доступна агентам только на чтение через MCP, код переносит и транспорты создаёт владелец. Без git worktree, если репозиторий не на abapGit.",
+        "id": "abap",
+        "mail": "open",
+        "members": [
+          {
+            "instructions": "Use the read-only SAP MCP servers to study the objects involved. List every ABAP object (type + name) the change touches. Parallel teams must not touch the same objects.",
+            "key": "analyst",
+            "role": "analyst"
+          },
+          {
+            "instructions": "The SAP system is read-only for you. Deliver the complete source of every changed or new ABAP object as `code` artifacts (one per object, named like zcl_foo.clas.abap), plus a short transfer guide (order of objects, activation notes). With abapGit repos, commit the files instead.",
+            "key": "executor",
+            "role": "executor"
+          },
+          {
+            "instructions": "Review the ABAP code artifacts against clean ABAP guidelines and the current system state (read via MCP): syntax plausibility, naming, performance (SELECT in loops, buffering), authorisation checks, and that only agreed objects change.",
+            "key": "reviewer",
+            "role": "reviewer"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [
+          {
+            "from": "analyst",
+            "note": "the plan and the list of objects are ready",
+            "to": [
+              "executor"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "executor",
+            "note": "the work is submitted for review",
+            "on": "review",
+            "to": [
+              "reviewer"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "reviewer",
+            "note": "review findings",
+            "on": "changes_requested",
+            "to": [
+              "executor"
+            ],
+            "type": "returns"
+          },
+          {
+            "from": "reviewer",
+            "note": "the verdict",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          },
+          {
+            "from": "executor",
+            "note": "questions about the objects",
+            "to": [
+              "analyst"
+            ],
+            "type": "consults"
+          }
+        ],
+        "relationsDerived": false,
+        "stage": "delivery",
+        "title": "ABAP",
+        "warnings": [
+          "`executor` may write files and works in the main working copy (`workspace: repo`)"
+        ],
+        "workspace": "repo"
+      },
+      {
+        "description": "Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.",
+        "id": "full",
+        "mail": "open",
+        "members": [
+          {
+            "key": "analyst",
+            "role": "analyst"
+          },
+          {
+            "key": "executor",
+            "role": "executor"
+          },
+          {
+            "key": "tester",
+            "role": "tester"
+          },
+          {
+            "key": "reviewer",
+            "role": "reviewer"
+          },
+          {
+            "key": "documenter",
+            "role": "documenter"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [
+          {
+            "from": "analyst",
+            "note": "the plan is ready",
+            "to": [
+              "executor"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "executor",
+            "note": "the work is submitted for review",
+            "on": "review",
+            "to": [
+              "tester",
+              "reviewer"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "tester",
+            "note": "the test report",
+            "to": [
+              "reviewer"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "tester",
+            "note": "failing tests",
+            "to": [
+              "executor"
+            ],
+            "type": "returns"
+          },
+          {
+            "from": "reviewer",
+            "note": "review findings",
+            "on": "changes_requested",
+            "to": [
+              "executor"
+            ],
+            "type": "returns"
+          },
+          {
+            "from": "reviewer",
+            "note": "the work is approved",
+            "on": "approved",
+            "to": [
+              "documenter"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "reviewer",
+            "note": "the verdict",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          },
+          {
+            "from": "documenter",
+            "note": "the documentation is ready",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          },
+          {
+            "from": "executor",
+            "note": "questions about the plan",
+            "to": [
+              "analyst"
+            ],
+            "type": "consults"
+          }
+        ],
+        "relationsDerived": false,
+        "stage": "delivery",
+        "title": "Полная",
+        "warnings": [],
+        "workspace": "worktree"
+      },
+      {
+        "description": "Планировщик разговаривает с человеком в чате, уточняет сырую идею и предлагает план: задачу, несколько задач или эпик с задачами. Человек заводит план одной кнопкой. Собирается из «Новой задачи» в режиме «Обсудить с агентом».",
+        "id": "idea",
+        "mail": "open",
+        "members": [
+          {
+            "key": "planner",
+            "role": "planner"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [],
+        "relationsDerived": false,
+        "stage": "refinement",
+        "title": "Разбор идеи",
+        "warnings": [],
+        "workspace": "repo"
+      },
+      {
+        "description": "Исполнитель и ревьюер — для небольших задач, которые уже хорошо описаны.",
+        "id": "pair",
+        "mail": "open",
+        "members": [
+          {
+            "key": "executor",
+            "role": "executor"
+          },
+          {
+            "key": "reviewer",
+            "role": "reviewer"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [
+          {
+            "from": "executor",
+            "note": "the work is submitted for review",
+            "on": "review",
+            "to": [
+              "reviewer"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "reviewer",
+            "note": "review findings",
+            "on": "changes_requested",
+            "to": [
+              "executor"
+            ],
+            "type": "returns"
+          },
+          {
+            "from": "reviewer",
+            "note": "the verdict",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          }
+        ],
+        "relationsDerived": false,
+        "stage": "delivery",
+        "title": "Пара",
+        "warnings": [],
+        "workspace": "worktree"
+      },
+      {
+        "description": "Уточнение неисследованной задачи: аналитики изучают её и предлагают объём и критерии приёмки, ревьюер их оспаривает. Можно до того, как задача готова к работе.",
+        "id": "research",
+        "mail": "open",
+        "members": [
+          {
+            "key": "analyst",
+            "role": "analyst"
+          },
+          {
+            "key": "reviewer",
+            "role": "reviewer"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [
+          {
+            "from": "analyst",
+            "note": "the findings, proposed scope and criteria",
+            "to": [
+              "reviewer"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "reviewer",
+            "note": "gaps and risks in the findings",
+            "to": [
+              "analyst"
+            ],
+            "type": "returns"
+          },
+          {
+            "from": "analyst",
+            "note": "the findings, scope and acceptance criteria",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          }
+        ],
+        "relationsDerived": false,
+        "stage": "refinement",
+        "title": "Исследование",
+        "warnings": [],
+        "workspace": "repo"
+      },
+      {
+        "description": "Один исполнитель для ограниченной задачи. Обязательные проверки политики и независимое принятие результата сохраняются.",
+        "id": "solo",
+        "mail": "open",
+        "members": [
+          {
+            "key": "executor",
+            "role": "executor"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [
+          {
+            "from": "executor",
+            "note": "delivery and verification evidence; request independent review when required",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          }
+        ],
+        "relationsDerived": false,
+        "stage": "delivery",
+        "title": "Соло",
+        "warnings": [
+          "no member can approve it (`status.approve`): the task cannot be closed without force"
+        ],
+        "workspace": "worktree"
+      },
+      {
+        "description": "Исследование без изменения кода на готовой задаче: исследователь изучает вопрос и сдаёт выводы, ревьюер оспаривает их.",
+        "id": "spike",
+        "mail": "open",
+        "members": [
+          {
+            "key": "researcher",
+            "role": "researcher"
+          },
+          {
+            "key": "reviewer",
+            "role": "reviewer"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [
+          {
+            "from": "researcher",
+            "note": "the findings are submitted for review",
+            "on": "review",
+            "to": [
+              "reviewer"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "reviewer",
+            "note": "gaps in the findings",
+            "on": "changes_requested",
+            "to": [
+              "researcher"
+            ],
+            "type": "returns"
+          },
+          {
+            "from": "reviewer",
+            "note": "the verdict on the findings",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          }
+        ],
+        "relationsDerived": false,
+        "stage": "delivery",
+        "title": "Спайк",
+        "warnings": [],
+        "workspace": "repo"
+      },
+      {
+        "description": "Аналитик → исполнитель → ревьюер в отдельном worktree. По умолчанию для изменений кода в git-репозиториях.",
+        "id": "standard",
+        "mail": "open",
+        "members": [
+          {
+            "key": "analyst",
+            "role": "analyst"
+          },
+          {
+            "key": "executor",
+            "role": "executor"
+          },
+          {
+            "key": "reviewer",
+            "role": "reviewer"
+          }
+        ],
+        "origin": "builtin",
+        "relations": [
+          {
+            "from": "analyst",
+            "note": "the plan is ready",
+            "to": [
+              "executor"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "executor",
+            "note": "the work is submitted for review",
+            "on": "review",
+            "to": [
+              "reviewer"
+            ],
+            "type": "handoff"
+          },
+          {
+            "from": "reviewer",
+            "note": "review findings",
+            "on": "changes_requested",
+            "to": [
+              "executor"
+            ],
+            "type": "returns"
+          },
+          {
+            "from": "reviewer",
+            "note": "the verdict",
+            "to": [
+              "orchestrator"
+            ],
+            "type": "reports"
+          },
+          {
+            "from": "executor",
+            "note": "questions about the plan",
+            "to": [
+              "analyst"
+            ],
+            "type": "consults"
+          }
+        ],
+        "relationsDerived": false,
+        "stage": "delivery",
+        "title": "Стандартная",
+        "warnings": [],
+        "workspace": "worktree"
+      }
+    ]
+  },
+  "/api/agents": {
+    "agents": [
+      {
+        "agent": "orchestrator",
+        "pending": 46,
+        "role": "project-manager",
+        "session": null
+      }
+    ],
+    "latency": {},
+    "mode": "sessions"
+  },
+  "/api/automations": [],
+  "/api/docs/tree": {
+    "diagnostics": [
+      {
+        "diagnostics": [
+          "Field \"verified\" must be an ISO date in YYYY-MM-DD form"
+        ],
+        "path": "demo/runbooks/restore.md"
+      }
+    ],
+    "pages": [
+      {
+        "aliases": [],
+        "contentHash": "5ed103c68ba1eb8e0b54225555c9eb318d84c4de7f8c5e0f8cac5a7c9f5f3701",
+        "diagnostics": [],
+        "headings": [
+          "Changelog",
+          "Unreleased"
+        ],
+        "path": "demo/changelog.md",
+        "paths": null,
+        "project": "demo",
+        "related": [],
+        "rootId": "vault",
+        "space": "demo",
+        "stale": false,
+        "staleReasons": [],
+        "status": "current",
+        "summary": null,
+        "tags": [
+          "changelog"
+        ],
+        "title": "Changelog — demo",
+        "type": "reference",
+        "updated": "2026-10-24",
+        "verified": null
+      },
+      {
+        "aliases": [],
+        "contentHash": "16399a594a2832d17efc917c1907716621597be43d7a888bbd30e8fbe0fadb33",
+        "diagnostics": [],
+        "headings": [
+          "Хранилище данных"
+        ],
+        "path": "demo/decisions/storage.md",
+        "paths": null,
+        "project": "demo",
+        "related": [],
+        "rootId": "vault",
+        "space": "demo",
+        "stale": false,
+        "staleReasons": [],
+        "status": "deprecated",
+        "summary": "Заменено новым решением.",
+        "tags": [],
+        "title": "Хранилище данных",
+        "type": "decision",
+        "updated": "2026-10-24",
+        "verified": null
+      },
+      {
+        "aliases": [],
+        "contentHash": "2fde7c1639ae456cf4de7bd7de114e05ac8cfe33b3867228feebeec3eab5cf5b",
+        "diagnostics": [],
+        "headings": [
+          "Как устроен деплой",
+          "Шаги",
+          "Команды"
+        ],
+        "path": "demo/guides/deploy.md",
+        "paths": null,
+        "project": "demo",
+        "related": [],
+        "rootId": "vault",
+        "space": "demo",
+        "stale": false,
+        "staleReasons": [],
+        "status": "current",
+        "summary": "Релиз собирается из ветки main и выкладывается на сервер одной командой. Подробности про окружения лежат в [[Окружения]].",
+        "tags": [
+          "deploy",
+          "релиз"
+        ],
+        "title": "Как устроен деплой",
+        "type": "guide",
+        "updated": "2026-10-24",
+        "verified": "2026-05-01"
+      },
+      {
+        "aliases": [
+          "Окружения"
+        ],
+        "contentHash": "9618611fe55eba4da155aed89d65e02f02aa5f88fd4c20684768e7fadf21a5e7",
+        "diagnostics": [],
+        "headings": [
+          "Окружения"
+        ],
+        "path": "demo/guides/environments.md",
+        "paths": null,
+        "project": "demo",
+        "related": [],
+        "rootId": "vault",
+        "space": "demo",
+        "stale": false,
+        "staleReasons": [],
+        "status": "draft",
+        "summary": "Список окружений проекта.",
+        "tags": [],
+        "title": "Окружения",
+        "type": "reference",
+        "updated": "2026-10-24",
+        "verified": null
+      },
+      {
+        "aliases": [],
+        "contentHash": "0baebcce7bf85dffcfbc120f40fd2670738088bb8f6b938ffe666268757a1ddf",
+        "diagnostics": [],
+        "headings": [
+          "Как запустить сервер",
+          "Шаги"
+        ],
+        "path": "demo/guides/run.md",
+        "paths": null,
+        "project": "demo",
+        "related": [],
+        "rootId": "vault",
+        "space": "demo",
+        "stale": false,
+        "staleReasons": [],
+        "status": "current",
+        "summary": "Сервер поднимается одной командой, а данные лежат в отдельном каталоге.",
+        "tags": [
+          "запуск"
+        ],
+        "title": "Как запустить сервер",
+        "type": "guide",
+        "updated": "2026-10-24",
+        "verified": "2026-05-01"
+      },
+      {
+        "aliases": [],
+        "contentHash": "0244f0ad5dd3aaf077e43f09392b3c1c5f9a42cfa0f7ceaa5f56caf3e4af6981",
+        "diagnostics": [
+          "Field \"verified\" must be an ISO date in YYYY-MM-DD form"
+        ],
+        "headings": [
+          "Восстановление из резервной копии"
+        ],
+        "path": "demo/runbooks/restore.md",
+        "paths": null,
+        "project": "demo",
+        "related": [],
+        "rootId": "vault",
+        "space": "demo",
+        "stale": false,
+        "staleReasons": [],
+        "status": "current",
+        "summary": "Сначала остановите сервер.",
+        "tags": [],
+        "title": "Восстановление из резервной копии",
+        "type": "runbook",
+        "updated": "2026-10-24",
+        "verified": null
+      }
+    ],
+    "roots": [
+      "demo"
+    ],
+    "version": "bc719982ae78f6cf8aad2a6eff0411e0d7d1b1063642e9e9b5fa71dd02c25e13"
+  },
+  "/api/docs/version": {
+    "version": "bc719982ae78f6cf8aad2a6eff0411e0d7d1b1063642e9e9b5fa71dd02c25e13"
+  },
+  "/api/docs/proposals": [],
+  "/api/doctor": {
+    "checks": [
+      {
+        "area": "data",
+        "level": "ok",
+        "text": "data directory /preview/demo"
+      },
+      {
+        "area": "data",
+        "level": "ok",
+        "text": "server.db schema 10 (this genie: 10)"
+      },
+      {
+        "area": "data",
+        "level": "ok",
+        "text": "1 tracker(s) at schema 8"
+      },
+      {
+        "area": "models",
+        "level": "ok",
+        "text": "model prices: modelPrices of config.json (LiteLLM not configured)"
+      },
+      {
+        "area": "web",
+        "level": "ok",
+        "text": "web UI in /preview/source"
+      },
+      {
+        "area": "people",
+        "level": "ok",
+        "text": "1 user(s), 1 admin(s)"
+      },
+      {
+        "area": "projects",
+        "level": "ok",
+        "text": "demo (Демо): without code, 1 people, orchestrator autonomous"
+      },
+      {
+        "area": "data",
+        "level": "ok",
+        "text": "16 GB free on the data disk (/preview/demo"
+      },
+      {
+        "area": "agents",
+        "hint": "genie agents check shows them; the web page Agents too",
+        "level": "fail",
+        "text": "9 error(s) in the agent configuration"
+      },
+      {
+        "area": "pi",
+        "hint": "remove runtime.enabled or start genie serve without --no-agents",
+        "level": "warn",
+        "text": "agents are off (runtime.enabled: false)"
+      },
+      {
+        "area": "sandbox",
+        "level": "ok",
+        "text": "agents run in a bubblewrap sandbox"
+      },
+      {
+        "area": "git",
+        "level": "ok",
+        "text": "git version 2.56.0"
+      },
+      {
+        "area": "vault",
+        "hint": "set vault.remote in config.json to a git repository: people open it in Obsidian, and it is one more copy",
+        "level": "warn",
+        "text": "the vault lives only on this server (/preview/demo"
+      },
+      {
+        "area": "channels",
+        "hint": "telegram.token in config.json: notifications and agents' questions reach people in Telegram",
+        "level": "warn",
+        "text": "Telegram is not configured"
+      },
+      {
+        "area": "channels",
+        "hint": "smtp in config.json: notifications by e-mail",
+        "level": "warn",
+        "text": "mail is not configured"
+      },
+      {
+        "area": "network",
+        "level": "ok",
+        "text": "listens on 127.0.0.1:5173 (this machine only)"
+      }
+    ]
+  },
+  "/api/stats?days=30": {
+    "days": 30,
+    "projects": [
+      {
+        "answerHoursMedian": null,
+        "cancelled": 1,
+        "commentsByAgents": 0,
+        "commentsByPeople": 0,
+        "created": 13,
+        "createdByPeople": 13,
+        "cycleHoursMedian": 0,
+        "cycleHoursP90": 0,
+        "daily": [
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-09-24",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-09-25",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-09-26",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-09-27",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-09-28",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-09-29",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-09-30",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-01",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-02",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-03",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-04",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-05",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-06",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-07",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-08",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-09",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-10",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-11",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-12",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-13",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-14",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-15",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-16",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-17",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-18",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-19",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-20",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-21",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-22",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-23",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 13,
+            "day": "2026-10-24",
+            "done": 1,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          }
+        ],
+        "decisions": 0,
+        "done": 1,
+        "factory": {
+          "cohorts": [
+            {
+              "dimension": "comparable_routing",
+              "key": "unknown; complexity=unknown; ambiguity=unknown; blast_radius=unknown; verification=unknown",
+              "metrics": {
+                "acceptanceRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "activeHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000005,
+                  "unit": "hours",
+                  "value": 0.000005
+                },
+                "attemptTelemetryCoverage": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "attempt_accepted_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "attempt_cancelled_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_failed_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_rejected_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "costPerAcceptedTask": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "deliveredTasks": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "tasks",
+                  "value": 1
+                },
+                "escalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "executionHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "executionHoursP90": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "failedWorkCost": {
+                  "denominator": 0,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "firstPassAcceptance": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "humanEscalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "humanInterventionRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "ownerClarificationRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "retryRate": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "reviewRoundsMedian": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "rounds",
+                  "value": 1
+                },
+                "waitingHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000010555555555555555,
+                  "unit": "hours",
+                  "value": 0.000010555555555555555
+                }
+              },
+              "smallSample": true,
+              "tasks": [
+                "DM-13",
+                "DM-14"
+              ]
+            },
+            {
+              "dimension": "final_topology",
+              "key": "unknown",
+              "metrics": {
+                "acceptanceRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "activeHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000005,
+                  "unit": "hours",
+                  "value": 0.000005
+                },
+                "attemptTelemetryCoverage": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "attempt_accepted_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "attempt_cancelled_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_failed_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_rejected_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "costPerAcceptedTask": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "deliveredTasks": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "tasks",
+                  "value": 1
+                },
+                "escalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "executionHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "executionHoursP90": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "failedWorkCost": {
+                  "denominator": 0,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "firstPassAcceptance": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "humanEscalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "humanInterventionRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "ownerClarificationRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "retryRate": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "reviewRoundsMedian": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "rounds",
+                  "value": 1
+                },
+                "waitingHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000010555555555555555,
+                  "unit": "hours",
+                  "value": 0.000010555555555555555
+                }
+              },
+              "smallSample": true,
+              "tasks": [
+                "DM-13",
+                "DM-14"
+              ]
+            },
+            {
+              "dimension": "initial_topology",
+              "key": "unknown",
+              "metrics": {
+                "acceptanceRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "activeHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000005,
+                  "unit": "hours",
+                  "value": 0.000005
+                },
+                "attemptTelemetryCoverage": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "attempt_accepted_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "attempt_cancelled_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_failed_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_rejected_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "costPerAcceptedTask": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "deliveredTasks": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "tasks",
+                  "value": 1
+                },
+                "escalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "executionHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "executionHoursP90": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "failedWorkCost": {
+                  "denominator": 0,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "firstPassAcceptance": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "humanEscalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "humanInterventionRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "ownerClarificationRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "retryRate": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "reviewRoundsMedian": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "rounds",
+                  "value": 1
+                },
+                "waitingHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000010555555555555555,
+                  "unit": "hours",
+                  "value": 0.000010555555555555555
+                }
+              },
+              "smallSample": true,
+              "tasks": [
+                "DM-13",
+                "DM-14"
+              ]
+            }
+          ],
+          "definition": "Last observed terminal delivery per task within the window; quality and cost include all prior task-attributable work. Observational cohorts are descriptive, not causal.",
+          "limitations": [
+            "Historical daily usage has no lossless per-attempt or lifecycle-stage attribution; new response attribution is recorded transactionally.",
+            "No production outcome monitoring; absence of incidents is not measured success.",
+            "Costs use current configured prices; unknown prices and absent usage remain missing.",
+            "Cohorts below 20 tasks are flagged as small samples, not ranked."
+          ],
+          "metrics": {
+            "acceptanceRate": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 0.5
+            },
+            "activeHoursMedian": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000005,
+              "unit": "hours",
+              "value": 0.000005
+            },
+            "attemptTelemetryCoverage": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 0.5
+            },
+            "attempt_accepted_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 1
+            },
+            "attempt_cancelled_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "attempt_failed_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "attempt_rejected_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "costPerAcceptedTask": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 2,
+              "numerator": 0,
+              "unit": "USD",
+              "value": null
+            },
+            "deliveredTasks": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "tasks",
+              "value": 1
+            },
+            "escalationRate": {
+              "denominator": 0,
+              "eligible": 1,
+              "missing": 1,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": null
+            },
+            "executionHoursMedian": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000015555555555555555,
+              "unit": "hours",
+              "value": 0.000015555555555555555
+            },
+            "executionHoursP90": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000015555555555555555,
+              "unit": "hours",
+              "value": 0.000015555555555555555
+            },
+            "failedWorkCost": {
+              "denominator": 0,
+              "eligible": 2,
+              "missing": 2,
+              "numerator": 0,
+              "unit": "USD",
+              "value": null
+            },
+            "firstPassAcceptance": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 1,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 1
+            },
+            "humanEscalationRate": {
+              "denominator": 0,
+              "eligible": 1,
+              "missing": 1,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": null
+            },
+            "humanInterventionRate": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "ownerClarificationRate": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "retryRate": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 1,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "reviewRoundsMedian": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 1,
+              "numerator": 1,
+              "unit": "rounds",
+              "value": 1
+            },
+            "waitingHoursMedian": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000010555555555555555,
+              "unit": "hours",
+              "value": 0.000010555555555555555
+            }
+          },
+          "schemaVersion": 1,
+          "since": "2026-05-01T12:00:00Z",
+          "tasks": [
+            {
+              "activeHours": 0.000005,
+              "attemptCostCoverage": "not_measured",
+              "attemptIds": [
+                6
+              ],
+              "attempts": [
+                {
+                  "costUsd": null,
+                  "escalated": null,
+                  "humanEscalated": null,
+                  "id": 6,
+                  "result": "accepted",
+                  "routingIds": [],
+                  "startedAt": "2026-05-01T12:00:00Z"
+                }
+              ],
+              "costUsd": null,
+              "costs": [],
+              "deliveredAt": "2026-05-01T12:00:00Z",
+              "escalations": null,
+              "executionHours": 0.000015555555555555555,
+              "finalTopology": null,
+              "firstPassAccepted": true,
+              "humanInterventions": 0,
+              "initialSignals": {},
+              "initialTopology": null,
+              "knownCostUsd": 0,
+              "missing": [
+                "routing_history",
+                "complete_priced_usage",
+                "per_attempt_cost_attribution"
+              ],
+              "models": [],
+              "ownerClarifications": 0,
+              "policyVersions": [],
+              "profileVersions": [],
+              "reasonCodes": [],
+              "result": "accepted",
+              "retries": 0,
+              "reviewRounds": 1,
+              "roles": [],
+              "routerVersions": [],
+              "routingIds": [],
+              "snapshotIds": [],
+              "task": "DM-13",
+              "title": "Обновить зависимости клиента",
+              "unpricedTokens": 0,
+              "waitingHours": 0.000010555555555555555
+            },
+            {
+              "activeHours": null,
+              "attemptCostCoverage": "not_measured",
+              "attemptIds": [],
+              "attempts": [],
+              "costUsd": null,
+              "costs": [],
+              "deliveredAt": "2026-05-01T12:00:00Z",
+              "escalations": null,
+              "executionHours": null,
+              "finalTopology": null,
+              "firstPassAccepted": null,
+              "humanInterventions": 0,
+              "initialSignals": {},
+              "initialTopology": null,
+              "knownCostUsd": 0,
+              "missing": [
+                "completed_first_review",
+                "execution_attempts",
+                "routing_history",
+                "complete_priced_usage",
+                "per_attempt_cost_attribution"
+              ],
+              "models": [],
+              "ownerClarifications": 0,
+              "policyVersions": [],
+              "profileVersions": [],
+              "reasonCodes": [],
+              "result": "cancelled",
+              "retries": null,
+              "reviewRounds": 0,
+              "roles": [],
+              "routerVersions": [],
+              "routingIds": [],
+              "snapshotIds": [],
+              "task": "DM-14",
+              "title": "Старая задача, отменена",
+              "unpricedTokens": 0,
+              "waitingHours": null
+            }
+          ],
+          "until": "2026-05-01T12:00:00Z"
+        },
+        "jobs": 0,
+        "jobsFailed": 0,
+        "mcpCalls": 0,
+        "name": "Демо",
+        "open": 11,
+        "people": [
+          "owner"
+        ],
+        "project": "demo",
+        "proposals": 0,
+        "proposalsApproved": 0,
+        "proposalsRejected": 0,
+        "returns": 1,
+        "runs": 0,
+        "runsFailed": 0,
+        "usage": {
+          "chats": [],
+          "epics": [],
+          "spend": {
+            "calls": 0,
+            "cost": 0,
+            "models": [],
+            "tokens": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "input": 0,
+              "output": 0
+            },
+            "unpricedTokens": 0
+          },
+          "tasks": []
+        }
+      }
+    ],
+    "since": "2026-05-01T12:00:00Z"
+  },
+  "/api/stats?days=7": {
+    "days": 7,
+    "projects": [
+      {
+        "answerHoursMedian": null,
+        "cancelled": 1,
+        "commentsByAgents": 0,
+        "commentsByPeople": 0,
+        "created": 13,
+        "createdByPeople": 13,
+        "cycleHoursMedian": 0,
+        "cycleHoursP90": 0,
+        "daily": [
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-17",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-18",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-19",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-20",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-21",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-22",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 0,
+            "day": "2026-10-23",
+            "done": 0,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          },
+          {
+            "cost": 0,
+            "costByModel": {},
+            "created": 13,
+            "day": "2026-10-24",
+            "done": 1,
+            "runs": 0,
+            "runsFailed": 0,
+            "tokens": 0
+          }
+        ],
+        "decisions": 0,
+        "done": 1,
+        "factory": {
+          "cohorts": [
+            {
+              "dimension": "comparable_routing",
+              "key": "unknown; complexity=unknown; ambiguity=unknown; blast_radius=unknown; verification=unknown",
+              "metrics": {
+                "acceptanceRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "activeHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000005,
+                  "unit": "hours",
+                  "value": 0.000005
+                },
+                "attemptTelemetryCoverage": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "attempt_accepted_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "attempt_cancelled_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_failed_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_rejected_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "costPerAcceptedTask": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "deliveredTasks": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "tasks",
+                  "value": 1
+                },
+                "escalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "executionHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "executionHoursP90": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "failedWorkCost": {
+                  "denominator": 0,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "firstPassAcceptance": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "humanEscalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "humanInterventionRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "ownerClarificationRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "retryRate": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "reviewRoundsMedian": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "rounds",
+                  "value": 1
+                },
+                "waitingHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000010555555555555555,
+                  "unit": "hours",
+                  "value": 0.000010555555555555555
+                }
+              },
+              "smallSample": true,
+              "tasks": [
+                "DM-13",
+                "DM-14"
+              ]
+            },
+            {
+              "dimension": "final_topology",
+              "key": "unknown",
+              "metrics": {
+                "acceptanceRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "activeHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000005,
+                  "unit": "hours",
+                  "value": 0.000005
+                },
+                "attemptTelemetryCoverage": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "attempt_accepted_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "attempt_cancelled_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_failed_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_rejected_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "costPerAcceptedTask": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "deliveredTasks": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "tasks",
+                  "value": 1
+                },
+                "escalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "executionHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "executionHoursP90": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "failedWorkCost": {
+                  "denominator": 0,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "firstPassAcceptance": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "humanEscalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "humanInterventionRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "ownerClarificationRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "retryRate": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "reviewRoundsMedian": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "rounds",
+                  "value": 1
+                },
+                "waitingHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000010555555555555555,
+                  "unit": "hours",
+                  "value": 0.000010555555555555555
+                }
+              },
+              "smallSample": true,
+              "tasks": [
+                "DM-13",
+                "DM-14"
+              ]
+            },
+            {
+              "dimension": "initial_topology",
+              "key": "unknown",
+              "metrics": {
+                "acceptanceRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "activeHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000005,
+                  "unit": "hours",
+                  "value": 0.000005
+                },
+                "attemptTelemetryCoverage": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 0.5
+                },
+                "attempt_accepted_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "attempt_cancelled_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_failed_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "attempt_rejected_rate": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "costPerAcceptedTask": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "deliveredTasks": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 1,
+                  "unit": "tasks",
+                  "value": 1
+                },
+                "escalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "executionHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "executionHoursP90": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000015555555555555555,
+                  "unit": "hours",
+                  "value": 0.000015555555555555555
+                },
+                "failedWorkCost": {
+                  "denominator": 0,
+                  "eligible": 2,
+                  "missing": 2,
+                  "numerator": 0,
+                  "unit": "USD",
+                  "value": null
+                },
+                "firstPassAcceptance": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "fraction",
+                  "value": 1
+                },
+                "humanEscalationRate": {
+                  "denominator": 0,
+                  "eligible": 1,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": null
+                },
+                "humanInterventionRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "ownerClarificationRate": {
+                  "denominator": 2,
+                  "eligible": 2,
+                  "missing": 0,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "retryRate": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 0,
+                  "unit": "fraction",
+                  "value": 0
+                },
+                "reviewRoundsMedian": {
+                  "denominator": 1,
+                  "eligible": 2,
+                  "missing": 1,
+                  "numerator": 1,
+                  "unit": "rounds",
+                  "value": 1
+                },
+                "waitingHoursMedian": {
+                  "denominator": 1,
+                  "eligible": 1,
+                  "missing": 0,
+                  "numerator": 0.000010555555555555555,
+                  "unit": "hours",
+                  "value": 0.000010555555555555555
+                }
+              },
+              "smallSample": true,
+              "tasks": [
+                "DM-13",
+                "DM-14"
+              ]
+            }
+          ],
+          "definition": "Last observed terminal delivery per task within the window; quality and cost include all prior task-attributable work. Observational cohorts are descriptive, not causal.",
+          "limitations": [
+            "Historical daily usage has no lossless per-attempt or lifecycle-stage attribution; new response attribution is recorded transactionally.",
+            "No production outcome monitoring; absence of incidents is not measured success.",
+            "Costs use current configured prices; unknown prices and absent usage remain missing.",
+            "Cohorts below 20 tasks are flagged as small samples, not ranked."
+          ],
+          "metrics": {
+            "acceptanceRate": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 0.5
+            },
+            "activeHoursMedian": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000005,
+              "unit": "hours",
+              "value": 0.000005
+            },
+            "attemptTelemetryCoverage": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 0.5
+            },
+            "attempt_accepted_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 1
+            },
+            "attempt_cancelled_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "attempt_failed_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "attempt_rejected_rate": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "costPerAcceptedTask": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 2,
+              "numerator": 0,
+              "unit": "USD",
+              "value": null
+            },
+            "deliveredTasks": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 1,
+              "unit": "tasks",
+              "value": 1
+            },
+            "escalationRate": {
+              "denominator": 0,
+              "eligible": 1,
+              "missing": 1,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": null
+            },
+            "executionHoursMedian": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000015555555555555555,
+              "unit": "hours",
+              "value": 0.000015555555555555555
+            },
+            "executionHoursP90": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000015555555555555555,
+              "unit": "hours",
+              "value": 0.000015555555555555555
+            },
+            "failedWorkCost": {
+              "denominator": 0,
+              "eligible": 2,
+              "missing": 2,
+              "numerator": 0,
+              "unit": "USD",
+              "value": null
+            },
+            "firstPassAcceptance": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 1,
+              "numerator": 1,
+              "unit": "fraction",
+              "value": 1
+            },
+            "humanEscalationRate": {
+              "denominator": 0,
+              "eligible": 1,
+              "missing": 1,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": null
+            },
+            "humanInterventionRate": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "ownerClarificationRate": {
+              "denominator": 2,
+              "eligible": 2,
+              "missing": 0,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "retryRate": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 1,
+              "numerator": 0,
+              "unit": "fraction",
+              "value": 0
+            },
+            "reviewRoundsMedian": {
+              "denominator": 1,
+              "eligible": 2,
+              "missing": 1,
+              "numerator": 1,
+              "unit": "rounds",
+              "value": 1
+            },
+            "waitingHoursMedian": {
+              "denominator": 1,
+              "eligible": 1,
+              "missing": 0,
+              "numerator": 0.000010555555555555555,
+              "unit": "hours",
+              "value": 0.000010555555555555555
+            }
+          },
+          "schemaVersion": 1,
+          "since": "2026-05-01T12:00:00Z",
+          "tasks": [
+            {
+              "activeHours": 0.000005,
+              "attemptCostCoverage": "not_measured",
+              "attemptIds": [
+                6
+              ],
+              "attempts": [
+                {
+                  "costUsd": null,
+                  "escalated": null,
+                  "humanEscalated": null,
+                  "id": 6,
+                  "result": "accepted",
+                  "routingIds": [],
+                  "startedAt": "2026-05-01T12:00:00Z"
+                }
+              ],
+              "costUsd": null,
+              "costs": [],
+              "deliveredAt": "2026-05-01T12:00:00Z",
+              "escalations": null,
+              "executionHours": 0.000015555555555555555,
+              "finalTopology": null,
+              "firstPassAccepted": true,
+              "humanInterventions": 0,
+              "initialSignals": {},
+              "initialTopology": null,
+              "knownCostUsd": 0,
+              "missing": [
+                "routing_history",
+                "complete_priced_usage",
+                "per_attempt_cost_attribution"
+              ],
+              "models": [],
+              "ownerClarifications": 0,
+              "policyVersions": [],
+              "profileVersions": [],
+              "reasonCodes": [],
+              "result": "accepted",
+              "retries": 0,
+              "reviewRounds": 1,
+              "roles": [],
+              "routerVersions": [],
+              "routingIds": [],
+              "snapshotIds": [],
+              "task": "DM-13",
+              "title": "Обновить зависимости клиента",
+              "unpricedTokens": 0,
+              "waitingHours": 0.000010555555555555555
+            },
+            {
+              "activeHours": null,
+              "attemptCostCoverage": "not_measured",
+              "attemptIds": [],
+              "attempts": [],
+              "costUsd": null,
+              "costs": [],
+              "deliveredAt": "2026-05-01T12:00:00Z",
+              "escalations": null,
+              "executionHours": null,
+              "finalTopology": null,
+              "firstPassAccepted": null,
+              "humanInterventions": 0,
+              "initialSignals": {},
+              "initialTopology": null,
+              "knownCostUsd": 0,
+              "missing": [
+                "completed_first_review",
+                "execution_attempts",
+                "routing_history",
+                "complete_priced_usage",
+                "per_attempt_cost_attribution"
+              ],
+              "models": [],
+              "ownerClarifications": 0,
+              "policyVersions": [],
+              "profileVersions": [],
+              "reasonCodes": [],
+              "result": "cancelled",
+              "retries": null,
+              "reviewRounds": 0,
+              "roles": [],
+              "routerVersions": [],
+              "routingIds": [],
+              "snapshotIds": [],
+              "task": "DM-14",
+              "title": "Старая задача, отменена",
+              "unpricedTokens": 0,
+              "waitingHours": null
+            }
+          ],
+          "until": "2026-05-01T12:00:00Z"
+        },
+        "jobs": 0,
+        "jobsFailed": 0,
+        "mcpCalls": 0,
+        "name": "Демо",
+        "open": 11,
+        "people": [
+          "owner"
+        ],
+        "project": "demo",
+        "proposals": 0,
+        "proposalsApproved": 0,
+        "proposalsRejected": 0,
+        "returns": 1,
+        "runs": 0,
+        "runsFailed": 0,
+        "usage": {
+          "chats": [],
+          "epics": [],
+          "spend": {
+            "calls": 0,
+            "cost": 0,
+            "models": [],
+            "tokens": {
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "input": 0,
+              "output": 0
+            },
+            "unpricedTokens": 0
+          },
+          "tasks": []
+        }
+      }
+    ],
+    "since": "2026-05-01T12:00:00Z"
+  },
+  "/api/auth/tokens": [],
+  "/api/repos": [],
+  "/api/git/hosts": {
+    "errors": [],
+    "hosts": []
+  },
+  "/api/model-prices": {
+    "fetchedAt": null,
+    "lastError": null,
+    "models": []
+  },
+  "/api/vault/sync": {
+    "every": 120,
+    "last": null,
+    "remote": null
+  },
+  "/api/projects/demo/members": [
+    {
+      "role": "owner",
+      "user": {
+        "created": "2026-05-01T12:00:00Z",
+        "disabled": false,
+        "id": 1,
+        "isAdmin": true,
+        "login": "owner",
+        "name": "Анна Смирнова"
+      }
+    }
+  ],
+  "/api/projects/demo/tools": {
+    "settings": {
+      "skills": null,
+      "mcp": null
+    },
+    "hash": "",
+    "skills": [],
+    "mcp": []
+  },
+  "/api/docs/search?limit=30&q=%D0%B4%D0%B5%D0%BF%D0%BB%D0%BE%D0%B9": {
+    "query": "деплой",
+    "results": [
+      {
+        "aliases": [],
+        "contentHash": "2fde7c1639ae456cf4de7bd7de114e05ac8cfe33b3867228feebeec3eab5cf5b",
+        "diagnostics": [],
+        "headings": [
+          "Как устроен деплой",
+          "Шаги",
+          "Команды"
+        ],
+        "path": "demo/guides/deploy.md",
+        "paths": null,
+        "project": "demo",
+        "related": [],
+        "rootId": "vault",
+        "score": 2.2267135985433093,
+        "snippet": "# как устроен [деплой]\n\nрелиз собирается из ветки main и выкладывается на сервер…",
+        "space": "demo",
+        "stale": false,
+        "staleReasons": [],
+        "status": "current",
+        "summary": "Релиз собирается из ветки main и выкладывается на сервер одной командой. Подробности про окружения лежат в [[Окружения]].",
+        "tags": [
+          "deploy",
+          "релиз"
+        ],
+        "title": "Как устроен деплой",
+        "type": "guide",
+        "updated": "2026-10-24",
+        "verified": "2026-05-01"
+      }
+    ]
+  },
+  "/api/docs/page?path=demo%2Fguides%2Fdeploy.md": {
+    "aliases": [],
+    "backlinks": [],
+    "content": "# Как устроен деплой\n\nРелиз собирается из ветки main и выкладывается на сервер одной командой. Подробности про окружения лежат в [[Окружения]].\n\n## Шаги\n\n1. Проверить, что CI зелёный.\n2. Запустить сборку образа.\n3. Выкатить образ на сервер.\n\n## Команды\n\n```bash\ndocker compose -f deploy/compose.yaml up -d --build --remove-orphans --force-recreate genie-server genie-tracker\n```\n\n| Окружение | Адрес | Ветка | Автодеплой | Ответственный | Примечание |\n| --- | --- | --- | --- | --- | --- |\n| production | https://genie.example.com/very/long/path/that/keeps/going | main | нет | команда платформы | выкладывается вручную после проверки |\n| staging | https://staging.genie.example.com | dev | да | любой участник | сбрасывается каждую ночь |",
+    "contentHash": "2fde7c1639ae456cf4de7bd7de114e05ac8cfe33b3867228feebeec3eab5cf5b",
+    "diagnostics": [],
+    "headings": [
+      "Как устроен деплой",
+      "Шаги",
+      "Команды"
+    ],
+    "links": [
+      {
+        "matches": [
+          "demo/guides/environments.md"
+        ],
+        "resolution": "resolved",
+        "target": "Окружения",
+        "targetPath": "demo/guides/environments.md"
+      }
+    ],
+    "path": "demo/guides/deploy.md",
+    "paths": null,
+    "policy": {
+      "agents": "review",
+      "humans": "direct"
+    },
+    "project": "demo",
+    "related": [],
+    "rootId": "vault",
+    "space": "demo",
+    "stale": false,
+    "staleReasons": [],
+    "status": "current",
+    "summary": "Релиз собирается из ветки main и выкладывается на сервер одной командой. Подробности про окружения лежат в [[Окружения]].",
+    "tags": [
+      "deploy",
+      "релиз"
+    ],
+    "title": "Как устроен деплой",
+    "truncated": false,
+    "type": "guide",
+    "updated": "2026-10-24",
+    "verified": "2026-05-01"
+  },
+  "/api/docs/page?path=demo%2Fdecisions%2Fstorage.md": {
+    "aliases": [],
+    "backlinks": [],
+    "content": "# Хранилище данных\n\nЗаменено новым решением.\n",
+    "contentHash": "16399a594a2832d17efc917c1907716621597be43d7a888bbd30e8fbe0fadb33",
+    "diagnostics": [],
+    "headings": [
+      "Хранилище данных"
+    ],
+    "links": [],
+    "path": "demo/decisions/storage.md",
+    "paths": null,
+    "policy": {
+      "agents": "review",
+      "humans": "direct"
+    },
+    "project": "demo",
+    "related": [],
+    "rootId": "vault",
+    "space": "demo",
+    "stale": false,
+    "staleReasons": [],
+    "status": "deprecated",
+    "summary": "Заменено новым решением.",
+    "tags": [],
+    "title": "Хранилище данных",
+    "truncated": false,
+    "type": "decision",
+    "updated": "2026-10-24",
+    "verified": null
+  },
+  "/api/me/llm-keys": {
+    "global": {},
+    "keys": {},
+    "oauth": {},
+    "providers": [
+      {
+        "apiKey": true,
+        "id": "litellm",
+        "keyVar": "LITELLM_API_KEY",
+        "oauth": false,
+        "strict": true,
+        "title": "LiteLLM"
+      },
+      {
+        "apiKey": true,
+        "id": "anthropic",
+        "keyVar": "ANTHROPIC_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Anthropic"
+      },
+      {
+        "apiKey": true,
+        "id": "ant-ling",
+        "keyVar": "ANT_LING_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Ant Ling"
+      },
+      {
+        "apiKey": true,
+        "id": "openai",
+        "keyVar": "OPENAI_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "OpenAI"
+      },
+      {
+        "apiKey": true,
+        "id": "deepseek",
+        "keyVar": "DEEPSEEK_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "DeepSeek"
+      },
+      {
+        "apiKey": true,
+        "id": "nvidia",
+        "keyVar": "NVIDIA_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "NVIDIA NIM"
+      },
+      {
+        "apiKey": true,
+        "id": "google",
+        "keyVar": "GEMINI_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Google Gemini"
+      },
+      {
+        "apiKey": true,
+        "id": "github-copilot",
+        "keyVar": "COPILOT_GITHUB_TOKEN",
+        "oauth": true,
+        "strict": false,
+        "title": "GitHub Copilot"
+      },
+      {
+        "apiKey": true,
+        "id": "mistral",
+        "keyVar": "MISTRAL_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Mistral"
+      },
+      {
+        "apiKey": true,
+        "id": "groq",
+        "keyVar": "GROQ_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Groq"
+      },
+      {
+        "apiKey": true,
+        "id": "cerebras",
+        "keyVar": "CEREBRAS_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Cerebras"
+      },
+      {
+        "apiKey": true,
+        "id": "xai",
+        "keyVar": "XAI_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "xAI"
+      },
+      {
+        "apiKey": true,
+        "id": "openrouter",
+        "keyVar": "OPENROUTER_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "OpenRouter"
+      },
+      {
+        "apiKey": true,
+        "id": "vercel-ai-gateway",
+        "keyVar": "AI_GATEWAY_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Vercel AI Gateway"
+      },
+      {
+        "apiKey": true,
+        "id": "zai",
+        "keyVar": "ZAI_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "ZAI Coding Plan"
+      },
+      {
+        "apiKey": true,
+        "id": "zai-coding-cn",
+        "keyVar": "ZAI_CODING_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "ZAI Coding Plan (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "opencode",
+        "keyVar": "OPENCODE_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "OpenCode Zen"
+      },
+      {
+        "apiKey": true,
+        "id": "opencode-go",
+        "keyVar": "OPENCODE_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "OpenCode Zen Go"
+      },
+      {
+        "apiKey": true,
+        "id": "radius",
+        "keyVar": "RADIUS_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Radius"
+      },
+      {
+        "apiKey": true,
+        "id": "typesafe",
+        "keyVar": "TYPESAFE_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "TypeSafe"
+      },
+      {
+        "apiKey": true,
+        "id": "huggingface",
+        "keyVar": "HF_TOKEN",
+        "oauth": false,
+        "strict": false,
+        "title": "Hugging Face"
+      },
+      {
+        "apiKey": true,
+        "id": "fireworks",
+        "keyVar": "FIREWORKS_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Fireworks"
+      },
+      {
+        "apiKey": true,
+        "id": "together",
+        "keyVar": "TOGETHER_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Together AI"
+      },
+      {
+        "apiKey": true,
+        "id": "baseten",
+        "keyVar": "BASETEN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Baseten"
+      },
+      {
+        "apiKey": true,
+        "id": "kimi-coding",
+        "keyVar": "KIMI_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Kimi For Coding"
+      },
+      {
+        "apiKey": true,
+        "id": "meta",
+        "keyVar": "META_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Meta"
+      },
+      {
+        "apiKey": true,
+        "id": "minimax",
+        "keyVar": "MINIMAX_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "MiniMax"
+      },
+      {
+        "apiKey": true,
+        "id": "minimax-cn",
+        "keyVar": "MINIMAX_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "MiniMax (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "moonshotai",
+        "keyVar": "MOONSHOT_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Moonshot AI"
+      },
+      {
+        "apiKey": true,
+        "id": "moonshotai-cn",
+        "keyVar": "MOONSHOT_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Moonshot AI (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "qwen-token-plan",
+        "keyVar": "QWEN_TOKEN_PLAN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Qwen Token Plan"
+      },
+      {
+        "apiKey": true,
+        "id": "qwen-token-plan-cn",
+        "keyVar": "QWEN_TOKEN_PLAN_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Qwen Token Plan (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "qwen-token-plan-individual",
+        "keyVar": "QWEN_TOKEN_PLAN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Qwen Token Plan (Individual)"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi",
+        "keyVar": "XIAOMI_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi-token-plan-ams",
+        "keyVar": "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo Token Plan (Amsterdam)"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi-token-plan-cn",
+        "keyVar": "XIAOMI_TOKEN_PLAN_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo Token Plan (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi-token-plan-sgp",
+        "keyVar": "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo Token Plan (Singapore)"
+      },
+      {
+        "apiKey": false,
+        "id": "openai-codex",
+        "keyVar": "",
+        "oauth": true,
+        "strict": false,
+        "title": "OpenAI Codex"
+      }
+    ]
+  },
+  "/api/auth/social": [],
+  "/api/teams?all=1": [],
+  "/api/models": {
+    "catalogue": true,
+    "models": [
+      {
+        "id": "anthropic/claude-fable-5",
+        "listed": true,
+        "name": "claude-fable-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-fable-5-1",
+        "listed": true,
+        "name": "claude-fable-5-1",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-haiku-4-5",
+        "listed": true,
+        "name": "claude-haiku-4-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-haiku-4-5-20251001",
+        "listed": true,
+        "name": "claude-haiku-4-5-20251001",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-haiku-5-5",
+        "listed": true,
+        "name": "claude-haiku-5-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-opus-4-5",
+        "listed": true,
+        "name": "claude-opus-4-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-opus-4-5-20251101",
+        "listed": true,
+        "name": "claude-opus-4-5-20251101",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-opus-4-6",
+        "listed": true,
+        "name": "claude-opus-4-6",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-opus-4-7",
+        "listed": true,
+        "name": "claude-opus-4-7",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-opus-4-8",
+        "listed": true,
+        "name": "claude-opus-4-8",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-opus-5",
+        "listed": true,
+        "name": "claude-opus-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-opus-5-5",
+        "listed": true,
+        "name": "claude-opus-5-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-sonnet-4-5",
+        "listed": true,
+        "name": "claude-sonnet-4-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-sonnet-4-5-20250929",
+        "listed": true,
+        "name": "claude-sonnet-4-5-20250929",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-sonnet-4-6",
+        "listed": true,
+        "name": "claude-sonnet-4-6",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-sonnet-5",
+        "listed": true,
+        "name": "claude-sonnet-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "anthropic/claude-sonnet-5-5",
+        "listed": true,
+        "name": "claude-sonnet-5-5",
+        "provider": "anthropic"
+      },
+      {
+        "id": "claude-bridge/claude-fable-5",
+        "listed": true,
+        "name": "claude-fable-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-fable-5-1",
+        "listed": true,
+        "name": "claude-fable-5-1",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-haiku-4-5",
+        "listed": true,
+        "name": "claude-haiku-4-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-haiku-5-5",
+        "listed": true,
+        "name": "claude-haiku-5-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-opus-4-5",
+        "listed": true,
+        "name": "claude-opus-4-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-opus-4-6",
+        "listed": true,
+        "name": "claude-opus-4-6",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-opus-4-7",
+        "listed": true,
+        "name": "claude-opus-4-7",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-opus-4-8",
+        "listed": true,
+        "name": "claude-opus-4-8",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-opus-5",
+        "listed": true,
+        "name": "claude-opus-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-opus-5-5",
+        "listed": true,
+        "name": "claude-opus-5-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-sonnet-4-5",
+        "listed": true,
+        "name": "claude-sonnet-4-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-sonnet-4-6",
+        "listed": true,
+        "name": "claude-sonnet-4-6",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-sonnet-5",
+        "listed": true,
+        "name": "claude-sonnet-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "claude-bridge/claude-sonnet-5-5",
+        "listed": true,
+        "name": "claude-sonnet-5-5",
+        "provider": "claude-bridge"
+      },
+      {
+        "id": "deepseek/deepseek-flash",
+        "listed": true,
+        "name": "deepseek-flash",
+        "provider": "deepseek"
+      },
+      {
+        "id": "deepseek/deepseek-v4-pro",
+        "listed": true,
+        "name": "deepseek-v4-pro",
+        "provider": "deepseek"
+      },
+      {
+        "id": "litellm/Qwen/Qwen3.6-35B-A3B",
+        "listed": true,
+        "name": "Qwen/Qwen3.6-35B-A3B",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/claude-haiku-4-5",
+        "listed": true,
+        "name": "claude-haiku-4-5",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/claude-opus-4-8",
+        "listed": true,
+        "name": "claude-opus-4-8",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/claude-opus-5",
+        "listed": true,
+        "name": "claude-opus-5",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/claude-opus-5-5",
+        "listed": true,
+        "name": "claude-opus-5-5",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/claude-sonnet-5",
+        "listed": true,
+        "name": "claude-sonnet-5",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/claude-sonnet-5-5",
+        "listed": true,
+        "name": "claude-sonnet-5-5",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/deepseek-flash",
+        "listed": true,
+        "name": "deepseek-flash",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/deepseek-v4-flash-vision-exp",
+        "listed": true,
+        "name": "deepseek-v4-flash-vision-exp",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/deepseek-v4-pro",
+        "listed": true,
+        "name": "deepseek-v4-pro",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/deepseek/deepseek-v4-pro",
+        "listed": true,
+        "name": "deepseek/deepseek-v4-pro",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gemini-3.1-flash-lite-preview",
+        "listed": true,
+        "name": "gemini-3.1-flash-lite-preview",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gemini-3.6-flash",
+        "listed": true,
+        "name": "gemini-3.6-flash",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gemini-3.7-flash",
+        "listed": true,
+        "name": "gemini-3.7-flash",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gemini/gemini-3-flash-preview",
+        "listed": true,
+        "name": "gemini/gemini-3-flash-preview",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gemini/gemini-3.1-pro-preview",
+        "listed": true,
+        "name": "gemini/gemini-3.1-pro-preview",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gemini/gemini-3.8-flash",
+        "listed": true,
+        "name": "gemini/gemini-3.8-flash",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gpt-5.4-mini",
+        "listed": true,
+        "name": "gpt-5.4-mini",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gpt-5.6-luna",
+        "listed": true,
+        "name": "gpt-5.6-luna",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gpt-5.6-terra",
+        "listed": true,
+        "name": "gpt-5.6-terra",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gpt-5.6-terra-drop-params",
+        "listed": true,
+        "name": "gpt-5.6-terra-drop-params",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gpt-6-luna",
+        "listed": true,
+        "name": "gpt-6-luna",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gpt-6-sol",
+        "listed": true,
+        "name": "gpt-6-sol",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/gpt-6.1-sol",
+        "listed": true,
+        "name": "gpt-6.1-sol",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/grok-4.6",
+        "listed": true,
+        "name": "grok-4.6",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/kimi-k3",
+        "listed": true,
+        "name": "kimi-k3",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/meta/muse-spark-1.3",
+        "listed": true,
+        "name": "meta/muse-spark-1.3",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/moonshotai/kimi-k3",
+        "listed": true,
+        "name": "moonshotai/kimi-k3",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/nano-banana",
+        "listed": true,
+        "name": "nano-banana",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/openrouter",
+        "listed": true,
+        "name": "openrouter",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/openrouter/moonshotai/kimi-k2.6",
+        "listed": true,
+        "name": "openrouter/moonshotai/kimi-k2.6",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/qwen/qwen3.8-max",
+        "listed": true,
+        "name": "qwen/qwen3.8-max",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/sd-gpt-auto",
+        "listed": true,
+        "name": "sd-gpt-auto",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/sdvor/call-center-agent",
+        "listed": true,
+        "name": "sdvor/call-center-agent",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/sdvor/junker-agent",
+        "listed": true,
+        "name": "sdvor/junker-agent",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/sdvor/mira-analyst",
+        "listed": true,
+        "name": "sdvor/mira-analyst",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/sdvor/scoring-agent",
+        "listed": true,
+        "name": "sdvor/scoring-agent",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/x-ai/grok-imagine-image-quality",
+        "listed": true,
+        "name": "x-ai/grok-imagine-image-quality",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/xai/grok-4.3",
+        "listed": true,
+        "name": "xai/grok-4.3",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/xai/grok-4.7",
+        "listed": true,
+        "name": "xai/grok-4.7",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/z-ai/glm-5-turbo",
+        "listed": true,
+        "name": "z-ai/glm-5-turbo",
+        "provider": "litellm"
+      },
+      {
+        "id": "litellm/z-ai/glm-5.3-flash",
+        "listed": true,
+        "name": "z-ai/glm-5.3-flash",
+        "provider": "litellm"
+      },
+      {
+        "id": "zai/glm-4.7",
+        "listed": true,
+        "name": "glm-4.7",
+        "provider": "zai"
+      },
+      {
+        "id": "zai/glm-5-turbo",
+        "listed": true,
+        "name": "glm-5-turbo",
+        "provider": "zai"
+      },
+      {
+        "id": "zai/glm-5.2",
+        "listed": true,
+        "name": "glm-5.2",
+        "provider": "zai"
+      },
+      {
+        "id": "zai/glm-5.2-highspeed",
+        "listed": true,
+        "name": "glm-5.2-highspeed",
+        "provider": "zai"
+      },
+      {
+        "id": "zai/glm-5.3",
+        "listed": true,
+        "name": "glm-5.3",
+        "provider": "zai"
+      },
+      {
+        "id": "zai/glm-5.3-flash",
+        "listed": true,
+        "name": "glm-5.3-flash",
+        "provider": "zai"
+      },
+      {
+        "id": "zai/glm-5.3-highspeed",
+        "listed": true,
+        "name": "glm-5.3-highspeed",
+        "provider": "zai"
+      }
+    ],
+    "thinking": [
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  "/api/automations/playbooks": [
+    {
+      "id": "task-done-knowledge",
+      "spec": {
+        "limits": {
+          "concurrency": 2,
+          "maxRunsPerHour": 20
+        },
+        "name": "Задача закрыта — знания и чейнджлог",
+        "on": {
+          "event": "task.status_changed",
+          "where": {
+            "task.labels": {
+              "not_contains": "no-docs"
+            },
+            "task.type": [
+              "task",
+              "bug",
+              "spike"
+            ],
+            "to": "done"
+          }
+        },
+        "steps": [
+          {
+            "agent": {
+              "goal": "Task {{ event.task.id }} ({{ event.task.title }}) is done. Turn its artifacts, decisions and review into durable knowledge of this project's vault space: update existing pages (search them first with `genie docs search`), add new pages only for genuinely new topics, link back to the task, set `verified` to today, and write pages with `genie docs write` (the section policy may turn them into proposals). Then write one changelog line for people who use the product.",
+              "output": {
+                "changelog": {
+                  "group": "added | changed | fixed",
+                  "text": "one line, user-facing, in the owner's language"
+                },
+                "pages_changed": [
+                  "path"
+                ],
+                "summary": "one paragraph for the owner"
+              },
+              "role": "documenter",
+              "workspace": "read-only"
+            },
+            "id": "docs",
+            "timeout": "45m"
+          },
+          {
+            "changelog.add": {
+              "group": "{{ steps.docs.output.changelog.group }}",
+              "text": "{{ steps.docs.output.changelog.text }}"
+            },
+            "id": "log"
+          },
+          {
+            "id": "tell",
+            "notify": {
+              "text": "{{ steps.docs.output.summary }}\n\nСтраницы:\n{{ steps.docs.output.pages_changed | lines }}\n\nЧейнджлог: {{ steps.docs.output.changelog.text }}",
+              "title": "{{ event.task.id }} готова: знания обновлены",
+              "to": [
+                "task.author",
+                "project.admins"
+              ]
+            }
+          }
+        ]
+      },
+      "title": "Задача закрыта → знания, чейнджлог и уведомление"
+    },
+    {
+      "id": "new-task-triage",
+      "spec": {
+        "limits": {
+          "concurrency": 3,
+          "maxRunsPerHour": 30
+        },
+        "name": "Разбор новой задачи",
+        "on": {
+          "event": "task.created",
+          "where": {
+            "actor.role": "human",
+            "status": "inbox"
+          }
+        },
+        "steps": [
+          {
+            "id": "take",
+            "task.status": {
+              "note": "Взята в разбор автоматически: аналитик готовит вопросы автору",
+              "to": "refining"
+            }
+          },
+          {
+            "agent": {
+              "goal": "Analyse task {{ event.task.id }}: study the project (code if any, knowledge base with `genie docs search`), draft scope and verifiable acceptance criteria, and list only the questions that the task's author must answer (product decisions, missing facts). Do not guess product answers. Write the questions in the owner's language, offer options when the answer is a choice. Save your analysis as an `analysis` artifact on the task.",
+              "output": {
+                "draft_acceptance": [
+                  "criterion"
+                ],
+                "questions": [
+                  {
+                    "options": [
+                      "optional choices"
+                    ],
+                    "text": "question",
+                    "why": "why it matters"
+                  }
+                ]
+              },
+              "role": "analyst",
+              "workspace": "read-only"
+            },
+            "id": "analyse",
+            "timeout": "45m"
+          },
+          {
+            "id": "criteria",
+            "if": "{{ steps.analyse.output.draft_acceptance | length }}",
+            "task.comment": {
+              "kind": "decision",
+              "text": "Черновик критериев приёмки от аналитика:\n{{ steps.analyse.output.draft_acceptance | lines }}"
+            }
+          },
+          {
+            "ask": {
+              "from": "аналитика",
+              "onTimeout": "needs_owner",
+              "questions": "{{ steps.analyse.output.questions }}",
+              "remindAfter": "24h",
+              "timeout": "72h",
+              "to": [
+                "event.actor"
+              ]
+            },
+            "id": "ask",
+            "if": "{{ steps.analyse.output.questions | length }}"
+          },
+          {
+            "id": "continue",
+            "wake_orchestrator": {
+              "text": "Triage of {{ event.task.id }} is complete: the analysis artifact and draft criteria are on the task, the author's answers are in its comments. Finish refinement (description, acceptance criteria), then move it to ready if the Definition of Ready is met."
+            }
+          }
+        ]
+      },
+      "title": "Новая задача от человека → аналитик → вопросы автору"
+    },
+    {
+      "id": "auto-ready",
+      "spec": {
+        "limits": {
+          "concurrency": 1,
+          "maxRunsPerHour": 200
+        },
+        "name": "Задачу ничего не держит — в «Готово к работе»",
+        "on": {
+          "event": "task.*",
+          "where": {
+            "task.status": [
+              "draft",
+              "refining",
+              "done"
+            ]
+          }
+        },
+        "steps": [
+          {
+            "id": "ready",
+            "task.ready": {}
+          }
+        ]
+      },
+      "title": "Задачу ничего не держит → «Готово к работе»"
+    },
+    {
+      "id": "ready-start",
+      "spec": {
+        "limits": {
+          "concurrency": 3,
+          "maxRunsPerHour": 60
+        },
+        "name": "«Готово к работе» — оркестратор запускает работу",
+        "on": {
+          "event": "task.status_changed",
+          "where": {
+            "task.type": {
+              "not": "epic"
+            },
+            "to": "ready"
+          }
+        },
+        "steps": [
+          {
+            "id": "start",
+            "wake_orchestrator": {
+              "text": "Task {{ event.task.id }} ({{ event.task.title }}) is now ready: start work on it. If a team already works on it, do nothing. Check the Definition of Ready first: if something only the owner can settle is missing (the integration, the repositories), ask the owner instead of dispatching. Otherwise compose its team and spawn it now. If the server refuses the spawn because a limit is reached (active teams per project or per epic), do not retry and do not force it: the task stays in ready and starts when a team stops."
+            }
+          }
+        ]
+      },
+      "title": "«Готово к работе» → оркестратор запускает работу"
+    },
+    {
+      "id": "ready-next",
+      "spec": {
+        "limits": {
+          "concurrency": 1,
+          "maxRunsPerHour": 60
+        },
+        "name": "Команда остановилась — следующая готовая задача",
+        "on": {
+          "event": "team.stopped"
+        },
+        "steps": [
+          {
+            "id": "next",
+            "wake_orchestrator": {
+              "text": "A team stopped, so there may be room for work. List the tasks that wait in `ready` without a team (`genie task list --status ready`), take them in order of priority and start work on as many as the limits allow: spawn a team for each. If the server refuses a spawn because a limit is reached, stop there: the rest stay in ready. If nothing waits, do nothing."
+            }
+          }
+        ]
+      },
+      "title": "Команда остановилась → оркестратор берёт следующую готовую задачу"
+    },
+    {
+      "id": "needs-owner-escalation",
+      "spec": {
+        "name": "Эскалация решения",
+        "on": {
+          "event": "task.status_changed",
+          "where": {
+            "to": "needs_owner"
+          }
+        },
+        "steps": [
+          {
+            "id": "pause",
+            "wait": {
+              "for": "24h"
+            }
+          },
+          {
+            "id": "now",
+            "task.get": {}
+          },
+          {
+            "id": "remind",
+            "if": "{{ steps.now.output.needsOwner }}",
+            "notify": {
+              "text": "{{ steps.now.output.needsOwner.question }}",
+              "title": "{{ event.task.id }} ждёт решения больше суток",
+              "to": [
+                "task.author",
+                "project.owners"
+              ]
+            }
+          }
+        ]
+      },
+      "title": "Решение не принято за сутки → напоминание"
+    }
+  ],
+  "/api/me/channels": {
+    "email": false,
+    "links": [],
+    "telegram": false
+  },
+  "/api/llm-keys": {
+    "keys": {},
+    "providers": [
+      {
+        "apiKey": true,
+        "id": "litellm",
+        "keyVar": "LITELLM_API_KEY",
+        "oauth": false,
+        "strict": true,
+        "title": "LiteLLM"
+      },
+      {
+        "apiKey": true,
+        "id": "anthropic",
+        "keyVar": "ANTHROPIC_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Anthropic"
+      },
+      {
+        "apiKey": true,
+        "id": "ant-ling",
+        "keyVar": "ANT_LING_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Ant Ling"
+      },
+      {
+        "apiKey": true,
+        "id": "openai",
+        "keyVar": "OPENAI_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "OpenAI"
+      },
+      {
+        "apiKey": true,
+        "id": "deepseek",
+        "keyVar": "DEEPSEEK_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "DeepSeek"
+      },
+      {
+        "apiKey": true,
+        "id": "nvidia",
+        "keyVar": "NVIDIA_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "NVIDIA NIM"
+      },
+      {
+        "apiKey": true,
+        "id": "google",
+        "keyVar": "GEMINI_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Google Gemini"
+      },
+      {
+        "apiKey": true,
+        "id": "github-copilot",
+        "keyVar": "COPILOT_GITHUB_TOKEN",
+        "oauth": true,
+        "strict": false,
+        "title": "GitHub Copilot"
+      },
+      {
+        "apiKey": true,
+        "id": "mistral",
+        "keyVar": "MISTRAL_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Mistral"
+      },
+      {
+        "apiKey": true,
+        "id": "groq",
+        "keyVar": "GROQ_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Groq"
+      },
+      {
+        "apiKey": true,
+        "id": "cerebras",
+        "keyVar": "CEREBRAS_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Cerebras"
+      },
+      {
+        "apiKey": true,
+        "id": "xai",
+        "keyVar": "XAI_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "xAI"
+      },
+      {
+        "apiKey": true,
+        "id": "openrouter",
+        "keyVar": "OPENROUTER_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "OpenRouter"
+      },
+      {
+        "apiKey": true,
+        "id": "vercel-ai-gateway",
+        "keyVar": "AI_GATEWAY_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Vercel AI Gateway"
+      },
+      {
+        "apiKey": true,
+        "id": "zai",
+        "keyVar": "ZAI_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "ZAI Coding Plan"
+      },
+      {
+        "apiKey": true,
+        "id": "zai-coding-cn",
+        "keyVar": "ZAI_CODING_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "ZAI Coding Plan (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "opencode",
+        "keyVar": "OPENCODE_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "OpenCode Zen"
+      },
+      {
+        "apiKey": true,
+        "id": "opencode-go",
+        "keyVar": "OPENCODE_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "OpenCode Zen Go"
+      },
+      {
+        "apiKey": true,
+        "id": "radius",
+        "keyVar": "RADIUS_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Radius"
+      },
+      {
+        "apiKey": true,
+        "id": "typesafe",
+        "keyVar": "TYPESAFE_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "TypeSafe"
+      },
+      {
+        "apiKey": true,
+        "id": "huggingface",
+        "keyVar": "HF_TOKEN",
+        "oauth": false,
+        "strict": false,
+        "title": "Hugging Face"
+      },
+      {
+        "apiKey": true,
+        "id": "fireworks",
+        "keyVar": "FIREWORKS_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Fireworks"
+      },
+      {
+        "apiKey": true,
+        "id": "together",
+        "keyVar": "TOGETHER_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Together AI"
+      },
+      {
+        "apiKey": true,
+        "id": "baseten",
+        "keyVar": "BASETEN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Baseten"
+      },
+      {
+        "apiKey": true,
+        "id": "kimi-coding",
+        "keyVar": "KIMI_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Kimi For Coding"
+      },
+      {
+        "apiKey": true,
+        "id": "meta",
+        "keyVar": "META_API_KEY",
+        "oauth": true,
+        "strict": false,
+        "title": "Meta"
+      },
+      {
+        "apiKey": true,
+        "id": "minimax",
+        "keyVar": "MINIMAX_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "MiniMax"
+      },
+      {
+        "apiKey": true,
+        "id": "minimax-cn",
+        "keyVar": "MINIMAX_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "MiniMax (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "moonshotai",
+        "keyVar": "MOONSHOT_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Moonshot AI"
+      },
+      {
+        "apiKey": true,
+        "id": "moonshotai-cn",
+        "keyVar": "MOONSHOT_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Moonshot AI (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "qwen-token-plan",
+        "keyVar": "QWEN_TOKEN_PLAN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Qwen Token Plan"
+      },
+      {
+        "apiKey": true,
+        "id": "qwen-token-plan-cn",
+        "keyVar": "QWEN_TOKEN_PLAN_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Qwen Token Plan (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "qwen-token-plan-individual",
+        "keyVar": "QWEN_TOKEN_PLAN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Qwen Token Plan (Individual)"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi",
+        "keyVar": "XIAOMI_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi-token-plan-ams",
+        "keyVar": "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo Token Plan (Amsterdam)"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi-token-plan-cn",
+        "keyVar": "XIAOMI_TOKEN_PLAN_CN_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo Token Plan (China)"
+      },
+      {
+        "apiKey": true,
+        "id": "xiaomi-token-plan-sgp",
+        "keyVar": "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+        "oauth": false,
+        "strict": false,
+        "title": "Xiaomi MiMo Token Plan (Singapore)"
+      },
+      {
+        "apiKey": false,
+        "id": "openai-codex",
+        "keyVar": "",
+        "oauth": true,
+        "strict": false,
+        "title": "OpenAI Codex"
+      }
+    ]
+  },
+  "/api/observation/sources": [],
+  "/api/mcp": {
+    "admin": true,
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "mcp.json"
+    },
+    "problems": [],
+    "servers": []
+  },
+  "/api/mcp/calls?limit=100": [],
+  "/api/mcp-admin": {
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "mcp.json"
+    },
+    "problems": [],
+    "secrets": [],
+    "secretsUnset": [],
+    "servers": []
+  },
+  "/api/observation/cases": [],
+  "/api/docs/proposals?status=open": [],
+  "/api/runs": [],
+  "/api/tasks/DM-1": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [
+      "DM-2",
+      "DM-3",
+      "DM-9",
+      "DM-10",
+      "DM-11"
+    ],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "Браузерные тесты ключевых экранов.",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "child DM-2 added",
+        "role": "human"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "child DM-3 added",
+        "role": "human"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "child DM-9 added",
+        "role": "human"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "child DM-10 added",
+        "role": "human"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "child DM-11 added",
+        "role": "human"
+      }
+    ],
+    "id": "DM-1",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 1,
+    "status": "inbox",
+    "title": "Веб-интерфейс: проверка экранов",
+    "type": "epic",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-1/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "inbox",
+    "taskId": "DM-1"
+  },
+  "/api/tasks/DM-1/repos": {
+    "repos": [],
+    "task": "DM-1"
+  },
+  "/api/tasks/DM-1/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-1": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [
+        "DM-2",
+        "DM-3",
+        "DM-9",
+        "DM-10",
+        "DM-11"
+      ],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "Браузерные тесты ключевых экранов.",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "child DM-2 added",
+          "role": "human"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "child DM-3 added",
+          "role": "human"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "child DM-9 added",
+          "role": "human"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "child DM-10 added",
+          "role": "human"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "child DM-11 added",
+          "role": "human"
+        }
+      ],
+      "id": "DM-1",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 1,
+      "status": "inbox",
+      "title": "Веб-интерфейс: проверка экранов",
+      "type": "epic",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-2": {
+    "acceptance": [
+      {
+        "done": false,
+        "id": 1,
+        "text": "Сообщение об ошибке видно под формой"
+      },
+      {
+        "done": false,
+        "id": 2,
+        "text": "Поля не очищаются"
+      }
+    ],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "Пользователь видит понятное сообщение и может повторить попытку.",
+    "epic": {
+      "artifacts": [],
+      "description": "Браузерные тесты ключевых экранов.",
+      "id": "DM-1",
+      "title": "Веб-интерфейс: проверка экранов"
+    },
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "refining"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "refining",
+        "role": "human",
+        "to": "ready"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "ready",
+        "role": "human",
+        "to": "in_progress"
+      }
+    ],
+    "id": "DM-2",
+    "labels": [
+      "auth"
+    ],
+    "mergeStrategy": "",
+    "notes": "",
+    "parent": "DM-1",
+    "plan": "",
+    "priority": 1,
+    "status": "in_progress",
+    "title": "Форма входа показывает ошибку при неверном пароле",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-2/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "in_progress",
+    "taskId": "DM-2"
+  },
+  "/api/tasks/DM-2/repos": {
+    "repos": [],
+    "task": "DM-2"
+  },
+  "/api/tasks/DM-2/intelligence": {
+    "assessments": [],
+    "attempts": [
+      {
+        "id": 1,
+        "ordinal": 1,
+        "startEventId": 14,
+        "startedAt": "2026-05-01T12:00:00Z",
+        "task": "DM-2"
+      }
+    ],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-2": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [
+        {
+          "done": false,
+          "id": 1,
+          "text": "Сообщение об ошибке видно под формой"
+        },
+        {
+          "done": false,
+          "id": 2,
+          "text": "Поля не очищаются"
+        }
+      ],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "Пользователь видит понятное сообщение и может повторить попытку.",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "refining"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "refining",
+          "role": "human",
+          "to": "ready"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "ready",
+          "role": "human",
+          "to": "in_progress"
+        }
+      ],
+      "id": "DM-2",
+      "labels": [
+        "auth"
+      ],
+      "mergeStrategy": "",
+      "notes": "",
+      "parent": "DM-1",
+      "plan": "",
+      "priority": 1,
+      "status": "in_progress",
+      "title": "Форма входа показывает ошибку при неверном пароле",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-3": {
+    "acceptance": [
+      {
+        "done": false,
+        "id": 1,
+        "text": "Поиск сужает список"
+      },
+      {
+        "done": false,
+        "id": 2,
+        "text": "Адрес хранит запрос"
+      }
+    ],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "epic": {
+      "artifacts": [],
+      "description": "Браузерные тесты ключевых экранов.",
+      "id": "DM-1",
+      "title": "Веб-интерфейс: проверка экранов"
+    },
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "refining"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "refining",
+        "role": "human",
+        "to": "ready"
+      }
+    ],
+    "id": "DM-3",
+    "labels": [
+      "tasks"
+    ],
+    "mergeStrategy": "",
+    "notes": "",
+    "parent": "DM-1",
+    "plan": "",
+    "priority": 2,
+    "status": "ready",
+    "title": "Список задач фильтруется по поиску",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-3/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "ready",
+    "taskId": "DM-3"
+  },
+  "/api/tasks/DM-3/repos": {
+    "repos": [],
+    "task": "DM-3"
+  },
+  "/api/tasks/DM-3/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-3": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [
+        {
+          "done": false,
+          "id": 1,
+          "text": "Поиск сужает список"
+        },
+        {
+          "done": false,
+          "id": 2,
+          "text": "Адрес хранит запрос"
+        }
+      ],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "refining"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "refining",
+          "role": "human",
+          "to": "ready"
+        }
+      ],
+      "id": "DM-3",
+      "labels": [
+        "tasks"
+      ],
+      "mergeStrategy": "",
+      "notes": "",
+      "parent": "DM-1",
+      "plan": "",
+      "priority": 2,
+      "status": "ready",
+      "title": "Список задач фильтруется по поиску",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-4": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      }
+    ],
+    "id": "DM-4",
+    "labels": [
+      "mobile"
+    ],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 0,
+    "status": "inbox",
+    "title": "Кнопка закрытия диалога не реагирует на мобильном",
+    "type": "bug",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-4/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "inbox",
+    "taskId": "DM-4"
+  },
+  "/api/tasks/DM-4/repos": {
+    "repos": [],
+    "task": "DM-4"
+  },
+  "/api/tasks/DM-4/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-4": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        }
+      ],
+      "id": "DM-4",
+      "labels": [
+        "mobile"
+      ],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 0,
+      "status": "inbox",
+      "title": "Кнопка закрытия диалога не реагирует на мобильном",
+      "type": "bug",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-5": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "draft"
+      }
+    ],
+    "id": "DM-5",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 3,
+    "status": "draft",
+    "title": "Изучить визуальную регрессию",
+    "type": "spike",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-5/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "draft",
+    "taskId": "DM-5"
+  },
+  "/api/tasks/DM-5/repos": {
+    "repos": [],
+    "task": "DM-5"
+  },
+  "/api/tasks/DM-5/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-5": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "draft"
+        }
+      ],
+      "id": "DM-5",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 3,
+      "status": "draft",
+      "title": "Изучить визуальную регрессию",
+      "type": "spike",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-6": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      }
+    ],
+    "id": "DM-6",
+    "labels": [
+      "docs"
+    ],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 4,
+    "status": "inbox",
+    "title": "Обновить документацию по запуску",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-6/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "inbox",
+    "taskId": "DM-6"
+  },
+  "/api/tasks/DM-6/repos": {
+    "repos": [],
+    "task": "DM-6"
+  },
+  "/api/tasks/DM-6/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-6": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        }
+      ],
+      "id": "DM-6",
+      "labels": [
+        "docs"
+      ],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 4,
+      "status": "inbox",
+      "title": "Обновить документацию по запуску",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-7": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "draft"
+      }
+    ],
+    "id": "DM-7",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 3,
+    "status": "draft",
+    "title": "Черновик: описать правила уведомлений",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-7/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "draft",
+    "taskId": "DM-7"
+  },
+  "/api/tasks/DM-7/repos": {
+    "repos": [],
+    "task": "DM-7"
+  },
+  "/api/tasks/DM-7/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-7": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "draft"
+        }
+      ],
+      "id": "DM-7",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 3,
+      "status": "draft",
+      "title": "Черновик: описать правила уведомлений",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-8": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      }
+    ],
+    "id": "DM-8",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 4,
+    "status": "inbox",
+    "title": "Входящая идея: тёмная тема для документации",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-8/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "inbox",
+    "taskId": "DM-8"
+  },
+  "/api/tasks/DM-8/repos": {
+    "repos": [],
+    "task": "DM-8"
+  },
+  "/api/tasks/DM-8/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-8": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        }
+      ],
+      "id": "DM-8",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 4,
+      "status": "inbox",
+      "title": "Входящая идея: тёмная тема для документации",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-9": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "epic": {
+      "artifacts": [],
+      "description": "Браузерные тесты ключевых экранов.",
+      "id": "DM-1",
+      "title": "Веб-интерфейс: проверка экранов"
+    },
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "refining"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "refining",
+        "role": "human",
+        "to": "ready"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "ready",
+        "role": "human",
+        "to": "in_progress"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "in_progress",
+        "role": "human",
+        "to": "review"
+      }
+    ],
+    "id": "DM-9",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "parent": "DM-1",
+    "plan": "",
+    "priority": 2,
+    "status": "review",
+    "title": "Проверить сборку образа",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-9/docs-impact": {
+    "applicable": true,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "review",
+    "taskId": "DM-9"
+  },
+  "/api/tasks/DM-9/repos": {
+    "repos": [],
+    "task": "DM-9"
+  },
+  "/api/tasks/DM-9/intelligence": {
+    "assessments": [],
+    "attempts": [
+      {
+        "id": 2,
+        "ordinal": 1,
+        "startEventId": 43,
+        "startedAt": "2026-05-01T12:00:00Z",
+        "task": "DM-9"
+      }
+    ],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-9": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "refining"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "refining",
+          "role": "human",
+          "to": "ready"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "ready",
+          "role": "human",
+          "to": "in_progress"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "in_progress",
+          "role": "human",
+          "to": "review"
+        }
+      ],
+      "id": "DM-9",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "parent": "DM-1",
+      "plan": "",
+      "priority": 2,
+      "status": "review",
+      "title": "Проверить сборку образа",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-10": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "epic": {
+      "artifacts": [],
+      "description": "Браузерные тесты ключевых экранов.",
+      "id": "DM-1",
+      "title": "Веб-интерфейс: проверка экранов"
+    },
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "refining"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "refining",
+        "role": "human",
+        "to": "ready"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "ready",
+        "role": "human",
+        "to": "in_progress"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "in_progress",
+        "role": "human",
+        "to": "review"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "review",
+        "role": "human",
+        "to": "changes_requested"
+      }
+    ],
+    "id": "DM-10",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "parent": "DM-1",
+    "plan": "",
+    "priority": 1,
+    "status": "changes_requested",
+    "title": "Исправить порядок колонок на доске",
+    "type": "bug",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-10/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "changes_requested",
+    "taskId": "DM-10"
+  },
+  "/api/tasks/DM-10/repos": {
+    "repos": [],
+    "task": "DM-10"
+  },
+  "/api/tasks/DM-10/intelligence": {
+    "assessments": [],
+    "attempts": [
+      {
+        "id": 3,
+        "ordinal": 1,
+        "startEventId": 54,
+        "startedAt": "2026-05-01T12:00:00Z",
+        "task": "DM-10"
+      }
+    ],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-10": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "refining"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "refining",
+          "role": "human",
+          "to": "ready"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "ready",
+          "role": "human",
+          "to": "in_progress"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "in_progress",
+          "role": "human",
+          "to": "review"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "review",
+          "role": "human",
+          "to": "changes_requested"
+        }
+      ],
+      "id": "DM-10",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "parent": "DM-1",
+      "plan": "",
+      "priority": 1,
+      "status": "changes_requested",
+      "title": "Исправить порядок колонок на доске",
+      "type": "bug",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-11": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "epic": {
+      "artifacts": [],
+      "description": "Браузерные тесты ключевых экранов.",
+      "id": "DM-1",
+      "title": "Веб-интерфейс: проверка экранов"
+    },
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "refining"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "refining",
+        "role": "human",
+        "to": "ready"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "ready",
+        "role": "human",
+        "to": "in_progress"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "in_progress",
+        "role": "human",
+        "to": "review"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "review",
+        "role": "human",
+        "to": "approved"
+      }
+    ],
+    "id": "DM-11",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "parent": "DM-1",
+    "plan": "",
+    "priority": 2,
+    "status": "approved",
+    "title": "Добавить экспорт отчёта",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-11/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "approved",
+    "taskId": "DM-11"
+  },
+  "/api/tasks/DM-11/repos": {
+    "repos": [],
+    "task": "DM-11"
+  },
+  "/api/tasks/DM-11/intelligence": {
+    "assessments": [],
+    "attempts": [
+      {
+        "id": 4,
+        "ordinal": 1,
+        "startEventId": 67,
+        "startedAt": "2026-05-01T12:00:00Z",
+        "task": "DM-11"
+      }
+    ],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-11": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "refining"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "refining",
+          "role": "human",
+          "to": "ready"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "ready",
+          "role": "human",
+          "to": "in_progress"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "in_progress",
+          "role": "human",
+          "to": "review"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "review",
+          "role": "human",
+          "to": "approved"
+        }
+      ],
+      "id": "DM-11",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "parent": "DM-1",
+      "plan": "",
+      "priority": 2,
+      "status": "approved",
+      "title": "Добавить экспорт отчёта",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-12": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [
+      {
+        "at": "2026-05-01T12:00:00Z",
+        "author": "owner",
+        "id": 1,
+        "kind": "question",
+        "role": "human",
+        "text": "Needs owner decision: Какого провайдера почты использовать для уведомлений?"
+      }
+    ],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "refining"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "refining",
+        "role": "human",
+        "to": "ready"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "ready",
+        "role": "human",
+        "to": "in_progress"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "in_progress",
+        "note": "Какого провайдера почты использовать для уведомлений?",
+        "role": "human",
+        "to": "needs_owner"
+      }
+    ],
+    "id": "DM-12",
+    "labels": [],
+    "mergeStrategy": "",
+    "needsOwner": {
+      "action": {
+        "kind": "ask-free-form"
+      },
+      "at": "2026-05-01T12:00:00Z",
+      "by": "owner",
+      "previous": "in_progress",
+      "question": "Какого провайдера почты использовать для уведомлений?"
+    },
+    "notes": "",
+    "plan": "",
+    "priority": 1,
+    "status": "needs_owner",
+    "title": "Выбрать провайдера почты",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-12/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "needs_owner",
+    "taskId": "DM-12"
+  },
+  "/api/tasks/DM-12/repos": {
+    "repos": [],
+    "task": "DM-12"
+  },
+  "/api/tasks/DM-12/intelligence": {
+    "assessments": [],
+    "attempts": [
+      {
+        "id": 5,
+        "ordinal": 1,
+        "startEventId": 80,
+        "startedAt": "2026-05-01T12:00:00Z",
+        "task": "DM-12"
+      }
+    ],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-12": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [
+        {
+          "at": "2026-05-01T12:00:00Z",
+          "author": "owner",
+          "id": 1,
+          "kind": "question",
+          "role": "human",
+          "text": "Needs owner decision: Какого провайдера почты использовать для уведомлений?"
+        }
+      ],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "refining"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "refining",
+          "role": "human",
+          "to": "ready"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "ready",
+          "role": "human",
+          "to": "in_progress"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "in_progress",
+          "note": "Какого провайдера почты использовать для уведомлений?",
+          "role": "human",
+          "to": "needs_owner"
+        }
+      ],
+      "id": "DM-12",
+      "labels": [],
+      "mergeStrategy": "",
+      "needsOwner": {
+        "action": {
+          "kind": "ask-free-form"
+        },
+        "at": "2026-05-01T12:00:00Z",
+        "by": "owner",
+        "previous": "in_progress",
+        "question": "Какого провайдера почты использовать для уведомлений?"
+      },
+      "notes": "",
+      "plan": "",
+      "priority": 1,
+      "status": "needs_owner",
+      "title": "Выбрать провайдера почты",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-13": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "refining"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "refining",
+        "role": "human",
+        "to": "ready"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "ready",
+        "role": "human",
+        "to": "in_progress"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "in_progress",
+        "role": "human",
+        "to": "review"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "review",
+        "role": "human",
+        "to": "approved"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "approved",
+        "role": "human",
+        "to": "done"
+      }
+    ],
+    "id": "DM-13",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 3,
+    "status": "done",
+    "title": "Обновить зависимости клиента",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-13/docs-impact": {
+    "applicable": true,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "done",
+    "taskId": "DM-13"
+  },
+  "/api/tasks/DM-13/repos": {
+    "repos": [],
+    "task": "DM-13"
+  },
+  "/api/tasks/DM-13/intelligence": {
+    "assessments": [
+      {
+        "attemptId": 6,
+        "createdAt": "2026-05-01T12:00:00Z",
+        "eventId": 97,
+        "id": 1,
+        "result": "accepted",
+        "revision": 1,
+        "task": "DM-13"
+      }
+    ],
+    "attempts": [
+      {
+        "id": 6,
+        "ordinal": 1,
+        "startEventId": 91,
+        "startedAt": "2026-05-01T12:00:00Z",
+        "task": "DM-13"
+      }
+    ],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-13": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "refining"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "refining",
+          "role": "human",
+          "to": "ready"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "ready",
+          "role": "human",
+          "to": "in_progress"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "in_progress",
+          "role": "human",
+          "to": "review"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "review",
+          "role": "human",
+          "to": "approved"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "approved",
+          "role": "human",
+          "to": "done"
+        }
+      ],
+      "id": "DM-13",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 3,
+      "status": "done",
+      "title": "Обновить зависимости клиента",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-14": {
+    "acceptance": [],
+    "artifacts": [],
+    "assignees": [],
+    "children": [],
+    "comments": [],
+    "created": "2026-05-01T12:00:00Z",
+    "deps": [],
+    "description": "",
+    "history": [
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "created",
+        "role": "human",
+        "to": "inbox"
+      },
+      {
+        "actor": "owner",
+        "at": "2026-05-01T12:00:00Z",
+        "event": "status",
+        "from": "inbox",
+        "role": "human",
+        "to": "cancelled"
+      }
+    ],
+    "id": "DM-14",
+    "labels": [],
+    "mergeStrategy": "",
+    "notes": "",
+    "plan": "",
+    "priority": 4,
+    "status": "cancelled",
+    "title": "Старая задача, отменена",
+    "type": "task",
+    "updated": "2026-05-01T12:00:00Z"
+  },
+  "/api/tasks/DM-14/docs-impact": {
+    "applicable": false,
+    "candidates": [],
+    "changedPaths": [],
+    "changedPathsAvailable": false,
+    "notes": [
+      "no team worktree for this task"
+    ],
+    "status": "cancelled",
+    "taskId": "DM-14"
+  },
+  "/api/tasks/DM-14/repos": {
+    "repos": [],
+    "task": "DM-14"
+  },
+  "/api/tasks/DM-14/intelligence": {
+    "assessments": [],
+    "attempts": [],
+    "evaluations": [],
+    "routing": [],
+    "snapshots": []
+  },
+  "/api/management/tasks/DM-14": {
+    "brief": null,
+    "clarifications": [],
+    "manager": null,
+    "task": {
+      "acceptance": [],
+      "artifacts": [],
+      "assignees": [],
+      "children": [],
+      "comments": [],
+      "created": "2026-05-01T12:00:00Z",
+      "deps": [],
+      "description": "",
+      "history": [
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "created",
+          "role": "human",
+          "to": "inbox"
+        },
+        {
+          "actor": "owner",
+          "at": "2026-05-01T12:00:00Z",
+          "event": "status",
+          "from": "inbox",
+          "role": "human",
+          "to": "cancelled"
+        }
+      ],
+      "id": "DM-14",
+      "labels": [],
+      "mergeStrategy": "",
+      "notes": "",
+      "plan": "",
+      "priority": 4,
+      "status": "cancelled",
+      "title": "Старая задача, отменена",
+      "type": "task",
+      "updated": "2026-05-01T12:00:00Z"
+    }
+  },
+  "/api/tasks/DM-15/repos": {
+    "repos": [],
+    "task": "DM-15"
+  },
+  "/api/tasks/DM-16/repos": {
+    "repos": [],
+    "task": "DM-16"
+  }
+}

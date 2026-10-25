@@ -35,24 +35,25 @@ A **UI change** alters what a screen renders or how a control behaves: anything 
 
 ## 4. Review a UI change with the owner
 
-Applies to a UI change. For any other task, record the validation results in genie and continue with step 5.
+Applies to a UI change. For any other task, record the validation results in genie and continue with step 5. The owner may still request an integration review of a batch at any time; it is built only on that request.
 
-- Mark the exact commit ready and request an integration preview as described in the preview guide. A settled T3 thread triggers a request only when current readiness exists; it is not evidence of task completion or owner approval.
-- Verify that the candidate is ready and healthy. Give the owner its fixed candidate ID, local and Tailscale links when configured, base SHA, included task SHAs, validation evidence, and a short review scenario. Record this evidence in genie.
-- Stop and await the owner's explicit approval of that candidate and permission to publish the task. Keep the task unfinished and record `awaiting_visual_review` in a progress comment; this is a review milestone, not a new tracker status or owner acceptance. A missing preview tool or failed build is a blocker to resolve or report, and the gate stays closed until it is resolved.
-- Rebuild and obtain approval of a new candidate when the task commit, base, or included task composition changes before publication. Publish the approved task commit, keeping other tasks' changes in their own branches.
+- Show the change with the instant fixture preview (`npm run preview:ui`, see the preview guide). Build a fixed integration candidate instead when the owner asks for one or the change depends on real backend behavior, using current fetched `origin/dev` or the explicitly selected task composition. A settled T3 thread, readiness or worktree creation never starts a build.
+- Give the owner the exact commit, a short review scenario and the validation evidence; for a candidate also its ID, composition, base SHA, health and private access details. Share them in this conversation and in genie.
+- Stop and await the owner's explicit approval of what was shown and permission to publish the task. Keep the task unfinished and record `awaiting_visual_review` in a progress comment; this is a review milestone, not a new tracker status or owner acceptance. A missing preview tool or failed build is a blocker to resolve or report, and the gate stays closed until it is resolved.
+- Show it again and obtain a new approval when the task commit, base, or included task composition changes before publication. Publish the approved task commit, keeping other tasks' changes in their own branches.
+- Keep private preview URLs, tailnet hostnames, credentials and local machine paths out of GitHub descriptions and comments. Public PR evidence uses task IDs, candidate IDs/SHAs, check results and portable artifacts.
 
 ## 5. Publish a pull request
 
-- Publish once validation passes; for a UI change, once the owner has approved the candidate. Load and use the global `pr` skill to prepare the PR description, then push the task branch and open a PR against `dev`. Release PRs target `main` from `dev` only. If the skill is unavailable, report it and obtain access before publishing.
+- Publish once validation passes; for a UI change, once the owner has approved it. Load and use the global `pr` skill to prepare the PR description, then push the task branch and open a PR against `dev`. Release PRs target `main` from `dev` only. If the skill is unavailable, report it and obtain access before publishing.
 - Treat `main` as release-only. The `main` branch is protected and accepts PRs exclusively from `dev` that also bump the shared version in `Cargo.toml`, `package.json`, `Cargo.lock`, `package-lock.json` and add a dated `CHANGELOG.md` section, as enforced by `.github/scripts/release_gate.py`. Opening, merging, or cutting a release is a separate authorized task; ordinary work targets `dev` and carries no release metadata.
 - Write the PR title, description, and agent-authored PR comments strictly in English. Keep explanations in English even when the conversation and genie task are in Russian.
-- Include the genie task ID, scope, validation evidence, and material limitations; for a UI change, also the approved candidate ID and composition. Record the PR URL in genie. In T3 Code, register the PR with the thread's pull-request linking tool.
+- Include the genie task ID, scope, validation evidence, and material limitations; for a UI change, also the approved commit and, when a candidate was used, its ID and composition. Record the PR URL in genie. In T3 Code, register the PR with the thread's pull-request linking tool.
 - Move the task to `review` when its workflow requirements are met. Publication alone does not complete the task.
 
 ## 6. Wait for CI before completion
 
-- Wait for the published PR's latest head commit to finish CI successfully. Fix failed checks and wait again for the new head; a UI change first repeats step 4 for the changed candidate before pushing.
+- Wait for the published PR's latest head commit to finish CI successfully. Fix failed checks and wait again for the new head; a UI change first repeats step 4 for the changed commit before pushing.
 - Verify both the head SHA and check results on the host. Pending, cancelled, failed, missing, or unreadable checks do not establish success. Jobs deliberately skipped by the workflow's path filters are acceptable when the applicable jobs have passed; a docs-only PR still needs its `Changes` job to pass.
 - When T3 Code provides a PR watcher, register the watch and let it resume this task when results arrive. An interim message must say that CI is pending; it must not claim completion. Otherwise use the host CLI's bounded check-wait facility.
 - Only after successful CI, record the PR URL, verified head SHA, check results, and acceptance evidence in genie. Finish the permitted review/approval transitions before setting `done`. Respect owner-only acceptance in assisted projects; leave the task awaiting that action when required. Workflow gates stay closed until their conditions are met.

@@ -50,6 +50,7 @@ jobs:
               - "web/src/shared/api/generated/**"
               - ".github/workflows/**"
             web:
+              - "scripts/ui-preview/**"
               - "web/**"
               - "test/**"
               - "bench/**"

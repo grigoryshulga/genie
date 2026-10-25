@@ -24,7 +24,8 @@ const root = resolve(import.meta.dirname, "../..");
 const bin = resolve(root, process.env.GENIE_BIN ?? "target/debug/genie");
 const web = join(root, "web/dist");
 const results = join(root, "test-results");
-const capture = process.argv.includes("--capture");
+const exportingFixtures = process.argv.includes("--export-fixtures");
+const capture = process.argv.includes("--capture") || exportingFixtures;
 const passthrough = process.argv.slice(2).filter((a) => a !== "--capture");
 
 function fail(message: string): never {
@@ -107,6 +108,13 @@ async function waitHealthy(name: string, server: ChildProcess, url: string) {
     await new Promise((r) => setTimeout(r, 200));
   }
   fail(`the server at ${url} did not become healthy in 30 s`);
+}
+
+if (exportingFixtures) {
+  const url = await start("fixtures", await freePort(), CAPTURE_TASKS);
+  const { exportFixtures } = await import("../../scripts/ui-preview/export.ts");
+  await exportFixtures(url, join(root, "scripts/ui-preview/fixtures.json"));
+  process.exit(0);
 }
 
 const seededAt = new Date().toISOString();

@@ -13,9 +13,11 @@ Three loops, from the cheapest to the one that gates publication. Use the cheape
 | --- | --- | --- |
 | Does this UI change look and behave right? | [Development stand](#development-stand) | seconds, hot reload |
 | Does the whole product still work? | `npm run typecheck`, `npm test`, `cargo test`, `npm run test:ui` | minutes; CI runs the same |
-| Is this exact commit what the owner approves? | [Fixed integration preview](visual-preview.md), required for UI changes only | one build per candidate |
+| Is this what the owner approves? | [Fixture preview](visual-preview.md#instant-ui-fixtures) (`npm run preview:ui`, no Rust) or, on request, a fixed integration candidate; required for UI changes only | seconds; a candidate is one build |
 
 ## Development stand
+
+The stand runs the real server on seeded data, so it checks behaviour as well as looks. `npm run preview:ui` is lighter: it replays recorded API responses without Rust, which suits showing a screen to the owner. Use the stand while building and the fixture preview when presenting.
 
 ```bash
 npm ci                    # once per worktree

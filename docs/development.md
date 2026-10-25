@@ -13,7 +13,7 @@ The [repository workflow](https://github.com/grigoryshulga/genie/blob/main/AGENT
 
 - Iterate on the [development stand](development/testing-workflow.md): hot reload on varied seeded data.
 - Run the [checks](#checks) that cover the changed paths; CI runs the same commands.
-- A UI change also needs a [fixed integration preview](development/visual-preview.md) and the owner's visual approval before its PR is published. Every other change is published once its checks pass.
+- A UI change is also shown to the owner with the [instant fixture preview](development/visual-preview.md) (`npm run preview:ui`, or a fixed integration candidate on request) and needs their approval before its PR is published. Every other change is published once its checks pass.
 - The local tracker follows `dev` when you run `preview update-tracker` (see the [tracker updater](development/tracker-auto-update.md)), and `preview gc` frees disk space ([testing workflow](development/testing-workflow.md#keeping-the-disk-clean)).
 
 The tracker task commands are in the [genie CLI guide](development/genie-cli.md).
