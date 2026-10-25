@@ -249,7 +249,10 @@ async fn list(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
 #[serde(rename_all = "camelCase")]
 struct AddBody {
     name: String,
+    /// Not needed with a connection: the provider says where the repository is.
+    #[serde(default)]
     host: String,
+    #[serde(default)]
     remote: String,
     mount: Option<String>,
     default_branch: Option<String>,
