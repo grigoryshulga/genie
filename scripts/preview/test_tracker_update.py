@@ -158,6 +158,16 @@ class TrackerUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "paused"):
             self.u.update()
 
+    def test_successful_update_prunes_surplus_images_but_never_fails_the_deployment(self):
+        surplus = [{"tag": "genie-tracker:dev-old", "id": "abc", "size": "1MB", "action": "remove"}]
+        with patch.object(tracker.diskgc, "image_plan", return_value=surplus) as plan, \
+             patch.object(tracker, "run") as run:
+            self.u.prune_images()
+            plan.assert_called_once_with(tracker.run, 2)
+            run.assert_called_once_with(["docker", "rmi", "genie-tracker:dev-old"])
+            run.side_effect = RuntimeError("image is in use")
+            self.u.prune_images()
+
     def test_unchanged_running_revision_is_idempotent(self):
         self.before["Config"]["Labels"][tracker.REVISION] = "a" * 40
         with patch.object(tracker, "git", side_effect=["", "a" * 40]), \

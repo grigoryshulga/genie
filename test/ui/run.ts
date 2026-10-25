@@ -12,11 +12,12 @@
 // in each theme at desktop and phone sizes to test-results/captures; it compares nothing.
 // GENIE_BIN selects the server binary (default: target/debug/genie); web/dist must be built.
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { genie, seedDocs, seedTask } from "./seeding.ts";
 import { CAPTURE_DOCS, CAPTURE_TASKS, FLOW_DOC, FLOW_TASKS, OWNER, PROJECT, SEED_TASKS, type SeedTask } from "./seed.ts";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -47,56 +48,19 @@ function cleanup() {
 process.on("exit", cleanup);
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => process.exit(130));
 
-// The command line acts as the machine's operator, named after $USER: the owner's login keeps the
-// task history the same on every machine.
-function genie(args: string[], input: string | undefined, dataDir: string): string {
-  const env = { ...process.env, USER: OWNER.login };
-  return execFileSync(bin, ["--data", dataDir, ...args], { input, env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
-}
-
-/**
- * Creates one task in `dataDir` and walks it through its statuses, the way the operator would. The
- * CLI is the machine's operator, which is what lets a seed reach a status such as needs_owner that the
- * web refuses to a person. Returns the id the server assigned; `ids` collects them for `parent`.
- */
-function seedTask(dataDir: string, t: SeedTask, ids: string[]): string {
-  const args = ["--project", PROJECT.id, "task", "create", t.title, "--json"];
-  if (t.description) args.push("--description", t.description);
-  for (const ac of t.acceptance ?? []) args.push("--ac", ac);
-  if (t.priority !== undefined) args.push("--priority", String(t.priority));
-  if (t.type) args.push("--type", t.type);
-  for (const label of t.labels ?? []) args.push("--label", label);
-  if (t.parent !== undefined) args.push("--parent", ids[t.parent]);
-  const id: string = JSON.parse(genie(args, undefined, dataDir)).id;
-  ids.push(id);
-  for (const status of t.statuses ?? []) {
-    const owner = status === "needs_owner" ? ["--action", t.action ?? "ask-free-form", ...(t.options ?? []).flatMap((o) => ["--option", o])] : [];
-    const note = status === "needs_owner" && t.note ? ["--note", t.note] : [];
-    genie(["--project", PROJECT.id, "task", "status", status, "--task", id, ...note, ...owner], undefined, dataDir);
-  }
-  return id;
-}
+const run = (args: string[], input: string | undefined, dataDir: string) => genie(bin, args, input, dataDir);
 
 // The seed the two servers share, plus the tasks only one of them may have. Each server gets its own
 // freshly written copy: a data directory records its project's paths absolutely, so a copied directory
 // would keep writing into the one it was copied from, and a task made for the flows server would turn
 // up in the screenshots and in their committed baselines.
 function seed(dataDir: string, extra: SeedTask[] = []) {
-  genie(["user", "add", OWNER.login, "--name", OWNER.name, "--admin", "--password-stdin"], `${OWNER.password}\n`, dataDir);
-  genie(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix], undefined, dataDir);
-  genie(["member", PROJECT.id, OWNER.login, "owner"], undefined, dataDir);
-  genie(["--project", PROJECT.id, "docs", "write", FLOW_DOC.path, "--text", FLOW_DOC.text], undefined, dataDir);
-  if (capture) {
-    for (const doc of CAPTURE_DOCS) {
-      if (!doc.raw) genie(["--project", PROJECT.id, "docs", "write", doc.path, "--text", doc.text], undefined, dataDir);
-      else {
-        mkdirSync(dirname(join(dataDir, "vault", doc.path)), { recursive: true });
-        writeFileSync(join(dataDir, "vault", doc.path), doc.text);
-      }
-    }
-  }
+  run(["user", "add", OWNER.login, "--name", OWNER.name, "--admin", "--password-stdin"], `${OWNER.password}\n`, dataDir);
+  run(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix], undefined, dataDir);
+  run(["member", PROJECT.id, OWNER.login, "owner"], undefined, dataDir);
+  seedDocs(bin, dataDir, PROJECT.id, [FLOW_DOC, ...(capture ? CAPTURE_DOCS : [])]);
   const ids: string[] = [];
-  for (const t of [...SEED_TASKS, ...extra]) seedTask(dataDir, t, ids);
+  for (const t of [...SEED_TASKS, ...extra]) seedTask(bin, dataDir, PROJECT.id, t, ids);
 }
 
 // A port the kernel just handed out is free unless something grabs it in between. Two probes listen at

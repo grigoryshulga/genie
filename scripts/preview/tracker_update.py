@@ -10,6 +10,7 @@ import time
 import urllib.request
 
 import config
+import diskgc
 from cleanup import ancestor
 from preview import clean, git, lock, read, run, write
 
@@ -222,7 +223,16 @@ class Updater:
             state.update(status="deployed", completedAt=time.time())
             write(self.home / "current.json", state)
             write(self.home / "status.json", state)
+            self.prune_images()
             return state
+
+    def prune_images(self, keep=2):
+        # Old tags only cost disk. The running image, the newest `keep` images and any image a container uses stay.
+        try:
+            for item in diskgc.image_plan(run, keep):
+                run(["docker", "rmi", item["tag"]])
+        except RuntimeError:
+            pass  # A failed cleanup never undoes a verified deployment.
 
 
 def main():

@@ -635,7 +635,7 @@ def main():
     parser.add_argument("--root", default=os.getcwd())
     parser.add_argument("--home", type=Path, help="Private runtime directory; defaults to the shared Git directory")
     subs = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "request", "serve", "withdraw", "status", "enable-tailscale", "enable-services", "enable-tracker-service"):
+    for name in ("prepare", "request", "serve", "withdraw", "status", "enable-tailscale", "enable-services", "enable-tracker-service", "update-tracker"):
         subs.add_parser(name)
     worker = subs.add_parser("worker")
     worker.add_argument("--channel", choices=("main", "dev"))
@@ -652,11 +652,30 @@ def main():
     cleanup.add_argument("--worktree", type=Path, required=True)
     cleanup.add_argument("--execute", action="store_true", help="Apply the verified plan; default is dry run")
     cleanup.add_argument("--keep-worktree", action="store_true", help="Retain a still-bound T3 workspace")
+    gc = subs.add_parser("gc", help="Free disk: merged worktrees, rebuildable build output, old images, volumes, cache")
+    gc.add_argument("--execute", action="store_true", help="Apply the plan; default is dry run")
+    gc.add_argument("--only", help="Comma-separated subset of: worktrees,candidates,images,volumes,cache")
+    gc.add_argument("--keep-images", type=int, default=2, help="Newest tracker images to keep (default 2)")
+    gc.add_argument("--keep-candidates", type=int, default=3, help="Newest preview candidates to keep (default 3)")
+    gc.add_argument("--cache-gb", type=int, default=8, help="Docker build cache to keep (default 8)")
+    gc.add_argument("--idle-hours", type=int, default=24, help="Leave build output touched more recently (default 24)")
+    gc.add_argument("--no-github", action="store_true", help="Do not ask GitHub whether a branch was squash-merged")
+    gc.add_argument("--json", action="store_true")
     args = parser.parse_args()
     common = Path(git(args.root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     root = Path(git(args.root, "rev-parse", "--show-toplevel"))
     preview = Preview(root, args.home or common / "genie-preview")
-    if args.command == "cleanup-merged":
+    if args.command == "gc":
+        import diskgc as collector
+        parts = tuple(args.only.split(",")) if args.only else ("worktrees", "candidates", "images", "volumes", "cache")
+        git(root, "fetch", "origin", "dev")
+        report = collector.collect(preview, args.execute, args.keep_images, args.cache_gb, args.keep_candidates,
+                                   args.idle_hours, parts, use_gh=not args.no_github)
+        print(json.dumps(report, indent=2) if args.json else collector.summary(report))
+    elif args.command == "update-tracker":
+        from tracker_update import Updater
+        print(json.dumps(Updater(root, preview.home).update(), indent=2))
+    elif args.command == "cleanup-merged":
         from cleanup import cleanup_merged
         print(json.dumps(cleanup_merged(preview, args.pr, args.task, args.worktree,
                                         execute=args.execute, keep_worktree=args.keep_worktree), indent=2))

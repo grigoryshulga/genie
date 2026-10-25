@@ -11,9 +11,11 @@ Requires stable Rust, Node 22.19+, Git, and bubblewrap for Linux sandbox tests. 
 
 Follow the [repository workflow](development/genie-cli.md) to track a task, isolate changes, and publish a PR with successful CI.
 
+To check a UI change in seconds, free disk space and update the local tracker on demand, use the [testing workflow](development/testing-workflow.md).
+
 Before publishing a task branch or opening its PR, prepare a [fixed integration preview](development/visual-preview.md) and obtain the owner's visual approval. That guide also documents machine-local T3 Project Actions, combined task candidates and private Tailscale access.
 
-To keep the local Compose tracker on verified `dev` revisions, use the [automatic tracker updater](development/tracker-auto-update.md). It preserves the named data volumes and creates a recovery snapshot before recreation.
+To keep the local Compose tracker on verified `dev` revisions, run `preview update-tracker` or enable the optional timer of the [tracker updater](development/tracker-auto-update.md). It preserves the named data volumes and creates a recovery snapshot before recreation.
 
 ## Release flow
 

@@ -7,7 +7,7 @@ status: current
 
 # Automatic tracker updates from dev
 
-The local `genie-tracker` container can follow the newest successful CI revision already merged into `dev`. A host-side systemd timer checks every two minutes, with up to ten seconds of jitter. Git, GitHub credentials and the Docker socket stay on the host; the application container runs the server. This is independent of the disposable [preview environments](visual-preview.md).
+The local `genie-tracker` container can be updated on demand with `preview update-tracker`, or follow the newest successful CI revision already merged into `dev`. An optional host-side systemd timer checks every two minutes, with up to ten seconds of jitter. Git, GitHub credentials and the Docker socket stay on the host; the application container runs the server. This is independent of the disposable [preview environments](visual-preview.md).
 
 ## Install and enable
 
@@ -40,7 +40,7 @@ It then:
 4. Retains the previous image, briefly stops the tracker and copies the complete `/data` volume into a private tar archive. With the server stopped, SQLite databases/WAL, configuration and stored-token keys form a consistent recovery point. A backup failure restarts the original container before any new binary runs.
 5. Runs Compose `up -d --no-build --no-deps genie`, preserving volumes, then verifies the expected image and the HTTP health endpoint. The image/container carry the deployed Git SHA in the revision label. A successful run records the SHA, desired dev tip, image IDs and backup path.
 
-Build time does not interrupt the tracker. Backup and recreation cause a short outage; startup can take longer when a revision performs migrations. The timer never calls `down -v`, prunes unrelated images or deploys preview task branches. Old images and backups are retained for explicit local maintenance.
+Build time does not interrupt the tracker. Backup and recreation cause a short outage; startup can take longer when a revision performs migrations. The timer never calls `down -v`, prunes unrelated images or deploys preview task branches. After a verified deployment the updater removes older tracker image tags, keeping the newest two and any image a container uses; backups are retained, and `preview gc` handles other disk cleanup.
 
 ## Failures and recovery
 

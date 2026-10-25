@@ -2,7 +2,7 @@
 
 For browser-to-Figma capture, offline plugin work or native import validation, use the separate private [genie-figma-tools repository](https://github.com/grigoryshulga/genie-figma-tools) and its [agent workflow](https://github.com/grigoryshulga/genie-figma-tools/blob/main/docs/agent-workflow.md). This repository owns the application's tokens and exporter; the toolkit owns capture/import code and tests.
 
-Follow this sequence for every repository task. Read [CODING_STANDARDS.md](CODING_STANDARDS.md) before changing code, and [the genie CLI guide](docs/development/genie-cli.md) before tracking work.
+Follow this sequence for every repository task. To check a UI change quickly before any commit, use `npm run dev:stand` ([testing workflow](docs/development/testing-workflow.md)). Read [CODING_STANDARDS.md](CODING_STANDARDS.md) before changing code, and [the genie CLI guide](docs/development/genie-cli.md) before tracking work.
 
 For tasks that need a Compose-managed service started or updated, follow the [Compose service lifecycle](docs/agents/compose-service-lifecycle.md).
 
@@ -55,4 +55,4 @@ Before preparing a visual review, configuring T3 Project Actions, or publishing 
 
 - When the task's PR is confirmed merged into `dev`, fetch `origin/dev` and verify the merge commit is present. Then follow [merged preview cleanup](docs/development/visual-preview.md#clean-up-after-merge) to withdraw readiness, stop and remove this task's candidates and their integration worktrees, and remove its clean task worktree. Cleanup is a required post-merge step; publication, green CI or a closed unmerged PR does not authorize it.
 - Run cleanup from a stable checkout outside the worktree being removed. Preserve changed worktrees, other tasks and candidates containing unmerged work. In T3 Code, check the thread/worktree binding before removal; release that binding through the app first. If the app cannot release a live binding, retire the candidates with `--keep-worktree`, record the retained path and exact limitation in genie, and finish workspace removal after it is released.
-- Record the merged PR, removed candidates/worktrees and any retained paths in genie. Retain compact candidate tombstones so old fixed URLs never point at a different build. Keep shared caches, networking identities, tracker deployment worktrees and data volumes.
+- Record the merged PR, removed candidates/worktrees and any retained paths in genie. Retain compact candidate tombstones so old fixed URLs never point at a different build. Afterwards, or when disk space is short, run `preview gc` (a dry run) and apply it with `--execute` after reviewing the plan; see [the testing workflow](docs/development/testing-workflow.md). Keep shared caches, networking identities, tracker deployment worktrees and data volumes.
