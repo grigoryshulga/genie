@@ -175,3 +175,16 @@ pub fn routes(s: AppShared) -> Router {
         )
         .with_state(s)
 }
+
+/// A PKCS#1 PEM key of the form GitHub hands out, written where the config points.
+pub fn private_key(dir: &std::path::Path) -> String {
+    use aws_lc_rs::encoding::AsDer;
+    use base64::Engine;
+    let key = aws_lc_rs::signature::RsaKeyPair::generate(aws_lc_rs::rsa::KeySize::Rsa2048).unwrap();
+    let pkcs8 = AsDer::<aws_lc_rs::encoding::Pkcs8V1Der>::as_der(&key).unwrap();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&pkcs8.as_ref()[26..]);
+    let lines: Vec<String> = b64.as_bytes().chunks(64).map(|c| String::from_utf8_lossy(c).into_owned()).collect();
+    let path = dir.join("app.pem");
+    std::fs::write(&path, format!("-----BEGIN RSA PRIVATE KEY-----\n{}\n-----END RSA PRIVATE KEY-----\n", lines.join("\n"))).unwrap();
+    path.to_string_lossy().into_owned()
+}

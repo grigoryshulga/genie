@@ -80,6 +80,18 @@ pub struct Caller {
     pub agent: Option<AgentId>,
 }
 
+/// A repository reached through a provider connection is delivered by the task manager (the
+/// orchestrator, or a person): the agents of a task push their branch and nothing more.
+fn task_manager_only(t: &Target, caller: &Caller) -> DResult<()> {
+    if t.record.connection.is_some() && caller.agent.is_some() && caller.role != Role::Orchestrator {
+        return Err(DeliveryError::Denied(format!(
+            "{}: this repository is reached through a provider connection; the task manager opens and merges its requests, you only push the branch",
+            t.record.name
+        )));
+    }
+    Ok(())
+}
+
 /// Everything an operation on one repository of one task needs.
 struct Target {
     record: ProjectRepo,
@@ -98,7 +110,10 @@ fn load(app: &App, project: &str, task: &str, repo: &str, caller: &Caller) -> DR
     // People act with the write rights of the task's row; agents with their role's.
     let eff = match &caller.agent {
         Some(a) => {
-            let role = service::role_git(app, a);
+            // The task manager delivers a connected repository like a person does: it opens and merges
+            // requests without being given files to write (its role may be read-only).
+            let role =
+                if record.connection.is_some() && caller.role == Role::Orchestrator { RoleGit::Write } else { service::role_git(app, a) };
             effective(&record, Some(task), role, Some(&row.access))
         }
         None => effective(&record, Some(task), RoleGit::Write, Some(&row.access)),
@@ -143,6 +158,7 @@ pub async fn open_request(app: &Arc<App>, project: &str, task: &str, repo: &str,
                 "the repository's default branch is not known yet: sync it first (POST /api/repos/<name>/sync)".into(),
             ));
         }
+        task_manager_only(&t, &c)?;
         t.eff.check_open_request(&base).map_err(DeliveryError::Denied)?;
         let head = if t.row.branch.is_empty() { t.eff.task_branch().unwrap_or_default() } else { t.row.branch.clone() };
         // The branch must be on the host, with something in it.
@@ -271,6 +287,7 @@ pub async fn rerun(app: &Arc<App>, project: &str, task: &str, repo: &str, caller
     if !t.eff.write {
         return Err(DeliveryError::Denied(format!("{repo}: no access")));
     }
+    task_manager_only(&t, caller)?;
     // The watched commit — the one the review gate and the watcher read. Without one nothing was
     // pushed yet (a row from before the watch may still name the request's head).
     let sha = t
@@ -368,6 +385,7 @@ pub async fn merge(app: &Arc<App>, project: &str, task: &str, repo: &str, caller
             Ok((t, status))
         })
         .await?;
+    task_manager_only(&t, caller)?;
     // People merge as they wish, or by the policy when they ask for it; agents (and the
     // server's own auto-merge) always follow the policy.
     let strictness = if caller.agent.is_some() {

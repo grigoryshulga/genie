@@ -50,6 +50,8 @@ async fn scenario(kind: &'static str) {
     assert_eq!(again.number, 1, "{kind}: a second open finds the first");
     let draft = api.open("acme/api", &req("genie/S-2", true)).await.unwrap();
     assert!(draft.draft, "{kind}");
+    // The retry looked the request up first: the host was asked to create one per branch, not three.
+    assert_eq!(fake.lock().calls.iter().filter(|c| *c == "open").count(), 2, "{kind}: the second open created nothing");
 
     // Approvals and reviews.
     let got = api.get("acme/api", 1).await.unwrap();
