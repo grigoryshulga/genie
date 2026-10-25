@@ -77,7 +77,7 @@ fn recorded_version(db: &ServerDb) -> String {
 #[test]
 fn current_schema_has_the_two_source_tables_and_is_recorded() {
     let (_dir, db) = server();
-    assert_eq!(SERVER_SCHEMA_VERSION, 10);
+    assert_eq!(SERVER_SCHEMA_VERSION, 11);
     assert_eq!(recorded_version(&db), "10");
     assert_eq!(tables(&db), ["observation_secrets", "observation_sources"]);
     assert_eq!(columns(&db, "observation_sources"), ["project", "name", "kind", "url", "config", "created", "updated"]);

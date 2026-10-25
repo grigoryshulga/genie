@@ -113,6 +113,8 @@ pub struct App {
     /// Per-user Pi OAuth sessions started from the provider settings dialog.
     pub llm_oauth: crate::llm_oauth::Registry,
     pub social_auth: crate::http::social_auth::Registry,
+    /// Provider connections being made and the user tokens of people picking repositories.
+    pub git_connect: crate::http::connections::Registry,
     /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
     /// Turn slots (`runtime.maxConcurrent`), shared with the scheduler loop; members
@@ -179,6 +181,7 @@ impl App {
             sessions: Default::default(),
             llm_oauth: Default::default(),
             social_auth: Default::default(),
+            git_connect: Default::default(),
             sched: Default::default(),
             slots,
             agents: RwLock::new(Arc::new(agents)),

@@ -184,7 +184,13 @@ pub struct Effective {
 /// The effective policy of `repo` for an agent whose role allows `role`, working on `task`
 /// (`None` for the orchestrator), given the access the task names for the repository.
 pub fn effective(repo: &ProjectRepo, task: Option<&str>, role: RoleGit, task_access: Option<&str>) -> Result<Effective, String> {
-    let policy = Policy::parse(&repo.policy).map_err(|e| format!("repository {}: {e}", repo.name))?;
+    let mut policy = Policy::parse(&repo.policy).map_err(|e| format!("repository {}: {e}", repo.name))?;
+    if repo.connection.is_some() {
+        // A repository reached through a provider connection never sees a rewritten or deleted branch,
+        // whatever its stored policy says (older policies and presets cannot widen this).
+        policy.force_push = false;
+        policy.delete_branches = false;
+    }
     let read = policy.read && role != RoleGit::None;
     let write_denied = if !read {
         Some("this role or the policy gives no access to the repository".to_string())
@@ -408,6 +414,8 @@ mod tests {
             access: "write".into(),
             policy,
             created: String::new(),
+            connection: None,
+            provider_repo_id: None,
         }
     }
 
@@ -510,5 +518,15 @@ mod tests {
         assert!(d.contains("genie/S-7") && d.contains("A person merges it"), "{d}");
         let ro = effective(&repo(json!({})), Some("S-7"), RoleGit::Read, None).unwrap().describe();
         assert!(ro.contains("read only"), "{ro}");
+    }
+
+    #[test]
+    fn a_connected_repository_never_allows_force_push_or_deleting_branches() {
+        let mut r = repo(serde_json::json!({"force_push": true, "delete_branches": true}));
+        let plain = effective(&r, Some("S-7"), RoleGit::Write, Some("write")).unwrap();
+        assert!(plain.policy.force_push && plain.policy.delete_branches);
+        r.connection = Some("gc_1".into());
+        let connected = effective(&r, Some("S-7"), RoleGit::Write, Some("write")).unwrap();
+        assert!(!connected.policy.force_push && !connected.policy.delete_branches);
     }
 }

@@ -32,6 +32,11 @@ pub struct ProjectRepo {
     /// The repository's policy (`genie::git::policy`); `{}` means the defaults.
     pub policy: Value,
     pub created: String,
+    /// The provider connection the repository is reached through (`connections`); `None`
+    /// means the repository's own token (PAT) or the host's.
+    pub connection: Option<String>,
+    /// The repository's id on the provider: it survives a rename or a transfer.
+    pub provider_repo_id: Option<i64>,
 }
 
 impl ProjectRepo {
@@ -47,6 +52,8 @@ impl ProjectRepo {
             access: r.get("access")?,
             policy: serde_json::from_str(&policy).unwrap_or(Value::Null),
             created: r.get("created")?,
+            connection: r.get("connection")?,
+            provider_repo_id: r.get("provider_repo_id")?,
         })
     }
 }
@@ -123,6 +130,8 @@ pub struct NewRepo {
     pub policy: Option<Value>,
     /// The access token (PAT) on the host; kept sealed, see `secrets`.
     pub token: Option<crate::secrets::Secret>,
+    /// The provider connection and the repository's id on it (set together).
+    pub connection: Option<(String, i64)>,
 }
 
 /// Fields of a repository to change (`None` keeps a field).
@@ -318,9 +327,21 @@ impl ServerDb {
         }
         let policy = new.policy.unwrap_or_else(|| Value::Object(Default::default()));
         self.conn().execute(
-            "INSERT INTO project_repos(project, name, host, remote, mount, default_branch, access, policy, created)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![project, name, host, remote, mount, new.default_branch.unwrap_or_default().trim(), access, policy.to_string(), now()],
+            "INSERT INTO project_repos(project, name, host, remote, mount, default_branch, access, policy, created, connection, provider_repo_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                project,
+                name,
+                host,
+                remote,
+                mount,
+                new.default_branch.unwrap_or_default().trim(),
+                access,
+                policy.to_string(),
+                now(),
+                new.connection.as_ref().map(|c| c.0.as_str()),
+                new.connection.as_ref().map(|c| c.1)
+            ],
         )?;
         if let Some(t) = new.token.as_ref().map(|t| t.0.as_str()).filter(|t| !t.trim().is_empty())
             && let Err(e) = self.set_repo_token(project, &name, t)

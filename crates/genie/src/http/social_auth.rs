@@ -121,7 +121,7 @@ fn configured<'a>(app: &'a App, id: &str) -> ApiResult<(&'static Provider<'stati
     Ok((provider, client, secret))
 }
 
-fn origin(app: &App) -> ApiResult<reqwest::Url> {
+pub(super) fn origin(app: &App) -> ApiResult<reqwest::Url> {
     let url = app
         .cfg
         .public_url
@@ -145,7 +145,7 @@ fn callback_url(app: &App, provider: &str) -> ApiResult<String> {
     Ok(origin(app)?.join(&format!("/api/auth/social/{provider}/callback")).map_err(|_| ApiError::bad("invalid callback URL"))?.to_string())
 }
 
-fn cookie(name: &str, value: &str, age: i64, secure: bool, same_site: &str) -> HeaderValue {
+pub(super) fn cookie(name: &str, value: &str, age: i64, secure: bool, same_site: &str) -> HeaderValue {
     HeaderValue::from_str(&format!(
         "{name}={value}; Path=/; HttpOnly; SameSite={same_site}; Max-Age={age}{}",
         if secure { "; Secure" } else { "" }

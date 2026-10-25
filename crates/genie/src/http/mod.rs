@@ -8,6 +8,7 @@ pub mod account;
 pub mod agent_config;
 pub mod agents;
 pub mod automations;
+pub mod connections;
 pub mod console;
 pub mod ctx;
 pub mod decisions;
@@ -151,6 +152,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(mcp_admin::routes())
         .merge(mcp_gateway::routes())
         .merge(repos::routes())
+        .merge(connections::routes())
         .merge(observation::routes())
         .merge(live::routes())
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "not found") });

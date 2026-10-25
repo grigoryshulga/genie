@@ -257,6 +257,10 @@ struct AddBody {
     policy: Option<Value>,
     /// The access token (PAT) on the host, kept sealed on the server; a repository's own wins over the host's.
     token: Option<Secret>,
+    /// Bind the repository to a provider connection instead: its id on the provider. `host`, `remote`
+    /// and `defaultBranch` then come from the provider, not from the request.
+    connection: Option<String>,
+    provider_repo_id: Option<i64>,
 }
 
 fn check_policy(policy: &Option<Value>) -> ApiResult<()> {
@@ -266,10 +270,36 @@ fn check_policy(policy: &Option<Value>) -> ApiResult<()> {
     Ok(())
 }
 
+/// A connected repository never allows rewriting or deleting branches, so the stored policy may not ask for it.
+fn check_connected_policy(policy: &Option<Value>) -> ApiResult<()> {
+    if let Some(p) = policy {
+        let p = Policy::parse(p).map_err(ApiError::bad)?;
+        if p.force_push || p.delete_branches {
+            return Err(ApiError::bad("a repository reached through a connection never allows force push or deleting branches"));
+        }
+    }
+    Ok(())
+}
+
 async fn add(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<AddBody>) -> ApiResult<(StatusCode, Json<Value>)> {
     let access = ctx.access(&app, None).await?;
     access.admin()?;
     check_policy(&b.policy)?;
+    // A repository from a connection: the provider, not the request, says what it is.
+    let mut b = b;
+    let mut bound = None;
+    if let Some(connection) = b.connection.clone() {
+        check_connected_policy(&b.policy)?;
+        if b.token.is_some() {
+            return Err(ApiError::bad("a repository bound to a connection takes no token of its own"));
+        }
+        let id = b.provider_repo_id.ok_or_else(|| ApiError::bad("providerRepoId is required with a connection"))?;
+        let (conn, repo) = super::connections::resolve_binding(&app, &ctx, &connection, id).await?;
+        b.host = conn.host.clone();
+        b.remote = repo.full_name.clone();
+        b.default_branch = Some(repo.default_branch.clone()).filter(|d| !d.is_empty());
+        bound = Some((conn.id, repo.id));
+    }
     let out = app
         .blocking(move |app| {
             let new = NewRepo {
@@ -281,8 +311,20 @@ async fn add(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<AddBody>) -> A
                 access: b.access,
                 policy: b.policy,
                 token: b.token,
+                connection: bound.clone(),
             };
             let (repo, warning) = service::add_repo(app, &access.project, new)?;
+            if let Some((cid, rid)) = &bound {
+                let actor = access.user.as_ref().map(|u| u.login.clone()).unwrap_or_default();
+                let detail = json!({ "project": access.project, "repo": repo.name, "remote": repo.remote, "providerRepoId": rid });
+                let _ = app.with_server(|db| {
+                    db.record_config_change(&actor, &format!("git.connection:{cid}"), "granted", None, Some(&detail.to_string()))
+                });
+                let payload = json!({ "connection": cid, "action": "granted", "detail": detail });
+                let _ = app.with_tracker(&access.project, |tr| {
+                    tr.append_event(genie_core::events::GIT_CONNECTION, None, &actor, "human", payload).map(|_| ())
+                });
+            }
             let mut v = repo_json(app, &hosts::load(&app.data), &repo, None);
             v["warning"] = json!(warning);
             Ok(v)
@@ -306,6 +348,14 @@ async fn update(State(app): State<Arc<App>>, ctx: Ctx, Path(name): Path<String>,
     let access = ctx.access(&app, None).await?;
     access.admin()?;
     check_policy(&b.policy)?;
+    let (project, repo_name) = (access.project.clone(), name.clone());
+    let connected = app.blocking(move |app| Ok(app.with_server(|db| db.repo(&project, &repo_name))?.connection.is_some())).await?;
+    if connected {
+        check_connected_policy(&b.policy)?;
+        if b.token.is_some() {
+            return Err(ApiError::bad("a repository bound to a connection takes no token of its own"));
+        }
+    }
     let out = app
         .blocking(move |app| {
             let repo = app.with_server(|db| {

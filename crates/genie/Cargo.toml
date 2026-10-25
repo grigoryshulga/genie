@@ -11,6 +11,7 @@ name = "genie"
 path = "src/main.rs"
 
 [dependencies]
+aws-lc-rs = "1.18.1"
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
