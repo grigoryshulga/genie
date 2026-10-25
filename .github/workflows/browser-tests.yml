@@ -1,0 +1,61 @@
+name: Browser tests
+
+# Slow, so ci.yml calls this only for pull requests into main (releases). It also runs every night
+# on dev and by hand ("Run workflow", any ref): a visual regression then shows up the next day
+# instead of at the release. A scheduled run uses the workflow file from the default branch.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to test
+        default: dev
+  schedule:
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # A scheduled run has no input: it tests dev.
+  REF: ${{ inputs.ref || 'dev' }}
+
+jobs:
+  ui:
+    name: Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+      - uses: rui314/setup-mold@v1
+      # The server is built before web/dist exists, so it does not embed the UI and is not rebuilt
+      # by a web-only change: the tests serve the fresh web/dist with `serve --web`.
+      - run: cargo build --locked -p genie
+      - run: npm run build:web
+      # Seeds two servers and runs Playwright in the image pinned to the installed version.
+      - run: npm run test:ui
+      - name: Upload the report, traces and screenshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-tests
+          path: test-results/
+          retention-days: 14
