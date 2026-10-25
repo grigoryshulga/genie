@@ -53,8 +53,7 @@ function stack(list: HTMLElement) {
     layer += 1;
     const shown = Math.min(layer, LAYERS);
     // `offsetTop` ignores transforms, so the target stays where the list placed the card.
-    card.style.transform = `translateY(${anchor.offsetTop + shown * PEEK - card.offsetTop}px) scale(${1 - 0.02 * shown})`;
-    card.style.transformOrigin = "top center";
+    card.style.transform = `translateY(${anchor.offsetTop + shown * PEEK - card.offsetTop}px)`;
     card.style.zIndex = String(-shown);
     card.style.opacity = layer > LAYERS ? "0" : "1";
     card.style.pointerEvents = "none";

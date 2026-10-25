@@ -91,7 +91,10 @@ export function DocsOverview({ root, section, toolbar, onSection, onOpen, onCrea
       {section !== root && (renaming ? (
         <RenameField className="g-page-title" value={section.title} label="Название раздела" onCommit={(title) => { setRenaming(false); rename.mutate({ path: section.landing?.path ?? `${section.path}index.md`, create: !section.landing, title }); }} onCancel={() => setRenaming(false)} />
       ) : (
-        <h1 className="g-page-title g-rename-host">{section.title}<RenameButton label="Переименовать раздел" onClick={() => setRenaming(true)} /></h1>
+        <div className="g-rename-host">
+          <h1 className="g-page-title">{section.title}</h1>
+          <RenameButton label="Переименовать раздел" onClick={() => setRenaming(true)} />
+        </div>
       ))}
       <span className="grow" />
       <div className="page-toolbar" role="toolbar" aria-label="Документация и предложения">

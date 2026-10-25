@@ -154,7 +154,10 @@ export function DocView({
             {renaming ? (
               <RenameField className="doc-title" value={articleTitle(page)} label="Название статьи" onCommit={(title) => { setRenaming(false); rename.mutate({ path: page.path, title }); }} onCancel={() => setRenaming(false)} />
             ) : (
-              <h2 className="doc-title g-rename-host">{articleTitle(page)}<RenameButton label="Переименовать статью" onClick={() => setRenaming(true)} /></h2>
+              <div className="g-rename-host">
+                <h2 className="doc-title">{articleTitle(page)}</h2>
+                <RenameButton label="Переименовать статью" onClick={() => setRenaming(true)} />
+              </div>
             )}
             <div className="doc-meta">
               <Tag tone="outline">Обновлена {docAgo(page.updated)}</Tag>

@@ -119,11 +119,13 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
           {admin && renaming ? (
             <RenameField className="ag-role-rename" value={r.title} label="Название роли" onCommit={(title) => { setRenaming(false); void rename(title); }} onCancel={() => setRenaming(false)} />
           ) : (
-            <h2 className={admin ? "g-rename-host" : undefined}>
-              {r.title}
+            <div className={admin ? "g-rename-host" : undefined}>
+              <h2>
+                {r.title}
+                {!admin && <span className="ag-readonly">Только чтение</span>}
+              </h2>
               {admin && <RenameButton label="Переименовать роль" onClick={() => setRenaming(true)} />}
-              {!admin && <span className="ag-readonly">Только чтение</span>}
-            </h2>
+            </div>
           )}
           {r.description && <p className="desc">{r.description}</p>}
         </div>

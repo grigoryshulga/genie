@@ -110,7 +110,7 @@
 .g-lane-cards > .bd-card { transition: transform 280ms var(--g-ease), opacity 280ms var(--g-ease); }
 
 @media (prefers-reduced-motion: reduce) {
-  .g-lane, .g-lane-chev, .bd-card { transition: none; }
+  .g-lane, .g-lane-chev, .bd-card, .g-lane-cards > .bd-card { transition: none; }
 }
 
 @media (max-width: 900px) {

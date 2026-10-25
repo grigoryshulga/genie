@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { anchorPopover } from "@/shared/lib";
 import { cx } from "./cx.ts";
+import { useModalFocus } from "./modal-focus.ts";
 import "./popover.css";
 
 /**
@@ -38,16 +39,14 @@ export function Popover({ label, icon, count, children, className }: { label: st
     };
   }, [open]);
 
+  // Focus goes in when it opens, Tab stays inside, Escape closes and hands focus back to the button.
+  useModalFocus(popRef, open, () => setOpen(false));
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => !wrapRef.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
   return (
