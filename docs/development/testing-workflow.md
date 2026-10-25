@@ -13,7 +13,7 @@ Three loops, from the cheapest to the one that gates publication. Use the cheape
 | --- | --- | --- |
 | Does this UI change look and behave right? | [Development stand](#development-stand) | seconds, hot reload |
 | Does the whole product still work? | `npm run typecheck`, `npm test`, `cargo test`, `npm run test:ui` | minutes; CI runs the same |
-| Is this exact commit what the owner approves? | [Fixed integration preview](visual-preview.md) | one build per candidate |
+| Is this exact commit what the owner approves? | [Fixed integration preview](visual-preview.md), required for UI changes only | one build per candidate |
 
 ## Development stand
 

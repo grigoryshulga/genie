@@ -1,13 +1,13 @@
 ---
 title: Visual review before publishing
-summary: Prepare combined local previews and obtain owner approval before publishing task branches.
+summary: Prepare combined local previews and obtain owner approval before publishing UI changes.
 type: guide
 status: current
 ---
 
 # Visual review before publishing
 
-An agent prepares a committed, validated task and a fixed integration candidate, then waits for the owner to approve that candidate and authorize publication. Feature PRs target `dev`; only release PRs from `dev` target `main`. [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines the mandatory gates, and [the tracker guide](genie-cli.md) defines task commands.
+For a UI change, an agent prepares a committed, validated task and a fixed integration candidate, then waits for the owner to approve that candidate and authorize publication. Feature PRs target `dev`; only release PRs from `dev` target `main`. [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines what counts as a UI change and the mandatory gates (other changes skip the preview), and [the tracker guide](genie-cli.md) defines task commands.
 
 ## Local installation
 
@@ -208,7 +208,7 @@ Public sharing is not a worktree creation or settle action. Obtain the owner's r
 
 ## Owner approval and lifecycle
 
-Before handing off, verify the application URL and its relevant behavior, then record candidate ID, base SHA, all task SHAs, local/remote URLs, check results, limitations and a short review scenario in the task. For a documentation-only task, provide the rendered document or the exact committed diff alongside the preview. Record `awaiting_visual_review` as a progress comment; keep the existing tracker status until a permitted workflow transition applies.
+Before handing off, verify the application URL and its relevant behavior, then record candidate ID, base SHA, all task SHAs, local/remote URLs, check results, limitations and a short review scenario in the task. Record `awaiting_visual_review` as a progress comment; keep the existing tracker status until a permitted workflow transition applies.
 
 The owner's explicit response must identify the reviewed candidate and authorize publication. Local readiness and T3 thread state are not approval. Changed task commits, base or task composition need a new candidate and approval before pushing. An approval of A+B does not establish that A alone works: if a task is removed, review the new composition, and disclose genuine task dependencies in the PRs.
 
