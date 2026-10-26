@@ -27,6 +27,8 @@
   background: var(--g-accent-soft);
   color: var(--g-accent-soft-text);
 }
+/* A standard role's own colour (components.css maps `data-tone` to `--agent-tone`). */
+.av.agent[data-tone] { background: var(--agent-tone); color: var(--g-on-agent); }
 
 .av.human {
   border-radius: 50%;

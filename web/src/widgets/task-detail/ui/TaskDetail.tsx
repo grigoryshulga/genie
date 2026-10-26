@@ -2,7 +2,7 @@ import { TaskIntelligence } from "./TaskIntelligence.tsx";
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
-import { Avatars, displayName, ROLE_TITLE_RU } from "@/entities/member";
+import { agentTone, Avatars, displayName, ROLE_TITLE_RU } from "@/entities/member";
 import type { DocsImpact, DocsImpactReason } from "@/shared/api";
 import {
   ArtifactThumb,
@@ -627,7 +627,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
                   ) : (
                     <div key={`c${a.c.id}`} className={`comment g-sheet${a.c.role === "human" ? " mine" : ""}`}>
                       <div className="head">
-                        <KitAvatar kind={a.c.role === "human" ? "human" : "agent"} name={a.c.author} sm />
+                        <KitAvatar kind={a.c.role === "human" ? "human" : "agent"} name={a.c.author} sm tone={agentTone(a.c.role)} />
                         <span className="who">{a.c.author}</span>
                         <span className="k">{KIND_NAME[a.c.kind] ?? a.c.kind}</span>
                         <span className="when">{timeAgo(a.c.at)}</span>
