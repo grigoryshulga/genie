@@ -95,7 +95,7 @@ export function EpicPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void })
           Эпики
         </Link>
         <Icon.chevron size={12} />
-        <span className="mono ep-id">{epic.id}</span>
+        <span className="mono ep-id"><EpicIcon id={epic.id} size={12} /> {epic.id}</span>
         <span className="grow" />
         <Link className="g-btn secondary sm d-only" to={`/board?epic=${encodeURIComponent(epic.id)}`}>
           <Icon.board size={13} />

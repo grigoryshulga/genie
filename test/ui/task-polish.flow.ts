@@ -93,9 +93,9 @@ for (const theme of ["ink", "paper"]) {
 }
 
 for (const theme of ["ink", "paper"]) {
-  test(`decision question fills the compact card body (${theme})`, async ({ page, request }) => {
+  test(`decision card keeps its question, answer and metadata readable (${theme})`, async ({ page, request }) => {
     const headers = { "x-genie": "1" };
-    const created = await request.post("/api/tasks?project=demo", { headers, data: { title: "Выбрать провайдера почты" } });
+    const created = await request.post("/api/tasks?project=demo", { headers, data: { title: "Выбрать провайдера почты", acceptance: ["Ответ владельца сохранён"] } });
     expect(created.ok()).toBe(true);
     const task: { id: string } = await created.json();
     const question = "Какого провайдера почты использовать для уведомлений?";
@@ -108,8 +108,12 @@ for (const theme of ["ink", "paper"]) {
     const body = (await card.locator(".bd-main").boundingBox())!;
     const ask = (await card.locator(".bd-ask").boundingBox())!;
     expect(Math.abs(body.y + body.height - ask.y - ask.height)).toBeLessThan(2);
-    expect(ask.height).toBeGreaterThan(60);
-    expect(await card.locator(".bd-question").evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true);
+    const line = await card.locator(".bd-question").evaluate((node) => ({ height: node.clientHeight, line: parseFloat(getComputedStyle(node).lineHeight) }));
+    expect(line.height).toBeGreaterThanOrEqual(Math.floor(line.line));
+    await expect(card.locator(".bd-answer")).toBeVisible();
+    await expect(card.locator(".bd-foot")).toBeVisible();
+    await expect(card.locator(".bd-ac")).toContainText("0/1");
+    await expect(card.locator(".bd-comments")).toHaveCount(0);
     await page.screenshot({ path: `test-results/decision-card-${theme}.png`, animations: "disabled" });
     await card.getByRole("button", { name: /Выбрать провайдера почты/ }).click();
     await expect(page.getByRole("dialog", { name: `Задача ${task.id}`, exact: true })).toBeVisible();

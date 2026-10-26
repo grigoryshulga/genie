@@ -44,6 +44,10 @@ Layer 1 holds the palette; layer 2 names the meaning. A component uses layer 2 a
 | Controls | 40 px roomy, 32 px dense (`sm`), rows 44 px. The dense variant is for lists, toolbars and settings, not for touch-first screens. |
 | Layout | content column 840 px, prose measure 64ch, board lane 344 px, card 288 × 144. Sidebar/detail rail and responsive breakpoints remain application layout CSS. |
 
+Board cards use `g-shadow-board-card`, a short unblurred lift, without changing shared card or overlay shadows. Each of the six existing lanes uses its own `g-board-lane-*` colour: grey backlog, orange owner decision, blue preparation, ochre queue, green work and muted green completion. Lane surfaces mix 6% of that colour with `g-surface`; card surfaces mix 5% with `g-board-card-bg`. Folded and empty lanes retain their identity, and drag copies use the task's existing status-to-lane mapping. Cancelled tasks stay neutral outside the workflow.
+
+Epic identity is independent: its stable four-tone palette remains on the compact `EpicChip` link and `EpicIcon`, without a competing card stripe. Task status is carried by the lane; comment counters stay hidden. Board-only `g-board-card-bg` and `g-board-label-bg` keep surfaces and filled labels quiet. Human circles and agent rounded squares reuse `Avatar` unchanged; role colours are not changed.
+
 ## Typography
 
 Unbounded for display, Golos Text for everything else, Geist Mono for identifiers, code and numeric metadata. The display and body faces are self-hosted variable fonts (`@fontsource-variable`); the mono face is self-hosted too, so the app renders identically offline.

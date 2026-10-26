@@ -12,6 +12,7 @@ import { canManageProject, managementDestination, isTyping, rememberWorkRoute } 
 import { Dialog, LoadingState, Skeleton } from "@/shared/ui";
 import { TopBar } from "@/widgets/topbar";
 import { lazyPage } from "./lazyPage.ts";
+import { useTaskModalMotion } from "./useTaskModalMotion.ts";
 import "./task-modal.css";
 // Legacy cross-layer compatibility layer (`#root` height plus old class names other sheets still
 // target). It stays with the app shell until the H33 cleanup retires those rules.
@@ -127,6 +128,7 @@ function Shell() {
     next.delete("task");
     setSp(next);
   }, [sp, setSp]);
+  const requestCloseTask = useTaskModalMotion(openTaskId, location.pathname === "/board", closeTask);
 
   const actions: PaletteActions = useMemo(
     () => ({
@@ -197,9 +199,9 @@ function Shell() {
         <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
       </Suspense>
       {openTaskId && (
-        <Dialog bare className="task-modal" title={`Задача ${openTaskId}`} onClose={closeTask}>
+        <Dialog bare className="task-modal" title={`Задача ${openTaskId}`} onClose={requestCloseTask}>
           <Suspense fallback={<PageFallback />}>
-            <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />
+            <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={requestCloseTask} />
           </Suspense>
         </Dialog>
       )}
