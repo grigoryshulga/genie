@@ -57,7 +57,9 @@ for (const theme of ["ink", "paper"]) for (const width of [1440, 768, 390]) {
     const app = page.frameLocator("#app");
     await expect(app.getByRole("region", { name: "Промпт роли", exact: true })).toContainText("Investigate the task");
     expect(await app.locator(".role-runtime").evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(120);
-    await app.getByRole("tab", { name: "Настройки", exact: true }).click();
+    await app.getByRole("tab", { name: "Промпт", exact: true }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(app.getByRole("tab", { name: "Настройки", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(app.locator(".ag-mcp-connection")).toHaveCount(3);
     await expect(app.locator(".ag-mcp-connection li").first()).not.toBeVisible();
     const createRole = app.getByRole("region", { name: "Роли", exact: true }).getByRole("button", { name: "Новая роль", exact: true });
@@ -179,5 +181,69 @@ for (const theme of ["ink", "paper"]) for (const width of [1040, 1440]) {
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(more).toBeFocused();
+  });
+}
+
+
+test("the shared header search filters roles without a second search field", async ({ page }) => {
+  await page.goto("/agents?id=analyst&view=settings");
+  const roles = page.getByRole("region", { name: "Роли", exact: true });
+  const items = roles.locator(".pick");
+  await expect(items).not.toHaveCount(0);
+  const count = await items.count();
+  expect(count).toBeGreaterThan(1);
+  await expect(roles.getByRole("searchbox")).toHaveCount(0);
+  const search = page.getByRole("searchbox", { name: "Поиск агентов и инструментов", exact: true }).filter({ visible: true });
+  await search.fill("ИНТЕГРАЦИЙ");
+  await expect(items).toHaveCount(1);
+  await expect(items).toContainText("Аналитик интеграций");
+  await search.fill("reviewer");
+  await expect(items).toHaveCount(1);
+  await expect(items).toContainText("Ревьюер");
+  await search.fill("Изучает документацию и задачи");
+  await expect(items).toHaveCount(1);
+  await expect(items).toContainText("Аналитик интеграций");
+  await search.fill("no-such-role");
+  await expect(items).toHaveCount(0);
+  await expect(roles).toContainText("Ничего не найдено.");
+  await search.press("Escape");
+  await expect(items).toHaveCount(count);
+  const params = new URL(page.url()).searchParams;
+  expect(params.has("q")).toBe(false);
+  expect(params.get("id")).toBe("analyst");
+  expect(params.get("view")).toBe("settings");
+});
+
+for (const theme of ["ink", "paper"]) {
+  test(`role diagnostics ${theme}: per-role counts replace the list summary`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript((theme) => localStorage.setItem("genie.appearance.theme", theme), theme);
+    await page.route("**/api/agent-config", async (route) => {
+      const response = await route.fetch();
+      const cfg = await response.json();
+      cfg.problems.push(
+        { item: "role:analyst", level: "error", message: "A second invalid role setting" },
+        { item: "role:analyst", level: "warning", message: "An unavailable tool" },
+      );
+      cfg.problems = cfg.problems.filter((p: { item: string }) => p.item !== "role:tester");
+      await route.fulfill({ response, json: cfg });
+    });
+    await page.goto("/agents?id=analyst");
+    const roles = page.getByRole("region", { name: "Роли", exact: true });
+    await expect(roles.locator(".ag-problem-summary")).toHaveCount(0);
+    const analyst = roles.locator(".pick").filter({ has: page.locator(".role-name", { hasText: /^Аналитик$/ }) });
+    const errors = analyst.getByRole("img", { name: "Ошибок: 2", exact: true });
+    await expect(errors).toHaveText("2");
+    await expect(errors).toHaveAttribute("title", /A second invalid role setting/);
+    await expect(analyst.getByRole("img", { name: "Предупреждений: 1", exact: true })).toHaveText("1");
+    const integration = roles.locator(".pick").filter({ hasText: "Аналитик интеграций" });
+    await expect(integration.getByRole("img", { name: "Предупреждений: 1", exact: true })).toBeVisible();
+    await expect(integration.getByRole("img", { name: /Ошибок:/ })).toHaveCount(0);
+    await expect(roles.locator(".pick").filter({ hasText: "Тестировщик" }).getByRole("img")).toHaveCount(0);
+    const detail = page.getByRole("region", { name: "Роль", exact: true });
+    await detail.locator(".ag-problem-summary > summary").click();
+    await expect(detail.locator(".ag-problems")).toContainText("the role has no model");
+    await detail.locator(".ag-problem-summary > summary").click();
+    await page.screenshot({ path: `test-results/role-diagnostics-${theme}.png` });
   });
 }

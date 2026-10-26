@@ -5,8 +5,9 @@
   .agents .ag-roles-layout :is(.role-header, .role-tabs, .role-body) { padding-inline: max(var(--g-space-7), calc((100% - var(--g-content)) / 2)); }
 }
 .agents .role-header { padding-bottom: var(--g-space-4); }
-.role-tabs { position: sticky; top: 0; z-index: var(--g-z-sticky); padding: var(--g-space-2) var(--g-space-7); border-bottom: 1px solid var(--g-border); background: var(--g-bg); }
+.role-tabs { position: sticky; top: 0; z-index: var(--g-z-sticky); padding: 0 var(--g-space-7); border-bottom: 1px solid var(--g-border); background: var(--g-bg); }
 .role-tabs .g-tabs { width: fit-content; }
+.role-tabs .g-tabs.underline > [role="tab"] { height: calc(var(--g-control) + var(--g-space-4)); }
 .role-body > * { flex-shrink: 0; }
 .role-body, .role-editor, .role-settings-form, .role-settings-view { min-width: 0; width: 100%; }
 .role-editor > fieldset { display: block; width: 100%; }
@@ -91,3 +92,9 @@
 
 .role-field-grid > .g-field { align-content: start; }
 .role-import-json { max-height: calc(var(--g-control) * 8); overflow: auto; font: var(--g-text-caption) / var(--g-leading-prose) var(--g-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.ag-roles-layout .pick .t > .role-name { flex: 1; min-width: 0; }
+.role-problem-counts { display: inline-flex; flex: none; align-items: center; gap: var(--g-space-1); margin-inline-start: auto; }
+.role-problem-count { display: inline-flex; align-items: center; justify-content: center; gap: var(--g-space-1); min-width: var(--g-space-5); height: var(--g-space-5); padding-inline: var(--g-space-1); border-radius: var(--g-radius-pill); font: var(--g-weight-semibold) var(--g-text-caption) / 1 var(--g-font-mono); }
+.role-problem-count.error { background: var(--g-danger); color: var(--g-on-danger); }
+.role-problem-count.warning { background: var(--g-signal-soft); color: var(--g-signal-text); }

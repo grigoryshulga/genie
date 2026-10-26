@@ -65,6 +65,7 @@
         h(kit.SplitButton, { menuLabel: "Send options", items: [{ id: "normal", label: "Normal", checked: true, onSelect: () => {} }, { id: "interrupt", label: "Interrupt", hint: "once, stops the step", checked: false, onSelect: () => {} }] }, "Send"))),
     block("Tabs, segments, chips, tags, key caps",
       row(h(kit.Tabs, { label: "Views", value: "board", items: [{ id: "board", label: "Board" }, { id: "list", label: "List" }] }),
+        h(kit.Tabs, { label: "Role views", variant: "underline", value: "prompt", items: [{ id: "prompt", label: "Prompt" }, { id: "settings", label: "Settings" }, { id: "history", label: "History" }] }),
         h(kit.Segmented, { label: "Density", value: "roomy", onChange: () => {}, items: [{ id: "roomy", label: "Roomy" }, { id: "dense", label: "Dense" }] }),
         h(kit.Chip, { pressed: true }, "Selected chip"),
         h(kit.Chip, null, "Chip"),

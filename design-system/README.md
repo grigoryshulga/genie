@@ -74,7 +74,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | --- | --- | --- |
 | Button | primary, secondary, ghost, danger × roomy/dense × resting/hover/focus/disabled/busy | `Button`; pill, 40 px (32 dense). Primary is orange with an ink label; secondary is a green outline. |
 | Icon button | resting/hover/focus/disabled | `IconButton`; needs a `label` for its accessible name. |
-| Tabs | selected/resting | `Tabs`; horizontal `g-tabs`, also usable as route links. |
+| Tabs | pills/underline × selected/resting | `Tabs`; horizontal `g-tabs`, also usable as route links. Use `variant="underline"` for subordinate navigation. |
 | Segmented | selected/resting | `Segmented`; `g-seg`, radiogroup semantics. |
 | Chip | resting/pressed | `Chip`; `pressed` reflects the toggle state. |
 | Tag | neutral, accent, signal, danger, solid-accent, solid-signal, outline | `Tag`; soft tint with the matching text colour. |

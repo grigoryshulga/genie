@@ -66,6 +66,12 @@
    and on an accent fill it lands at 1.4:1. */
 .g-tabs > [aria-selected="true"] .g-caption, .g-tabs > a[aria-current="page"] .g-caption, .g-chip[aria-pressed="true"] .g-caption { color: inherit; }
 
+/* Secondary navigation uses text and an underline instead of another filled rail. */
+.g-tabs.underline { gap: var(--g-space-4); padding: 0; border: 0; border-radius: 0; }
+.g-tabs.underline > :is([role="tab"], a) { height: var(--g-control); padding-inline: var(--g-space-2); border-radius: 0; border-bottom: 2px solid transparent; background: transparent; }
+.g-tabs.underline > :is([role="tab"], a):hover { background: transparent; color: var(--g-text); }
+.g-tabs.underline > :is([aria-selected="true"], a[aria-current="page"]) { border-bottom-color: var(--g-accent); background: transparent; color: var(--g-text); }
+
 /* ---- chips, tags, status ---- */
 .g-chip { display: inline-flex; align-items: center; gap: var(--g-space-2); height: var(--g-control-sm); padding: 0 var(--g-space-4); border: 1.5px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font: 600 var(--g-text-dense)/1 var(--g-font-sans); cursor: pointer; }
 .g-chip:hover { background: var(--g-surface-hover); color: var(--g-text); }

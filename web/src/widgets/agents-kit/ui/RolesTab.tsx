@@ -1,7 +1,7 @@
 // A role has three workspaces: its prompt, settings and a paginated audit trail.
 import { useState } from "react";
 import { useSearchParams } from "react-router";
-import { exportRole, roleSchema, sectionProblems, useDeleteConfig, useRole, type Catalogue, type RoleDef } from "@/entities/agent-config";
+import { exportRole, roleSchema, useDeleteConfig, useRole, type Catalogue, type Problem, type RoleDef } from "@/entities/agent-config";
 import { agentTone } from "@/entities/member";
 import { Button, ConfirmDialog, Icon, IconButton, LoadingState, Popover, Select, Tabs, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
@@ -30,10 +30,8 @@ export function RolesTab({
   base?: string;
 }) {
   const [importing, setImporting] = useState(false);
-  const [search, setSearch] = useState("");
   const [editingRole, setEditingRole] = useState<string>();
   const [pendingRole, setPendingRole] = useState<string>();
-  const matches = (r: RoleDef) => `${r.title} ${r.id} ${r.description}`.toLocaleLowerCase().includes(search.toLocaleLowerCase());
   const team = cfg.roles.filter((r) => r.class !== "orchestrator");
   const orch = cfg.roles.filter((r) => r.class === "orchestrator");
   const current = selected ?? team[0]?.id ?? orch[0]?.id;
@@ -44,8 +42,8 @@ export function RolesTab({
         <span className="ag-class" data-tone={agentTone(r.id, cfg.roles)} aria-hidden="true">
           {r.title.slice(0, 1).toUpperCase()}
         </span>
-        <span>{r.title}</span>
-        {cfg.problems.some((p) => p.item === `role:${r.id}`) && <span className="ag-problem-dot" role="img" aria-label="Есть проблемы" title="Есть проблемы в настройках роли">!</span>}
+        <span className="role-name">{r.title}</span>
+        <RoleProblemCounts problems={cfg.problems.filter((p) => p.item === `role:${r.id}`)} />
       </span>
     </button>
   );
@@ -61,12 +59,10 @@ export function RolesTab({
         </div>
         <div className="role-mobile-picker"><Select aria-label="Выбрать роль" value={current} onChange={(e) => selectRole(e.target.value)}>{cfg.roles.map((role) => <option key={role.id} value={role.id}>{role.title}</option>)}</Select></div>
         <div className="role-list-content">
-        <div className="ag-list-search"><input type="search" className="g-input" aria-label="Поиск ролей" placeholder="Найти роль…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-        <Problems items={sectionProblems(cfg.problems, "roles").filter((p) => p.item !== `role:${current}`)} />
-        {team.filter(matches).map(pick)}
-        {orch.filter(matches).length > 0 && <span className="label">Оркестратор</span>}
-        {orch.filter(matches).map(pick)}
-        {!cfg.roles.some(matches) && <p className="g-muted ag-list-note">Ничего не найдено.</p>}
+        {team.map(pick)}
+        {orch.length > 0 && <span className="label">Оркестратор</span>}
+        {orch.map(pick)}
+        {!cfg.roles.length && <p className="g-muted ag-list-note">Ничего не найдено.</p>}
         </div>
       </section>
       <section className="split-main" aria-label="Роль">
@@ -82,6 +78,16 @@ export function RolesTab({
   );
 }
 
+
+function RoleProblemCounts({ problems }: { problems: Problem[] }) {
+  const errors = problems.filter((p) => p.level === "error");
+  const warnings = problems.filter((p) => p.level === "warning");
+  if (!problems.length) return null;
+  return <span className="role-problem-counts">
+    {errors.length > 0 && <span className="role-problem-count error" role="img" aria-label={`Ошибок: ${errors.length}`} title={errors.map((p) => p.message).join("\n")}>{errors.length}</span>}
+    {warnings.length > 0 && <span className="role-problem-count warning" role="img" aria-label={`Предупреждений: ${warnings.length}`} title={warnings.map((p) => p.message).join("\n")}><Icon.alert size={12} />{warnings.length}</span>}
+  </span>;
+}
 
 type RoleView = "prompt" | "settings" | "history";
 function RolePane({ id, cfg, readOnly = false, onEditingChange }: { id: string; cfg: Catalogue; readOnly?: boolean; base?: string; onEditingChange: (editing: boolean) => void }) {
@@ -111,7 +117,7 @@ function RolePane({ id, cfg, readOnly = false, onEditingChange }: { id: string; 
         </div></Popover>}
       </div>
     </div>
-    <div className="role-tabs"><Tabs label="Роль" value={view} onChange={(next) => { if (!editing || next !== "history") selectView(next); }} items={[
+    <div className="role-tabs"><Tabs label="Роль" variant="underline" value={view} onChange={(next) => { if (!editing || next !== "history") selectView(next); }} items={[
       { id: "prompt", label: "Промпт" }, { id: "settings", label: "Настройки" }, ...(admin && !editing ? [{ id: "history" as const, label: "История" }] : []),
     ]} /></div>
     <div className="pane-body role-body">
