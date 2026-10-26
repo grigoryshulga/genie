@@ -156,3 +156,28 @@ for (const theme of ["ink", "paper"]) for (const width of [1920, 2560]) {
     expect(await page.locator("html").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   });
 }
+
+for (const theme of ["ink", "paper"]) for (const width of [1040, 1440]) {
+  test(`topbar overflow menu ${theme} ${width}: every item overlays the page`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript((theme) => localStorage.setItem("genie.appearance.theme", theme), theme);
+    await page.goto("/agents");
+    const more = page.getByRole("button", { name: "Ещё", exact: true });
+    await more.click();
+    const menu = page.getByRole("menu", { name: "Ещё", exact: true });
+    await expect(menu).toBeVisible();
+    const covered = await menu.getByRole("menuitem").evaluateAll((items) => items.flatMap((item) => {
+      const box = item.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return item.contains(hit) ? [] : [item.textContent];
+    }));
+    expect(covered, "All menu items must receive clicks above the page").toEqual([]);
+    await page.screenshot({ path: `test-results/topbar-overflow-${theme}-${width}.png` });
+    await menu.getByRole("menuitem", { name: "Наблюдения", exact: true }).click();
+    await expect(page).toHaveURL(/\/observations$/);
+    await more.click();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(more).toBeFocused();
+  });
+}
