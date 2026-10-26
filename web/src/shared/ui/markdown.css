@@ -73,6 +73,7 @@
 .md pre code { background: none; padding: 0; }
 .md blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--g-border-strong); color: var(--g-text-muted); }
 .md .empty-md { color: var(--g-text-muted); }
+.md hr { margin: var(--g-space-3) 0; border: 0; border-top: 1px solid var(--g-border); }
 
 /* ---- overrides the surface needs on top of the prose above ---- */
 .md { color: var(--g-text-2); line-height: var(--g-leading-prose); }

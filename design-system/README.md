@@ -38,6 +38,7 @@ Layer 1 holds the palette; layer 2 names the meaning. A component uses layer 2 a
 | Status | Icons, board tints and epic progress share the semantic colours; glyph shape and the label also carry the status, so colour is never the only signal. |
 | Charts | `g-viz-1` to `g-viz-4` for series, `g-viz-grid` for the grid; at most four series with direct labels. `paper` darkens the orange to hold 3:1 against the surface. |
 | Avatars | One shape per kind of actor (`agent`, `human`) plus the name; identity is never carried by colour alone. |
+| Agent roles | `g-agent-<role>` with `g-on-agent` for the nine standard roles, the same in both themes so a role is recognised anywhere: avatars (`Avatar tone`), the team graph and role lists. A custom role takes the colour of the role it extends. The hues share one lightness with the brand green and stay clear of signal orange and danger red. |
 | Spacing | 4 px base: 4, 8, 12, 16, 24, 32, 48, 64, 96. Repeated padding and gaps use it; layout coordinates stay local geometry. |
 | Radius | small 8 (controls, rows), medium 12 (fields, list rows), large 20 (cards), extra-large 28 (hero panels), pill 999 (buttons, chips, tags). |
 | Controls | 40 px roomy, 32 px dense (`sm`), rows 44 px. The dense variant is for lists, toolbars and settings, not for touch-first screens. |

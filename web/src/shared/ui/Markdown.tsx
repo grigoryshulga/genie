@@ -1,5 +1,5 @@
 // Minimal, safe markdown → React (no HTML injection): headings, paragraphs,
-// lists, task lists, quotes, fenced code, inline code, bold, italics, links.
+// lists, task lists, quotes, tables, rules, fenced code, inline code, bold, italics, links.
 
 import { Fragment, type ReactNode } from "react";
 
@@ -89,6 +89,9 @@ function tableStart(lines: string[], i: number): { header: string[]; align: Alig
   return { header, align };
 }
 
+/** A thematic break: three or more `-`, `*` or `_`, optionally spaced. */
+const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+
 export function Markdown({ text, empty = "Пусто" }: { text: string; empty?: string }) {
   if (!text.trim()) return <div className="md"><span className="empty-md">{empty}</span></div>;
   const lines = text.replace(/\r/g, "").split("\n");
@@ -113,7 +116,12 @@ export function Markdown({ text, empty = "Пусто" }: { text: string; empty?:
       );
       continue;
     }
-    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (RULE.test(line)) {
+      blocks.push(<hr key={k++} />);
+      i++;
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
       const Tag = `h${Math.min(4, h[1].length + 1)}` as "h2";
       blocks.push(<Tag key={k++}>{inline(h[2], k)}</Tag>);
@@ -186,7 +194,7 @@ export function Markdown({ text, empty = "Пусто" }: { text: string; empty?:
       continue;
     }
     const para: string[] = [];
-    while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s|>|\s*([-*]|\d+\.)\s)/.test(lines[i]) && !tableStart(lines, i)) para.push(lines[i++]);
+    while (i < lines.length && lines[i].trim() && !/^(```|#{1,6}\s|>|\s*([-*]|\d+\.)\s)/.test(lines[i]) && !RULE.test(lines[i]) && !tableStart(lines, i)) para.push(lines[i++]);
     blocks.push(
       <p key={k++}>
         {para.map((p, j) => (

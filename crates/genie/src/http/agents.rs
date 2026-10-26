@@ -393,17 +393,35 @@ async fn peek(
     }
     access.can(Capability::TeamPeek)?;
     let key = key_of(&access.project, &team, &member);
-    let Some(s) = app.sessions.get(&key) else {
-        return Ok(Json(json!({ "agent": key.label(), "session": null })));
-    };
-    let mut out = json!({ "agent": key.label(), "session": s.live() });
+    let live = app.sessions.get(&key);
+    let mut out = json!({ "agent": key.label(), "session": live.as_ref().map(|s| s.live()) });
     if q.deep.as_deref().is_some_and(|d| d != "0") {
-        let messages = s.request(json!({ "type": "get_messages" }), Duration::from_secs(5)).await;
-        let list = messages.as_ref().and_then(|r| r["data"]["messages"].as_array().cloned()).unwrap_or_default();
+        let messages = match &live {
+            Some(s) => s.request(json!({ "type": "get_messages" }), Duration::from_secs(5)).await,
+            None => None,
+        };
+        // A session stopped while idle (or one that does not answer) still has its conversation on disk.
+        let list = match messages.as_ref().and_then(|r| r["data"]["messages"].as_array().cloned()) {
+            Some(list) => list,
+            None => saved_conversation(&app, key).await,
+        };
         let n = q.limit.unwrap_or(12).clamp(1, 60);
         out["conversation"] = json!(list.iter().rev().take(n).collect::<Vec<_>>().into_iter().rev().map(brief).collect::<Vec<_>>());
     }
     Ok(Json(out))
+}
+
+/// What a team member's session file holds; nothing for other agents or before its first start.
+async fn saved_conversation(app: &Arc<App>, key: AgentKey) -> Vec<Value> {
+    let AgentKey::Member { project, team, member } = key else { return Vec::new() };
+    app.blocking(move |app| {
+        let t = app.with_tracker(&project, |t| t.bus().get(&team))?;
+        let Some(m) = t.members.iter().find(|m| m.name == member) else { return Ok(Vec::new()) };
+        let dir = app.data.join("sessions").join(&project);
+        Ok(crate::sessions::saved_messages(&dir, &crate::runtime::member_session_id(&t, m)).unwrap_or_default())
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// One conversation message, short: `text` for agents, `parts` (text, thinking,
@@ -414,13 +432,16 @@ fn brief(m: &Value) -> Value {
         let flat = s.split_whitespace().collect::<Vec<_>>().join(" ");
         if flat.chars().count() > n { format!("{}…", flat.chars().take(n).collect::<String>()) } else { flat }
     };
+    // The web renders Markdown: its lines (tables, lists, code) are kept, only the length is cut.
+    let cut =
+        |s: &str, n: usize| if s.chars().count() > n { format!("{}…", s.chars().take(n).collect::<String>()) } else { s.to_string() };
     let role = m["customType"].as_str().map(|c| format!("custom:{c}")).unwrap_or_else(|| m["role"].as_str().unwrap_or("?").to_string());
     let mut text = Vec::new();
     let mut parts = Vec::new();
     match &m["content"] {
         Value::String(s) => {
             text.push(clip(s, 500));
-            parts.push(json!({ "type": "text", "text": clip(s, 2000) }));
+            parts.push(json!({ "type": "text", "text": cut(s, 4000) }));
         }
         Value::Array(blocks) => {
             for b in blocks {
@@ -428,12 +449,12 @@ fn brief(m: &Value) -> Value {
                     Some("text") => {
                         let t = b["text"].as_str().unwrap_or_default();
                         text.push(clip(t, 500));
-                        parts.push(json!({ "type": "text", "text": clip(t, 2000) }));
+                        parts.push(json!({ "type": "text", "text": cut(t, 4000) }));
                     }
                     Some("thinking") => {
                         let t = b["thinking"].as_str().unwrap_or_default();
                         text.push(format!("(thinking) {}", clip(t, 300)));
-                        parts.push(json!({ "type": "thinking", "text": clip(t, 1000) }));
+                        parts.push(json!({ "type": "thinking", "text": cut(t, 2000) }));
                     }
                     Some("toolCall") => {
                         let name = b["name"].as_str().unwrap_or("tool");
@@ -498,4 +519,20 @@ async fn pause(State(app): State<Arc<App>>, ctx: Ctx, Path((team, member)): Path
 
 async fn resume(State(app): State<Arc<App>>, ctx: Ctx, Path((team, member)): Path<(String, String)>) -> ApiResult<Json<Value>> {
     set_paused(app, ctx, team, member, false).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_brief_keeps_markdown_lines_for_the_web_and_one_line_for_agents() {
+        let table = "| a | b |\n| --- | --- |\n| 1 | 2 |";
+        let said = brief(&json!({ "role": "assistant", "content": [{ "type": "text", "text": table }], "timestamp": 1 }));
+        assert_eq!(said["parts"][0]["text"], table);
+        assert_eq!(said["text"], "| a | b | | --- | --- | | 1 | 2 |");
+        let output = brief(&json!({ "role": "toolResult", "toolCallId": "c1", "content": [{ "type": "text", "text": "line 1\nline 2" }] }));
+        assert_eq!(output["parts"][0]["text"], "line 1\nline 2");
+        assert_eq!(output["tool"]["id"], "c1");
+    }
 }

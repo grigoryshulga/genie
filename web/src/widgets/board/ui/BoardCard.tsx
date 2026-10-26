@@ -1,6 +1,6 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useLayoutEffect, useRef, useState } from "react";
-import { displayName } from "@/entities/member";
+import { agentTone, displayName } from "@/entities/member";
 import { EpicChip, EpicIcon, epicTone, laneOf, moveTargets, PriorityIcon, type Status, STATUS_NAME, type TaskSummary, useEpicMap } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { Avatar, cx, Icon, Segments, Tag, WorkingArcs, ActionMenu, type MenuEntry } from "@/shared/ui";
@@ -72,7 +72,7 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
           {t.labels.length > 1 && <span className="bd-more">+{t.labels.length - 1}</span>}
         </span>
         <span className="bd-who">
-          {shown.map((m) => <Avatar key={m.name} kind={m.role === "human" ? "human" : "agent"} name={displayName(m.name)} sm />)}
+          {shown.map((m) => <Avatar key={m.name} kind={m.role === "human" ? "human" : "agent"} name={displayName(m.name)} sm tone={agentTone(m.role)} />)}
           {rest > 0 && <span className="bd-more">+{rest}</span>}
           {t.assignee && <Avatar kind="human" name={t.assignee} sm />}
         </span>

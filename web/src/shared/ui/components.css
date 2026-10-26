@@ -181,6 +181,18 @@
 /* Agents are rounded squares, people are circles, so who acted reads at a glance. */
 .g-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; font: 700 11px/1 var(--g-font-sans); flex: none; }
 .g-avatar.agent { border-radius: 9px; background: var(--g-accent); color: var(--g-on-accent); }
+/* An agent's role colour (`data-tone`): avatars here, and any role mark that reads `--agent-tone`
+   (the team graph, role lists). Unknown roles keep the accent. */
+[data-tone="executor"] { --agent-tone: var(--g-agent-executor); }
+[data-tone="analyst"] { --agent-tone: var(--g-agent-analyst); }
+[data-tone="researcher"] { --agent-tone: var(--g-agent-researcher); }
+[data-tone="reviewer"] { --agent-tone: var(--g-agent-reviewer); }
+[data-tone="tester"] { --agent-tone: var(--g-agent-tester); }
+[data-tone="documenter"] { --agent-tone: var(--g-agent-documenter); }
+[data-tone="planner"] { --agent-tone: var(--g-agent-planner); }
+[data-tone="orchestrator"] { --agent-tone: var(--g-agent-orchestrator); }
+[data-tone="project-manager"] { --agent-tone: var(--g-agent-project-manager); }
+.g-avatar.agent[data-tone] { background: var(--agent-tone); color: var(--g-on-agent); }
 .g-avatar.human { border-radius: 50%; background: var(--g-text); color: var(--g-bg); }
 .g-avatar.sm { width: 24px; height: 24px; font-size: 10.5px; }
 .g-avatars { display: inline-flex; }

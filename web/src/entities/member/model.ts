@@ -9,5 +9,6 @@ export type Activity = Member["activity"];
 export type MemberRole = Role;
 
 export { displayName, initial, memberLabel, ROLE_TITLE_RU } from "./names.ts";
+export { AGENT_TONES, agentTone } from "./tone.ts";
 
 export const ROLE_LETTER: Record<string, string> = { analyst: "A", executor: "E", reviewer: "R", tester: "T", documenter: "D", orchestrator: "O", human: "Я" };

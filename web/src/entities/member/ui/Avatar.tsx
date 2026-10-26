@@ -1,4 +1,4 @@
-import { initial, type Member, memberLabel, ROLE_LETTER } from "../model.ts";
+import { agentTone, initial, type Member, memberLabel, ROLE_LETTER } from "../model.ts";
 import "./avatar.css";
 // Legacy avatar primitives (`.av`, `.avatars`, `.more`) still live in the task-list sheet.
 
@@ -9,7 +9,7 @@ export function Avatar({ role, name, activity, state, size }: { role: string; na
   const person = role === "human" || role === "orchestrator" || !name;
   const label = `${person ? (name ?? role) : memberLabel(name, role)}${activity === "working" ? " — работает" : activity === "error" ? " — ошибка" : ""}`;
   return (
-    <span className={cls} title={label} role="img" aria-label={label}>
+    <span className={cls} data-tone={shape === "agent" ? agentTone(role) : undefined} title={label} role="img" aria-label={label}>
       {person ? (ROLE_LETTER[role] ?? role.slice(0, 1).toUpperCase()) : initial(name, role)}
     </span>
   );

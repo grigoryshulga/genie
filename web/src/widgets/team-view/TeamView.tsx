@@ -7,7 +7,7 @@ import { StageBars, STAGES, stageOf, STATUS_NAME } from "@/entities/task";
 import { type LiveSession, type Mail, type MailLevel, MessageText, memberActivity, PartyAvatar, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
 import { useOnline } from "@/shared/api";
 import { clock, dayLabel, plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
-import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, Select, Segmented, Sheet, Skeleton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
+import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, Select, Skeleton, SplitButton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
 import { TeamScheme } from "./TeamScheme.tsx";
 import "./team-view-sheets.css";
 
@@ -27,7 +27,10 @@ interface Entry {
   title?: string;
 }
 
-const LEVEL_LABEL: Record<MailLevel, string> = { low: "не срочно", normal: "обычное", high: "важное", interrupt: "прервать шаг" };
+const LEVEL_LABEL: Record<MailLevel, string> = { low: "Не срочно", normal: "Обычное", high: "Важное", interrupt: "Прервать шаг" };
+const LEVEL_HINT: Partial<Record<MailLevel, string>> = { interrupt: "один раз, остановит команду" };
+type UsualLevel = Exclude<MailLevel, "interrupt">;
+const LEVEL_PREF = "genie.mailLevel";
 const INTENT_LABEL: Record<NonNullable<Mail["intent"]>, string> = { question: "вопрос", blocker: "блокер", verdict: "вердикт", done: "готово", fyi: "к сведению" };
 const STOPPED: Record<string, string> = {
   owner: "остановлена владельцем",
@@ -117,12 +120,14 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   const online = useOnline();
   const toast = useToast();
   const [to, setTo] = useState("all");
-  const [level, setLevel] = useState<MailLevel>("normal");
+  // How urgent mail is: the last choice stays the default; an interrupt is for one message only.
+  const [usual, setUsual] = useState(() => readPref<UsualLevel>(LEVEL_PREF, "normal"));
+  const [level, setLevel] = useState<MailLevel>(usual);
   const [draft, setDraft] = useState("");
   // On a phone the members and the journal open as a bottom sheet.
   const [sheet, setSheet] = useState(false);
-  // On a phone the scheme starts folded: the mail comes first there.
-  const [scheme, setScheme] = useState(() => readPref("genie.teamScheme", window.innerWidth < 900 ? "closed" : "open") === "open");
+  // The line of members is always there; the graph of their relations opens on demand.
+  const [scheme, setScheme] = useState(() => readPref<"open" | "closed">("genie.teamGraph", "closed") === "open");
   const chatRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const team = q.data;
@@ -140,8 +145,8 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   }, []);
   // An interrupt stops one agent's step: not for a broadcast or the orchestrator.
   useEffect(() => {
-    if (level === "interrupt" && (to === "all" || to === "orchestrator")) setLevel("high");
-  }, [to, level]);
+    if (level === "interrupt" && (to === "all" || to === "orchestrator")) setLevel(usual);
+  }, [to, level, usual]);
   useLayoutEffect(() => {
     const el = chatRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
@@ -167,11 +172,27 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
     const text = draft.trim();
     if (!text) return;
     stick.current = true;
-    send.mutate({ team: team.id, to, text, level }, { onSuccess: () => setDraft(""), onError: (e) => toast(`Не отправлено: ${e.message}`, "error") });
+    send.mutate(
+      { team: team.id, to, text, level },
+      {
+        onSuccess: () => {
+          setDraft("");
+          setLevel(usual);
+        },
+        onError: (e) => toast(`Не отправлено: ${e.message}`, "error"),
+      },
+    );
   };
 
   let lastDay = "";
   const levels = (["low", "normal", "high", "interrupt"] as MailLevel[]).filter((l) => l !== "interrupt" || (to !== "all" && to !== "orchestrator"));
+  const choose = (l: MailLevel) => {
+    if (l !== "interrupt") {
+      writePref(LEVEL_PREF, l);
+      setUsual(l);
+    }
+    setLevel(l);
+  };
 
   const participants = (
     <aside className="tv-aside" aria-label="Участники и журнал">
@@ -252,7 +273,7 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
           team={team}
           open={scheme}
           onToggle={() => {
-            writePref("genie.teamScheme", scheme ? "closed" : "open");
+            writePref("genie.teamGraph", scheme ? "closed" : "open");
             setScheme(!scheme);
           }}
         />
@@ -264,31 +285,15 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
               const showDay = day !== lastDay;
               lastDay = day;
               const prev = entries[i - 1];
-              const next = entries[i + 1];
               const same = (a?: Entry) => !!a && a.kind === m.kind && a.from === m.from && a.to.join() === m.to.join() && a.level === m.level && a.intent === m.intent && dayLabel(a.at) === day;
               const cont = same(prev) && !showDay;
-              const body = (
-                <>
-                  {!cont && (
-                    <div className="tv-from">
-                      <b title={m.kind === "agent" && m.fromRole !== "orchestrator" ? ROLE_TITLE_RU[m.fromRole] : undefined}>
-                        {m.kind === "mine" ? "Вы" : m.fromRole === "orchestrator" ? "Оркестратор" : displayName(m.from)}
-                      </b>
-                      <span className="tv-to-line">→ {recipients(m.to, team)}</span>
-                      <MailBadges level={m.level} intent={m.intent} />
-                    </div>
-                  )}
-                  <div className="tv-text">
-                    <MessageText text={m.text} team={team.id} />
-                  </div>
-                </>
-              );
+              const mine = m.kind === "mine";
               return (
                 <Fragment key={m.key}>
                   {showDay && <div className="tv-day">{day}</div>}
                   {m.kind === "system" ? (
                     <div className="tv-sys">
-                      <span className="tv-body">
+                      <span className="tv-sys-text">
                         {m.title ? (
                           <>
                             {m.title}: {m.to.map(displayName).join(", ")}
@@ -302,13 +307,26 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
                       <span className="tv-time">{clock(m.at)}</span>
                     </div>
                   ) : (
-                    <article className={`tv-mail${cont ? " cont" : ""}${m.urgent ? " urgent" : ""}${m.kind === "mine" ? " mine" : ""}`}>
-                      <span className="tv-slot">{!cont && <PartyAvatar role={m.kind === "mine" ? "human" : m.fromRole} name={m.kind === "mine" ? "Вы" : m.from} />}</span>
+                    <article className={`tv-mail ${m.kind}${cont ? " cont" : ""}`}>
+                      {!mine && <span className="tv-slot">{!cont && <PartyAvatar role={m.fromRole} name={m.from} />}</span>}
                       <div className="tv-body">
-                        {m.kind === "mine" ? <Sheet className="tv-bubble">{body}</Sheet> : <div className="tv-bubble">{body}</div>}
-                        {m.kind === "mine" && !same(next) && <span className="tv-receipt">{m.delivered ? "получено" : "ещё не прочитано"}</span>}
+                        {!cont && (
+                          <div className="tv-from">
+                            {!mine && (
+                              <b title={m.fromRole !== "orchestrator" ? ROLE_TITLE_RU[m.fromRole] : undefined}>{m.fromRole === "orchestrator" ? "Оркестратор" : displayName(m.from)}</b>
+                            )}
+                            <span className="tv-to-line">→ {recipients(m.to, team)}</span>
+                            <MailBadges level={m.level} intent={m.intent} />
+                          </div>
+                        )}
+                        <div className={`chat-bubble${mine ? " mine" : ""}${cont ? " cont" : ""}${m.urgent ? " urgent" : ""}`}>
+                          <MessageText text={m.text} team={team.id} />
+                          <span className="chat-bubble-foot">
+                            <time dateTime={m.at}>{clock(m.at)}</time>
+                            {mine && <span>{m.delivered ? "получено" : "ещё не прочитано"}</span>}
+                          </span>
+                        </div>
                       </div>
-                      <span className="tv-time">{clock(m.at)}</span>
                     </article>
                   )}
                 </Fragment>
@@ -332,7 +350,20 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
               submit();
             }}
           >
-            <div className="tv-composer-opts">
+            <Textarea
+              className="tv-input"
+              aria-label="Сообщение"
+              rows={1}
+              value={draft}
+              placeholder={to === "all" ? "Сообщение всей команде" : to === "orchestrator" ? "Сообщение оркестратору" : `Сообщение для ${displayName(to)}`}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${Math.min(180, e.target.scrollHeight)}px`;
+              }}
+              onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
+            />
+            <div className="tv-composer-row">
               <label className="tv-to">
                 Кому
                 <Select sm value={to} onChange={(e) => setTo(e.target.value)}>
@@ -345,27 +376,19 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
                   <option value="orchestrator">оркестратору</option>
                 </Select>
               </label>
-              <span title="«Прервать шаг» остановит текущую команду">
-                <Segmented label="Важность" value={level} onChange={setLevel} items={levels.map((l) => ({ id: l, label: LEVEL_LABEL[l] }))} />
-              </span>
-            </div>
-            <div className="tv-composer-row">
-              <Textarea
-                className="tv-input"
-                aria-label="Сообщение"
-                rows={1}
-                value={draft}
-                placeholder={to === "all" ? "Сообщение всей команде" : to === "orchestrator" ? "Сообщение оркестратору" : `Сообщение для ${displayName(to)}`}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${Math.min(140, e.target.scrollHeight)}px`;
-                }}
-                onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
-              />
-              <IconButton type="submit" label="Отправить" title={offline ? "Нет связи с сервером" : "Отправить (⌘↵)"} className="tv-send" disabled={!draft.trim() || send.isPending || offline}>
+              <i className="grow" />
+              <SplitButton
+                type="submit"
+                className="tv-send"
+                aria-label={level === "interrupt" ? "Прервать шаг и отправить" : "Отправить"}
+                title={offline ? "Нет связи с сервером" : "Отправить (⌘↵)"}
+                disabled={!draft.trim() || send.isPending || offline}
+                menuLabel="Как отправить"
+                items={levels.map((l) => ({ id: l, label: LEVEL_LABEL[l], hint: LEVEL_HINT[l], checked: l === level, onSelect: () => choose(l) }))}
+              >
+                {level === "interrupt" && "Прервать шаг"}
                 <Icon.send size={15} />
-              </IconButton>
+              </SplitButton>
             </div>
           </form>
         )}

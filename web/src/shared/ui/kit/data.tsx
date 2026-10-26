@@ -21,10 +21,11 @@ export function Stat({ value, label }: { value: ReactNode; label: ReactNode }) {
 }
 
 /** Agents are rounded squares, people are circles, so who acted reads at a glance. */
-export function Avatar({ kind, name, sm }: { kind: "agent" | "human"; name: string; sm?: boolean }) {
+/** `tone`: an agent's role colour (`--g-agent-<tone>`); without it, or for a person, the kind's own colour. */
+export function Avatar({ kind, name, sm, tone }: { kind: "agent" | "human"; name: string; sm?: boolean; tone?: string }) {
   const initials = name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
   return (
-    <span className={cx("g-avatar", kind, sm && "sm")} role="img" aria-label={name} title={name}>
+    <span className={cx("g-avatar", kind, sm && "sm")} data-tone={kind === "agent" ? tone : undefined} role="img" aria-label={name} title={name}>
       {initials}
     </span>
   );

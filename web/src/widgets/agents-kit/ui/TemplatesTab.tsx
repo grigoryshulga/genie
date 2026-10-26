@@ -25,7 +25,7 @@ import {
   useTemplate,
   WORKSPACE_TITLE,
 } from "@/entities/agent-config";
-import { displayName } from "@/entities/member";
+import { agentTone, displayName } from "@/entities/member";
 import { plural } from "@/shared/lib";
 import { Badge, ConfirmDialog, Dialog, Icon, LoadingState, Section, useAct, useToast } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
@@ -60,7 +60,7 @@ export function TemplatesTab({
                 {t.members.slice(0, 5).map((m) => {
                   const role = cfg.roles.find((r) => r.id === m.role);
                   return (
-                    <span key={m.key} className={`ag-class c-${role?.class ?? "executor"}`}>
+                    <span key={m.key} className="ag-class" data-tone={agentTone(m.role, cfg.roles)}>
                       {(role?.title ?? m.role).slice(0, 1).toUpperCase()}
                     </span>
                   );
@@ -160,7 +160,7 @@ function TemplatePane({ id, cfg, readOnly = false, base = "/agents" }: { id: str
                 const role = cfg.roles.find((r) => r.id === m.role);
                 return (
                   <li key={m.key} title={m.instructions ? `Особенности: ${m.instructions}` : undefined}>
-                    <span className={`ag-class c-${role?.class ?? "executor"}`} aria-hidden="true">
+                    <span className="ag-class" data-tone={agentTone(m.role, cfg.roles)} aria-hidden="true">
                       {(role?.title ?? m.role).slice(0, 1).toUpperCase()}
                     </span>
                     <Link to={`${base}?tab=roles&id=${m.role}`}>{m.name ? `${title(m.key)} — ${roleTitle(m.role).toLowerCase()}` : roleTitle(m.role)}</Link>

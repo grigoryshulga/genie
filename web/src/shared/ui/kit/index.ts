@@ -10,3 +10,4 @@ export * from "./disclosure-card.tsx";
 export * from "./popover.tsx";
 export * from "./page.tsx";
 export * from "./rename.tsx";
+export * from "./split-button.tsx";

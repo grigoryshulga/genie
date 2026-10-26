@@ -468,6 +468,12 @@ async fn mail_reaches_live_agents_between_steps_and_on_interrupt() {
     let post = |path: &str| http.post(format!("{base}{path}")).header("x-genie", "1").json(&json!({})).send();
     assert!(post("/agents/SHOP-1/bender/pause").await.unwrap().status().is_success());
     until("the paused session to stop", 20, || session_state(app, "bender").is_none().then_some(())).await;
+    // Without a session the chat still shows the conversation, read from its file.
+    let saved = get("/agents/SHOP-1/bender/peek?deep=1".into()).await;
+    assert!(saved["session"].is_null(), "{saved}");
+    let conversation = saved["conversation"].as_array().cloned().unwrap_or_default();
+    assert!(conversation.iter().any(|m| m["text"].as_str().unwrap_or_default().contains("yoda answered")), "{saved}");
+    assert!(conversation.iter().any(|m| m["role"] == "custom:genie-mail"), "{saved}");
     mail(app, "yoda", "reviewer", "bender", "PING-paused", None);
     genie::runtime::tick(app).await.unwrap();
     assert!(session_state(app, "bender").is_none(), "a paused agent is not started");
