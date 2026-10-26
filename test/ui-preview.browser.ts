@@ -375,3 +375,42 @@ test("template readers can inspect and export without administrator actions", as
   for (const name of ["Новый шаблон", "Импорт шаблона", "Редактировать шаблон", "Дополнительные действия шаблона"]) await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "История", exact: true })).toHaveCount(0);
 });
+
+for (const theme of ["ink", "paper"]) for (const width of [1440, 390]) {
+  test(`template arrows ${theme} ${width}: labels, card clearance, zoom and expanded view`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript((theme) => localStorage.setItem("genie.appearance.theme", theme), theme);
+    await page.goto("/agents?tab=templates&id=full");
+    await expect(page.getByRole("heading", { name: "Полная", exact: true })).toBeVisible();
+    const check = async () => {
+      const collisions = await page.locator('.team-graph svg[aria-label="Связи участников"]').evaluate((svg) => {
+        const cards = [...svg.querySelectorAll(".node")].map((node) => ({ name: node.querySelector("title")?.textContent, box: node.getBoundingClientRect() }));
+        const hits: string[] = [];
+        for (const label of svg.querySelectorAll(".edge-label")) {
+          const box = label.getBoundingClientRect();
+          for (const card of cards) if (Math.min(box.right, card.box.right) > Math.max(box.left, card.box.left) && Math.min(box.bottom, card.box.bottom) > Math.max(box.top, card.box.top)) hits.push(`label ${label.textContent} over ${card.name}`);
+        }
+        for (const path of svg.querySelectorAll<SVGPathElement>(".edge > path:not(.edge-underlay)")) {
+          const matrix = path.getScreenCTM()!, length = path.getTotalLength();
+          for (let distance = 2; distance < length - 2; distance += 3) {
+            const point = path.getPointAtLength(distance).matrixTransform(matrix);
+            for (const card of cards) if (point.x > card.box.left + 1 && point.x < card.box.right - 1 && point.y > card.box.top + 1 && point.y < card.box.bottom - 1) hits.push(`arrow through ${card.name}`);
+          }
+        }
+        return [...new Set(hits)];
+      });
+      expect(collisions).toEqual([]);
+    };
+    await check();
+    await page.getByRole("button", { name: "Приблизить схему", exact: true }).click();
+    await expect(page.getByRole("status", { name: "Масштаб схемы" })).toHaveText("125%");
+    await check();
+    await page.getByRole("button", { name: "Развернуть схему", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Развёрнутая схема команды", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Вписать целиком", exact: true }).click();
+    await check();
+    await page.screenshot({ path: `test-results/template-arrows-expanded-${theme}-${width}.png` });
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Развернуть схему", exact: true })).toBeFocused();
+  });
+}

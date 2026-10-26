@@ -489,6 +489,8 @@ export interface GraphEdge {
   note?: string;
   /** SVG path. */
   d: string;
+  /** Omit inline labels when no clear route segment has room. The full text remains in the tooltip. */
+  showLabel?: boolean;
   /** Where the label goes. */
   lx: number;
   ly: number;
@@ -525,42 +527,31 @@ export function flowStages(keys: string[], relations: Relation[]): string[][] {
   return stages.filter(Boolean);
 }
 
-/** Handoff columns run left to right; configuration views can wrap them at a readable size. */
+/** Handoff columns run left to right (see `handoffRanks`). */
 export function layoutTeam(
   members: { key: string; label: string; sub: string }[],
   relations: Relation[],
   problems: string[] = [],
-  columns?: number,
 ): { width: number; height: number; nodeW: number; nodes: GraphNode[]; edges: GraphEdge[]; stages: { x: number; y: number; label: string }[] } {
-  const compact = columns !== undefined;
-  const nodeW = compact ? 200 : 240;
+  const nodeW = 240;
   const ranks = handoffRanks(members.map((m) => m.key), relations);
   const count = Math.max(1, ...[...ranks.values()].map((r) => r + 1));
-  const cols = Math.max(1, Math.min(count, columns ?? count));
-  const gap = compact ? 48 : 100;
-  const width = Math.max(compact ? 280 : 420, cols * (nodeW + gap) + 40);
-  const x = (rank: number) => 20 + nodeW / 2 + (rank % cols) * (nodeW + gap);
-  const parallel = Math.max(1, ...Array.from({ length: count }, (_, rank) => [...ranks.values()].filter((value) => value === rank).length));
-  const rowHeight = compact ? parallel * 140 + 32 : 0;
-  const startY = compact ? 72 : 324;
-  const y = (rank: number) => startY + Math.floor(rank / cols) * rowHeight;
+  const width = Math.max(420, count * (nodeW + 100) + 40);
+  const x = (rank: number) => 20 + nodeW / 2 + rank * (nodeW + 100);
   const rows = new Map<number, number>();
   const nodes: GraphNode[] = [
-    ...(!compact ? [
-      { key: "project-manager", label: "Менеджер проекта", sub: "цели, контекст и приоритеты", x: width / 2, y: 54, orchestrator: true },
-      { key: "orchestrator", label: "Менеджер задачи", sub: "команда, выполнение и приёмка", x: width / 2, y: 178, orchestrator: true },
-    ] : []),
+    { key: "project-manager", label: "Менеджер проекта", sub: "цели, контекст и приоритеты", x: width / 2, y: 54, orchestrator: true },
+    { key: "orchestrator", label: "Менеджер задачи", sub: "команда, выполнение и приёмка", x: width / 2, y: 178, orchestrator: true },
     ...members.map((m) => {
       const rank = ranks.get(m.key)!;
       const row = rows.get(rank) ?? 0;
       rows.set(rank, row + 1);
-      return { ...m, x: x(rank), y: y(rank) + row * 140, flagged: problems.some((p) => p.includes(`\`${m.key}\``)) };
+      return { ...m, x: x(rank), y: 324 + row * 140, flagged: problems.some((p) => p.includes(`\`${m.key}\``)) };
     }),
-    ...(compact ? [{ key: "orchestrator", label: "Менеджер задачи", sub: "", x: x(count), y: y(count), orchestrator: true }] : []),
   ];
-  const stages = Array.from({ length: count }, (_, rank) => ({ x: x(rank), y: y(rank) - 55, label: `Этап ${rank + 1}` }));
+  const stages = Array.from({ length: count }, (_, rank) => ({ x: x(rank), y: 269, label: `Этап ${rank + 1}` }));
   const at = new Map(nodes.map((n) => [n.key, n]));
-  const edges: GraphEdge[] = compact ? [] : [{ from: "project-manager", to: "orchestrator", type: "manages", d: `M ${width / 2} 98 V 134`, lx: width / 2, ly: 116 }];
+  const edges: GraphEdge[] = [{ from: "project-manager", to: "orchestrator", type: "manages", d: `M ${width / 2} 98 V 134`, lx: width / 2, ly: 116 }];
   for (const r of relations) for (const to of r.to) {
     const a = at.get(r.from);
     const b = at.get(to);
@@ -568,7 +559,7 @@ export function layoutTeam(
     let d: string;
     let lx: number;
     let ly: number;
-    if ((!compact && (a.orchestrator || b.orchestrator)) || a.x === b.x || (compact && Math.abs(a.y - b.y) >= rowHeight)) {
+    if (a.orchestrator || b.orchestrator || a.x === b.x) {
       const direction = Math.sign(b.y - a.y);
       const y1 = a.y + direction * NODE_H / 2;
       const y2 = b.y - direction * NODE_H / 2;
@@ -580,8 +571,8 @@ export function layoutTeam(
       d = `M ${x1} ${y1} V ${ly} H ${x2} V ${y2}`;
     } else {
       const direction = Math.sign(b.x - a.x);
-      const x1 = a.x + direction * (a.orchestrator && !compact ? ORCH_W : nodeW) / 2;
-      const x2 = b.x - direction * (b.orchestrator && !compact ? ORCH_W : nodeW) / 2;
+      const x1 = a.x + direction * (a.orchestrator ? ORCH_W : nodeW) / 2;
+      const x2 = b.x - direction * (b.orchestrator ? ORCH_W : nodeW) / 2;
       const offset = r.type === "returns" ? 24 : -24;
       const y1 = a.y + offset;
       const y2 = b.y + offset;
@@ -589,13 +580,13 @@ export function layoutTeam(
       ly = (y1 + y2) / 2;
       // Route long links above the intervening cards.
       if (Math.abs(a.x - b.x) > nodeW + 101) {
-        ly = compact ? a.y - 60 : 264;
+        ly = 264;
         d = `M ${x1} ${y1} H ${x1 + direction * 24} V ${ly} H ${x2 - direction * 24} V ${y2} H ${x2}`;
       } else d = `M ${x1} ${y1} H ${lx} V ${y2} H ${x2}`;
     }
     edges.push({ from: r.from, to, type: r.type, on: r.on, note: r.note, d, lx, ly });
   }
-  return { width, height: compact ? Math.max(startY, ...nodes.map((n) => n.y)) + 70 : 394 + Math.max(0, ...[...rows.values()].map((r) => r - 1)) * 140, nodeW, nodes, edges, stages };
+  return { width, height: 394 + Math.max(0, ...[...rows.values()].map((r) => r - 1)) * 140, nodeW, nodes, edges, stages };
 }
 
 // ------------------------------------------------------------------ what a template needs

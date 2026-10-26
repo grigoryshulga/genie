@@ -19,6 +19,7 @@
 .team-graph .nl { fill: var(--g-text); font-family: var(--g-font-sans); font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); }
 .team-graph .nr, .team-graph .ns { fill: var(--g-text-muted); font-family: var(--g-font-sans); font-size: var(--g-text-caption); }
 .team-graph .edge path { stroke-linecap: round; }
+.team-graph .edge .edge-underlay { stroke: var(--g-surface); stroke-width: 6; pointer-events: none; }
 .team-graph .edge-label { font-family: var(--g-font-sans); font-size: var(--g-text-caption); font-weight: var(--g-weight-medium); fill: var(--g-text-2); paint-order: stroke; stroke: var(--g-surface); stroke-width: 5px; stroke-linejoin: round; }
 .team-graph-legend { display: flex; gap: var(--g-space-2) var(--g-space-4); flex-wrap: wrap; justify-content: center; padding: 0 var(--g-space-5); font-size: var(--g-text-caption); color: var(--g-text-muted); }
 .team-graph-legend span { display: inline-flex; align-items: center; gap: var(--g-space-2); }

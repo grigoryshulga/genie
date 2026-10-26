@@ -6,3 +6,4 @@ export * from "./role-transfer.ts";
 export * from "./config-history.ts";
 export * from "./template-file.ts";
 export * from "./template-transfer.ts";
+export * from "./template-graph.ts";

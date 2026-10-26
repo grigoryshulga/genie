@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { exportTemplate, parseTemplateTransfer, templateSchema, templateTransferFile, templateExample } from "../web/src/entities/agent-config/template-transfer.ts";
 import { memberKey, nextMemberKey, removeTemplateMember, templateDraft, templateFile, templateRelations, updateTemplateMember } from "../web/src/entities/agent-config/template-file.ts";
 import { jsonChangeFields } from "../web/src/entities/agent-config/config-history.ts";
-import { layoutTeam, type Catalogue, type TemplateDetail } from "../web/src/entities/agent-config/model.ts";
+import type { Catalogue, TemplateDetail } from "../web/src/entities/agent-config/model.ts";
+import { layoutTemplate } from "../web/src/entities/agent-config/template-graph.ts";
 const fixtures = JSON.parse(readFileSync(new URL("../scripts/ui-preview/fixtures.json", import.meta.url), "utf8"));
 const cfg: Catalogue = fixtures["/api/agent-config"];
 const full: TemplateDetail = fixtures["/api/templates/full"];
@@ -97,7 +98,7 @@ test("template audit compares fields with full JSON values and preserves malform
 test("compact template graphs wrap stages at a readable node size without repeating the global hierarchy", () => {
   const members = full.template.members.map((m) => ({ key: m.key, label: m.role, sub: "" }));
   for (const columns of [1, 2, 3]) {
-    const graph = layoutTeam(members, full.template.relations, [], columns);
+    const graph = layoutTemplate(members, full.template.relations, [], columns);
     assert.ok(graph.width <= 840);
     assert.equal(graph.nodeW, 200);
     assert.ok(!graph.nodes.some((node) => node.key === "project-manager"));
