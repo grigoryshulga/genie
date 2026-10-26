@@ -47,6 +47,11 @@
   const colors = ["bg", "surface", "surface-raised", "surface-hover", "border-strong", "text", "text-2", "text-muted", "accent", "signal", "danger", "viz-1", "viz-2", "viz-3", "viz-4"];
   const statuses = ["inbox", "draft", "refining", "ready", "in_progress", "changes_requested", "review", "approved", "needs_owner", "done", "cancelled"];
 
+  function AnimatedTabsSpecimen() {
+    const [value, select] = React.useState("board");
+    return h(kit.Tabs, { label: "Animated navigation", animated: true, value, onChange: select, items: [{ id: "tasks", label: "Tasks" }, { id: "board", label: "Board" }, { id: "knowledge", label: "Knowledge" }] });
+  }
+
   createRoot(document.getElementById("root")).render(h(React.Fragment, null,
     block("Surfaces and semantic colour",
       row(...colors.map((name) => h("div", { key: name, className: "swatch" },
@@ -62,6 +67,7 @@
         h(kit.Button, { sm: true }, "Dense"),
         h(kit.IconButton, { label: "More actions" }, "⋯"),
         h(kit.SplitButton, { menuLabel: "Send options", items: [{ id: "normal", label: "Normal", checked: true, onSelect: () => {} }, { id: "interrupt", label: "Interrupt", hint: "once, stops the step", checked: false, onSelect: () => {} }] }, "Send"))),
+    block("Animated tabs", h(AnimatedTabsSpecimen)),
     block("Tabs, segments, chips, tags, key caps",
       row(h(kit.Tabs, { label: "Views", value: "board", items: [{ id: "board", label: "Board" }, { id: "list", label: "List" }] }),
         h(kit.Segmented, { label: "Density", value: "roomy", onChange: () => {}, items: [{ id: "roomy", label: "Roomy" }, { id: "dense", label: "Dense" }] }),
@@ -69,6 +75,11 @@
         h(kit.Chip, null, "Chip"),
         ...["neutral", "accent", "signal", "danger", "solid-accent", "solid-signal", "outline"].map((tone) => h(kit.Tag, { key: tone, tone }, tone)),
         h("span", null, "Search ", h(kit.Kbd, null, "⌘K")))),
+    block("Menu with adjacent action",
+      h(kit.ActionMenu, { label: "Projects specimen", onClose: () => {}, items: [
+        { id: "genie", label: "Genie", checked: true, onSelect: () => {}, action: { label: "Manage Genie", icon: h(kit.Icon.gear, { size: 16 }), onSelect: () => {} } },
+        { id: "read-only", label: "Read-only project", checked: false, onSelect: () => {}, action: { label: "Manage read-only project", icon: h(kit.Icon.gear, { size: 16 }), disabled: true, onSelect: () => {} } }
+      ] })),
     block("Fields",
       row(h(kit.Field, { label: "Name", help: "Shown in the sidebar" }, h(kit.Input, { placeholder: "Project name", defaultValue: "" })),
         h(kit.Field, { label: "Status" }, h(kit.Select, { defaultValue: "ready" }, h("option", { value: "ready" }, "Ready for work"), h("option", { value: "in_progress" }, "In progress"))),

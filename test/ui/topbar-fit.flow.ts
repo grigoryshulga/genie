@@ -11,13 +11,23 @@ const measure = () => {
   const box = (selector: string) => document.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
   const bar = document.querySelector<HTMLElement>(".g-topbar")!;
   const project = box(".g-topbar-project");
-  const pill = box(".g-topbar-pill");
+  const pill = box(window.innerWidth > 900 ? ".g-topbar-pill" : ".g-topbar-nav");
+  const board = box('.g-topbar-nav a[href="/board"]');
+  const create = box(".g-topbar-create");
   return {
     inner: window.innerWidth,
     innerHeight: window.innerHeight,
     docScroll: document.documentElement.scrollWidth,
     bar: bar.clientWidth,
     barBottom: bar.getBoundingClientRect().bottom,
+    projectTop: project.top,
+    projectBottom: project.bottom,
+    dockTop: pill.top,
+    dockBottom: pill.bottom,
+    boardMiddle: (board.left + board.right) / 2,
+    createTop: create.top,
+    createBottom: create.bottom,
+    links: [...bar.querySelectorAll(".g-topbar-nav a")].map((node) => node.getAttribute("href")),
     projectLeft: project.left,
     projectRight: project.right,
     pillLeft: pill.left,
@@ -42,6 +52,8 @@ for (const width of [1440, 1280, 1181, 1000, 901, 900, 768, 430, 390, 360]) {
     await page.locator("main.g-tasks-page").waitFor();
     await page.locator(".g-topbar-project").waitFor({ state: "visible" });
 
+    await expect(page.locator(".g-topbar-nav a")).toHaveCount(5);
+    await page.evaluate(() => document.fonts.ready);
     const geometry = await page.evaluate(measure);
     expect(geometry.docScroll).toBeLessThanOrEqual(geometry.inner);
     expect(geometry.bar).toBe(geometry.inner);
@@ -50,13 +62,18 @@ for (const width of [1440, 1280, 1181, 1000, 901, 900, 768, 430, 390, 360]) {
       expect(control.right).toBeLessThanOrEqual(width);
     }
     if (width > 900) {
-      // Side by side: the project button ends before the pill begins, and the pill is centred.
+      // The project sits immediately beside the pill; their group is centred.
       expect(geometry.projectRight).toBeLessThanOrEqual(geometry.pillLeft);
-      expect(Math.abs((geometry.pillLeft + geometry.pillRight) / 2 - width / 2)).toBeLessThan(2);
+      expect(Math.abs((geometry.projectLeft + geometry.pillRight) / 2 - width / 2)).toBeLessThan(2);
+      expect(geometry.pillLeft - geometry.projectRight).toBeLessThanOrEqual(12);
     } else {
-      expect(geometry.projectRight).toBeLessThanOrEqual(geometry.pillLeft);
-      // Under the thumb: the bar rests on the bottom edge.
-      expect(geometry.barBottom).toBeCloseTo(geometry.innerHeight, 0);
+      expect(geometry.links).toEqual(["/epics", "/tasks", "/board", "/docs", "/agents"]);
+      expect(geometry.boardMiddle).toBeCloseTo(width / 2, 0);
+      expect(geometry.projectTop).toBeLessThan(64);
+      expect(geometry.projectBottom).toBeLessThan(geometry.dockTop);
+      expect(geometry.createBottom).toBeLessThan(geometry.dockTop);
+      expect(geometry.createTop).toBeGreaterThan(geometry.innerHeight / 2);
+      expect(geometry.innerHeight - geometry.dockBottom).toBeLessThanOrEqual(16);
     }
 
     await page.getByRole("button", { name: `Проект ${LONG}`, exact: true }).click();

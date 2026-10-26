@@ -1,14 +1,12 @@
-import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { initials, ProjectIcon, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
-import { useNotifications, useProposals } from "@/entities/platform";
-import { OBSERVATION_TEXT } from "@/entities/observation";
+import { useProposals } from "@/entities/platform";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
-import { useTeams } from "@/entities/team";
 import { canManageProject, saveAppearancePreferences, useTick } from "@/shared/lib";
-import { ActionMenu, Banner, Dialog, Icon, IconButton, type MenuEntry, Tabs, Tag } from "@/shared/ui";
+import { ActionMenu, Banner, Icon, IconButton, type MenuEntry, Tabs, Tag, useToast } from "@/shared/ui";
 import { ContextSearch } from "./ContextSearch.tsx";
 import { NotificationsPopover } from "./NotificationsPopover.tsx";
 import { Popover } from "./Popover.tsx";
@@ -16,7 +14,7 @@ import "./topbar.css";
 // The top bar and the shell frame (`.app`) it sits in.
 import "./shell.css";
 
-type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; onOpenSearch: () => void; onOpenPalette: () => void };
+type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; searchOpen: boolean; onOpenSearch: () => void; onCloseSearch: () => void; onOpenPalette: () => void };
 
 type Primary = "board" | "tasks" | "epics" | "docs" | "agents";
 
@@ -30,7 +28,7 @@ function activePrimary(pathname: string): Primary | undefined {
 }
 
 /** Project, navigation, search, create, notifications, and the person's menu. */
-export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }: Props) {
+export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onCloseSearch, onOpenPalette }: Props) {
   useTick();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -39,7 +37,6 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
   const switchProject = useSwitchProject();
   const logout = useLogout();
   const proposals = useProposals().data?.length ?? 0;
-  const teams = useTeams().data?.filter((t) => t.state === "active") ?? [];
   const tasks = useTasks().data;
   const agents = useAgentConfig();
   const listed = tasks?.filter(inTaskViews);
@@ -49,32 +46,53 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
   const project = session?.projects.find((p) => p.slug === session.project);
   const canCreate = project?.role !== "viewer";
   const me = session?.mode === "users" ? session.user.name || session.user.login : "Локальный режим";
-  const [sheet, setSheet] = useState(false);
-  const unread = useNotifications().data?.unread ?? 0;
+  const toast = useToast();
+  const pill = useRef<HTMLDivElement>(null);
+  // Keep the desktop pill stable while replacing its navigation with search.
+  useLayoutEffect(() => {
+    const node = pill.current;
+    if (!node || searchOpen) return;
+    const measure = () => {
+      const box = node.getBoundingClientRect();
+      node.style.setProperty("--g-topbar-rest-width", `${box.width}px`);
+      node.style.setProperty("--g-topbar-rest-height", `${box.height}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [searchOpen]);
+  const searchToggle = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen, searchRef]);
+  const closeSearch = () => {
+    onCloseSearch();
+    requestAnimationFrame(() => searchToggle.current?.focus());
+  };
+  const manageProject = async (slug: string) => {
+    try {
+      if (slug !== session?.project) await switchProject(slug);
+      navigate("/manage/project/general");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Не удалось открыть проект", "error");
+    }
+  };
 
   // Every destination wears an icon: the bar collapses to icons (with the label under them on a phone)
   // when the window is narrow. The label stays in the DOM so the accessible name never changes.
-  const label = (text: string, short?: string) => (
-    <span className="g-tab-label">
-      <span className={short ? "g-tab-full" : undefined}>{text}</span>
-      {short && (
-        <span className="g-tab-short" aria-hidden="true">
-          {short}
-        </span>
-      )}
-    </span>
-  );
+  const label = (text: string) => <span className="g-tab-label">{text}</span>;
   const primary: { id: Primary; label: React.ReactNode; to: string; title: string }[] = [
     {
-      id: "board",
+      id: "epics",
       label: (
         <>
-          <Icon.board size={16} />
-          {label("Доска")}
+          <EpicIcon size={16} />
+          {label("Эпики")}
         </>
       ),
-      to: "/board",
-      title: "Доска",
+      to: "/epics",
+      title: "Эпики",
     },
     {
       id: "tasks",
@@ -94,15 +112,15 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
       title: "Задачи",
     },
     {
-      id: "epics",
+      id: "board",
       label: (
         <>
-          <EpicIcon size={16} />
-          {label("Эпики")}
+          <Icon.board size={16} />
+          {label("Доска")}
         </>
       ),
-      to: "/epics",
-      title: "Эпики",
+      to: "/board",
+      title: "Доска",
     },
     {
       id: "docs",
@@ -111,7 +129,7 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
       label: (
         <>
           <Icon.file size={16} />
-          {label("Документация", "Доки")}
+          {label("Знания")}
           {proposals > 0 && (
             <>
               <span className="g-caption g-topbar-open" aria-hidden="true">
@@ -123,7 +141,7 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
         </>
       ),
       to: "/docs",
-      title: "Документация",
+      title: "Знания",
     },
     ...(agents.isSuccess
       ? [
@@ -143,18 +161,12 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
   ];
   const current = activePrimary(pathname) ?? ("none" as Primary);
 
-  const more: MenuEntry[] = [
-    // ⌘K is a keyboard's way into the palette; a pointer needs a row of its own, so the overflow carries one.
-    { id: "palette", label: "Команды", hint: "⌘K", onSelect: onOpenPalette },
-    "separator",
-    { id: "automations", label: "Автоматизации", onSelect: () => navigate("/automations") },
-    { id: "observations", label: OBSERVATION_TEXT.nav, onSelect: () => navigate("/observations") },
-  ];
   const isAdmin = !!session?.user.isAdmin;
   const toggleTheme = () => saveAppearancePreferences({ theme: document.documentElement.dataset.theme === "paper" ? "ink" : "paper" });
   const profile: MenuEntry[] = [
+    { id: "palette", label: "Быстрые команды", hint: "⌘K", onSelect: onOpenPalette },
     { id: "settings", label: "Настройки", hint: "G S", onSelect: () => navigate("/settings") },
-    ...(canManageProject(isAdmin, project?.role) ? [{ id: "manage", label: "Управление проектом", onSelect: () => navigate("/manage/project/general") } satisfies MenuEntry] : []),
+    { id: "manage", label: "Управление проектом", onSelect: () => navigate(canManageProject(isAdmin, project?.role) ? "/manage/project/general" : "/manage/project/automation-runs") },
     ...(isAdmin
       ? ([
           { id: "server", label: "Глобальные настройки", onSelect: () => navigate("/manage/server/projects") },
@@ -166,7 +178,7 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
 
   return (
     <>
-      <header className="g-topbar">
+      <header className={`g-topbar${searchOpen ? " searching" : ""}`}>
         {/* The project floats apart from the bar as an icon of its own; its name is the button's label. */}
         <div className="g-topbar-project-switcher">
           <Popover
@@ -180,42 +192,40 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
                 onClose={close}
                 items={(session?.projects ?? []).map((p) => ({
                   id: p.slug,
-                  // A role next to every name crowded the list: the project's own settings say what
-                  // the person may do there, so the switcher lists names only, each on one line.
                   label: <><ProjectIcon name={p.name} src={p.icon} /><span className="g-topbar-project-name">{p.name}</span></>,
                   checked: p.slug === session?.project,
-                  onSelect: () => void switchProject(p.slug),
+                  onSelect: () => void switchProject(p.slug).catch((error: Error) => toast(error.message, "error")),
+                  action: {
+                    label: `Управление проектом ${p.name}`,
+                    icon: <Icon.gear size={16} />,
+                    disabled: !canManageProject(isAdmin, p.role),
+                    onSelect: () => void manageProject(p.slug),
+                  },
                 }))}
               />
             )}
           </Popover>
         </div>
 
-        <div className="g-topbar-pill">
+        <div className="g-topbar-pill" ref={pill}>
           <nav className="g-topbar-nav" aria-label="Навигация">
-            <Tabs label="Разделы" items={primary} value={current} />
-            <Popover label="Ещё" className="g-icon-btn d-only" trigger={<Icon.dots size={16} />}>
-              {(close) => <ActionMenu label="Ещё" items={more} onClose={close} />}
-            </Popover>
-            <button type="button" className="g-bar-more m-only" aria-label="Открыть меню разделов" aria-haspopup="dialog" aria-expanded={sheet} onClick={() => setSheet(true)}>
-              <span className="g-bar-more-icon">
-                <Icon.dots size={16} />
-                {unread > 0 && <i className="g-unread" aria-hidden="true" />}
-              </span>
-              <span className="g-tab-label" aria-hidden="true">Ещё</span>
-            </button>
+            <Tabs animated label="Разделы" items={primary} value={current} />
           </nav>
 
-          <span className="g-topbar-sep d-only" aria-hidden="true" />
-
-          <ContextSearch inputRef={searchRef} className="g-topbar-search d-only" />
+          {searchOpen && <div className="g-topbar-search-mode">
+            <ContextSearch inputRef={searchRef} className="g-topbar-search" onClose={closeSearch} />
+            <IconButton label="Закрыть поиск" onClick={closeSearch}><Icon.close size={16} /></IconButton>
+          </div>}
+          <IconButton label="Открыть поиск" ref={searchToggle} className="g-topbar-search-toggle" onClick={onOpenSearch}>
+            <Icon.search size={20} />
+          </IconButton>
           {canCreate && (
-            <IconButton label="Новая задача" className="g-topbar-create d-only" onClick={onNew}>
+            <IconButton label="Новая задача" className="g-topbar-create" onClick={onNew}>
               <Icon.plus size={20} />
             </IconButton>
           )}
 
-          <div className="g-topbar-utility d-only">
+          <div className="g-topbar-utility">
             <NotificationsPopover />
             <Popover
               label={`Профиль: ${me}`}
@@ -245,85 +255,6 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
         <Banner tone="danger" title="Нет связи с сервером">
           Данные могут быть устаревшими; изменения недоступны, пока связь не вернётся.
         </Banner>
-      )}
-      {sheet && (
-        <Dialog title="Навигация" sheet onClose={() => setSheet(false)}>
-          {/* The destinations live in the bar under the thumb; the sheet carries everything the bar has no room for. */}
-          <nav className="g-sheet-nav" aria-label="Разделы" onClick={(e) => (e.target as HTMLElement).closest("a") && setSheet(false)}>
-            {canCreate && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSheet(false);
-                  onNew();
-                }}
-              >
-                <Icon.plus size={16} />
-                Новая задача
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setSheet(false);
-                onOpenSearch();
-              }}
-            >
-              <Icon.search size={16} />
-              Поиск
-            </button>
-            {/* A thumb has no ⌘K: the sheet carries the palette as a row like every destination beside it. */}
-            <button
-              type="button"
-              onClick={() => {
-                setSheet(false);
-                onOpenPalette();
-              }}
-            >
-              <Icon.bolt size={16} />
-              Команды
-            </button>
-            <Link to="/automations">
-              <Icon.restart size={16} />
-              Автоматизации
-            </Link>
-            <Link to="/observations">
-              <Icon.eye size={16} />
-              {OBSERVATION_TEXT.nav}
-            </Link>
-            <Link to="/notifications">
-              <Icon.bell size={16} />
-              Уведомления
-              {unread > 0 && <span className="g-caption g-sheet-count">{unread}</span>}
-            </Link>
-            {teams.map((t) => (
-              <Link key={t.id} to={`/team/${encodeURIComponent(t.id)}`}>
-                <Icon.user size={16} />
-                Команда {t.id}
-              </Link>
-            ))}
-            <Link to="/settings">
-              <Icon.gear size={16} />
-              Настройки
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setSheet(false);
-                toggleTheme();
-              }}
-            >
-              <Icon.theme size={16} />
-              Светлая тема
-            </button>
-            {session?.mode === "users" && (
-              <button type="button" onClick={() => void logout()}>
-                <Icon.logout size={16} />
-                {`Выйти (${session.user.login})`}
-              </button>
-            )}
-          </nav>
-        </Dialog>
       )}
     </>
   );

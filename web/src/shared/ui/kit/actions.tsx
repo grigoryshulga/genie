@@ -1,4 +1,4 @@
-import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, useId, useRef } from "react";
+import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { cx } from "./cx.ts";
 import { nextIndex } from "./menu-nav.ts";
@@ -15,9 +15,9 @@ export function Button({ variant = "secondary", sm, busy, className, children, .
 }
 
 /** An icon-only button must carry a label. */
-export function IconButton({ label, className, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+export function IconButton({ label, className, children, ref, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; ref?: React.Ref<HTMLButtonElement> }) {
   return (
-    <button type="button" {...rest} className={cx("g-icon-btn", className)} aria-label={label} title={rest.title ?? label}>
+    <button type="button" {...rest} ref={ref} className={cx("g-icon-btn", className)} aria-label={label} title={rest.title ?? label}>
       {children}
     </button>
   );
@@ -26,9 +26,31 @@ export function IconButton({ label, className, children, ...rest }: ButtonHTMLAt
 export type TabItem<T extends string> = { id: T; label: ReactNode; to?: string; /** Tooltip for a tab whose label is collapsed to its icon. */ title?: string };
 
 /** Tabs: a rail of pills; the selected one is the only filled pill. Arrow keys move focus, Home and End jump. */
-export function Tabs<T extends string>({ items, value, onChange, label }: { items: TabItem<T>[]; value: T; onChange?: (id: T) => void; label: string }) {
+export function Tabs<T extends string>({ items, value, onChange, label, animated = false }: { items: TabItem<T>[]; value: T; onChange?: (id: T) => void; label: string; animated?: boolean }) {
   const refs = useRef<(HTMLElement | null)[]>([]);
   const base = useId();
+  const rail = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState<{ x: number; y: number; width: number; height: number }>();
+  const selected = items.findIndex((item) => item.id === value);
+  useLayoutEffect(() => {
+    const root = rail.current;
+    const target = refs.current[selected];
+    if (!animated || !root || !target) { setIndicator(undefined); return; }
+    const measure = () => {
+      const outer = root.getBoundingClientRect();
+      const box = target.getBoundingClientRect();
+      // Search temporarily hides desktop navigation. Retain its position for the return trip.
+      if (!box.width || !box.height) return;
+      const next = { x: box.left - outer.left + root.scrollLeft - root.clientLeft, y: box.top - outer.top + root.scrollTop - root.clientTop, width: box.width, height: box.height };
+      setIndicator((old) => old && old.x === next.x && old.y === next.y && old.width === next.width && old.height === next.height ? old : next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [animated, selected, items.length]);
+
   function onKey(e: KeyboardEvent, index: number) {
     const next = nextIndex(index, e.key, items.length, "horizontal");
     if (next === index) return;
@@ -37,7 +59,8 @@ export function Tabs<T extends string>({ items, value, onChange, label }: { item
     if (!items[next].to) onChange?.(items[next].id);
   }
   return (
-    <div className="g-tabs" role={items.some((i) => i.to) ? undefined : "tablist"} aria-label={label}>
+    <div ref={rail} className={cx("g-tabs", animated && indicator && "g-tabs-motion")} role={items.some((i) => i.to) ? undefined : "tablist"} aria-label={label}>
+      {animated && indicator && <span className="g-tabs-indicator" aria-hidden="true" style={{ width: indicator.width, height: indicator.height, transform: `translate(${indicator.x}px, ${indicator.y}px)` }} />}
       {items.map((item, i) =>
         item.to ? (
           <Link key={item.id} to={item.to} title={item.title} ref={(el) => void (refs.current[i] = el)} aria-current={item.id === value ? "page" : undefined} onKeyDown={(e) => onKey(e, i)}>

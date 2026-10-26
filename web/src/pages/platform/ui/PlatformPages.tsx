@@ -191,7 +191,6 @@ export function NotificationsPage() {
           )}
         </>}
       />
-      <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="scroll">
         {q.isPending ? (
           <div className="notifs" aria-hidden="true">
@@ -291,7 +290,7 @@ export function AutomationsPage() {
           </Button>
         )}
       />
-      <ContextSearch className="mobile-context-search mobile-search-bar" />
+      <ContextSearch className="management-search" />
       <div className="split">
         <section className="split-list" aria-label="Правила">
           <div className="side-head"><span className="side-title">Правила</span></div>
@@ -378,7 +377,7 @@ export function ProposalsPage() {
   return (
     <main className="main">
       <PageHeader title="Предложения" toolbar={<DocViewSwitch />} />
-      <ContextSearch className="mobile-context-search mobile-search-bar" />
+
       <div className="split narrow">
         <section className="split-list" aria-label="Открытые предложения">
           {list.isPending && (

@@ -56,6 +56,7 @@ test("the search narrows the task list and keeps the query in the address", asyn
   const list = page.getByRole("list", { name: "Задачи" });
   await expect(list.getByText(SEED_TASKS[3].title)).toBeVisible();
 
+  await page.getByRole("button", { name: "Открыть поиск" }).click();
   const search = page.getByRole("searchbox", { name: "Поиск задач" });
   await search.fill("фильтруется");
   await expect(page).toHaveURL(/[?&]q=/);
@@ -64,6 +65,7 @@ test("the search narrows the task list and keeps the query in the address", asyn
 
   // The address alone restores the search.
   await page.reload();
+  await page.getByRole("button", { name: "Открыть поиск" }).click();
   await expect(search).toHaveValue("фильтруется");
   await expect(list.getByRole("listitem")).toHaveCount(1);
 

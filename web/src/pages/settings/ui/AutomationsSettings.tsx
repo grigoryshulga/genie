@@ -1,6 +1,6 @@
 // «Автоматизации» — the rules of the current project: the list, the JSON editor,
 // playbooks, enabling and deleting. Running a rule and watching its runs is the
-// work side (/automations); defining rules is here.
+// management runs page; defining rules is here.
 
 import { SettingsTabs } from "./SettingsTabs.tsx";
 import { useState } from "react";
@@ -154,7 +154,7 @@ function RuleView({ rule, onEdit }: { rule: Automation; onEdit: () => void }) {
       </div>
       <div className="pane-body">
         <p className="g-muted" style={{ marginTop: 0 }}>
-          Запустить правило и посмотреть его запуски — на странице «Автоматизации» в рабочей части.
+          Запустить правило и посмотреть его запуски — в разделе «Автоматизации» управления проектом.
         </p>
         {steps.length > 0 && (
           <ol className="steps" aria-label="Шаги">

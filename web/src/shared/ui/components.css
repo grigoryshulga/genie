@@ -286,3 +286,17 @@
 /* Actions row at the foot of an edit form: the task detail's forms and the project icon form both
    render it, so the row lives with the shared primitives instead of the detail sheet. */
 .td-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--g-space-2); }
+
+/* A menu row may expose an independent adjacent action without nesting buttons. */
+.g-menu-action-row { display: flex; align-items: center; gap: var(--g-space-1); }
+.g-menu-action-row > .g-menu-item { flex: 1; min-width: 0; }
+.g-menu-action-row > .g-icon-btn { flex: none; }
+
+/* One moving fill follows the active tab while labels keep their native focus and keyboard behavior. */
+.g-tabs-motion { position: relative; isolation: isolate; }
+.g-tabs-motion > a, .g-tabs-motion > [role="tab"] { position: relative; z-index: 1; transition: color var(--g-duration) var(--g-ease); }
+.g-tabs-motion > a[aria-current="page"], .g-tabs-motion > [aria-selected="true"] { background: transparent; }
+.g-tabs-indicator { position: absolute; left: 0; top: 0; z-index: 0; border-radius: var(--g-radius-pill); background: var(--g-accent); pointer-events: none; transition: transform calc(2 * var(--g-duration)) var(--g-ease), width calc(2 * var(--g-duration)) var(--g-ease), height calc(2 * var(--g-duration)) var(--g-ease); }
+@media (prefers-reduced-motion: reduce) {
+  .g-tabs-indicator, .g-tabs-motion > a, .g-tabs-motion > [role="tab"] { transition: none; }
+}

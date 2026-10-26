@@ -81,8 +81,7 @@ async function serveNotifications(page: Page, items: FixtureNotification[]) {
 const popupOf = (page: Page) => page.getByRole("dialog", { name: "Уведомления" });
 
 for (const theme of ["ink", "paper"]) {
-  // The phone's bar has no bell: its sheet links to the notifications page (see the test below).
-  for (const width of [1440]) {
+  for (const width of [1440, 390]) {
     test(`the bell opens the notification popup in place (${theme}, ${width})`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await serveNotifications(page, NOTIFICATIONS);
@@ -113,17 +112,6 @@ for (const theme of ["ink", "paper"]) {
   }
 }
 
-test("on a phone the sheet carries the notifications with their unread count", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 900 });
-  await serveNotifications(page, NOTIFICATIONS);
-  await page.goto("/board");
-  await expect(page.getByRole("button", { name: /^Уведомления/ }).filter({ visible: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Открыть меню разделов" }).click();
-  const link = page.getByRole("dialog", { name: "Навигация" }).getByRole("link", { name: /Уведомления/ });
-  await expect(link).toContainText("2");
-  await link.click();
-  await expect(page).toHaveURL(/\/notifications$/);
-});
 
 test("an outside click closes the popup and leaves focus where the click went", async ({ page }) => {
   await serveNotifications(page, NOTIFICATIONS);
@@ -132,7 +120,7 @@ test("an outside click closes the popup and leaves focus where the click went", 
   await bell.click();
   await expect(popupOf(page)).toBeVisible();
   // The empty stretch of the top bar between the sections and the search: an outside click.
-  await page.mouse.click(700, 30);
+  await page.getByRole("heading", { name: "Доска", exact: true }).click();
   await expect(popupOf(page)).toBeHidden();
   await expect(bell).toHaveAttribute("aria-expanded", "false");
   // The click, not the closing popup, decides where focus lands.
@@ -208,32 +196,24 @@ test("the notifications page stays its own route", async ({ page }) => {
 });
 
 for (const width of [1440, 390]) {
-  test(`pending proposals ride on the Documentation entry (${width})`, async ({ page }) => {
+  test(`pending proposals ride on the Knowledge entry (${width})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.route(/\/api\/docs\/proposals\?status=open$/, async (route) => await route.fulfill({ json: PROPOSALS }));
     await page.goto("/board");
 
-    const docs = page.getByRole("navigation", { name: "Навигация" }).getByRole("link", { name: /Документация/ });
+    const docs = page.getByRole("navigation", { name: "Навигация" }).getByRole("link", { name: /Знания/ });
     await expect(docs).toBeVisible();
     await expect(docs).toHaveAttribute("href", "/docs");
-    await expect(docs).toHaveAccessibleName(/Документация\s+предложений к документации: 2/);
+    await expect(docs).toHaveAccessibleName(/Знания\s+предложений к документации: 2/);
     // A count inside a count's entry, not a second link inside a link.
     await expect(docs.locator("a")).toHaveCount(0);
 
-    if (width > 900) {
-      // The standalone entry is gone from the overflow menu; the other destinations stay.
-      await page.getByRole("button", { name: "Ещё" }).click();
-      const more = page.getByRole("menu", { name: "Ещё" });
-      await expect(more).toBeVisible();
-      await expect(more.getByRole("menuitem", { name: /Предложения/ })).toHaveCount(0);
-      await expect(more.getByRole("menuitem", { name: /Автоматизации/ })).toBeVisible();
-    } else {
-      // The phone's bar carries the destinations; the sheet behind «Ещё» carries the rest.
-      await page.getByRole("button", { name: "Открыть меню разделов" }).click();
-      const sheet = page.getByRole("dialog", { name: "Навигация" });
-      await expect(sheet.getByRole("link", { name: "Предложения", exact: true })).toHaveCount(0);
-      await expect(sheet.getByRole("link", { name: "Уведомления", exact: true })).toBeVisible();
-    }
+    await expect(page.getByRole("button", { name: "Ещё", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /^Профиль:/ }).click();
+    const profile = page.getByRole("menu", { name: "Профиль", exact: true });
+    await expect(profile.getByRole("menuitem", { name: "Быстрые команды" })).toBeVisible();
+    await expect(profile.getByRole("menuitem", { name: /Автоматизации|Наблюдения/ })).toHaveCount(0);
+
   });
 }
 

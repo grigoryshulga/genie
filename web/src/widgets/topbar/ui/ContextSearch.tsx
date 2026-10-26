@@ -6,11 +6,13 @@ export function ContextSearch({
   inputRef,
   compact = false,
   onExpand,
+  onClose,
   className = "",
 }: {
   inputRef?: React.RefObject<HTMLInputElement | null>;
   compact?: boolean;
   onExpand?: () => void;
+  onClose?: () => void;
   className?: string;
 }) {
   const { pathname } = useLocation();
@@ -42,6 +44,7 @@ export function ContextSearch({
           if (e.key === "Escape") {
             change("");
             e.currentTarget.blur();
+            onClose?.();
           }
         }}
       />
