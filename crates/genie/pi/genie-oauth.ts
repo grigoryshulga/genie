@@ -1,9 +1,12 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
+// Pi's RPC mode takes over `process.stdout` and routes what extensions print to
+// stderr, which the server discards. File descriptor 1 is still the RPC channel,
+// so write to it directly to reach the server.
 function send(type: string, data: Record<string, unknown>) {
-  process.stdout.write(`${JSON.stringify({ type, ...data })}\n`);
+  writeSync(1, `${JSON.stringify({ type, ...data })}\n`);
 }
 
 function clean(value: unknown): string {

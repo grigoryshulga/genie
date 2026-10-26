@@ -159,6 +159,7 @@ export function ProviderConnectDialog({ providers, scope, onClose }: { providers
             {flow.authorization?.url && <a className="provider-oauth-link" href={flow.authorization.url} target="_blank" rel="noreferrer">Открыть страницу входа</a>}
             {flow.authorization?.code && <code className="st-code">{flow.authorization.code}</code>}
             {flow.prompt?.message && <p>{flow.prompt.message}</p>}
+            {flow.authorization?.url && flow.prompt?.method === "input" && <p className="g-muted">После входа браузер перейдёт на localhost и может показать ошибку — это нормально. Скопируйте адрес из строки браузера целиком и вставьте ниже.</p>}
             {flow.prompt?.method === "confirm" && (
               <div className="provider-actions">
                 <button type="button" className="g-btn ghost" disabled={busy} onClick={() => void respond({ confirmed: false })}>Нет</button>
