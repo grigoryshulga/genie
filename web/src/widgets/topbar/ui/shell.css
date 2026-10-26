@@ -9,7 +9,8 @@
 /* The bar floats: a transparent row reserves the space at the top (so the page below is never covered),
    and the controls hang in it as a pill centred over the screen with the project beside it as a round
    button of its own. Both wear the raised surface and the card shadow, so they read in ink and in paper. */
-.g-topbar { --g-topbar-h: 48px; position: relative; z-index: var(--g-z-sticky); display: flex; align-items: center; justify-content: center; min-height: calc(var(--g-topbar-h) + 2 * var(--g-space-3)); gap: var(--g-space-2); padding: var(--g-space-3) var(--g-space-5); background: transparent; }
+/* The whole floating shell, including the phone dock, must outrank sticky page groups. */
+.g-topbar { --g-topbar-h: 48px; position: relative; z-index: var(--g-z-dropdown); display: flex; align-items: center; justify-content: center; min-height: calc(var(--g-topbar-h) + 2 * var(--g-space-3)); gap: var(--g-space-2); padding: var(--g-space-3) var(--g-space-5); background: transparent; }
 .g-topbar-pill { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; max-width: 100%; min-height: var(--g-topbar-h); padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); box-shadow: var(--g-shadow-card); }
 .g-topbar-nav { display: flex; align-items: center; gap: var(--g-space-1); min-width: 0; }
 .g-topbar-sep { flex: none; width: 1px; height: var(--g-space-5); background: var(--g-border-strong); }
@@ -65,7 +66,8 @@
 /* On a phone the five destinations get one bottom row. Project/search/account stay in the
    top strip; create floats separately above the dock so it never squeezes a destination. */
 @media (max-width: 900px) {
-  .app:has(> .g-topbar) { --g-bar-reserve: calc(var(--g-space-8) + var(--g-space-7) + var(--g-space-5)); padding-bottom: calc(var(--g-bar-reserve) + env(safe-area-inset-bottom, 0px)); }
+  /* Short pages must not distribute unused viewport height into the utility strip. */
+  .app:has(> .g-topbar) { align-content: start; --g-bar-reserve: calc(var(--g-space-8) + var(--g-space-7) + var(--g-space-5)); padding-bottom: calc(var(--g-bar-reserve) + env(safe-area-inset-bottom, 0px)); }
   .app > .g-topbar { min-height: var(--g-space-8); justify-content: flex-start; gap: var(--g-space-2); padding: var(--g-space-2) var(--g-space-3); }
   .g-topbar-project-switcher { flex: none; }
   .g-topbar-project { width: var(--g-control); height: var(--g-control); border: 0; box-shadow: none; }

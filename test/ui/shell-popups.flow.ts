@@ -5,7 +5,7 @@
 // fixtures below through `page.route` — fixtures, not live data. Everything else is the real
 // server: the shell, its routes, and opening a task from a notification.
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { PROJECT, SEED_TASKS } from "./seed.ts";
 
 /** A notification as the fixture states it (the server's own shape). */
@@ -252,3 +252,62 @@ test("the project switcher lists names on one line without role hints", async ({
   expect(name).toEqual({ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
   await page.screenshot({ path: "test-results/shell-project-menu.png", clip: { x: 0, y: 0, width: 460, height: 220 }, animations: "disabled" });
 });
+
+for (const theme of ["ink", "paper"]) {
+  for (const width of [1440, 390]) {
+    test(`shell menus stay above sticky task-list groups (${theme}, ${width})`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
+      await serveNotifications(page, NOTIFICATIONS);
+      await page.goto("/tasks");
+      await expect(page.locator(".tl-group-head").first()).toBeVisible();
+      await page.getByRole("button", { name: /^Профиль:/ }).click();
+      const profile = page.getByRole("menu", { name: "Профиль", exact: true });
+      await expect(profile).toBeVisible();
+      const exposed = (popup: Locator) => popup.evaluate((menu) => [...menu.querySelectorAll<HTMLElement>("button:not(:disabled)")].every((row) => {
+        const rect = row.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return !!hit && row.contains(hit);
+      }));
+      await expect.poll(() => exposed(profile)).toBe(true);
+      await page.screenshot({ path: `test-results/shell-menu-layer-${theme}-${width}.png`, animations: "disabled" });
+      await profile.getByRole("menuitem", { name: "Быстрые команды" }).click();
+      await expect(page.getByRole("dialog", { name: "Команды", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: /^Проект / }).click();
+      const projects = page.getByRole("menu", { name: "Проекты", exact: true });
+      await expect(projects).toBeVisible();
+      await expect(projects.getByRole("menuitemcheckbox").first()).toBeInViewport();
+      await expect.poll(() => exposed(projects)).toBe(true);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: /^Уведомления/ }).click();
+      const notifications = popupOf(page);
+      await expect(notifications).toBeVisible();
+      await expect(notifications.getByRole("button", { name: "Прочитать все" })).toBeVisible();
+      await expect.poll(() => exposed(notifications)).toBe(true);
+    });
+  }
+}
+
+for (const theme of ["ink", "paper"]) {
+  test(`phone dock stays above task groups while scrolling (${theme})`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
+    await page.goto("/tasks");
+    await expect(page.locator(".tl-group-head").first()).toBeVisible();
+    // Move each real sticky group through the dock's center, rather than assuming a fixed list length.
+    for (const group of await page.locator(".tl-group-head").all()) {
+      await group.evaluate((node) => {
+        const dock = document.querySelector(".g-topbar-nav")!.getBoundingClientRect();
+        const head = node.getBoundingClientRect();
+        window.scrollBy(0, head.top - (dock.top + (dock.height - head.height) / 2));
+      });
+      const exposed = await page.locator(".g-topbar-nav").evaluate((dock) => [...dock.querySelectorAll("a"), document.querySelector(".g-topbar-create")!].every((link) => {
+        const box = link.getBoundingClientRect();
+        return link.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+      }));
+      expect(exposed).toBe(true);
+    }
+    await page.screenshot({ path: `test-results/dock-over-list-${theme}.png`, animations: "disabled" });
+  });
+}

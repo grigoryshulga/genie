@@ -88,3 +88,21 @@ for (const width of [1440, 1280, 1181, 1000, 901, 900, 768, 430, 390, 360]) {
     expect(await name.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
   });
 }
+
+for (const path of ["/board", "/tasks", "/epics", "/docs", "/agents"]) {
+  test(`phone top strip keeps its intrinsic height on ${path}`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".g-topbar-project")).toBeVisible();
+    const before = await page.locator(".g-topbar").boundingBox();
+    expect(before!.height).toBeLessThanOrEqual(64);
+    const project = (await page.locator(".g-topbar-project").boundingBox())!;
+    expect(project.y).toBeLessThanOrEqual(16);
+    await page.getByRole("button", { name: "Открыть поиск", exact: true }).click();
+    const during = (await page.locator(".g-topbar").boundingBox())!;
+    expect(during.height).toBeCloseTo(before!.height, 0);
+    await page.getByRole("button", { name: "Закрыть поиск", exact: true }).click();
+    await page.screenshot({ path: `test-results/mobile-top-strip-${path.slice(1)}.png`, animations: "disabled" });
+  });
+}
