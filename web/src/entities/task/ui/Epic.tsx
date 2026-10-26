@@ -1,11 +1,13 @@
 import { Link } from "react-router";
 import { useEpicMap } from "../api.ts";
 import { PROGRESS, progressOf, type TaskSummary } from "../model.ts";
+import { epicTone } from "../epic-tone.ts";
+import "./epic-color.css";
 
 /** Epic mark: the brand arcs in miniature; the closed epic is drawn solid, an empty one is outlined by its lighter inner arc. */
-export function EpicIcon({ size = 14, filled, empty }: { size?: number; filled?: boolean; empty?: boolean }) {
+export function EpicIcon({ size = 14, filled, empty, id }: { size?: number; filled?: boolean; empty?: boolean; id?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="st-accent epic-icon">
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className="st-accent epic-icon" data-epic-tone={id ? epicTone(id) : undefined}>
       <path d="M1 15A14 14 0 0 1 15 1v3.2A10.8 10.8 0 0 0 4.2 15z" />
       {!empty && <path d="M5.8 15A9.2 9.2 0 0 1 15 5.8V9a6 6 0 0 0-6 6z" opacity={filled ? 1 : 0.6} />}
     </svg>
@@ -13,21 +15,22 @@ export function EpicIcon({ size = 14, filled, empty }: { size?: number; filled?:
 }
 
 /** Small link to the epic a task belongs to; nothing when its parent is not an epic. */
-export function EpicChip({ id, full, text }: { id?: string; full?: boolean; /** Plain text (inside another button). */ text?: boolean }) {
+export function EpicChip({ id, full, titleOnly, text }: { id?: string; full?: boolean; titleOnly?: boolean; /** Plain text (inside another button). */ text?: boolean }) {
   const epic = useEpicMap().get(id ?? "");
   if (!epic) return null;
+  const label = titleOnly ? epic.title : full ? `${epic.id} · ${epic.title}` : epic.id;
   if (text) {
     return (
       <span className="epic-chip" title={`Эпик ${epic.id}: ${epic.title}`}>
-        <EpicIcon size={11} />
-        {full ? `${epic.id} · ${epic.title}` : epic.id}
+        <EpicIcon size={11} id={titleOnly ? epic.id : undefined} />
+        <span>{label}</span>
       </span>
     );
   }
   return (
     <Link to={`/epic/${encodeURIComponent(epic.id)}`} className="epic-chip" title={`Эпик ${epic.id}: ${epic.title}`} onClick={(e) => e.stopPropagation()}>
-      <EpicIcon size={11} />
-      {full ? `${epic.id} · ${epic.title}` : epic.id}
+      <EpicIcon size={11} id={titleOnly ? epic.id : undefined} />
+      <span>{label}</span>
     </Link>
   );
 }

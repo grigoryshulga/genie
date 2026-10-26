@@ -13,6 +13,7 @@ for (const route of ["board", "tasks"]) {
         const modal = page.getByRole("dialog", { name: "Задача DM-2", exact: true });
         await expect(modal).toBeVisible();
         await expect(modal.getByRole("heading", { name: SEED_TASKS[1].title })).toBeVisible();
+        await expect(modal).toHaveCSS("transform", "none");
         await expect(page).toHaveURL(new RegExp(`/${route}\\?task=DM-2`));
         expect(await modal.evaluate((node) => node.matches(":modal"))).toBe(true);
         const box = (await modal.boundingBox())!;

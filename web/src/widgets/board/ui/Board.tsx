@@ -13,10 +13,12 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   groupByLane,
+  epicTone,
   LANES,
   type Lane,
   type LaneId,
   laneDropId,
+  laneOf,
   needsQuestion,
   resolveDrop,
   type Status,
@@ -24,6 +26,7 @@ import {
   statusDropId,
   type TaskSummary,
   useMoveTask,
+  useEpicMap,
 } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { plural } from "@/shared/lib";
@@ -72,8 +75,6 @@ function LaneSection({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: laneDropId(lane) });
   const n = tasks.length;
-  // The exact status is a tag on the card only where a lane gathers several of them.
-  const showStatus = lane.statuses.length > 1;
   return (
     <section
       ref={(node) => {
@@ -113,7 +114,6 @@ function LaneSection({
               t={t}
               team={t.team ? teams.get(t.team) : undefined}
               selected={selected === t.id}
-              showStatus={showStatus}
               offline={offline}
               onSelect={() => onOpen(t.id)}
               onMove={(status) => onMove(t.id, status)}
@@ -161,7 +161,6 @@ function CancelledStrip({
               t={t}
               team={t.team ? teams.get(t.team) : undefined}
               selected={selected === t.id}
-              showStatus={false}
               offline={offline}
               onSelect={() => onOpen(t.id)}
               onMove={(status) => onMove(t.id, status)}
@@ -196,6 +195,7 @@ export function Board({
   offline?: boolean;
 }) {
   const move = useMoveTask();
+  const epics = useEpicMap();
   const toast = useToast();
   const [dragging, setDragging] = useState<TaskSummary | undefined>();
   // Every dnd-kit sensor cancels on the physical Escape code, including pending gestures.
@@ -328,8 +328,8 @@ export function Board({
       </div>
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <div className={cx("g-sheet bd-card bd-ghost", dragging.needsOwner && "bd-decision")}>
-            <CardBody t={dragging} team={dragging.team ? teams.get(dragging.team) : undefined} showStatus />
+          <div className={cx("g-sheet bd-card bd-ghost", dragging.needsOwner && "bd-decision")} data-lane-tone={laneOf(dragging.status)?.id} data-epic-tone={dragging.parent && epics.has(dragging.parent) ? epicTone(dragging.parent) : undefined}>
+            <CardBody t={dragging} team={dragging.team ? teams.get(dragging.team) : undefined} />
           </div>
         )}
       </DragOverlay>
