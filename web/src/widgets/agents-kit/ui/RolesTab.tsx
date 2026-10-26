@@ -20,7 +20,7 @@ import {
   useSaveConfig,
 } from "@/entities/agent-config";
 import { agentTone } from "@/entities/member";
-import { Badge, ConfirmDialog, Icon, IconButton, LoadingState, RenameButton, RenameField, Section, useAct } from "@/shared/ui";
+import { Badge, Button, ConfirmDialog, Icon, IconButton, LoadingState, RenameButton, RenameField, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -32,12 +32,14 @@ export function RolesTab({
   cfg,
   selected,
   onSelect,
+  onCreate,
   readOnly = false,
   base = "/agents",
 }: {
   cfg: Catalogue;
   selected?: string;
   onSelect: (id: string) => void;
+  onCreate?: () => void;
   /** The catalogue (/agents) forces read-only even for a server administrator. */
   readOnly?: boolean;
   /** Where this tab lives: cross-links to the other tabs stay inside the same mode. */
@@ -64,7 +66,10 @@ export function RolesTab({
   return (
     <div className="split ag-roles-layout">
       <section className="split-list ag-list" aria-label="Роли">
-        <div className="side-head"><span className="side-title">Роли</span></div>
+        <div className="side-head">
+          <span className="side-title">Роли</span>
+          {!readOnly && onCreate && <Button sm onClick={onCreate}><Icon.plus size={13} />Новая роль</Button>}
+        </div>
         <div className="ag-list-search"><input type="search" className="g-input" aria-label="Поиск ролей" placeholder="Найти роль…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
         <Problems items={sectionProblems(cfg.problems, "roles").filter((p) => p.item !== `role:${current}`)} />
         {team.filter(matches).map(pick)}

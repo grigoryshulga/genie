@@ -363,3 +363,5 @@ fieldset:disabled .ag-perm { cursor: default; }
 .ag-role-settings section.ag-role-setting-card { grid-column: auto; align-content: start; padding: var(--g-space-4); background: var(--g-surface); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); }
 .ag-role-settings .ag-seg { flex-wrap: wrap; }
 .ag-role-overview .ag-card-head h3 { color: var(--g-text); font-size: var(--g-text-h4); text-transform: none; letter-spacing: 0; }
+
+.ag-roles-layout .side-head { justify-content: space-between; }

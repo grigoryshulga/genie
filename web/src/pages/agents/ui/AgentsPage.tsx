@@ -68,7 +68,7 @@ export function AgentsPage() {
               <span className="d-only">Настроить</span>
             </Link>
           )}
-          {create && c && (
+          {create && c && tab !== "roles" && (
             <button type="button" className="g-btn secondary" onClick={() => setCreating(create.kind)}>
               <Icon.plus size={13} />
               <span className="d-only">{create.label}</span>
@@ -87,7 +87,7 @@ export function AgentsPage() {
           </div>
         )
       ) : tab === "roles" ? (
-        <RolesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
+        <RolesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} onCreate={isAdmin ? () => setCreating("roles") : undefined} />
       ) : tab === "templates" ? (
         <TemplatesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
       ) : tab === "skills" ? (

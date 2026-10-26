@@ -56,6 +56,12 @@ for (const theme of ["ink", "paper"]) for (const width of [1440, 390]) {
     await page.goto(`/__preview?theme=${theme}&width=${width}&route=${encodeURIComponent("/agents?id=integration-analyst")}`);
     const app = page.frameLocator("#app");
     await expect(app.getByRole("heading", { name: "Аналитик интеграций", exact: true })).toBeVisible();
+    const createRole = app.getByRole("region", { name: "Роли", exact: true }).getByRole("button", { name: "Новая роль", exact: true });
+    await expect(createRole).toBeVisible();
+    await expect(app.getByRole("button", { name: "Новая роль", exact: true })).toHaveCount(1);
+    await createRole.click();
+    await expect(app.getByRole("dialog", { name: "Новая роль", exact: true })).toBeVisible();
+    await app.getByRole("dialog").getByRole("button", { name: "Отмена", exact: true }).click();
     await expect(app.locator(".ag-mcp-connection")).toHaveCount(3);
     await expect(app.locator(".ag-mcp-connection li").first()).not.toBeVisible();
     await app.getByRole("button", { name: "Редактировать роль", exact: true }).click();
