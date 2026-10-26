@@ -1,0 +1,28 @@
+/* The form rises into the native dialog's top layer; no transform remains after entry. */
+.nt-dialog[open] { animation: g-new-task-appear calc(2 * var(--g-duration)) var(--g-ease) backwards; }
+.nt-dialog[open]::backdrop { animation: g-new-task-backdrop var(--g-duration) var(--g-ease) backwards; }
+@keyframes g-new-task-appear {
+  from { opacity: 0; transform: translateY(var(--g-space-4)) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes g-new-task-backdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nt-dialog[open], .nt-dialog[open]::backdrop { animation: none; }
+}
+
+/* Keep both filing modes and the submit action reachable without horizontal scrolling. */
+@media (max-width: 900px) {
+  .nt-dialog .mh { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: var(--g-space-2); padding: var(--g-space-4); }
+  .nt-dialog .mh > .grow { display: none; }
+  .nt-dialog .mh > .g-icon-btn { grid-column: 4; grid-row: 1; }
+  .nt-dialog .nt-mode { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .nt-dialog .nt-mode button { height: auto; min-height: var(--g-control); justify-content: center; white-space: normal; padding: var(--g-space-2); }
+  .nt-dialog .mf { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; padding: var(--g-space-4); }
+  .nt-dialog .nt-context { grid-column: 2 / -1; }
+  .nt-dialog .mf > .grow { display: none; }
+  .nt-dialog .mf > .g-btn.ghost { grid-column: 2; justify-self: end; }
+  .nt-dialog .mf > .g-btn.primary { grid-column: 3; }
+}

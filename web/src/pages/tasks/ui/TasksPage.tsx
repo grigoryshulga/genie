@@ -27,7 +27,7 @@ import {
 import { useTeamMap } from "@/entities/team";
 import { isTyping, plural } from "@/shared/lib";
 import { Button, ErrorState, FilterOption, Icon, Kbd, PageHeader, Popover } from "@/shared/ui";
-import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
+import { TeamsSummary } from "@/widgets/topbar";
 import { TaskList } from "@/widgets/task-list";
 // The task screen renders the task list rows and the shared toolbar chrome.
 import "./tasks-sheets.css";
@@ -38,7 +38,7 @@ type Choice = { id: string; kind: "checkbox" | "radio"; checked: boolean; onChan
 type FilterGroup = { key: string; label: string; value: string; active: boolean; head?: string; extra?: ReactNode; choices: Choice[] };
 
 /** «Задачи»: the project's tasks as a list, with search and filters by status, readiness, time and more. */
-export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
+export function TasksPage() {
   const [sp, setSp] = useSearchParams();
   const [focused, setFocused] = useState<string | undefined>();
   const tasksQ = useTasks();
@@ -253,7 +253,6 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
         title="Задачи"
         toolbar={
           <>
-            <ContextSearch inputRef={searchRef} className="mobile-context-search" />
             <Popover label="Фильтры" icon={<Icon.filter size={13} />} count={active.length}>
               {filters.map((g) => (
                 <section key={g.key} className="fgroup">

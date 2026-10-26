@@ -37,6 +37,7 @@ test("template workspace persists composition, portable files, conflict protecti
     const download = await downloading;
     const portable = parseTemplateTransfer(await readFile((await download.path())!, "utf8"));
     expect(portable.members[0].thinking).toBe("max");
+    await page.getByRole("button", { name: "Открыть поиск", exact: true }).click();
     const search = page.getByRole("searchbox", { name: "Поиск агентов и инструментов", exact: true }).filter({ visible: true });
     await search.fill("ABAP");
     await page.getByRole("button", { name: "Импорт шаблона", exact: true }).click();

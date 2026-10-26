@@ -6,19 +6,32 @@
 .app > .g-topbar, .app > .g-banner { grid-column: 1 / -1; }
 .app > .g-banner { border-radius: 0; }
 
-.g-topbar { position: relative; z-index: var(--g-z-sticky); display: flex; align-items: center; gap: var(--g-space-3); min-height: 60px; padding: 0 var(--g-space-5); border-bottom: 1px solid var(--g-border); background: var(--g-bg); }
-.g-topbar-nav { display: flex; align-items: center; gap: var(--g-space-2); }
-.g-topbar-grow { flex: 1; }
-.g-topbar-project { display: inline-flex; align-items: center; gap: var(--g-space-3); height: var(--g-control); padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text); font: 700 var(--g-text-ui) var(--g-font-display); max-width: 240px; }
+/* The bar floats: a transparent row reserves the space at the top (so the page below is never covered),
+   and the controls hang in it as a pill centred over the screen with the project beside it as a round
+   button of its own. Both wear the raised surface and the card shadow, so they read in ink and in paper. */
+/* The whole floating shell, including the phone dock, must outrank sticky page groups. */
+.g-topbar { --g-topbar-h: 48px; position: relative; z-index: var(--g-z-dropdown); display: flex; align-items: center; justify-content: center; min-height: calc(var(--g-topbar-h) + 2 * var(--g-space-3)); gap: var(--g-space-2); padding: var(--g-space-3) var(--g-space-5); background: transparent; }
+.g-topbar-pill { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; max-width: 100%; min-height: var(--g-topbar-h); padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); box-shadow: var(--g-shadow-card); }
+.g-topbar-nav { display: flex; align-items: center; gap: var(--g-space-1); min-width: 0; }
+.g-topbar-sep { flex: none; width: 1px; height: var(--g-space-5); background: var(--g-border-strong); }
+.g-topbar-utility { display: flex; align-items: center; gap: var(--g-space-1); }
+.g-topbar-project { display: inline-grid; place-items: center; width: var(--g-topbar-h); height: var(--g-topbar-h); padding: 0; border: 1px solid var(--g-border-strong); border-radius: 50%; background: var(--g-surface-raised); box-shadow: var(--g-shadow-card); color: var(--g-text); cursor: pointer; }
 .g-topbar-project:hover { background: var(--g-surface-hover); }
-.g-topbar-project .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.g-topbar-project svg { flex: none; color: var(--g-accent-text); }
-.g-topbar .g-tabs > a { text-decoration: none; }
+.g-topbar-project .project-icon { width: var(--g-control); height: var(--g-control); }
+.g-topbar .g-tabs { padding: 0; border: 0; background: transparent; }
+.g-topbar .g-tabs > a { position: relative; height: var(--g-control); text-decoration: none; }
+.g-topbar-pill > .g-icon-btn, .g-topbar-utility .g-icon-btn, .g-topbar-utility .g-avatar-btn { width: var(--g-control); height: var(--g-control); flex: none; }
+.g-topbar .g-tabs > a > svg { flex: none; }
+/* The epic mark is drawn in the accent; on the filled tab that would vanish, so it follows the tab's ink. */
+.g-topbar .g-tabs .epic-icon { color: inherit; }
 .g-topbar .g-tabs .g-tag { height: 18px; }
-.g-topbar-search { width: 220px; }
-.g-topbar-search.search { height: var(--g-control-sm); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-pill); background: transparent; }
+.g-topbar-search-mode { display: grid; grid-template-columns: minmax(0, 1fr) var(--g-control); align-items: center; gap: var(--g-space-2); flex: 1; min-width: 0; }
+.g-topbar-search.search { min-width: 0; width: 100%; box-sizing: border-box; height: var(--g-control); border: 0; border-radius: var(--g-radius-pill); background: transparent; }
+.g-topbar.searching .g-topbar-nav, .g-topbar.searching .g-topbar-search-toggle { display: none; }
+.g-topbar.searching .g-topbar-project-switcher { visibility: hidden; }
+.g-topbar.searching .g-topbar-pill { box-sizing: border-box; width: var(--g-topbar-rest-width); height: var(--g-topbar-rest-height); }
 .g-popover-host { position: relative; display: inline-flex; }
-.g-popover { position: absolute; top: calc(100% + 8px); z-index: var(--g-z-dropdown); }
+.g-popover { position: absolute; top: calc(100% + var(--g-space-3)); z-index: var(--g-z-dropdown); }
 .g-popover.left { left: 0; }
 .g-popover.right { right: 0; }
 .g-dock { display: inline-flex; align-items: center; gap: var(--g-space-2); height: var(--g-control); padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font: 600 var(--g-text-dense) var(--g-font-sans); }
@@ -32,7 +45,7 @@
 .g-bell .g-unread { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--g-signal); }
 .g-avatar-btn { position: relative; display: inline-grid; place-items: center; width: var(--g-control-sm); height: var(--g-control-sm); padding: 0; border: 0; border-radius: 50%; background: var(--g-text); color: var(--g-bg); font: 700 11px/1 var(--g-font-sans); }
 .g-avatar-btn img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.g-online { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%; background: var(--g-accent); box-shadow: 0 0 0 2px var(--g-bg); }
+.g-online { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%; background: var(--g-accent); box-shadow: 0 0 0 2px var(--g-surface-raised); }
 .g-online.off { background: var(--g-danger); }
 .g-dialog.sheet { margin: auto auto 0; width: 100%; }
 .g-dialog.sheet .g-modal { width: 100%; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; }
@@ -41,32 +54,39 @@
 .g-sheet-nav button { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control); padding: 0 var(--g-space-4); border-radius: var(--g-radius-md); color: var(--g-text); font-weight: 600; text-decoration: none; }
 /* The palette is a button rather than a destination: it wears the same row as the links beside it. */
 .g-sheet-nav button { width: 100%; border: 0; background: none; font-family: inherit; font-size: inherit; line-height: inherit; text-align: start; cursor: pointer; }
+.g-sheet-count { margin-left: auto; color: var(--g-text-muted); font-variant-numeric: tabular-nums; }
 .g-sheet-nav a[aria-current="page"] { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
 
-/* ------------------------------------------------------------ the bar on a narrow screen */
-/* A phone bar carries the project, search, create, the dock, notifications and the person:
-   five 40px targets plus the project name only fit 390px if the gaps close and the name
-   gives way first. Between the one-column breakpoint and 1180px the five destinations
-   cannot share a line with search and create, so the nav takes a line of its own. */
-@media (max-width: 1180px) and (min-width: 901px) {
-  .g-topbar { flex-wrap: wrap; gap: var(--g-space-2) var(--g-space-3); padding-block: var(--g-space-2); }
-  .g-topbar-nav { order: 10; flex: 1 0 100%; min-width: 0; }
-  /* Scroll destinations, keeping the overflow menu outside the clipping container. */
-  .g-topbar-nav > .g-tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .g-topbar-nav > .g-tabs::-webkit-scrollbar { display: none; }
-  .g-topbar-project { max-width: 180px; }
-  .g-topbar-search { width: 180px; }
+/* In a narrow desktop window, only the active destination keeps its visible label. */
+@media (max-width: 1100px) and (min-width: 901px) {
+  .g-topbar .g-tabs > a:not([aria-current="page"]) .g-tab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .g-topbar .g-tabs > a:not([aria-current="page"]) { padding: 0 var(--g-space-3); }
 }
 
+/* On a phone the five destinations get one bottom row. Project/search/account stay in the
+   top strip; create floats separately above the dock so it never squeezes a destination. */
 @media (max-width: 900px) {
-  .g-topbar { gap: var(--g-space-2); padding: 0 var(--g-space-2); padding-top: env(safe-area-inset-top, 0); }
-  /* The project name is what gives way when the bar runs out of room; the controls never do. */
-  .g-topbar-project { flex: 1 1 auto; min-width: 0; max-width: none; gap: var(--g-space-2); padding: 0 var(--g-space-2); }
-  .g-topbar-grow { display: none; }
-  /* Width stays at the narrow bar budget so the project name survives; height is the touch target. */
-  .g-topbar .g-icon-btn, .g-topbar .g-avatar-btn { flex: none; width: var(--g-control-sm); height: var(--g-control); }
-  .g-dock { flex: none; padding: 0 var(--g-space-2); }
-  .g-sheet-nav a, .g-sheet-nav button { min-height: var(--g-row); }
+  /* Short pages must not distribute unused viewport height into the utility strip. */
+  .app:has(> .g-topbar) { align-content: start; --g-bar-reserve: calc(var(--g-space-8) + var(--g-space-7) + var(--g-space-5)); padding-bottom: calc(var(--g-bar-reserve) + env(safe-area-inset-bottom, 0px)); }
+  .app > .g-topbar { min-height: var(--g-space-8); justify-content: flex-start; gap: var(--g-space-2); padding: var(--g-space-2) var(--g-space-3); }
+  .g-topbar-project-switcher { flex: none; }
+  .g-topbar-project { width: var(--g-control); height: var(--g-control); border: 0; box-shadow: none; }
+  .g-topbar-pill { display: contents; }
+  .g-topbar-nav { position: fixed; left: var(--g-space-3); right: var(--g-space-3); bottom: calc(var(--g-space-3) + env(safe-area-inset-bottom, 0px)); min-height: var(--g-space-8); padding: var(--g-space-1); gap: 0; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-xl); background: var(--g-surface-raised); box-shadow: var(--g-shadow-card); }
+  .g-topbar .g-tabs { flex: 1; min-width: 0; gap: 0; }
+  .g-topbar .g-tabs > a { position: relative; flex: 1 1 0; min-width: 0; flex-direction: column; justify-content: center; gap: var(--g-space-1); height: calc(var(--g-control) + var(--g-space-3)); padding: 0; border-radius: var(--g-radius-lg); font-size: var(--g-text-eyebrow); line-height: 1; }
+  .g-topbar .g-tabs > a > svg { width: var(--g-space-5); height: var(--g-space-5); }
+  .g-tab-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .g-topbar .g-tabs > a .g-tag, .g-topbar .g-tabs > a .g-topbar-open { position: absolute; top: 0; left: calc(50% + var(--g-space-2)); }
+  .g-topbar .g-tabs > a .g-tag { min-width: var(--g-space-4); height: var(--g-space-4); justify-content: center; padding: 0 var(--g-space-1); font-size: var(--g-text-eyebrow); }
+  .g-topbar .g-tabs > a .g-tag ~ .g-topbar-open { display: none; }
+  .g-topbar .g-topbar-create { position: fixed; right: var(--g-space-4); bottom: calc(var(--g-space-8) + var(--g-space-5) + env(safe-area-inset-bottom, 0px)); width: var(--g-space-7); height: var(--g-space-7); box-shadow: var(--g-shadow-card); }
+  .g-topbar-search-toggle { margin-left: auto; }
+  .g-topbar.searching .g-topbar-project-switcher { display: none; }
+  .g-topbar.searching .g-topbar-nav { display: flex; }
+  .g-topbar.searching .g-topbar-search-mode { flex: 1; }
+  .g-topbar-search.search { order: 0; }
+  .g-topbar.searching:has(.g-topbar-search:focus-within) { box-shadow: inset 0 -2px 0 var(--g-focus); }
 }
 
 .spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--g-border-strong); border-top-color: var(--g-focus); animation: spin 0.9s linear infinite; flex: none; }

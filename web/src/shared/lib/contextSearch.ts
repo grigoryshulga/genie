@@ -8,6 +8,7 @@ export function searchContext(pathname: string): { label: string; path: string }
     ["/docs", "Поиск по документации"],
     ["/agents", "Поиск агентов и инструментов"],
     ["/automations", "Поиск автоматизаций"],
+    ["/manage/project/automation-runs", "Поиск автоматизаций"],
     ["/notifications", "Поиск уведомлений"],
     ["/statistics", "Поиск проектов"],
   ];

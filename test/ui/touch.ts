@@ -46,15 +46,15 @@ async function worstCaseMoveButton(page: Page): Promise<{ opener: Locator; id: s
   throw new Error("no lane holds two cards, so there is no menu hanging over a neighbour");
 }
 
-test("the sections sheet opens the command palette with a tap", async ({ page }) => {
+test("the profile menu opens quick commands with a tap", async ({ page }) => {
   await watchPointers(page);
   await page.goto("/tasks");
-  await page.getByRole("button", { name: "Открыть меню разделов" }).tap();
-  const sheet = page.getByRole("dialog", { name: "Навигация" });
+  await page.getByRole("button", { name: /^Профиль:/ }).tap();
+  const sheet = page.getByRole("menu", { name: "Профиль", exact: true });
   await expect(sheet).toBeVisible();
 
   // The row is a thumb-sized target, like the destinations it sits beside.
-  const entry = sheet.getByRole("button", { name: "Команды" });
+  const entry = sheet.getByRole("menuitem", { name: "Быстрые команды" });
   await expect(entry).toBeVisible();
   expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 
@@ -76,7 +76,7 @@ test("the keyboard shortcut still opens the palette on a touch screen", async ({
   await page.goto("/board");
   // The shortcut is heard once the shell is up; pressing before it renders would test the login gate.
   await expect(page.getByRole("main", { name: "Доска" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Открыть меню разделов" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Профиль:/ })).toBeVisible();
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Команды" });
   await expect(palette).toBeVisible();

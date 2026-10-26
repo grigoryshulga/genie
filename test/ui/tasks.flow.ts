@@ -56,6 +56,7 @@ test("the search narrows the task list and keeps the query in the address", asyn
   const list = page.getByRole("list", { name: "Задачи" });
   await expect(list.getByText(SEED_TASKS[3].title)).toBeVisible();
 
+  await page.getByRole("button", { name: "Открыть поиск" }).click();
   const search = page.getByRole("searchbox", { name: "Поиск задач" });
   await search.fill("фильтруется");
   await expect(page).toHaveURL(/[?&]q=/);
@@ -64,6 +65,7 @@ test("the search narrows the task list and keeps the query in the address", asyn
 
   // The address alone restores the search.
   await page.reload();
+  await page.getByRole("button", { name: "Открыть поиск" }).click();
   await expect(search).toHaveValue("фильтруется");
   await expect(list.getByRole("listitem")).toHaveCount(1);
 
@@ -122,3 +124,41 @@ test("ticking a criterion and changing the status on the task page are saved", a
   await expect(criterion).toBeChecked();
   await expect(status).toHaveValue("review");
 });
+
+for (const width of [1440, 390]) {
+  test(`create form animates on opening while preserving focus at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/tasks");
+    const plus = page.locator(".g-topbar-create");
+    const dialog = page.getByRole("dialog", { name: "Новая задача", exact: true });
+    const surface = dialog;
+    await plus.click();
+    await expect(dialog).toBeVisible();
+    await expect(surface).toHaveCSS("animation-name", "g-new-task-appear");
+    await expect.poll(() => surface.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await expect.poll(() => surface.evaluate((node) => getComputedStyle(node).transform)).toBe("none");
+    const bounds = (await dialog.boundingBox())!;
+    for (const button of await dialog.locator(".mh button, .mf button").all()) {
+      const box = (await button.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+    }
+    await expect.poll(() => dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+    await dialog.getByLabel("Название", { exact: true }).fill("Проверить появление формы");
+    // Entry must end without a persistent transform/containing block over form popups.
+    await expect.poll(() => surface.evaluate((node) => getComputedStyle(node).transform)).toBe("none");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(plus).toBeFocused();
+    await plus.click();
+    await expect(surface).toHaveCSS("animation-name", "g-new-task-appear");
+    await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
+    await expect(plus).toBeFocused();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await plus.click();
+    await expect(surface).toHaveCSS("animation-name", "none");
+    expect(await dialog.evaluate((node) => getComputedStyle(node, "::backdrop").animationName)).toBe("none");
+    await page.keyboard.press("Escape");
+    await expect(plus).toBeFocused();
+  });
+}

@@ -9,7 +9,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { OBSERVATION_TEXT } from "@/entities/observation";
 import { PROJECT_ROLE_NAME } from "@/entities/project";
 import { useSession, useSwitchProject } from "@/entities/session";
-import { lastWorkRoute } from "@/shared/lib";
+import { canManageProject, lastWorkRoute } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 import { SettingsLoading } from "./SettingsLoading.tsx";
 import "@/shared/ui/settings.css";
@@ -27,11 +27,12 @@ export function SettingsShell() {
   const projectMode = pathname.startsWith("/manage/project");
   const serverMode = pathname.startsWith("/manage/server");
   const title = projectMode ? "Управление проектом" : serverMode ? "Глобальные настройки" : "Настройки";
+  const admin = canManageProject(!!session?.user.isAdmin, project?.role);
   const items = projectMode ? [
     ["general", "Общие настройки"], ["repos", "Репозитории и окружение"],
-    ["tools", "Инструменты"], ["observation", OBSERVATION_TEXT.section], ["people", "Доступ и роли"],
+    ["tools", "Инструменты"], ["automation-runs", "Автоматизации"], ["observations", OBSERVATION_TEXT.nav], ["observation", OBSERVATION_TEXT.section], ["people", "Доступ и роли"],
     ["channels", "Каналы связи"], ["knowledge", "База знаний"],
-  ] : serverMode ? [
+  ].filter(([id]) => admin || id === "automation-runs" || id === "observations") : serverMode ? [
     ["projects", "Проекты"], ["accounts", "Учётные записи"],
     ["providers", "Провайдеры"], ["tools", "Инструменты"],
   ] : [
@@ -40,7 +41,7 @@ export function SettingsShell() {
   ];
   const base = projectMode ? "/manage/project" : serverMode ? "/manage/server" : "/settings/me";
   const sub = session?.mode === "local" ? "локальный режим" : project ? `${project.name} · ${PROJECT_ROLE_NAME[project.role]}` : "genie";
-  const active = (id: string) => pathname === `${base}/${id}` || (id === "tools" && TOOLS_SECTIONS.test(pathname));
+  const active = (id: string) => pathname === `${base}/${id}` || (id === "tools" && TOOLS_SECTIONS.test(pathname)) || (id === "observations" && pathname.startsWith(`${base}/observation/`));
   return (
     <div className="app settings-mode">
       <nav className="st-rail" aria-label={title}>

@@ -160,13 +160,13 @@ for (const theme of ["ink", "paper"]) for (const width of [1920, 2560]) {
 }
 
 for (const theme of ["ink", "paper"]) for (const width of [1040, 1440]) {
-  test(`topbar overflow menu ${theme} ${width}: every item overlays the page`, async ({ page }) => {
+  test(`topbar profile menu ${theme} ${width}: every item overlays the page`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.addInitScript((theme) => localStorage.setItem("genie.appearance.theme", theme), theme);
     await page.goto("/agents");
-    const more = page.getByRole("button", { name: "Ещё", exact: true });
+    const more = page.getByRole("button", { name: /^Профиль:/ });
     await more.click();
-    const menu = page.getByRole("menu", { name: "Ещё", exact: true });
+    const menu = page.getByRole("menu", { name: "Профиль", exact: true });
     await expect(menu).toBeVisible();
     const covered = await menu.getByRole("menuitem").evaluateAll((items) => items.flatMap((item) => {
       const box = item.getBoundingClientRect();
@@ -175,8 +175,9 @@ for (const theme of ["ink", "paper"]) for (const width of [1040, 1440]) {
     }));
     expect(covered, "All menu items must receive clicks above the page").toEqual([]);
     await page.screenshot({ path: `test-results/topbar-overflow-${theme}-${width}.png` });
-    await menu.getByRole("menuitem", { name: "Наблюдения", exact: true }).click();
-    await expect(page).toHaveURL(/\/observations$/);
+    await menu.getByRole("menuitem", { name: /^Быстрые команды/ }).click();
+    await expect(page.getByRole("dialog", { name: "Команды", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
     await more.click();
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
@@ -193,6 +194,7 @@ test("the shared header search filters roles without a second search field", asy
   const count = await items.count();
   expect(count).toBeGreaterThan(1);
   await expect(roles.getByRole("searchbox")).toHaveCount(0);
+  await page.getByRole("button", { name: "Открыть поиск", exact: true }).click();
   const search = page.getByRole("searchbox", { name: "Поиск агентов и инструментов", exact: true }).filter({ visible: true });
   await search.fill("ИНТЕГРАЦИЙ");
   await expect(items).toHaveCount(1);
@@ -330,6 +332,7 @@ test("template list uses the shared search and guards an unsaved composition", a
   await expect(list.getByRole("searchbox")).toHaveCount(0);
   await expect(list.locator(".ag-problem-summary")).toHaveCount(0);
   await expect(list.getByRole("img", { name: /Предупреждений:/ }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Открыть поиск", exact: true }).click();
   const search = page.getByRole("searchbox", { name: "Поиск агентов и инструментов", exact: true }).filter({ visible: true });
   await search.fill("abap");
   await expect(list.locator(".pick")).toHaveCount(1);

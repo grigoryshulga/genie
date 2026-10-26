@@ -7,7 +7,6 @@ import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { matchesSearch } from "@/shared/lib";
-import { ContextSearch } from "@/widgets/topbar";
 import { ErrorState, Icon, PageHeader, Skeleton } from "@/shared/ui";
 import { CreateDialog, History, McpTab, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
 import "./agents-sheets.css";
@@ -76,7 +75,7 @@ export function AgentsPage() {
           )}
         </>}
       />
-      <ContextSearch className="mobile-context-search mobile-search-bar" />
+
       {!c ? (
         cfg.error ? (
           <div className="ag-pane-empty"><ErrorState message={cfg.error.message} onRetry={() => void cfg.refetch()} /></div>

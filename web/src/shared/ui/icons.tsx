@@ -256,6 +256,13 @@ export const Icon = {
       <path d="M10.2 3l2.7 2.7" />
     </svg>
   ),
+  /** A circle filled on one half: switches between the ink and paper themes. */
+  theme: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.5}>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M8 2.5a5.5 5.5 0 0 1 0 11z" fill="currentColor" />
+    </svg>
+  ),
   copy: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)} strokeWidth={1.5}>
       <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
