@@ -26,7 +26,8 @@ let measurer: CanvasRenderingContext2D | null | undefined;
 function textWidth(text: string, font: string): number {
   if (measurer === undefined) measurer = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
   if (!measurer) return text.length * 7;
-  measurer.font = `${font} Manrope, system-ui, sans-serif`;
+  const family = getComputedStyle(document.documentElement).getPropertyValue("--g-font-sans").trim();
+  measurer.font = `${font} ${family}`;
   return measurer.measureText(text).width;
 }
 

@@ -18,7 +18,7 @@ The full rules and the pull request checklist are in [principles.md](principles.
 1. **Flat and massive.** Solid colour fields, large geometric type, no gradients, no decorative shadows. Depth comes from a surface step plus a 1px border.
 2. **Two surfaces, two voices.** Ink (dark) and paper (light) are equals. Every component is specified for both.
 3. **Colour carries meaning.** Green is the system's state; orange is the user's move. Neither is decoration.
-4. **Big type speaks, small type works.** Unbounded is for display; Manrope does everything the user reads for more than a few words.
+4. **Big type speaks, small type works.** Unbounded is for display; Golos Text does everything the user reads for more than a few words.
 5. **One closing full stop.** A slogan ends with an orange full stop. It is the only place orange punctuation appears.
 
 ## Colour
@@ -67,19 +67,19 @@ The previous palette's `--violet` and `--yellow` had no place in this system and
 | Display | Unbounded 900 | `clamp(28px, 5.5vw, 64px)` / 0.95 / -0.04em |
 | H1 | Unbounded 700 | `clamp(26px, 4vw, 44px)` / 1.12 / -0.025em |
 | H2 | Unbounded 700 | `clamp(24px, 3vw, 30px)` / 1.12 / -0.025em |
-| H3, H4 (subheads) | Manrope 600 | 22px and 17px |
-| Button, field, tab | Manrope 600 | 14px (13px dense) |
-| Body, documentation | Manrope 400 and 500 | 15px; 17px for long reading; line 1.65 |
-| Caption | Manrope 500 | 12px |
-| Eyebrow | Manrope 600, uppercase | 11px / 0.14em |
+| H3, H4 (subheads) | Golos Text 600 | 22px and 17px |
+| Button, field, tab | Golos Text 600 | 14px (13px dense) |
+| Body, documentation | Golos Text 400 and 500 | 15px; 17px for long reading; line 1.65 |
+| Caption | Golos Text 500 | 12px |
+| Eyebrow | Golos Text 600, uppercase | 11px / 0.14em |
 | IDs and code | Geist Mono 400 | 12-13px |
 
 Rules:
 
-- **Unbounded never goes below 24px.** It is very wide; at small sizes it wastes space and loses Cyrillic legibility. Anything smaller is Manrope.
+- **Unbounded never goes below 24px.** It is very wide; at small sizes it wastes space and loses Cyrillic legibility. Anything smaller is Golos Text.
 - Unbounded display text uses `text-wrap: balance` and a maximum width in `ch` so slogans break on the line the design intends.
 - The minimum sizes in the clamps exist because the longest Russian words, such as the ones in the board's headline, overflow a 390px screen in Unbounded 900 above roughly 32px.
-- Turn on tabular figures (`font-feature-settings: "tnum"`) wherever digits align in columns: counts, durations, IDs. Manrope ships `tnum` in its Latin subset.
+- Turn on tabular figures (`font-feature-settings: "tnum"`) wherever digits align in columns: counts, durations, IDs. Golos Text ships `tnum` in its Latin subset.
 - Prose line length is at most 70 characters.
 
 ## Shape, space, motion
