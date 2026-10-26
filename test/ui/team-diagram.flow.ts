@@ -34,6 +34,15 @@ test("the team line shows who works and who waits; the graph opens on demand and
   await line.locator(".tv-flow-member").first().hover();
   expect((await line.boundingBox())!.height).toBe(before);
   await expect(page.locator(".team-graph")).toHaveCount(0);
+  // How urgent a message is stays behind the send button's chevron; the choice becomes the default.
+  await expect(page.getByRole("group", { name: "Важность" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Как отправить" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /Важное/ }).click();
+  await expect(page.getByRole("button", { name: "Как отправить" })).toBeFocused();
+  await page.reload();
+  await page.getByRole("button", { name: "Как отправить" }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: /Важное/ })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Схема связей" }).click();
   const reviewer = page.locator(".team-graph a").filter({ hasText: "Лиза" });
   await expect(reviewer.locator("text.nr")).toHaveText("ревьюер");

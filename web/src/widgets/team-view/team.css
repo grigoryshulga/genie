@@ -73,9 +73,6 @@ a.tv-flow-member:focus-visible { outline: 2px solid var(--g-focus); outline-offs
 .tv-to .g-select { width: auto; max-width: 240px; }
 .tv-input.g-textarea { width: 100%; min-height: var(--g-control); max-height: 180px; padding: var(--g-space-2) var(--g-space-2) var(--g-space-1) 0; border: 0; border-radius: 0; background: transparent; color: var(--g-text); resize: none; }
 .tv-input.g-textarea:focus { outline: 0; }
-.tv-send.g-icon-btn { flex: none; background: var(--g-accent); color: var(--g-on-accent); }
-.tv-send.g-icon-btn:hover:not(:disabled) { background: var(--g-accent-hover); color: var(--g-on-accent); }
-.tv-send.g-icon-btn:disabled { background: var(--g-surface-active); color: var(--g-text-muted); }
 
 /* ---- the aside: the character, the members, the journal ---- */
 .tv-aside { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; border-left: 1px solid var(--g-border); background: var(--g-surface); }

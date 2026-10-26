@@ -7,7 +7,7 @@ import { useTask } from "@/entities/task";
 import { ModelMenu } from "@/features/agent-model";
 import { IDEA_TEMPLATE, IdeaPlan } from "@/features/shape-idea";
 import { clock, plural, timeAgo, useTick } from "@/shared/lib";
-import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, LoadingState, Skeleton, Tag, useToast, WorkingArcs } from "@/shared/ui";
+import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, LoadingState, Skeleton, SplitButton, Tag, useToast, WorkingArcs } from "@/shared/ui";
 import "./agent-sheets.css";
 
 type Member = TeamDetail["members"][number];
@@ -221,6 +221,7 @@ export function AgentChat() {
         onSuccess: () => {
           setDraft("");
           setQuote(undefined);
+          setLevel("high");
         },
         onError: (e) => toast(`Не отправлено: ${e.message}`, "error"),
       },
@@ -414,20 +415,24 @@ export function AgentChat() {
                   onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
                 />
                 <div className="ac-row">
-                  {!paused && !idea && (
-                    <div role="radiogroup" aria-label="Когда доставить" className="ac-levels g-seg">
-                      {LEVELS.map((l) => (
-                        <button key={l.level} type="button" role="radio" aria-checked={level === l.level} onClick={() => setLevel(l.level)}>
-                          {l.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <span className="ac-hint">{paused ? "придёт при продолжении" : idea ? `${who} ответит здесь, план обновится справа` : LEVELS.find((l) => l.level === level)?.hint}</span>
+                  {(paused || idea) && <span className="ac-hint">{paused ? "придёт при продолжении" : `${who} ответит здесь, план обновится справа`}</span>}
                   <span className="grow" />
-                  <Button type="submit" variant="primary" sm className="ac-send" disabled={!draft.trim() || send.isPending} title="Отправить (⌘↵)">
-                    {lvl === "interrupt" ? "Прервать и отправить" : "Отправить"}
-                  </Button>
+                  {paused || idea ? (
+                    <Button type="submit" variant="primary" sm className="ac-send" disabled={!draft.trim() || send.isPending} title="Отправить (⌘↵)">
+                      Отправить
+                    </Button>
+                  ) : (
+                    <SplitButton
+                      type="submit"
+                      className="ac-send"
+                      disabled={!draft.trim() || send.isPending}
+                      title="Отправить (⌘↵)"
+                      menuLabel="Когда доставить"
+                      items={LEVELS.map((l) => ({ id: l.level, label: l.label, hint: l.hint, checked: level === l.level, onSelect: () => setLevel(l.level) }))}
+                    >
+                      {lvl === "interrupt" ? "Прервать и отправить" : "Отправить"}
+                    </SplitButton>
+                  )}
                 </div>
               </div>
             </form>

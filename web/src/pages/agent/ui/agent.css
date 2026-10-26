@@ -114,11 +114,6 @@
 .ac-input.g-textarea:focus { outline: 0; }
 .ac-input.g-textarea::placeholder { color: var(--g-text-muted); }
 .ac-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); }
-.ac-levels.g-seg { flex: none; padding: 2px; }
-.ac-levels > button { height: 24px; padding: 0 var(--g-space-3); font-size: var(--g-text-caption); }
-.ac-levels > button[aria-checked="true"] { background: var(--g-surface-active); color: var(--g-text); }
-.ac-composer.hard .ac-levels.g-seg { border-color: var(--g-signal); }
-.ac-composer.hard .ac-levels > button[aria-checked="true"] { background: var(--g-signal-soft); color: var(--g-signal-text); }
 .ac-hint { font-size: var(--g-text-caption); color: var(--g-text-muted); }
 .ac-composer.hard .ac-hint { color: var(--g-signal-text); }
 .ac-send.g-btn { flex: none; }

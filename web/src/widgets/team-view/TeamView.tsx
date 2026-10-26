@@ -7,7 +7,7 @@ import { StageBars, STAGES, stageOf, STATUS_NAME } from "@/entities/task";
 import { type LiveSession, type Mail, type MailLevel, MessageText, memberActivity, PartyAvatar, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
 import { useOnline } from "@/shared/api";
 import { clock, dayLabel, plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
-import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, Select, Segmented, Skeleton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
+import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, Select, Skeleton, SplitButton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
 import { TeamScheme } from "./TeamScheme.tsx";
 import "./team-view-sheets.css";
 
@@ -27,7 +27,10 @@ interface Entry {
   title?: string;
 }
 
-const LEVEL_LABEL: Record<MailLevel, string> = { low: "не срочно", normal: "обычное", high: "важное", interrupt: "прервать шаг" };
+const LEVEL_LABEL: Record<MailLevel, string> = { low: "Не срочно", normal: "Обычное", high: "Важное", interrupt: "Прервать шаг" };
+const LEVEL_HINT: Partial<Record<MailLevel, string>> = { interrupt: "один раз, остановит команду" };
+type UsualLevel = Exclude<MailLevel, "interrupt">;
+const LEVEL_PREF = "genie.mailLevel";
 const INTENT_LABEL: Record<NonNullable<Mail["intent"]>, string> = { question: "вопрос", blocker: "блокер", verdict: "вердикт", done: "готово", fyi: "к сведению" };
 const STOPPED: Record<string, string> = {
   owner: "остановлена владельцем",
@@ -117,7 +120,9 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   const online = useOnline();
   const toast = useToast();
   const [to, setTo] = useState("all");
-  const [level, setLevel] = useState<MailLevel>("normal");
+  // How urgent mail is: the last choice stays the default; an interrupt is for one message only.
+  const [usual, setUsual] = useState(() => readPref<UsualLevel>(LEVEL_PREF, "normal"));
+  const [level, setLevel] = useState<MailLevel>(usual);
   const [draft, setDraft] = useState("");
   // On a phone the members and the journal open as a bottom sheet.
   const [sheet, setSheet] = useState(false);
@@ -140,8 +145,8 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
   }, []);
   // An interrupt stops one agent's step: not for a broadcast or the orchestrator.
   useEffect(() => {
-    if (level === "interrupt" && (to === "all" || to === "orchestrator")) setLevel("high");
-  }, [to, level]);
+    if (level === "interrupt" && (to === "all" || to === "orchestrator")) setLevel(usual);
+  }, [to, level, usual]);
   useLayoutEffect(() => {
     const el = chatRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
@@ -167,11 +172,27 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
     const text = draft.trim();
     if (!text) return;
     stick.current = true;
-    send.mutate({ team: team.id, to, text, level }, { onSuccess: () => setDraft(""), onError: (e) => toast(`Не отправлено: ${e.message}`, "error") });
+    send.mutate(
+      { team: team.id, to, text, level },
+      {
+        onSuccess: () => {
+          setDraft("");
+          setLevel(usual);
+        },
+        onError: (e) => toast(`Не отправлено: ${e.message}`, "error"),
+      },
+    );
   };
 
   let lastDay = "";
   const levels = (["low", "normal", "high", "interrupt"] as MailLevel[]).filter((l) => l !== "interrupt" || (to !== "all" && to !== "orchestrator"));
+  const choose = (l: MailLevel) => {
+    if (l !== "interrupt") {
+      writePref(LEVEL_PREF, l);
+      setUsual(l);
+    }
+    setLevel(l);
+  };
 
   const participants = (
     <aside className="tv-aside" aria-label="Участники и журнал">
@@ -355,13 +376,19 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
                   <option value="orchestrator">оркестратору</option>
                 </Select>
               </label>
-              <span title="«Прервать шаг» остановит текущую команду">
-                <Segmented label="Важность" value={level} onChange={setLevel} items={levels.map((l) => ({ id: l, label: LEVEL_LABEL[l] }))} />
-              </span>
               <i className="grow" />
-              <IconButton type="submit" label="Отправить" title={offline ? "Нет связи с сервером" : "Отправить (⌘↵)"} className="tv-send" disabled={!draft.trim() || send.isPending || offline}>
+              <SplitButton
+                type="submit"
+                className="tv-send"
+                aria-label={level === "interrupt" ? "Прервать шаг и отправить" : "Отправить"}
+                title={offline ? "Нет связи с сервером" : "Отправить (⌘↵)"}
+                disabled={!draft.trim() || send.isPending || offline}
+                menuLabel="Как отправить"
+                items={levels.map((l) => ({ id: l, label: LEVEL_LABEL[l], hint: LEVEL_HINT[l], checked: l === level, onSelect: () => choose(l) }))}
+              >
+                {level === "interrupt" && "Прервать шаг"}
                 <Icon.send size={15} />
-              </IconButton>
+              </SplitButton>
             </div>
           </form>
         )}
