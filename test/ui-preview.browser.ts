@@ -43,7 +43,7 @@ test("recorded docs, catalogue and settings render without frontend exceptions",
   expect(errors).toEqual([]);
 });
 
-for (const theme of ["ink", "paper"]) for (const width of [1440, 390]) {
+for (const theme of ["ink", "paper"]) for (const width of [1440, 768, 390]) {
   test(`role workspace ${theme} ${width}: prompt, settings and compact model controls`, async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -120,3 +120,39 @@ test("role history has absolute timestamps, field snapshots and stable pages", a
   await app.getByRole("button", { name: "Новее", exact: true }).click();
   await expect(app.getByRole("button", { name: "Сравнить ревизию 47", exact: true })).toBeVisible();
 });
+
+
+for (const theme of ["ink", "paper"]) for (const width of [1920, 2560]) {
+  test(`role content column ${theme} ${width}: centred across view, edit and history`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1080 });
+    await page.addInitScript((theme) => localStorage.setItem("genie.appearance.theme", theme), theme);
+    await page.goto("/agents?id=integration-analyst");
+    await expect(page.getByRole("region", { name: "Промпт роли", exact: true })).toBeVisible();
+    const column = await page.locator(".role-body").evaluate((el) => {
+      const box = el.getBoundingClientRect(), style = getComputedStyle(el);
+      const left = Number.parseFloat(style.paddingLeft), right = Number.parseFloat(style.paddingRight);
+      const edges = [".role-header", ".role-tabs"].map((selector) => {
+        const other = document.querySelector(selector)!;
+        return other.getBoundingClientRect().left + Number.parseFloat(getComputedStyle(other).paddingLeft);
+      });
+      return { width: box.width - left - right, left, right, start: box.left + left, edges };
+    });
+    expect(column.width).toBeLessThanOrEqual(841);
+    expect(column.width).toBeGreaterThan(800);
+    expect(Math.abs(column.left - column.right)).toBeLessThan(1);
+    for (const edge of column.edges) expect(Math.abs(edge - column.start)).toBeLessThan(1);
+    await page.getByRole("tab", { name: "Настройки", exact: true }).click();
+    await page.getByRole("button", { name: "Редактировать роль", exact: true }).click();
+    await expect(page.getByLabel("Название", { exact: true })).toHaveValue("Аналитик интеграций");
+    const editor = await page.locator(".role-editor").boundingBox();
+    expect(editor!.width).toBeCloseTo(column.width, 0);
+    await page.locator(".split-main").evaluate((el) => el.scrollTo(0, 0));
+    await page.screenshot({ path: `test-results/role-column-${theme}-${width}.png` });
+    await page.getByRole("button", { name: "Отмена", exact: true }).click();
+    await page.getByRole("tab", { name: "История", exact: true }).click();
+    await expect(page.locator(".role-history-table > tbody > tr")).toHaveCount(20);
+    const history = await page.locator(".role-history").boundingBox();
+    expect(history!.width).toBeCloseTo(column.width, 0);
+    expect(await page.locator("html").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  });
+}

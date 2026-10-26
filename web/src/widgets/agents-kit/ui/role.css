@@ -1,4 +1,9 @@
 /* A prompt workspace, full-width settings, and a separate technical audit trail. */
+/* Keep each role workspace on the same centred content column. */
+.agents .ag-roles-layout :is(.role-header, .role-tabs, .role-body) { padding-inline: max(var(--g-space-4), calc((100% - var(--g-content)) / 2)); }
+@media (min-width: 901px) {
+  .agents .ag-roles-layout :is(.role-header, .role-tabs, .role-body) { padding-inline: max(var(--g-space-7), calc((100% - var(--g-content)) / 2)); }
+}
 .agents .role-header { padding-bottom: var(--g-space-4); }
 .role-tabs { position: sticky; top: 0; z-index: var(--g-z-sticky); padding: var(--g-space-2) var(--g-space-7); border-bottom: 1px solid var(--g-border); background: var(--g-bg); }
 .role-tabs .g-tabs { width: fit-content; }
