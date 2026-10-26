@@ -12,12 +12,15 @@ import {
   type Problem,
   basePermissions,
   globMatch,
+  flowStages,
+  handoffRanks,
   layoutTeam,
   liveTeam,
   newRoleFile,
   problemLines,
   reached,
   refusalMessages,
+  type Relation,
   type RoleDef,
   setBody,
   setFrontmatterKey,
@@ -169,6 +172,19 @@ test("handoff stages follow dependencies regardless of member order and tolerate
   assert.equal(cycle.nodes.length, members.length + 2);
   assert.ok(cycle.nodes.every((n) => Number.isFinite(n.x) && n.y < cycle.height));
   assert.equal(layoutTeam([], []).edges.length, 1, "management levels remain connected");
+});
+
+test("the team's line groups members by stage in handoff order", () => {
+  const relations: Relation[] = [
+    { from: "plan", to: ["build"], type: "handoff" },
+    { from: "build", to: ["review", "test"], type: "handoff", on: "review" },
+    { from: "review", to: ["build"], type: "returns" },
+    { from: "build", to: ["plan"], type: "consults" },
+  ];
+  assert.deepEqual(flowStages(["review", "build", "plan", "test"], relations), [["plan"], ["build"], ["review", "test"]]);
+  assert.deepEqual(flowStages(["a", "b"], []), [["a", "b"]], "without handoffs everyone shares one stage");
+  assert.deepEqual(flowStages([], relations), []);
+  assert.deepEqual(handoffRanks(["plan", "build"], [{ from: "plan", to: ["build"], type: "handoff" }, { from: "build", to: ["plan"], type: "handoff" }]).get("plan"), 0, "a cycle still gets a stage");
 });
 
 test("a task before ready gets refinement templates, a ready one delivery templates", () => {

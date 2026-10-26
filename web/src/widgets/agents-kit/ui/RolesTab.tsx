@@ -19,6 +19,7 @@ import {
   useRole,
   useSaveConfig,
 } from "@/entities/agent-config";
+import { agentTone } from "@/entities/member";
 import { Badge, ConfirmDialog, Icon, IconButton, LoadingState, RenameButton, RenameField, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
@@ -50,7 +51,7 @@ export function RolesTab({
   const pick = (r: RoleDef) => (
     <button type="button" key={r.id} className={`pick${r.id === current ? " on" : ""}`} onClick={() => onSelect(r.id)} aria-current={r.id === current}>
       <span className="t">
-        <span className={`ag-class c-${r.class}`} aria-hidden="true">
+        <span className="ag-class" data-tone={agentTone(r.id, cfg.roles)} aria-hidden="true">
           {r.title.slice(0, 1).toUpperCase()}
         </span>
         <span>{r.title}</span>

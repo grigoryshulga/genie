@@ -7,7 +7,7 @@ import { useTask } from "@/entities/task";
 import { ModelMenu } from "@/features/agent-model";
 import { IDEA_TEMPLATE, IdeaPlan } from "@/features/shape-idea";
 import { clock, plural, timeAgo, useTick } from "@/shared/lib";
-import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, LoadingState, Markdown, Prose, Sheet, Skeleton, Tag, useToast, WorkingArcs } from "@/shared/ui";
+import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, LoadingState, Skeleton, SplitButton, Tag, useToast, WorkingArcs } from "@/shared/ui";
 import "./agent-sheets.css";
 
 type Member = TeamDetail["members"][number];
@@ -73,13 +73,16 @@ function toRows(conversation: PeekMessage[], team: TeamDetail, member: string, l
     } else if (m.role === "toolResult") {
       const s = m.tool?.id ? tools.get(m.tool.id) : undefined;
       if (s) {
-        s.out = m.text;
+        // The parts keep the output's lines; `text` is the agents' one-line summary.
+        const lines = (m.parts ?? []).flatMap((p) => (p.type === "text" ? [p.text] : []));
+        s.out = lines.length ? lines.join("\n") : m.text;
         s.error = m.tool?.error;
         // The call's message is stamped when the agent made it, the result when the tool answered.
         if (s.at && m.at) s.took = Math.max(0, Date.parse(m.at) - Date.parse(s.at));
       }
     } else if (m.role === "user") {
-      rows.push({ kind: "note", key, text: m.text, at: m.at });
+      const lines = (m.parts ?? []).flatMap((p) => (p.type === "text" ? [p.text] : []));
+      rows.push({ kind: "note", key, text: lines.length ? lines.join("\n") : m.text, at: m.at });
     }
   });
   // The call running now has no result yet.
@@ -218,6 +221,7 @@ export function AgentChat() {
         onSuccess: () => {
           setDraft("");
           setQuote(undefined);
+          setLevel("high");
         },
         onError: (e) => toast(`Не отправлено: ${e.message}`, "error"),
       },
@@ -299,20 +303,17 @@ export function AgentChat() {
             {paused && conversation.length > 0 && <div className="ac-caption">Разговор остановлен паузой{pausedAt ? ` в ${clock(pausedAt)}` : ""}</div>}
             {idea && ideaTask && (
               <article className="ac-msg mine">
-                <span className="ac-slot">
-                  <PartyAvatar role="human" name="Вы" />
-                </span>
                 <div className="ac-body">
                   <div className="ac-from">
                     <b>Ваша идея</b>
                   </div>
-                  <Sheet className="ac-bubble">
-                    <Prose>
-                      <Markdown text={ideaTask.description} />
-                    </Prose>
-                  </Sheet>
+                  <div className="chat-bubble mine">
+                    <MessageText text={ideaTask.description} team={team.id} />
+                    <span className="chat-bubble-foot">
+                      <time dateTime={ideaTask.created}>{clock(ideaTask.created)}</time>
+                    </span>
+                  </div>
                 </div>
-                <span className="ac-time">{clock(ideaTask.created)}</span>
               </article>
             )}
             {rows.map((r) => (
@@ -324,11 +325,15 @@ export function AgentChat() {
                       <PartyAvatar role={member.role} name={member.name} />
                     </span>
                     <div className="ac-body">
-                      <Prose>
-                        <Markdown text={r.text} />
-                      </Prose>
+                      <div className="chat-bubble">
+                        <MessageText text={r.text} team={team.id} />
+                        {r.at && (
+                          <span className="chat-bubble-foot">
+                            <time dateTime={r.at}>{clock(r.at)}</time>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="ac-time">{r.at ? clock(r.at) : ""}</span>
                   </div>
                 )}
                 {r.kind === "steps" && (
@@ -410,20 +415,24 @@ export function AgentChat() {
                   onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
                 />
                 <div className="ac-row">
-                  {!paused && !idea && (
-                    <div role="radiogroup" aria-label="Когда доставить" className="ac-levels g-seg">
-                      {LEVELS.map((l) => (
-                        <button key={l.level} type="button" role="radio" aria-checked={level === l.level} onClick={() => setLevel(l.level)}>
-                          {l.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <span className="ac-hint">{paused ? "придёт при продолжении" : idea ? `${who} ответит здесь, план обновится справа` : LEVELS.find((l) => l.level === level)?.hint}</span>
+                  {(paused || idea) && <span className="ac-hint">{paused ? "придёт при продолжении" : `${who} ответит здесь, план обновится справа`}</span>}
                   <span className="grow" />
-                  <Button type="submit" variant="primary" sm className="ac-send" disabled={!draft.trim() || send.isPending} title="Отправить (⌘↵)">
-                    {lvl === "interrupt" ? "Прервать и отправить" : "Отправить"}
-                  </Button>
+                  {paused || idea ? (
+                    <Button type="submit" variant="primary" sm className="ac-send" disabled={!draft.trim() || send.isPending} title="Отправить (⌘↵)">
+                      Отправить
+                    </Button>
+                  ) : (
+                    <SplitButton
+                      type="submit"
+                      className="ac-send"
+                      disabled={!draft.trim() || send.isPending}
+                      title="Отправить (⌘↵)"
+                      menuLabel="Когда доставить"
+                      items={LEVELS.map((l) => ({ id: l.level, label: l.label, hint: l.hint, checked: level === l.level, onSelect: () => setLevel(l.level) }))}
+                    >
+                      {lvl === "interrupt" ? "Прервать и отправить" : "Отправить"}
+                    </SplitButton>
+                  )}
                 </div>
               </div>
             </form>
@@ -530,7 +539,7 @@ function StepLine({ step, open, toggle, paused, onQuote }: { step: Step; open: b
   return (
     <div className="ac-stepitem">
       <div className="ac-steprow">
-        <button type="button" className={`ac-step${step.running ? " running" : ""}${open ? " open" : ""}`} aria-expanded={open} onClick={toggle} disabled={!step.out} title={step.args}>
+        <button type="button" className={`ac-step${step.running ? " running" : ""}${open ? " open" : ""}`} aria-expanded={open} onClick={toggle} disabled={!step.out && !step.args} title={step.args}>
           <Icon.chevron size={10} />
           <Tag tone={step.error ? "signal" : "outline"}>{step.name}</Tag>
           <span className="args">{step.args}</span>
@@ -546,7 +555,12 @@ function StepLine({ step, open, toggle, paused, onQuote }: { step: Step; open: b
           </button>
         )}
       </div>
-      {open && step.out && <div className="ac-out"><LongOutput text={step.out} /></div>}
+      {open && (
+        <div className="ac-out">
+          {step.args && <pre className="ac-call">{step.args}</pre>}
+          {step.out && <LongOutput text={step.out} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -567,31 +581,25 @@ function MailRow({ row, team, paused }: { row: Extract<Row, { kind: "mail" }>; t
   return (
     <>
       {row.mail.map((x, i) => (
-        <article key={x.id} className={`ac-msg${mine ? " mine" : ""}${hard ? " urgent" : ""}${i ? " cont" : ""}`}>
-          <span className="ac-slot">{!i && <PartyAvatar role={mine ? "human" : x.fromRole} name={x.from} />}</span>
+        <article key={x.id} className={`ac-msg${mine ? " mine" : ""}${i ? " cont" : ""}`}>
+          {!mine && <span className="ac-slot">{!i && <PartyAvatar role={x.fromRole} name={x.from} />}</span>}
           <div className="ac-body">
             {!i && (
               <div className="ac-from">
-                <b>{from}</b>
+                {!mine && <b>{from}</b>}
                 {hard && <Tag tone="signal">прервать шаг</Tag>}
                 {x.level === "high" && mine && <Tag tone="outline">на следующем шаге</Tag>}
                 {x.intent && <Tag tone="outline">{INTENT_LABEL[x.intent]}</Tag>}
               </div>
             )}
-            {mine ? (
-              <Sheet className="ac-bubble">
-                <div className="ac-text">
-                  <MessageText text={x.text} team={team.id} />
-                </div>
-              </Sheet>
-            ) : (
-              <div className="ac-text">
-                <MessageText text={x.text} team={team.id} />
-              </div>
-            )}
-            {mine && <span className={`ac-receipt${row.pending ? "" : " ok"}`}>{row.pending ? (paused ? "придёт при продолжении" : hard ? "прерывает шаг…" : "ждёт границы шага") : "доставлено"}</span>}
+            <div className={`chat-bubble${mine ? " mine" : ""}${i ? " cont" : ""}${hard ? " urgent" : ""}`}>
+              <MessageText text={x.text} team={team.id} />
+              <span className="chat-bubble-foot">
+                <time dateTime={x.at}>{clock(x.at)}</time>
+                {mine && <span>{row.pending ? (paused ? "придёт при продолжении" : hard ? "прерывает шаг…" : "ждёт границы шага") : "доставлено"}</span>}
+              </span>
+            </div>
           </div>
-          <span className="ac-time">{clock(x.at)}</span>
         </article>
       ))}
     </>

@@ -20,65 +20,59 @@
 .tv-mono { font-family: var(--g-font-mono); font-size: var(--g-text-caption); color: var(--g-text-2); }
 .tv-acts { display: inline-flex; align-items: center; gap: var(--g-space-2); }
 
-/* The scheme: who works, and how the team is wired. The graph keeps its own stylesheet. */
-.tv-scheme { flex: none; max-height: min(38vh, 400px); overflow-y: auto; padding: 0 var(--g-space-5); }
-.tv-scheme > .team-graph { margin-top: var(--g-space-3); }
-.tv-scheme-folded { display: flex; align-items: center; gap: var(--g-space-3); margin-top: var(--g-space-3); padding: var(--g-space-1) var(--g-space-1) var(--g-space-1) var(--g-space-4); border: 1px solid var(--g-border); border-radius: var(--g-radius-lg); background: var(--g-surface); }
-.tv-now { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-dense); color: var(--g-text-2); }
-.tv-now > i { flex: none; width: 7px; height: 7px; border-radius: var(--g-radius-pill); background: var(--g-text-muted); }
-.tv-now.working { color: var(--g-accent-text); }
-.tv-now.waiting { color: var(--g-signal-text); }
-.tv-now.waiting > i { background: var(--g-signal); }
-.tv-now.error { color: var(--g-danger-text); }
-.tv-now.error > i { background: var(--g-danger); }
+/* The scheme: one line of members in handoff order; the graph of relations (its own stylesheet) opens below. */
+.tv-scheme { flex: none; display: flex; flex-direction: column; gap: var(--g-space-3); max-height: min(46vh, 520px); overflow-y: auto; padding: var(--g-space-2) var(--g-space-5); border-bottom: 1px solid var(--g-border); }
+.tv-flow { display: flex; align-items: center; gap: var(--g-space-3); min-width: 0; }
+.tv-flow-line { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--g-space-1); margin: 0; padding: 0; list-style: none; overflow-x: auto; scrollbar-width: thin; }
+.tv-flow-stage { flex: none; display: flex; align-items: center; gap: var(--g-space-1); }
+.tv-flow-arrow { display: grid; place-items: center; width: var(--g-space-5); color: var(--g-text-muted); }
+.tv-flow-member { display: inline-flex; align-items: center; gap: var(--g-space-2); height: var(--g-control-sm); max-width: 280px; padding: 0 var(--g-space-3) 0 var(--g-space-1); border: 1px solid var(--g-border); border-radius: var(--g-radius-pill); background: var(--g-surface); color: var(--g-text); font-size: var(--g-text-dense); line-height: 1; text-decoration: none; white-space: nowrap; transition: border-color var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease); }
+a.tv-flow-member:hover { border-color: var(--g-border-strong); background: var(--g-surface-hover); color: var(--g-text); text-decoration: none; }
+a.tv-flow-member:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
+.tv-flow-name { font-weight: var(--g-weight-semibold); }
+.tv-flow-state { display: inline-flex; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.tv-flow-member.working { border-color: var(--g-accent); background: var(--g-accent-soft); }
+.tv-flow-member.working .tv-flow-state { color: var(--g-accent-soft-text); }
+.tv-flow-member.waiting .tv-flow-state { color: var(--g-signal-text); }
+.tv-flow-member.error { border-color: var(--g-danger); }
+.tv-flow-member.error .tv-flow-state { color: var(--g-danger-text); }
+.tv-flow-member.stopped { opacity: 0.55; }
+.tv-flow-toggle.g-btn { flex: none; }
+.tv-scheme > .team-graph { margin-bottom: var(--g-space-1); }
 
-/* ---- the mail: a log of what the team says, who says it, and when ---- */
+/* ---- the mail: a chat; the person's messages on the right, the team's on the left ---- */
 .tv-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--g-space-4) var(--g-space-5) var(--g-space-5); }
-.tv-inner { margin-top: auto; display: flex; flex-direction: column; max-width: 74ch; }
-.tv-day { display: flex; align-items: center; gap: var(--g-space-3); margin: var(--g-space-4) 0 var(--g-space-1); font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
+.tv-inner { width: 100%; max-width: var(--g-content); margin: auto auto 0; display: flex; flex-direction: column; }
+.tv-day { display: flex; align-items: center; gap: var(--g-space-3); margin: var(--g-space-5) 0 var(--g-space-1); font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
+.tv-day:first-child { margin-top: 0; }
 .tv-day::before, .tv-day::after { content: ""; flex: 1; height: 1px; background: var(--g-border); }
 
-.tv-mail, .tv-sys { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: var(--g-space-3); align-items: start; }
-.tv-mail { margin-top: var(--g-space-4); }
+.tv-mail { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--g-space-2); align-items: start; margin-top: var(--g-space-4); }
 .tv-mail.cont { margin-top: var(--g-space-1); }
 .tv-slot { display: grid; place-items: center; padding-top: 2px; }
-.tv-body { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
-.tv-bubble { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
+.tv-body { display: flex; flex-direction: column; align-items: flex-start; gap: var(--g-space-1); min-width: 0; max-width: min(100%, 72ch); }
+.tv-mail.mine { grid-template-columns: minmax(0, 1fr); justify-items: end; padding-left: 12%; }
+.tv-mail.mine .tv-body { align-items: flex-end; }
 .tv-from { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-1) var(--g-space-2); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
 .tv-from b { font-weight: 700; color: var(--g-text); }
 .tv-to-line { font-size: var(--g-text-caption); color: var(--g-text-muted); }
-.tv-text { font-size: var(--g-text-ui); line-height: var(--g-leading-prose); color: var(--g-text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
-.tv-mail.urgent .tv-text { padding-left: var(--g-space-3); border-left: 2px solid var(--g-signal); }
 .tv-time { font-size: var(--g-text-caption); font-variant-numeric: tabular-nums; line-height: 1.7; color: var(--g-text-muted); white-space: nowrap; }
-.tv-mail.cont .tv-time { opacity: 0; transition: opacity var(--g-duration) var(--g-ease); }
-.tv-mail.cont:hover .tv-time { opacity: 1; }
-.tv-receipt { font-size: var(--g-text-caption); color: var(--g-text-muted); }
 
-/* What the person wrote is a sheet: paper on ink, ink on paper. */
-.tv-mail.mine .tv-bubble.g-sheet { padding: var(--g-space-3) var(--g-space-4); border-radius: var(--g-radius-md); }
-.tv-mail.mine .tv-text { color: var(--sh-t); }
-.tv-mail.mine .tv-from b { color: var(--sh-t); }
-.tv-mail.mine .tv-from .g-tag { background: var(--sh-soft); color: var(--sh-accent); }
-.tv-mail.mine .tv-from .g-tag.outline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sh-line); color: var(--sh-t2); }
-
-.tv-sys { grid-template-columns: minmax(0, 1fr) auto; margin-top: var(--g-space-3); padding-left: calc(28px + var(--g-space-3)); font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
-.tv-sys .tv-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* What the system says: centred, quiet, outside any bubble. */
+.tv-sys { display: flex; align-items: baseline; justify-content: center; gap: var(--g-space-2); margin-top: var(--g-space-3); padding: 0 var(--g-space-6); font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-muted); text-align: center; }
+.tv-sys-text { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tv-sys b { font-weight: 600; color: var(--g-text-2); }
 .tv-quiet { margin: 0; padding: var(--g-space-7) 0; font-size: var(--g-text-dense); color: var(--g-text-muted); text-align: center; }
-.tv-typing { display: flex; align-items: center; gap: var(--g-space-2); margin-top: var(--g-space-4); padding-left: calc(28px + var(--g-space-3)); font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.tv-typing { display: flex; align-items: center; gap: var(--g-space-2); margin-top: var(--g-space-4); padding-left: calc(28px + var(--g-space-2)); font-size: var(--g-text-caption); color: var(--g-text-muted); }
 
-/* ---- composer: to whom, how important, and the message ---- */
-.tv-composer { flex: none; display: flex; flex-direction: column; gap: var(--g-space-1); margin: 0 var(--g-space-5) var(--g-space-4); padding: var(--g-space-1) var(--g-space-1) var(--g-space-1) var(--g-space-4); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-lg); background: var(--g-surface); }
+/* ---- composer: the message, then to whom and how important ---- */
+.tv-composer { flex: none; display: flex; flex-direction: column; gap: var(--g-space-1); width: calc(100% - 2 * var(--g-space-5)); max-width: var(--g-content); margin: 0 auto var(--g-space-4); padding: var(--g-space-2) var(--g-space-2) var(--g-space-2) var(--g-space-4); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-lg); background: var(--g-surface); }
 .tv-composer:focus-within { outline: 2px solid var(--g-focus); outline-offset: 2px; border-color: transparent; }
-.tv-composer-opts { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); }
+.tv-composer-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); }
 .tv-to { display: inline-flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-caption); font-weight: 600; color: var(--g-text-muted); }
 .tv-to .g-select { width: auto; max-width: 240px; }
-.tv-composer-row { display: flex; align-items: flex-end; gap: var(--g-space-1); }
-.tv-input.g-textarea { flex: 1; min-height: var(--g-control); max-height: 140px; padding: var(--g-space-2) var(--g-space-2) var(--g-space-2) 0; border: 0; border-radius: 0; background: transparent; color: var(--g-text); resize: none; }
+.tv-input.g-textarea { width: 100%; min-height: var(--g-control); max-height: 180px; padding: var(--g-space-2) var(--g-space-2) var(--g-space-1) 0; border: 0; border-radius: 0; background: transparent; color: var(--g-text); resize: none; }
 .tv-input.g-textarea:focus { outline: 0; }
-.tv-send.g-icon-btn { flex: none; margin-bottom: 1px; background: var(--g-signal); color: var(--g-on-signal); }
-.tv-send.g-icon-btn:hover:not(:disabled) { background: var(--g-signal-hover); color: var(--g-on-signal); }
-.tv-send.g-icon-btn:disabled { background: var(--g-surface-active); color: var(--g-text-muted); }
 
 /* ---- the aside: the character, the members, the journal ---- */
 .tv-aside { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; border-left: 1px solid var(--g-border); background: var(--g-surface); }
@@ -89,7 +83,7 @@
 
 /* A member: who it is, what it does now, what it said last. */
 .tv-members { display: flex; flex-direction: column; gap: 2px; padding: var(--g-space-2); }
-.tv-member { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: var(--g-space-3); align-items: start; padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-md); }
+.tv-member { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: var(--g-space-3); align-items: start; padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-md); }
 .tv-member:hover { background: var(--g-surface-hover); }
 .tv-member.stopped { opacity: 0.55; }
 .tv-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -98,15 +92,16 @@
 .tv-open:hover { color: var(--g-accent-text); text-decoration: none; }
 .tv-nm b { font-size: var(--g-text-dense); font-weight: 700; white-space: nowrap; }
 .tv-role { min-width: 0; font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-member-acts { display: none; align-items: center; gap: 2px; margin-left: auto; }
-.tv-member:hover .tv-member-acts, .tv-member:focus-within .tv-member-acts { display: inline-flex; }
-.tv-member:hover .tv-when, .tv-member:focus-within .tv-when { display: none; }
+/* The actions float over the card's corner on hover: showing them never changes the card's height. */
+.tv-member-acts { position: absolute; top: var(--g-space-1); right: var(--g-space-2); display: inline-flex; align-items: center; gap: 2px; border-radius: var(--g-radius-sm); background: var(--g-surface-hover); opacity: 0; pointer-events: none; transition: opacity var(--g-duration) var(--g-ease); }
+.tv-member:hover .tv-member-acts, .tv-member:focus-within .tv-member-acts { opacity: 1; pointer-events: auto; }
+.tv-member:hover .tv-when, .tv-member:focus-within .tv-when { visibility: hidden; }
 .tv-state { display: flex; align-items: center; flex-wrap: wrap; gap: 0 var(--g-space-2); min-width: 0; font-size: var(--g-text-caption); color: var(--g-text-muted); }
 .tv-state > span { white-space: nowrap; }
 .tv-member.working .tv-state { color: var(--g-accent-text); }
 .tv-member.waiting .tv-state, .tv-member.paused .tv-state { color: var(--g-signal-text); }
 .tv-member.error .tv-state { color: var(--g-danger-text); }
-.tv-tool { font: 500 11.5px var(--g-font-mono); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-tool { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 500 11.5px/1.45 var(--g-font-mono); color: var(--g-text-muted); overflow-wrap: anywhere; }
 .tv-status { font-size: var(--g-text-caption); line-height: 1.45; color: var(--g-text-2); overflow-wrap: anywhere; }
 .tv-said { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--g-text-caption); line-height: 1.45; color: var(--g-text-muted); }
 .tv-model { font-size: var(--g-text-eyebrow); color: var(--g-text-muted); }
@@ -121,23 +116,24 @@
 /* ---- a tool's output: a code block, clipped when long ---- */
 .tv-out { display: flex; flex-direction: column; align-items: flex-start; gap: var(--g-space-2); margin-top: var(--g-space-2); }
 .tv-out .g-prose { width: 100%; max-width: 100%; }
-.tv-out pre { margin: 0; max-height: 320px; overflow: auto; font-size: 12.5px; }
+.tv-out pre { margin: 0; max-height: 320px; overflow: auto; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ---- phone: the mail first, the members in a sheet ---- */
 @media (max-width: 900px) {
   .task-team.tv > .tv-main { flex: 1; }
   .tv-head { padding: var(--g-space-3) var(--g-space-4) var(--g-space-2); gap: var(--g-space-2); }
-  .tv-scheme { max-height: none; padding: 0 var(--g-space-4); }
+  .tv-scheme { max-height: none; padding: var(--g-space-2) var(--g-space-4); }
   .tv-log { max-height: 62vh; padding: var(--g-space-3) var(--g-space-4) var(--g-space-4); }
   .tv-inner { max-width: none; }
-  .tv-composer { margin: 0 var(--g-space-3) var(--g-space-3); }
-  .tv-member-acts { display: inline-flex; }
+  .tv-mail.mine { padding-left: 8%; }
+  .tv-composer { width: auto; margin: 0 var(--g-space-3) var(--g-space-3); }
+  .tv-member-acts { position: static; margin-left: auto; opacity: 1; pointer-events: auto; background: none; }
   .tv-when { display: none; }
   .task-team.tv > .tv-aside { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tv-mail.cont .tv-time { transition: none; }
+  .tv-flow-member, .tv-member-acts { transition: none; }
 }
 
 .tv-participants-dialog .tv-aside { max-height: 80dvh; border-left: 0; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; }

@@ -1,4 +1,5 @@
 import { type PointerEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { agentTone } from "../../member/tone.ts";
 import "./graph.css";
 import { capitalized, type LiveState, layoutTeam, type MemberDef, NODE_H, ON_TITLE, type Relation, RELATION_TITLE, type RoleDef } from "../model.ts";
 
@@ -119,7 +120,8 @@ export function TemplateGraph({
     problems,
   );
   const w = g.nodeW;
-  const classOf = (key: string) => ((key === "orchestrator" || key === "project-manager") ? "orchestrator" : (role(members.find((m) => m.key === key)!)?.class ?? ""));
+  // The managers keep their own colours; a member takes its role's.
+  const toneOf = (key: string) => (key === "orchestrator" || key === "project-manager" ? key : agentTone(members.find((m) => m.key === key)?.role ?? key, roles));
   const nameOf = (key: string) => g.nodes.find((n) => n.key === key)?.label ?? key;
   const lookOf = (e: (typeof g.edges)[number]): Look => {
     if (!live || e.type === "manages") return e.type;
@@ -229,7 +231,7 @@ export function TemplateGraph({
               >
                 <title>{`${n.label}${n.sub ? ` — ${n.sub}` : ""}${card ? ` — ${card.activity}` : ""}${state && state !== "waiting" && live?.[n.key].note ? `\n${live[n.key].note}` : ""}`}</title>
                 <rect width={nw} height={NODE_H} rx={10} />
-                <rect x={9.5} y={NODE_H / 2 - 9.5} width={19} height={19} rx={6} className={`dot c-${classOf(n.key)}`} />
+                <rect x={9.5} y={NODE_H / 2 - 9.5} width={19} height={19} rx={6} className="dot" data-tone={toneOf(n.key)} />
                 <text x={19} y={NODE_H / 2 + 3.8} textAnchor="middle" className="dl">
                   {n.label.slice(0, 1).toUpperCase()}
                 </text>

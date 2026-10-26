@@ -1,0 +1,41 @@
+/*
+ * A chat message (MessageText) and the bubble that holds it, shared by the team's mail and the chat
+ * with one agent. The person's own messages sit in the accent, everyone else's in a neutral bubble.
+ * Ink and paper: g-tokens only. Selectors are qualified so they win over the shared Markdown rules
+ * whatever order the stylesheets load in.
+ */
+
+/* ---- the text: Markdown set for conversation, inheriting the bubble's ink ---- */
+.message-text { display: flex; flex-direction: column; gap: var(--g-space-2); min-width: 0; }
+.message-text-raw { margin: 0; overflow-wrap: anywhere; }
+.message-text .md { color: inherit; font-size: inherit; line-height: var(--g-leading-prose); overflow-wrap: anywhere; }
+.message-text .md > * { margin: 0; }
+.message-text .md > * + * { margin-top: var(--g-space-2); }
+.message-text .md :is(h1, h2, h3, h4) { margin-bottom: 0; color: inherit; font-size: inherit; font-weight: var(--g-weight-bold); }
+.message-text .md > :is(h1, h2, h3, h4) + * { margin-top: var(--g-space-1); }
+.message-text .md li + li { margin-top: 2px; }
+.message-text .md pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-text .md .md-table-wrap { margin: 0; }
+.message-text .md table.md-table { font-size: var(--g-text-dense); }
+.message-text .md table.md-table :is(th, td) { padding: var(--g-space-1) var(--g-space-3); }
+
+/* ---- the bubble ---- */
+.chat-bubble { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; max-width: 100%; padding: var(--g-space-2) var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); border-start-start-radius: var(--g-radius-xs); background: var(--g-surface-raised); color: var(--g-text); font-size: var(--g-text-ui); line-height: var(--g-leading-prose); }
+.chat-bubble.cont { border-start-start-radius: var(--g-radius-md); }
+.chat-bubble.mine { border-color: transparent; border-start-start-radius: var(--g-radius-md); border-start-end-radius: var(--g-radius-xs); background: var(--g-accent); color: var(--g-on-accent); }
+.chat-bubble.mine.cont { border-start-end-radius: var(--g-radius-md); }
+/* An interrupt is the loudest mail there is: a signal edge on whichever side it comes from. */
+.chat-bubble.urgent { box-shadow: inset 3px 0 0 var(--g-signal); }
+.chat-bubble-foot { align-self: flex-end; display: inline-flex; align-items: center; gap: var(--g-space-2); margin-bottom: -2px; font-size: var(--g-text-eyebrow); font-variant-numeric: tabular-nums; line-height: var(--g-leading-ui); color: var(--g-text-muted); white-space: nowrap; }
+.chat-bubble.mine .chat-bubble-foot { color: color-mix(in srgb, var(--g-on-accent) 72%, transparent); }
+
+/* Markdown on the accent takes the bubble's ink: code, quotes, rules and tables included. */
+.chat-bubble.mine .md :is(code, pre) { border-color: color-mix(in srgb, var(--g-on-accent) 24%, transparent); background: color-mix(in srgb, var(--g-on-accent) 10%, transparent); color: inherit; }
+.chat-bubble.mine .md pre code { background: none; }
+.chat-bubble.mine .md a { color: inherit; text-decoration: underline; }
+.chat-bubble.mine .md blockquote { border-left-color: color-mix(in srgb, var(--g-on-accent) 40%, transparent); color: inherit; }
+.chat-bubble.mine .md hr { border-top-color: color-mix(in srgb, var(--g-on-accent) 30%, transparent); }
+.chat-bubble.mine .md table.md-table :is(th, td) { border-color: color-mix(in srgb, var(--g-on-accent) 24%, transparent); }
+.chat-bubble.mine .md table.md-table thead th { background: color-mix(in srgb, var(--g-on-accent) 12%, transparent); color: inherit; }
+.chat-bubble.mine .md table.md-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--g-on-accent) 5%, transparent); }
+.chat-bubble:not(.mine) .md table.md-table tbody tr:nth-child(even) { background: var(--g-surface); }

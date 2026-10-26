@@ -34,3 +34,19 @@ test("the surfaces that show member avatars take them from that component", () =
     assert.match(source, /<Avatars\b/, `${file} renders the member avatars`);
   }
 });
+
+test("an agent's colour follows its role, a custom role the role it extends", async () => {
+  const { agentTone, AGENT_TONES } = await import("../web/src/entities/member/tone.ts");
+  for (const role of AGENT_TONES) assert.equal(agentTone(role), role);
+  const roles = [
+    { id: "abap-dev", extends: "executor", class: "executor" },
+    { id: "qa", class: "tester" },
+    { id: "loop-a", extends: "loop-b" },
+    { id: "loop-b", extends: "loop-a" },
+  ];
+  assert.equal(agentTone("abap-dev", roles), "executor");
+  assert.equal(agentTone("qa", roles), "tester", "without a base the process class decides");
+  assert.equal(agentTone("loop-a", roles), undefined, "a cycle ends without a colour");
+  assert.equal(agentTone("human"), undefined, "people keep their own look");
+  assert.equal(agentTone("custom"), undefined, "an unknown role keeps the accent");
+});

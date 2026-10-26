@@ -25,6 +25,17 @@
   --g-red-500: #e5484d;
   --g-red-700: #c62a2f;
 
+  /* Agent role hues: one lightness and a muted chroma, so they read as one family with the brand green;
+     orange and red stay with "your move" and "failure". Ink initials hold 4.6:1 or more on every one. */
+  --g-hue-blue: #5a8bca;
+  --g-hue-teal: #46a5af;
+  --g-hue-violet: #9a75c3;
+  --g-hue-ochre: #c4a040;
+  --g-hue-rose: #c77596;
+  --g-hue-moss: #6b9c4f;
+  --g-hue-stone: #af9b84;
+  --g-hue-slate: #727a90;
+
   /* Neutral ramp interpolated from ink to paper; keeps both themes warm-tinted instead of pure grey. */
   --g-n-950: #09090d;
   --g-n-900: #121216;
@@ -156,6 +167,19 @@
   --g-danger-soft: #231115;
   --g-on-danger: var(--g-ink);
 
+  /* Agent roles: each standard role keeps one colour in both themes, so it is recognised anywhere
+     (avatars, the team graph, role lists). The name and the avatar's shape still say who it is. */
+  --g-agent-executor: var(--g-green);
+  --g-agent-analyst: var(--g-hue-blue);
+  --g-agent-researcher: var(--g-hue-teal);
+  --g-agent-reviewer: var(--g-hue-violet);
+  --g-agent-tester: var(--g-hue-ochre);
+  --g-agent-documenter: var(--g-hue-rose);
+  --g-agent-planner: var(--g-hue-moss);
+  --g-agent-orchestrator: var(--g-hue-stone);
+  --g-agent-project-manager: var(--g-hue-slate);
+  --g-on-agent: var(--g-ink);
+
   /* Chart series: at most four, always direct-labelled; beyond that use small multiples. Each needs 3:1 on the
      surface (graphical objects, WCAG 1.4.11), which is why the paper theme darkens the orange. */
   --g-viz-1: var(--g-green);
@@ -206,6 +230,18 @@
   --g-danger-text: var(--g-red-700);
   --g-danger-soft: #f2e7e1;
   --g-on-danger: var(--g-paper);
+
+  /* Agent roles: the same colours as ink, stated again on purpose. */
+  --g-agent-executor: var(--g-green);
+  --g-agent-analyst: var(--g-hue-blue);
+  --g-agent-researcher: var(--g-hue-teal);
+  --g-agent-reviewer: var(--g-hue-violet);
+  --g-agent-tester: var(--g-hue-ochre);
+  --g-agent-documenter: var(--g-hue-rose);
+  --g-agent-planner: var(--g-hue-moss);
+  --g-agent-orchestrator: var(--g-hue-stone);
+  --g-agent-project-manager: var(--g-hue-slate);
+  --g-on-agent: var(--g-ink);
 
   --g-viz-1: var(--g-green);
   --g-viz-2: #d4611a;

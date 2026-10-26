@@ -18,6 +18,7 @@ import { basename, join, resolve } from "node:path";
 import { genie, seedDocs, seedTask } from "./seeding.ts";
 import { OWNER } from "./seed.ts";
 import { PEOPLE, STAND_PROJECTS } from "./stand-data.ts";
+import { seedTeam } from "./stand-team.ts";
 
 const root = resolve(import.meta.dirname, "../..");
 const args = new Set(process.argv.slice(2));
@@ -62,6 +63,7 @@ function seed() {
     for (const task of project.tasks) seedTask(bin, dataDir, project.id, task, ids);
     console.log(`  ${project.name}: ${project.tasks.length} tasks, ${project.docs.length} pages`);
   }
+  console.log(`  a running team with mail and a saved agent conversation: ${seedTeam(bin, dataDir)}`);
 }
 
 if (args.has("--reset") || !existsSync(join(dataDir, "server.db"))) {

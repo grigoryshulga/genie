@@ -1,0 +1,20 @@
+/* SplitButton: the action in the "your move" colour, its options behind a chevron. Ink and paper: g-tokens only. */
+.g-split { position: relative; flex: none; display: inline-flex; align-items: stretch; height: var(--g-control-sm); }
+.g-split > button { display: inline-flex; align-items: center; justify-content: center; gap: var(--g-space-2); border: 0; background: var(--g-signal); color: var(--g-on-signal); font: var(--g-weight-semibold) var(--g-text-dense) var(--g-font-sans); white-space: nowrap; cursor: pointer; transition: background var(--g-duration) var(--g-ease); }
+.g-split > button:hover:not(:disabled) { background: var(--g-signal-hover); }
+.g-split > button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--g-focus); outline-offset: 2px; }
+.g-split > button:disabled { background: var(--g-surface-active); color: var(--g-text-muted); cursor: default; }
+.g-split-main { min-width: var(--g-control-sm); padding: 0 var(--g-space-3); border-radius: var(--g-radius-pill) 0 0 var(--g-radius-pill); }
+.g-split-more { width: 26px; padding: 0 var(--g-space-1) 0 0; border-radius: 0 var(--g-radius-pill) var(--g-radius-pill) 0; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--g-on-signal) 22%, transparent); }
+/* The options open upwards: the action sits at the bottom of a composer. */
+.g-split-more > svg { transform: rotate(-90deg); transition: transform var(--g-duration) var(--g-ease); }
+.g-split-more[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.g-split-menu { position: absolute; right: 0; bottom: calc(100% + var(--g-space-2)); z-index: var(--g-z-dropdown); }
+.g-split-menu .g-menu { min-width: 220px; }
+/* An option names itself, then says what it does underneath. */
+.g-split-menu .g-menu-item { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; height: auto; min-height: 36px; padding-block: var(--g-space-2); white-space: nowrap; }
+.g-split-menu .g-menu-item .hint { margin-left: 0; font-weight: var(--g-weight-regular); }
+
+@media (prefers-reduced-motion: reduce) {
+  .g-split > button, .g-split-more > svg { transition: none; }
+}
