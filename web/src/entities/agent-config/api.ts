@@ -130,10 +130,14 @@ export function deleteMcpSecret(name: string) {
 }
 
 /** Changes made through the server (administrators only). */
-export function useConfigHistory(item: string | undefined, enabled = true) {
+export function useConfigHistory(item: string | undefined, enabled = true, before?: number, limit?: number) {
+  const query = new URLSearchParams();
+  if (item) query.set("item", item);
+  if (before !== undefined) query.set("before", String(before));
+  if (limit !== undefined) query.set("limit", String(limit));
   return useQuery({
-    queryKey: agentKeys.history(item),
-    queryFn: () => request<ConfigChange[]>("GET", `/api/agent-config/history${item ? `?item=${encodeURIComponent(item)}` : ""}`),
+    queryKey: [...agentKeys.history(item), before ?? null, limit ?? null],
+    queryFn: () => request<ConfigChange[]>("GET", `/api/agent-config/history?${query}`),
     enabled,
   });
 }

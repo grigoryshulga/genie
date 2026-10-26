@@ -26,7 +26,7 @@ export function IconButton({ label, className, children, ref, ...rest }: ButtonH
 export type TabItem<T extends string> = { id: T; label: ReactNode; to?: string; /** Tooltip for a tab whose label is collapsed to its icon. */ title?: string };
 
 /** Tabs: a rail of pills; the selected one is the only filled pill. Arrow keys move focus, Home and End jump. */
-export function Tabs<T extends string>({ items, value, onChange, label, animated = false }: { items: TabItem<T>[]; value: T; onChange?: (id: T) => void; label: string; animated?: boolean }) {
+export function Tabs<T extends string>({ items, value, onChange, label, animated = false, variant = "pills" }: { items: TabItem<T>[]; value: T; onChange?: (id: T) => void; label: string; animated?: boolean; variant?: "pills" | "underline" }) {
   const refs = useRef<(HTMLElement | null)[]>([]);
   const base = useId();
   const rail = useRef<HTMLDivElement>(null);
@@ -35,7 +35,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, animated
   useLayoutEffect(() => {
     const root = rail.current;
     const target = refs.current[selected];
-    if (!animated || !root || !target) { setIndicator(undefined); return; }
+    if (!animated || variant !== "pills" || !root || !target) { setIndicator(undefined); return; }
     const measure = () => {
       const outer = root.getBoundingClientRect();
       const box = target.getBoundingClientRect();
@@ -49,7 +49,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, animated
     observer.observe(root);
     observer.observe(target);
     return () => observer.disconnect();
-  }, [animated, selected, items.length]);
+  }, [animated, variant, selected, items.length]);
 
   function onKey(e: KeyboardEvent, index: number) {
     const next = nextIndex(index, e.key, items.length, "horizontal");
@@ -59,7 +59,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, animated
     if (!items[next].to) onChange?.(items[next].id);
   }
   return (
-    <div ref={rail} className={cx("g-tabs", animated && indicator && "g-tabs-motion")} role={items.some((i) => i.to) ? undefined : "tablist"} aria-label={label}>
+    <div ref={rail} className={cx("g-tabs", variant === "underline" && "underline", animated && indicator && "g-tabs-motion")} role={items.some((i) => i.to) ? undefined : "tablist"} aria-label={label}>
       {animated && indicator && <span className="g-tabs-indicator" aria-hidden="true" style={{ width: indicator.width, height: indicator.height, transform: `translate(${indicator.x}px, ${indicator.y}px)` }} />}
       {items.map((item, i) =>
         item.to ? (
