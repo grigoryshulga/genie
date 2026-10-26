@@ -1,4 +1,5 @@
 // Portable, resolved roles: no machine paths, history or dependency on a custom parent.
+import { validateTransfer } from "./transfer-schema.ts";
 import { allowDeny, setBody, setFrontmatterKey, type Catalogue, type RoleDef } from "./model.ts";
 
 export const ROLE_FORMAT = "genie.role/v1";
@@ -55,20 +56,6 @@ export interface RoleTransfer {
   projects?: string[];
 }
 
-type Rule = { type: string; enum?: readonly string[]; minLength?: number; pattern?: string; items?: Rule; uniqueItems?: boolean };
-function validate(value: unknown, rule: Rule, field: string): void {
-  if (rule.type === "string") {
-    if (typeof value !== "string") throw new Error(`${field}: ожидается строка.`);
-    if (rule.minLength && !value.trim().length) throw new Error(`${field}: заполните значение.`);
-    if (rule.pattern && !new RegExp(rule.pattern).test(value)) throw new Error(`${field}: недопустимый формат.`);
-    if (rule.enum && !rule.enum.includes(value)) throw new Error(`${field}: допустимо ${rule.enum.join(", ")}.`);
-  } else {
-    if (!Array.isArray(value)) throw new Error(`${field}: ожидается массив строк.`);
-    for (const item of value) validate(item, rule.items ?? { type: "string" }, field);
-    if (rule.uniqueItems && new Set(value).size !== value.length) throw new Error(`${field}: уберите повторяющиеся значения.`);
-  }
-}
-
 /** This checked boundary uses the same constraints as the downloadable schema. */
 export function parseRoleTransfer(text: string): RoleTransfer {
   if (text.length > 1_000_000) throw new Error("Файл роли должен быть не больше 1 МБ.");
@@ -80,7 +67,7 @@ export function parseRoleTransfer(text: string): RoleTransfer {
   for (const [key, v] of Object.entries(record)) {
     const rule = Object.entries(roleSchema.properties).find(([name]) => name === key)?.[1];
     if (!rule) throw new Error(`Неизвестное поле: ${key}.`);
-    validate(v, rule, key);
+    validateTransfer(v, rule, key);
   }
   return record as unknown as RoleTransfer;
 }

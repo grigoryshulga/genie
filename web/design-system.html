@@ -35,6 +35,7 @@
   import React from "react";
   import { createRoot } from "react-dom/client";
   import * as kit from "/src/shared/ui/index.ts";
+  import { TemplateGraph } from "/src/entities/agent-config/ui/TemplateGraph.tsx";
   import { StatusIcon, PriorityIcon } from "/src/entities/task/ui/StatusIcon.tsx";
 
   document.getElementById("theme").onchange = (event) => { document.documentElement.dataset.theme = event.target.value; };
@@ -71,6 +72,10 @@
         h(kit.Chip, null, "Chip"),
         ...["neutral", "accent", "signal", "danger", "solid-accent", "solid-signal", "outline"].map((tone) => h(kit.Tag, { key: tone, tone }, tone)),
         h("span", null, "Search ", h(kit.Kbd, null, "⌘K")))),
+    block("Team graph",
+      h(TemplateGraph, { compact: true, roles: [], members: [{ key: "analyst", role: "analyst" }, { key: "executor", role: "executor" }, { key: "reviewer", role: "reviewer" }], relations: [{ from: "analyst", to: ["executor"], type: "handoff" }, { from: "executor", to: ["reviewer"], type: "handoff" }, { from: "reviewer", to: ["orchestrator"], type: "reports" }] })),
+    block("Graph controls",
+      row(h(kit.IconButton, { label: "Fit graph" }, h(kit.Icon.fit)), h(kit.IconButton, { label: "Expand graph" }, h(kit.Icon.expand)), h(kit.IconButton, { label: "Collapse graph" }, h(kit.Icon.collapse)))),
     block("Fields",
       row(h(kit.Field, { label: "Name", help: "Shown in the sidebar" }, h(kit.Input, { placeholder: "Project name", defaultValue: "" })),
         h(kit.Field, { label: "Status" }, h(kit.Select, { defaultValue: "ready" }, h("option", { value: "ready" }, "Ready for work"), h("option", { value: "in_progress" }, "In progress"))),

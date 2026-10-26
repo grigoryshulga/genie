@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { parseRoleTransfer, roleSchema, roleTemplate, roleTransferFile, useRole, useSaveConfig, type Catalogue, type RoleTransfer } from "@/entities/agent-config";
+import { parseRoleTransfer, roleSchema, roleTemplate, roleTransferFile, useAgentConfig, useRole, useSaveConfig, type Catalogue, type RoleTransfer } from "@/entities/agent-config";
 import { Button, Dialog, Field, Input, Markdown, useToast } from "@/shared/ui";
 
-export function downloadRoleJson(name: string, value: unknown) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2) + "\n"], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url; link.download = name; link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+import { downloadConfigJson } from "./download.ts";
 
 export function RoleImport({ cfg, onClose, onCreated }: { cfg: Catalogue; onClose: () => void; onCreated: (id: string) => void }) {
   const [role, setRole] = useState<RoleTransfer>();
@@ -16,7 +11,8 @@ export function RoleImport({ cfg, onClose, onCreated }: { cfg: Catalogue; onClos
   const [replace, setReplace] = useState(false);
   const [target, setTarget] = useState<{ id: string; hash: string }>();
   const generation = useRef(0);
-  const existing = cfg.roles.some((r) => r.id === role?.id);
+  const catalogue = useAgentConfig().data ?? cfg;
+  const existing = catalogue.roles.some((r) => r.id === role?.id);
   const current = useRole(existing ? role?.id : undefined);
   useEffect(() => {
     const data = current.data;
@@ -50,13 +46,13 @@ export function RoleImport({ cfg, onClose, onCreated }: { cfg: Catalogue; onClos
   };
   return <Dialog title="Импорт роли" wide onClose={() => { if (!busy) onClose(); }} footer={<><Button variant="ghost" disabled={busy} onClick={onClose}>Отмена</Button><Button variant="primary" busy={busy} disabled={!role || (existing && (!replace || target?.id !== role.id))} onClick={() => void submit()}>Импортировать</Button></>}>
     <div className="role-import">
-      <div className="ag-actions"><Button sm onClick={() => downloadRoleJson("genie-role.schema.json", roleSchema)}>Скачать JSON Schema</Button><Button sm onClick={() => downloadRoleJson("role-template.json", { $schema: "./genie-role.schema.json", ...roleTemplate })}>Скачать шаблон</Button></div>
+      <div className="ag-actions"><Button sm onClick={() => downloadConfigJson("genie-role.schema.json", roleSchema)}>Скачать JSON Schema</Button><Button sm onClick={() => downloadConfigJson("role-template.json", { $schema: "./genie-role.schema.json", ...roleTemplate })}>Скачать шаблон</Button></div>
       <Field label="Файл роли (.json)"><Input type="file" accept=".json,application/json" disabled={busy} onChange={(e) => void load(e.target.files?.[0])} /></Field>
       {error && <p role="alert" className="ag-warn">{error}</p>}
       {role && <>
         <Field label="Идентификатор роли"><Input value={role.id} disabled={busy} onChange={(e) => { setRole({ ...role, id: e.target.value }); setReplace(false); setTarget(undefined); }} /></Field>
         <div className="role-import-summary"><strong>{role.title}</strong><span>{role.base} · {role.model || "модель не задана"}</span><p>{role.description}</p></div>
-        {existing && <label className="g-check"><input type="checkbox" checked={replace} disabled={busy} onChange={(e) => setReplace(e.target.checked)} /><span>Заменить существующую роль «{cfg.roles.find((r) => r.id === role.id)?.title}»</span></label>}
+        {existing && <label className="g-check"><input type="checkbox" checked={replace} disabled={busy} onChange={(e) => setReplace(e.target.checked)} /><span>Заменить существующую роль «{catalogue.roles.find((r) => r.id === role.id)?.title}»</span></label>}
         {current.error && <p role="alert" className="ag-warn">{current.error.message}</p>}
         <details><summary>JSON</summary><pre className="role-import-json">{JSON.stringify(role, null, 2)}</pre></details>
         <section className="role-import-preview" aria-label="Промпт импортируемой роли"><Markdown text={role.prompt} /></section>

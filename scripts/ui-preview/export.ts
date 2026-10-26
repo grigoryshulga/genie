@@ -35,11 +35,19 @@ export async function exportFixtures(base: string, output: string) {
     fixtures[url.pathname + url.search] = data;
   }
   // Role details are requested dynamically after selecting a catalogue item.
-  const catalogue = fixtures["/api/agent-config"] as { roles?: { id: string }[] } | undefined;
+  const catalogue = fixtures["/api/agent-config"] as { roles?: { id: string }[]; teams?: { id: string }[] } | undefined;
   for (const role of catalogue?.roles ?? []) {
     const path = `/api/roles/${encodeURIComponent(role.id)}`;
     const res = await fetch(base + path, { headers: { cookie, "x-genie-project": "demo" } });
     if (res.ok) fixtures[path] = await res.json();
+  }
+  for (const team of catalogue?.teams ?? []) {
+    const path = `/api/templates/${encodeURIComponent(team.id)}`;
+    const headers = { cookie, "x-genie-project": "demo", "x-genie": "1", "content-type": "application/json" };
+    const detail = await fetch(base + path, { headers });
+    if (detail.ok) fixtures[path] = await detail.json();
+    const preview = await fetch(base + path + "/preview", { method: "POST", headers, body: "{}" });
+    if (preview.ok) fixtures[path + "/preview"] = await preview.json();
   }
   Object.assign(fixtures, synthetic);
   const text = JSON.stringify(fixtures, null, 2)

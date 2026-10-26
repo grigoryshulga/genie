@@ -68,7 +68,7 @@ export function AgentsPage() {
               <span className="d-only">Настроить</span>
             </Link>
           )}
-          {create && c && tab !== "roles" && (
+          {create && c && tab !== "roles" && tab !== "templates" && (
             <button type="button" className="g-btn secondary" onClick={() => setCreating(create.kind)}>
               <Icon.plus size={13} />
               <span className="d-only">{create.label}</span>
@@ -89,7 +89,7 @@ export function AgentsPage() {
       ) : tab === "roles" ? (
         <RolesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} onCreate={isAdmin ? () => setCreating("roles") : undefined} />
       ) : tab === "templates" ? (
-        <TemplatesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
+        <TemplatesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} onCreate={isAdmin ? () => setCreating("templates") : undefined} />
       ) : tab === "skills" ? (
         <SkillsTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
       ) : tab === "mcp" ? (
@@ -102,7 +102,7 @@ export function AgentsPage() {
       {creating && c && (
         <CreateDialog
           kind={creating}
-          cfg={c}
+          cfg={cfg.data ?? c}
           onClose={() => setCreating(undefined)}
           onCreated={(id) => {
             setCreating(undefined);

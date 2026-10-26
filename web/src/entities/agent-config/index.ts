@@ -3,4 +3,6 @@ export * from "./model.ts";
 export { TemplateGraph } from "./ui/TemplateGraph.tsx";
 
 export * from "./role-transfer.ts";
-export * from "./role-history.ts";
+export * from "./config-history.ts";
+export * from "./template-file.ts";
+export * from "./template-transfer.ts";

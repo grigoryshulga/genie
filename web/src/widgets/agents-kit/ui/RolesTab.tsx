@@ -1,15 +1,18 @@
 // A role has three workspaces: its prompt, settings and a paginated audit trail.
 import { useState } from "react";
 import { useSearchParams } from "react-router";
-import { exportRole, roleSchema, useDeleteConfig, useRole, type Catalogue, type Problem, type RoleDef } from "@/entities/agent-config";
+import { exportRole, roleSchema, useDeleteConfig, useRole, type Catalogue, type RoleDef } from "@/entities/agent-config";
 import { agentTone } from "@/entities/member";
 import { Button, ConfirmDialog, Icon, IconButton, LoadingState, Popover, Select, Tabs, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { Problems } from "./Problems.tsx";
 import { RoleSettings } from "./RoleSettings.tsx";
 import { RoleDetails, RolePrompt } from "./RoleDetails.tsx";
-import { RoleHistory } from "./RoleHistory.tsx";
-import { downloadRoleJson, RoleImport } from "./RoleTransfer.tsx";
+import { ConfigHistory } from "./ConfigHistory.tsx";
+import { RoleImport } from "./RoleTransfer.tsx";
+import { downloadConfigJson } from "./download.ts";
+import { ConfigProblemCounts } from "./ConfigProblemCounts.tsx";
+import "./config-workspace.css";
 import "./role.css";
 
 export function RolesTab({
@@ -42,19 +45,19 @@ export function RolesTab({
         <span className="ag-class" data-tone={agentTone(r.id, cfg.roles)} aria-hidden="true">
           {r.title.slice(0, 1).toUpperCase()}
         </span>
-        <span className="role-name">{r.title}</span>
-        <RoleProblemCounts problems={cfg.problems.filter((p) => p.item === `role:${r.id}`)} />
+        <span className="role-name config-name">{r.title}</span>
+        <ConfigProblemCounts problems={cfg.problems.filter((p) => p.item === `role:${r.id}`)} />
       </span>
     </button>
   );
   return (
-    <div className="split ag-roles-layout">
+    <div className="split ag-roles-layout config-workspace">
       <section className="split-list ag-list" aria-label="Роли">
         <div className="side-head">
           <span className="side-title">Роли</span>
-          <div className="role-icon-group" role="group" aria-label="Действия со списком ролей">
+          <div className="config-icon-group" role="group" aria-label="Действия со списком ролей">
             {!readOnly && onCreate && <IconButton label="Новая роль" onClick={onCreate}><Icon.plus /></IconButton>}
-            {!readOnly && cfg.admin && <><IconButton label="Импорт роли" disabled={editingRole === current} onClick={() => setImporting(true)}><Icon.upload /></IconButton><IconButton label="Скачать схему роли" onClick={() => downloadRoleJson("genie-role.schema.json", roleSchema)}><Icon.file /></IconButton></>}
+            {!readOnly && cfg.admin && <><IconButton label="Импорт роли" disabled={editingRole === current} onClick={() => setImporting(true)}><Icon.upload /></IconButton><IconButton label="Скачать схему роли" onClick={() => downloadConfigJson("genie-role.schema.json", roleSchema)}><Icon.file /></IconButton></>}
           </div>
         </div>
         <div className="role-mobile-picker"><Select aria-label="Выбрать роль" value={current} onChange={(e) => selectRole(e.target.value)}>{cfg.roles.map((role) => <option key={role.id} value={role.id}>{role.title}</option>)}</Select></div>
@@ -79,16 +82,6 @@ export function RolesTab({
 }
 
 
-function RoleProblemCounts({ problems }: { problems: Problem[] }) {
-  const errors = problems.filter((p) => p.level === "error");
-  const warnings = problems.filter((p) => p.level === "warning");
-  if (!problems.length) return null;
-  return <span className="role-problem-counts">
-    {errors.length > 0 && <span className="role-problem-count error" role="img" aria-label={`Ошибок: ${errors.length}`} title={errors.map((p) => p.message).join("\n")}>{errors.length}</span>}
-    {warnings.length > 0 && <span className="role-problem-count warning" role="img" aria-label={`Предупреждений: ${warnings.length}`} title={warnings.map((p) => p.message).join("\n")}><Icon.alert size={12} />{warnings.length}</span>}
-  </span>;
-}
-
 type RoleView = "prompt" | "settings" | "history";
 function RolePane({ id, cfg, readOnly = false, onEditingChange }: { id: string; cfg: Catalogue; readOnly?: boolean; base?: string; onEditingChange: (editing: boolean) => void }) {
   const detail = useRole(id);
@@ -106,10 +99,10 @@ function RolePane({ id, cfg, readOnly = false, onEditingChange }: { id: string; 
   const edit = (value: boolean) => { setEditing(value); onEditingChange(value); };
   const r = d.role;
   return <>
-    <div className="pane-head role-header">
+    <div className="pane-head role-header config-header">
       <div className="ttl"><h2>{r.title}</h2>{r.description && <p className="desc">{r.description}</p>}</div>
-      <div className="role-icon-group" role="group" aria-label="Действия роли">
-        {!editing && <IconButton label="Экспорт роли" onClick={() => downloadRoleJson(`${r.id}.role.json`, { $schema: "./genie-role.schema.json", ...exportRole(r) })}><Icon.download /></IconButton>}
+      <div className="config-icon-group" role="group" aria-label="Действия роли">
+        {!editing && <IconButton label="Экспорт роли" onClick={() => downloadConfigJson(`${r.id}.role.json`, { $schema: "./genie-role.schema.json", ...exportRole(r) })}><Icon.download /></IconButton>}
         {admin && !editing && <IconButton label="Редактировать роль" onClick={() => { if (view === "history") selectView("prompt"); edit(true); }}><Icon.pencil /></IconButton>}
         {admin && !editing && <Popover label="Дополнительные действия роли" icon={<Icon.dots />} iconOnly><div className="role-actions-menu">
           <Button variant="ghost" onClick={() => setDialog("file")}>Открыть файл роли</Button>
@@ -117,12 +110,12 @@ function RolePane({ id, cfg, readOnly = false, onEditingChange }: { id: string; 
         </div></Popover>}
       </div>
     </div>
-    <div className="role-tabs"><Tabs label="Роль" variant="underline" value={view} onChange={(next) => { if (!editing || next !== "history") selectView(next); }} items={[
+    <div className="role-tabs config-tabs"><Tabs label="Роль" variant="underline" value={view} onChange={(next) => { if (!editing || next !== "history") selectView(next); }} items={[
       { id: "prompt", label: "Промпт" }, { id: "settings", label: "Настройки" }, ...(admin && !editing ? [{ id: "history" as const, label: "История" }] : []),
     ]} /></div>
-    <div className="pane-body role-body">
+    <div className="pane-body role-body config-body">
       <Problems items={d.problems} />
-      {editing ? <RoleSettings detail={d} cfg={cfg} view={view === "settings" ? "settings" : "prompt"} onClose={() => edit(false)} /> : view === "history" ? <RoleHistory key={r.id} detail={d} /> : <>
+      {editing ? <RoleSettings detail={d} cfg={cfg} view={view === "settings" ? "settings" : "prompt"} onClose={() => edit(false)} /> : view === "history" ? <ConfigHistory key={r.id} kind="role" id={r.id} file={d.file} /> : <>
         <dl className="role-runtime"><div><dt>Модель</dt><dd>{r.model || "По умолчанию"}</dd></div><div><dt>Размышление</dt><dd>{r.thinking || "По умолчанию"}</dd></div></dl>
         {view === "prompt" ? <RolePrompt role={r} /> : <RoleDetails role={r} cfg={cfg} />}
       </>}

@@ -18,6 +18,7 @@ import { basename, join, resolve } from "node:path";
 import { genie, seedDocs, seedTask } from "./seeding.ts";
 import { OWNER } from "./seed.ts";
 import { PEOPLE, STAND_PROJECTS } from "./stand-data.ts";
+import { TEMPLATE_FILE } from "./template-data.ts";
 import { ROLE_FILE } from "./role-data.ts";
 import { seedTeam } from "./stand-team.ts";
 
@@ -64,6 +65,8 @@ function seed() {
     for (const task of project.tasks) seedTask(bin, dataDir, project.id, task, ids);
     console.log(`  ${project.name}: ${project.tasks.length} tasks, ${project.docs.length} pages`);
   }
+  mkdirSync(join(dataDir, "teams"), { recursive: true });
+  writeFileSync(join(dataDir, "teams/integration-review.json"), JSON.stringify(TEMPLATE_FILE, null, 2));
   mkdirSync(join(dataDir, "agents"), { recursive: true });
   writeFileSync(join(dataDir, "agents/integration-analyst.md"), ROLE_FILE);
   writeFileSync(join(dataDir, "mcp.json"), JSON.stringify({ mcpServers: {

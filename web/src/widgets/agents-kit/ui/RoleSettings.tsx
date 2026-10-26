@@ -68,7 +68,7 @@ export function RoleSettings({ detail: currentDetail, cfg: currentCfg, view, onC
   };
 
   return <form id="role-edit" className="role-editor" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-    <div className="role-save-bar"><Button variant="ghost" disabled={busy} onClick={onClose}>Отмена</Button><Button type="submit" variant="primary" busy={busy}>Сохранить</Button></div>
+    <div className="config-save-bar"><Button variant="ghost" disabled={busy} onClick={onClose}>Отмена</Button><Button type="submit" variant="primary" busy={busy}>Сохранить</Button></div>
     {error && <p className="ag-warn" role="alert">{error}</p>}
     <fieldset className="ag-edit-fields" disabled={busy}>
       <div className="role-model-fields">

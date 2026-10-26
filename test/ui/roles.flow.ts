@@ -91,10 +91,10 @@ test("role workspace saves one draft across tabs and provides a paginated audit 
     expect(older.every((row: { item: string; id: number }) => row.item === `role:${id}` && row.id < first[19].id)).toBe(true);
     expect((await request.get(`/api/agent-config/history?before=0`)).status()).toBe(400);
     await page.goto(`/agents?id=${id}&view=history`);
-    await expect(page.locator(".role-history-table > tbody > tr")).toHaveCount(20);
+    await expect(page.locator(".config-history-table > tbody > tr")).toHaveCount(20);
     await page.getByRole("button", { name: "Старее", exact: true }).click();
-    await expect(page.locator(".role-history-pagination")).toContainText("Страница 2");
-    await expect(page.locator(".role-history-table > tbody > tr")).toHaveCount(6);
+    await expect(page.locator(".config-history-pagination")).toContainText("Страница 2");
+    await expect(page.locator(".config-history-table > tbody > tr")).toHaveCount(6);
     await expect(page.getByRole("button", { name: "Старее", exact: true })).toBeDisabled();
   } finally {
     await request.delete(`/api/roles/${importedId}`, { headers });

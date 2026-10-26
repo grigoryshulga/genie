@@ -91,6 +91,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | Disclosure card | expanded/collapsed, hover/focus; persisted by caller-supplied key | `DisclosureCard`; compact rail surface, full-heading keyboard toggle and hidden body. |
 | Feedback | neutral/accent/signal/danger banner, empty, error, skeleton, working arcs | `Banner`, `EmptyState`, `ErrorState`, `Skeleton`, `WorkingArcs`. An empty list uses `EmptyState`; a failed query uses `ErrorState`. |
 | Image preview | thumbnail/inline/full/lightbox | `ImagePreview`; shared surfaces and radii, paired danger foreground for close hover. |
+| Team graph | process/configuration, inline/expanded | `TemplateGraph`; configuration uses `compact` to wrap stages at readable size, with fit/zoom/expand controls. |
 | Charts | grouped/stacked | `BarChart`; `g-viz-*` series colours, visible legend and textual totals. |
 | Rich text | reading/editing | `Markdown`, docs editor; content-specific block geometry stays local. |
 

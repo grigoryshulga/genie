@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { exportRole, parseRoleTransfer, roleSchema, roleTemplate, roleTransferFile } from "../web/src/entities/agent-config/role-transfer.ts";
-import { roleChangeFields } from "../web/src/entities/agent-config/role-history.ts";
+import { roleChangeFields } from "../web/src/entities/agent-config/config-history.ts";
 import type { Catalogue, RoleDetail } from "../web/src/entities/agent-config/model.ts";
 
 const fixtures = JSON.parse(readFileSync(new URL("../scripts/ui-preview/fixtures.json", import.meta.url), "utf8"));

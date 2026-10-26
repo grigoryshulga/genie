@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Genie team template v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "id",
+    "title",
+    "members"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "genie.team/v1"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "refinement",
+        "delivery"
+      ]
+    },
+    "workspace": {
+      "type": "string",
+      "enum": [
+        "worktree",
+        "repo",
+        "scratch"
+      ]
+    },
+    "mail": {
+      "type": "string",
+      "enum": [
+        "open",
+        "flow"
+      ]
+    },
+    "charter": {
+      "type": "string"
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "members": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "model": {
+            "type": "string"
+          },
+          "thinking": {
+            "type": "string",
+            "enum": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "instructions": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to",
+          "type"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "handoff",
+              "returns",
+              "reports",
+              "consults"
+            ]
+          },
+          "on": {
+            "type": "string",
+            "enum": [
+              "inbox",
+              "draft",
+              "refining",
+              "ready",
+              "in_progress",
+              "review",
+              "changes_requested",
+              "approved",
+              "needs_owner",
+              "done",
+              "cancelled"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

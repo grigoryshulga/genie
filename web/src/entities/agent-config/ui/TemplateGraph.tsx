@@ -1,4 +1,5 @@
-import { type PointerEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type PointerEvent, type ReactNode, useEffect, useLayoutEffect, useId, useRef, useState } from "react";
+import { Icon } from "@/shared/ui/icons.tsx";
 import { agentTone } from "../../member/tone.ts";
 import "./graph.css";
 import { capitalized, type LiveState, layoutTeam, type MemberDef, NODE_H, ON_TITLE, type Relation, RELATION_TITLE, type RoleDef } from "../model.ts";
@@ -70,7 +71,10 @@ export function TemplateGraph({
   head,
   onConnect,
   cards = {},
+  compact = false,
 }: {
+  /** Compact toolbar and an readable wrapped layout for configuration workspaces. */
+  compact?: boolean;
   cards?: Record<string, { href: string; role: string; activity: string }>;
   members: MemberDef[];
   relations: Relation[];
@@ -90,6 +94,7 @@ export function TemplateGraph({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [columns, setColumns] = useState(3);
   useEffect(() => {
     if (expanded) dialogRef.current?.showModal();
     else if (restoreFocus.current) expandButtonRef.current?.focus();
@@ -118,6 +123,7 @@ export function TemplateGraph({
     }),
     relations,
     problems,
+    compact ? columns : undefined,
   );
   const w = g.nodeW;
   // The managers keep their own colours; a member takes its role's.
@@ -150,6 +156,15 @@ export function TemplateGraph({
     const el = scrollRef.current;
     if (el) changeZoom(Math.min((el.clientWidth - 24) / g.width, expanded ? el.clientHeight / g.height : Infinity));
   };
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!compact || !element) return;
+    const measure = () => setColumns(Math.max(1, Math.floor((element.clientWidth - 64) / 248)));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [compact, expanded]);
   const figure = (
     <figure className="team-graph">
       {head && <div className="team-graph-head">{head}</div>}
@@ -157,9 +172,9 @@ export function TemplateGraph({
         <button type="button" className="g-btn ghost sm" aria-label="Отдалить схему" disabled={zoom <= 0.25} onClick={() => changeZoom(zoom - 0.25)}>−</button>
         <output aria-label="Масштаб схемы">{Math.round(zoom * 100)}%</output>
         <button type="button" className="g-btn ghost sm" aria-label="Приблизить схему" disabled={zoom >= 2.5} onClick={() => changeZoom(zoom + 0.25)}>+</button>
-        <button type="button" className="g-btn ghost sm" onClick={fitGraph}>Вписать целиком</button>
-        <button type="button" className="g-btn ghost sm" ref={expandButtonRef} aria-pressed={expanded} onClick={() => { setDrag(undefined); setExpanded(!expanded); }}>
-          {expanded ? "Свернуть область" : "Развернуть схему"}
+        <button type="button" className="g-btn ghost sm" aria-label="Вписать целиком" title="Вписать целиком" onClick={fitGraph}>{compact ? <Icon.fit /> : "Вписать целиком"}</button>
+        <button type="button" className="g-btn ghost sm" ref={expandButtonRef} aria-label={expanded ? "Свернуть область" : "Развернуть схему"} title={expanded ? "Свернуть область" : "Развернуть схему"} aria-pressed={expanded} onClick={() => { setDrag(undefined); setExpanded(!expanded); }}>
+          {compact ? expanded ? <Icon.collapse /> : <Icon.expand /> : expanded ? "Свернуть область" : "Развернуть схему"}
         </button>
       </div>
       <div className="team-graph-scroll" ref={scrollRef}>
@@ -193,7 +208,7 @@ export function TemplateGraph({
               </marker>
             ))}
           </defs>
-          {g.stages.map((stage) => <text key={stage.x} x={stage.x} y={269} textAnchor="middle" className="ns">{stage.label} · →</text>)}
+          {g.stages.map((stage) => <text key={stage.x} x={stage.x} y={stage.y} textAnchor="middle" className="ns">{stage.label} · →</text>)}
           {g.edges.map((e, i) => {
             const look = lookOf(e);
             // One relation to several members is labelled once.

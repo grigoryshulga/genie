@@ -8131,6 +8131,249 @@
   },
   "/api/agent-config/history": [
     {
+      "id": 127,
+      "at": "2026-05-03T18:00:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 26\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 27\"\n}"
+    },
+    {
+      "id": 126,
+      "at": "2026-05-03T17:50:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 25\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 26\"\n}"
+    },
+    {
+      "id": 125,
+      "at": "2026-05-03T17:40:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 24\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 25\"\n}"
+    },
+    {
+      "id": 124,
+      "at": "2026-05-03T17:30:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 23\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 24\"\n}"
+    },
+    {
+      "id": 123,
+      "at": "2026-05-03T17:20:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 22\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 23\"\n}"
+    },
+    {
+      "id": 122,
+      "at": "2026-05-03T17:10:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 21\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 22\"\n}"
+    },
+    {
+      "id": 121,
+      "at": "2026-05-03T17:00:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 20\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 21\"\n}"
+    },
+    {
+      "id": 120,
+      "at": "2026-05-03T16:50:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 19\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 20\"\n}"
+    },
+    {
+      "id": 119,
+      "at": "2026-05-03T16:40:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 18\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 19\"\n}"
+    },
+    {
+      "id": 118,
+      "at": "2026-05-03T16:30:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 17\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 18\"\n}"
+    },
+    {
+      "id": 117,
+      "at": "2026-05-03T16:20:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 16\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 17\"\n}"
+    },
+    {
+      "id": 116,
+      "at": "2026-05-03T16:10:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 15\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 16\"\n}"
+    },
+    {
+      "id": 115,
+      "at": "2026-05-03T16:00:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 14\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 15\"\n}"
+    },
+    {
+      "id": 114,
+      "at": "2026-05-03T15:50:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 13\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 14\"\n}"
+    },
+    {
+      "id": 113,
+      "at": "2026-05-03T15:40:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 12\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 13\"\n}"
+    },
+    {
+      "id": 112,
+      "at": "2026-05-03T15:30:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 11\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 12\"\n}"
+    },
+    {
+      "id": 111,
+      "at": "2026-05-03T15:20:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 10\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 11\"\n}"
+    },
+    {
+      "id": 110,
+      "at": "2026-05-03T15:10:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 9\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 10\"\n}"
+    },
+    {
+      "id": 109,
+      "at": "2026-05-03T15:00:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 8\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 9\"\n}"
+    },
+    {
+      "id": 108,
+      "at": "2026-05-03T14:50:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 7\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 8\"\n}"
+    },
+    {
+      "id": 107,
+      "at": "2026-05-03T14:40:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 6\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 7\"\n}"
+    },
+    {
+      "id": 106,
+      "at": "2026-05-03T14:30:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 5\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 6\"\n}"
+    },
+    {
+      "id": 105,
+      "at": "2026-05-03T14:20:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 4\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 5\"\n}"
+    },
+    {
+      "id": 104,
+      "at": "2026-05-03T14:10:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 3\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 4\"\n}"
+    },
+    {
+      "id": 103,
+      "at": "2026-05-03T14:00:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 2\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 3\"\n}"
+    },
+    {
+      "id": 102,
+      "at": "2026-05-03T13:50:00Z",
+      "user": "Анна Смирнова",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 1\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 2\"\n}"
+    },
+    {
+      "id": 101,
+      "at": "2026-05-03T13:40:00Z",
+      "user": "codex-agent",
+      "item": "team:full",
+      "path": "teams/full.json",
+      "before": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 0\"\n}",
+      "after": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\n      \"role\": \"analyst\"\n    },\n    {\n      \"role\": \"executor\"\n    },\n    {\n      \"role\": \"tester\"\n    },\n    {\n      \"role\": \"reviewer\"\n    },\n    {\n      \"role\": \"documenter\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"from\": \"analyst\",\n      \"to\": \"executor\",\n      \"type\": \"handoff\",\n      \"note\": \"the plan is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": [\n        \"tester\",\n        \"reviewer\"\n      ],\n      \"type\": \"handoff\",\n      \"on\": \"review\",\n      \"note\": \"the work is submitted for review\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"reviewer\",\n      \"type\": \"handoff\",\n      \"note\": \"the test report\"\n    },\n    {\n      \"from\": \"tester\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"note\": \"failing tests\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"executor\",\n      \"type\": \"returns\",\n      \"on\": \"changes_requested\",\n      \"note\": \"review findings\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"documenter\",\n      \"type\": \"handoff\",\n      \"on\": \"approved\",\n      \"note\": \"the work is approved\"\n    },\n    {\n      \"from\": \"reviewer\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the verdict\"\n    },\n    {\n      \"from\": \"documenter\",\n      \"to\": \"orchestrator\",\n      \"type\": \"reports\",\n      \"note\": \"the documentation is ready\"\n    },\n    {\n      \"from\": \"executor\",\n      \"to\": \"analyst\",\n      \"type\": \"consults\",\n      \"note\": \"questions about the plan\"\n    }\n  ],\n  \"charter\": \"Revision 1\"\n}"
+    },
+    {
       "id": 47,
       "at": "2026-10-18T10:29:24Z",
       "user": "owner",
@@ -8373,5 +8616,729 @@
       "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
       "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
     }
-  ]
+  ],
+  "/api/templates/abap": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"ABAP\",\n  \"description\": \"Работа с ABAP: система SAP доступна агентам только на чтение через MCP, код переносит и транспорты создаёт владелец. Без git worktree, если репозиторий не на abapGit.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"repo\",\n  \"members\": [\n    {\"role\": \"analyst\", \"instructions\": \"Use the read-only SAP MCP servers to study the objects involved. List every ABAP object (type + name) the change touches. Parallel teams must not touch the same objects.\"},\n    {\"role\": \"executor\", \"instructions\": \"The SAP system is read-only for you. Deliver the complete source of every changed or new ABAP object as `code` artifacts (one per object, named like zcl_foo.clas.abap), plus a short transfer guide (order of objects, activation notes). With abapGit repos, commit the files instead.\"},\n    {\"role\": \"reviewer\", \"instructions\": \"Review the ABAP code artifacts against clean ABAP guidelines and the current system state (read via MCP): syntax plausibility, naming, performance (SELECT in loops, buffering), authorisation checks, and that only agreed objects change.\"}\n  ],\n  \"relations\": [\n    {\"from\": \"analyst\", \"to\": \"executor\", \"type\": \"handoff\", \"note\": \"the plan and the list of objects are ready\"},\n    {\"from\": \"executor\", \"to\": \"reviewer\", \"type\": \"handoff\", \"on\": \"review\", \"note\": \"the work is submitted for review\"},\n    {\"from\": \"reviewer\", \"to\": \"executor\", \"type\": \"returns\", \"on\": \"changes_requested\", \"note\": \"review findings\"},\n    {\"from\": \"reviewer\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"the verdict\"},\n    {\"from\": \"executor\", \"to\": \"analyst\", \"type\": \"consults\", \"note\": \"questions about the objects\"}\n  ]\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/abap.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Работа с ABAP: система SAP доступна агентам только на чтение через MCP, код переносит и транспорты создаёт владелец. Без git worktree, если репозиторий не на abapGit.",
+      "id": "abap",
+      "mail": "open",
+      "members": [
+        {
+          "instructions": "Use the read-only SAP MCP servers to study the objects involved. List every ABAP object (type + name) the change touches. Parallel teams must not touch the same objects.",
+          "key": "analyst",
+          "role": "analyst"
+        },
+        {
+          "instructions": "The SAP system is read-only for you. Deliver the complete source of every changed or new ABAP object as `code` artifacts (one per object, named like zcl_foo.clas.abap), plus a short transfer guide (order of objects, activation notes). With abapGit repos, commit the files instead.",
+          "key": "executor",
+          "role": "executor"
+        },
+        {
+          "instructions": "Review the ABAP code artifacts against clean ABAP guidelines and the current system state (read via MCP): syntax plausibility, naming, performance (SELECT in loops, buffering), authorisation checks, and that only agreed objects change.",
+          "key": "reviewer",
+          "role": "reviewer"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [
+        {
+          "from": "analyst",
+          "note": "the plan and the list of objects are ready",
+          "to": [
+            "executor"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "executor",
+          "note": "the work is submitted for review",
+          "on": "review",
+          "to": [
+            "reviewer"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "reviewer",
+          "note": "review findings",
+          "on": "changes_requested",
+          "to": [
+            "executor"
+          ],
+          "type": "returns"
+        },
+        {
+          "from": "reviewer",
+          "note": "the verdict",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        },
+        {
+          "from": "executor",
+          "note": "questions about the objects",
+          "to": [
+            "analyst"
+          ],
+          "type": "consults"
+        }
+      ],
+      "relationsDerived": false,
+      "stage": "delivery",
+      "title": "ABAP",
+      "warnings": [
+        "`executor` may write files and works in the main working copy (`workspace: repo`)"
+      ],
+      "workspace": "repo"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/abap/preview": {
+    "members": [
+      {
+        "key": "analyst",
+        "kickoff": "Welcome to team TASK-1, Sherlock! You are the analyst; teammates address you as \"sherlock\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"ABAP\"):\n- Start now.\n- When your step is done (the plan and the list of objects are ready), hand over to Bender (`genie mail send <name> … --intent done`).\n- Bender may ask you questions (questions about the objects): answer promptly.\n- Gandalf is the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "sherlock",
+        "role": "analyst"
+      },
+      {
+        "key": "executor",
+        "kickoff": "Welcome to team TASK-1, Bender! You are the executor; teammates address you as \"bender\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"ABAP\"):\n- You start after Sherlock (the plan and the list of objects are ready) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone.\n- When your step is done (the work is submitted for review), move the task to review with a note (`genie task status review --note …`): genie passes it to Gandalf.\n- Ask Sherlock directly (questions about the objects): `genie mail ask <name> \"…\"` waits for the answer.\n- Gandalf may return the work to you (review findings); genie tells you when the task moves to changes_requested: fix it and hand over again.\n- Gandalf is the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "bender",
+        "role": "executor"
+      },
+      {
+        "key": "reviewer",
+        "kickoff": "Welcome to team TASK-1, Gandalf! You are the reviewer; teammates address you as \"gandalf\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"ABAP\"):\n- You start after Bender (the work is submitted for review) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone. genie tells you when the task moves to review.\n- If the work does not meet the criteria, return it to Bender: move the task to changes_requested with a note (review findings); genie tells them.\n- You are the team's voice to the orchestrator: report the verdict (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "gandalf",
+        "role": "reviewer"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "abap",
+    "warnings": [
+      "`executor` may write files and works in the main working copy (`workspace: repo`)"
+    ]
+  },
+  "/api/templates/full": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"Полная\",\n  \"description\": \"Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\"role\": \"analyst\"},\n    {\"role\": \"executor\"},\n    {\"role\": \"tester\"},\n    {\"role\": \"reviewer\"},\n    {\"role\": \"documenter\"}\n  ],\n  \"relations\": [\n    {\"from\": \"analyst\", \"to\": \"executor\", \"type\": \"handoff\", \"note\": \"the plan is ready\"},\n    {\"from\": \"executor\", \"to\": [\"tester\", \"reviewer\"], \"type\": \"handoff\", \"on\": \"review\", \"note\": \"the work is submitted for review\"},\n    {\"from\": \"tester\", \"to\": \"reviewer\", \"type\": \"handoff\", \"note\": \"the test report\"},\n    {\"from\": \"tester\", \"to\": \"executor\", \"type\": \"returns\", \"note\": \"failing tests\"},\n    {\"from\": \"reviewer\", \"to\": \"executor\", \"type\": \"returns\", \"on\": \"changes_requested\", \"note\": \"review findings\"},\n    {\"from\": \"reviewer\", \"to\": \"documenter\", \"type\": \"handoff\", \"on\": \"approved\", \"note\": \"the work is approved\"},\n    {\"from\": \"reviewer\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"the verdict\"},\n    {\"from\": \"documenter\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"the documentation is ready\"},\n    {\"from\": \"executor\", \"to\": \"analyst\", \"type\": \"consults\", \"note\": \"questions about the plan\"}\n  ]\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/full.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Крупное изменение кода: аналитик, исполнитель, тестировщик и ревьюер; документатор подключается после одобрения.",
+      "id": "full",
+      "mail": "open",
+      "members": [
+        {
+          "key": "analyst",
+          "role": "analyst"
+        },
+        {
+          "key": "executor",
+          "role": "executor"
+        },
+        {
+          "key": "tester",
+          "role": "tester"
+        },
+        {
+          "key": "reviewer",
+          "role": "reviewer"
+        },
+        {
+          "key": "documenter",
+          "role": "documenter"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [
+        {
+          "from": "analyst",
+          "note": "the plan is ready",
+          "to": [
+            "executor"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "executor",
+          "note": "the work is submitted for review",
+          "on": "review",
+          "to": [
+            "tester",
+            "reviewer"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "tester",
+          "note": "the test report",
+          "to": [
+            "reviewer"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "tester",
+          "note": "failing tests",
+          "to": [
+            "executor"
+          ],
+          "type": "returns"
+        },
+        {
+          "from": "reviewer",
+          "note": "review findings",
+          "on": "changes_requested",
+          "to": [
+            "executor"
+          ],
+          "type": "returns"
+        },
+        {
+          "from": "reviewer",
+          "note": "the work is approved",
+          "on": "approved",
+          "to": [
+            "documenter"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "reviewer",
+          "note": "the verdict",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        },
+        {
+          "from": "documenter",
+          "note": "the documentation is ready",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        },
+        {
+          "from": "executor",
+          "note": "questions about the plan",
+          "to": [
+            "analyst"
+          ],
+          "type": "consults"
+        }
+      ],
+      "relationsDerived": false,
+      "stage": "delivery",
+      "title": "Полная",
+      "warnings": [],
+      "workspace": "worktree"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/full/preview": {
+    "members": [
+      {
+        "key": "analyst",
+        "kickoff": "Welcome to team TASK-1, Sherlock! You are the analyst; teammates address you as \"sherlock\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Murphy — tester (`murphy`), Gandalf — reviewer (`gandalf`), Tolkien — documenter (`tolkien`), plus orchestrator.\nHow the team works (template \"Полная\"):\n- Start now.\n- When your step is done (the plan is ready), hand over to Bender (`genie mail send <name> … --intent done`).\n- Bender may ask you questions (questions about the plan): answer promptly.\n- Gandalf and Tolkien are the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "sherlock",
+        "role": "analyst"
+      },
+      {
+        "key": "executor",
+        "kickoff": "Welcome to team TASK-1, Bender! You are the executor; teammates address you as \"bender\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Murphy — tester (`murphy`), Gandalf — reviewer (`gandalf`), Tolkien — documenter (`tolkien`), plus orchestrator.\nHow the team works (template \"Полная\"):\n- You start after Sherlock (the plan is ready) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone.\n- When your step is done (the work is submitted for review), move the task to review with a note (`genie task status review --note …`): genie passes it to Murphy and Gandalf.\n- Ask Sherlock directly (questions about the plan): `genie mail ask <name> \"…\"` waits for the answer.\n- Murphy may return the work to you (failing tests): fix it and hand over again.\n- Gandalf may return the work to you (review findings); genie tells you when the task moves to changes_requested: fix it and hand over again.\n- Gandalf and Tolkien are the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "bender",
+        "role": "executor"
+      },
+      {
+        "key": "tester",
+        "kickoff": "Welcome to team TASK-1, Murphy! You are the tester; teammates address you as \"murphy\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Murphy — tester (`murphy`), Gandalf — reviewer (`gandalf`), Tolkien — documenter (`tolkien`), plus orchestrator.\nHow the team works (template \"Полная\"):\n- You start after Bender (the work is submitted for review) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone. genie tells you when the task moves to review.\n- When your step is done (the test report), hand over to Gandalf (`genie mail send <name> … --intent done`).\n- If the work does not meet the criteria, send Bender your findings (failing tests) directly.\n- Gandalf and Tolkien are the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "murphy",
+        "role": "tester"
+      },
+      {
+        "key": "reviewer",
+        "kickoff": "Welcome to team TASK-1, Gandalf! You are the reviewer; teammates address you as \"gandalf\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Murphy — tester (`murphy`), Gandalf — reviewer (`gandalf`), Tolkien — documenter (`tolkien`), plus orchestrator.\nHow the team works (template \"Полная\"):\n- You start after Bender (the work is submitted for review) and Murphy (the test report) hand over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone. genie tells you when the task moves to review.\n- If the work does not meet the criteria, return it to Bender: move the task to changes_requested with a note (review findings); genie tells them.\n- When your step is done (the work is approved), move the task to approved with a note (`genie task status approved --note …`): genie passes it to Tolkien.\n- You are the team's voice to the orchestrator: report the verdict (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "gandalf",
+        "role": "reviewer"
+      },
+      {
+        "key": "documenter",
+        "kickoff": "Welcome to team TASK-1, Tolkien! You are the documenter; teammates address you as \"tolkien\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Murphy — tester (`murphy`), Gandalf — reviewer (`gandalf`), Tolkien — documenter (`tolkien`), plus orchestrator.\nHow the team works (template \"Полная\"):\n- You start after Gandalf (the work is approved) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone. genie tells you when the task moves to approved.\n- You are the team's voice to the orchestrator: report the documentation is ready (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "tolkien",
+        "role": "documenter"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "full",
+    "warnings": []
+  },
+  "/api/templates/idea": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"Разбор идеи\",\n  \"description\": \"Планировщик разговаривает с человеком в чате, уточняет сырую идею и предлагает план: задачу, несколько задач или эпик с задачами. Человек заводит план одной кнопкой. Собирается из «Новой задачи» в режиме «Обсудить с агентом».\",\n  \"stage\": \"refinement\",\n  \"workspace\": \"repo\",\n  \"members\": [\n    {\"role\": \"planner\"}\n  ],\n  \"relations\": []\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/idea.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Планировщик разговаривает с человеком в чате, уточняет сырую идею и предлагает план: задачу, несколько задач или эпик с задачами. Человек заводит план одной кнопкой. Собирается из «Новой задачи» в режиме «Обсудить с агентом».",
+      "id": "idea",
+      "mail": "open",
+      "members": [
+        {
+          "key": "planner",
+          "role": "planner"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [],
+      "relationsDerived": false,
+      "stage": "refinement",
+      "title": "Разбор идеи",
+      "warnings": [],
+      "workspace": "repo"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/idea/preview": {
+    "members": [
+      {
+        "key": "planner",
+        "kickoff": "Welcome to team TASK-1, Socrates! You are the planner (analyst class); teammates address you as \"socrates\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Socrates — planner (`socrates`), plus orchestrator.\nTASK-1 is an idea in the owner's own words. Start now: read it, look at what already exists, then ask the owner your first question in your reply. The owner reads your replies in the agent chat and answers by mail; do not mail the orchestrator. Keep your proposal in the `plan.json` artifact as your role describes: the owner applies it from the web.",
+        "name": "socrates",
+        "role": "planner"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "idea",
+    "warnings": []
+  },
+  "/api/templates/pair": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"Пара\",\n  \"description\": \"Исполнитель и ревьюер — для небольших задач, которые уже хорошо описаны.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\"role\": \"executor\"},\n    {\"role\": \"reviewer\"}\n  ],\n  \"relations\": [\n    {\"from\": \"executor\", \"to\": \"reviewer\", \"type\": \"handoff\", \"on\": \"review\", \"note\": \"the work is submitted for review\"},\n    {\"from\": \"reviewer\", \"to\": \"executor\", \"type\": \"returns\", \"on\": \"changes_requested\", \"note\": \"review findings\"},\n    {\"from\": \"reviewer\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"the verdict\"}\n  ]\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/pair.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Исполнитель и ревьюер — для небольших задач, которые уже хорошо описаны.",
+      "id": "pair",
+      "mail": "open",
+      "members": [
+        {
+          "key": "executor",
+          "role": "executor"
+        },
+        {
+          "key": "reviewer",
+          "role": "reviewer"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [
+        {
+          "from": "executor",
+          "note": "the work is submitted for review",
+          "on": "review",
+          "to": [
+            "reviewer"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "reviewer",
+          "note": "review findings",
+          "on": "changes_requested",
+          "to": [
+            "executor"
+          ],
+          "type": "returns"
+        },
+        {
+          "from": "reviewer",
+          "note": "the verdict",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        }
+      ],
+      "relationsDerived": false,
+      "stage": "delivery",
+      "title": "Пара",
+      "warnings": [],
+      "workspace": "worktree"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/pair/preview": {
+    "members": [
+      {
+        "key": "executor",
+        "kickoff": "Welcome to team TASK-1, Bender! You are the executor; teammates address you as \"bender\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Пара\"):\n- Start now.\n- When your step is done (the work is submitted for review), move the task to review with a note (`genie task status review --note …`): genie passes it to Gandalf.\n- Gandalf may return the work to you (review findings); genie tells you when the task moves to changes_requested: fix it and hand over again.\n- Gandalf is the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "bender",
+        "role": "executor"
+      },
+      {
+        "key": "reviewer",
+        "kickoff": "Welcome to team TASK-1, Gandalf! You are the reviewer; teammates address you as \"gandalf\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Пара\"):\n- You start after Bender (the work is submitted for review) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone. genie tells you when the task moves to review.\n- If the work does not meet the criteria, return it to Bender: move the task to changes_requested with a note (review findings); genie tells them.\n- You are the team's voice to the orchestrator: report the verdict (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "gandalf",
+        "role": "reviewer"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "pair",
+    "warnings": []
+  },
+  "/api/templates/research": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"Исследование\",\n  \"description\": \"Уточнение неисследованной задачи: аналитики изучают её и предлагают объём и критерии приёмки, ревьюер их оспаривает. Можно до того, как задача готова к работе.\",\n  \"stage\": \"refinement\",\n  \"workspace\": \"repo\",\n  \"members\": [\n    {\"role\": \"analyst\"},\n    {\"role\": \"reviewer\"}\n  ],\n  \"relations\": [\n    {\"from\": \"analyst\", \"to\": \"reviewer\", \"type\": \"handoff\", \"note\": \"the findings, proposed scope and criteria\"},\n    {\"from\": \"reviewer\", \"to\": \"analyst\", \"type\": \"returns\", \"note\": \"gaps and risks in the findings\"},\n    {\"from\": \"analyst\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"the findings, scope and acceptance criteria\"}\n  ]\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/research.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Уточнение неисследованной задачи: аналитики изучают её и предлагают объём и критерии приёмки, ревьюер их оспаривает. Можно до того, как задача готова к работе.",
+      "id": "research",
+      "mail": "open",
+      "members": [
+        {
+          "key": "analyst",
+          "role": "analyst"
+        },
+        {
+          "key": "reviewer",
+          "role": "reviewer"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [
+        {
+          "from": "analyst",
+          "note": "the findings, proposed scope and criteria",
+          "to": [
+            "reviewer"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "reviewer",
+          "note": "gaps and risks in the findings",
+          "to": [
+            "analyst"
+          ],
+          "type": "returns"
+        },
+        {
+          "from": "analyst",
+          "note": "the findings, scope and acceptance criteria",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        }
+      ],
+      "relationsDerived": false,
+      "stage": "refinement",
+      "title": "Исследование",
+      "warnings": [],
+      "workspace": "repo"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/research/preview": {
+    "members": [
+      {
+        "key": "analyst",
+        "kickoff": "Welcome to team TASK-1, Sherlock! You are the analyst; teammates address you as \"sherlock\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Исследование\"):\n- Start now.\n- When your step is done (the findings, proposed scope and criteria), hand over to Gandalf (`genie mail send <name> … --intent done`).\n- Gandalf may return the work to you (gaps and risks in the findings): fix it and hand over again.\n- You are the team's voice to the orchestrator: report the findings, scope and acceptance criteria (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "sherlock",
+        "role": "analyst"
+      },
+      {
+        "key": "reviewer",
+        "kickoff": "Welcome to team TASK-1, Gandalf! You are the reviewer; teammates address you as \"gandalf\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Исследование\"):\n- You start after Sherlock (the findings, proposed scope and criteria) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone.\n- If the work does not meet the criteria, send Sherlock your findings (gaps and risks in the findings) directly.\n- Sherlock is the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "gandalf",
+        "role": "reviewer"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "research",
+    "warnings": []
+  },
+  "/api/templates/solo": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"Соло\",\n  \"description\": \"Один исполнитель для ограниченной задачи. Обязательные проверки политики и независимое принятие результата сохраняются.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [{\"role\": \"executor\"}],\n  \"relations\": [\n    {\"from\": \"executor\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"delivery and verification evidence; request independent review when required\"}\n  ]\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/solo.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Один исполнитель для ограниченной задачи. Обязательные проверки политики и независимое принятие результата сохраняются.",
+      "id": "solo",
+      "mail": "open",
+      "members": [
+        {
+          "key": "executor",
+          "role": "executor"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [
+        {
+          "from": "executor",
+          "note": "delivery and verification evidence; request independent review when required",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        }
+      ],
+      "relationsDerived": false,
+      "stage": "delivery",
+      "title": "Соло",
+      "warnings": [
+        "no member can approve it (`status.approve`): the task cannot be closed without force"
+      ],
+      "workspace": "worktree"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/solo/preview": {
+    "members": [
+      {
+        "key": "executor",
+        "kickoff": "Welcome to team TASK-1, Bender! You are the executor; teammates address you as \"bender\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Bender — executor (`bender`), plus orchestrator.\nHow the team works (template \"Соло\"):\n- Start now.\n- You are the team's voice to the orchestrator: report delivery and verification evidence; request independent review when required (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "bender",
+        "role": "executor"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "solo",
+    "warnings": [
+      "no member can approve it (`status.approve`): the task cannot be closed without force"
+    ]
+  },
+  "/api/templates/spike": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"Спайк\",\n  \"description\": \"Исследование без изменения кода на готовой задаче: исследователь изучает вопрос и сдаёт выводы, ревьюер оспаривает их.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"repo\",\n  \"members\": [\n    {\"role\": \"researcher\"},\n    {\"role\": \"reviewer\"}\n  ],\n  \"relations\": [\n    {\"from\": \"researcher\", \"to\": \"reviewer\", \"type\": \"handoff\", \"on\": \"review\", \"note\": \"the findings are submitted for review\"},\n    {\"from\": \"reviewer\", \"to\": \"researcher\", \"type\": \"returns\", \"on\": \"changes_requested\", \"note\": \"gaps in the findings\"},\n    {\"from\": \"reviewer\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"the verdict on the findings\"}\n  ]\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/spike.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Исследование без изменения кода на готовой задаче: исследователь изучает вопрос и сдаёт выводы, ревьюер оспаривает их.",
+      "id": "spike",
+      "mail": "open",
+      "members": [
+        {
+          "key": "researcher",
+          "role": "researcher"
+        },
+        {
+          "key": "reviewer",
+          "role": "reviewer"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [
+        {
+          "from": "researcher",
+          "note": "the findings are submitted for review",
+          "on": "review",
+          "to": [
+            "reviewer"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "reviewer",
+          "note": "gaps in the findings",
+          "on": "changes_requested",
+          "to": [
+            "researcher"
+          ],
+          "type": "returns"
+        },
+        {
+          "from": "reviewer",
+          "note": "the verdict on the findings",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        }
+      ],
+      "relationsDerived": false,
+      "stage": "delivery",
+      "title": "Спайк",
+      "warnings": [],
+      "workspace": "repo"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/spike/preview": {
+    "members": [
+      {
+        "key": "researcher",
+        "kickoff": "Welcome to team TASK-1, Sherlock! You are the researcher (analyst class); teammates address you as \"sherlock\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — researcher (`sherlock`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Спайк\"):\n- Start now.\n- When your step is done (the findings are submitted for review), move the task to review with a note (`genie task status review --note …`): genie passes it to Gandalf.\n- Gandalf may return the work to you (gaps in the findings); genie tells you when the task moves to changes_requested: fix it and hand over again.\n- Gandalf is the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "sherlock",
+        "role": "researcher"
+      },
+      {
+        "key": "reviewer",
+        "kickoff": "Welcome to team TASK-1, Gandalf! You are the reviewer; teammates address you as \"gandalf\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — researcher (`sherlock`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Спайк\"):\n- You start after Sherlock (the findings are submitted for review) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone. genie tells you when the task moves to review.\n- If the work does not meet the criteria, return it to Sherlock: move the task to changes_requested with a note (gaps in the findings); genie tells them.\n- You are the team's voice to the orchestrator: report the verdict on the findings (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "gandalf",
+        "role": "reviewer"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "spike",
+    "warnings": []
+  },
+  "/api/templates/standard": {
+    "admin": true,
+    "builtin": "{\n  \"title\": \"Стандартная\",\n  \"description\": \"Аналитик → исполнитель → ревьюер в отдельном worktree. По умолчанию для изменений кода в git-репозиториях.\",\n  \"stage\": \"delivery\",\n  \"workspace\": \"worktree\",\n  \"members\": [\n    {\"role\": \"analyst\"},\n    {\"role\": \"executor\"},\n    {\"role\": \"reviewer\"}\n  ],\n  \"relations\": [\n    {\"from\": \"analyst\", \"to\": \"executor\", \"type\": \"handoff\", \"note\": \"the plan is ready\"},\n    {\"from\": \"executor\", \"to\": \"reviewer\", \"type\": \"handoff\", \"on\": \"review\", \"note\": \"the work is submitted for review\"},\n    {\"from\": \"reviewer\", \"to\": \"executor\", \"type\": \"returns\", \"on\": \"changes_requested\", \"note\": \"review findings\"},\n    {\"from\": \"reviewer\", \"to\": \"orchestrator\", \"type\": \"reports\", \"note\": \"the verdict\"},\n    {\"from\": \"executor\", \"to\": \"analyst\", \"type\": \"consults\", \"note\": \"questions about the plan\"}\n  ]\n}\n",
+    "file": {
+      "content": null,
+      "hash": "",
+      "path": "teams/standard.json"
+    },
+    "problems": [],
+    "template": {
+      "description": "Аналитик → исполнитель → ревьюер в отдельном worktree. По умолчанию для изменений кода в git-репозиториях.",
+      "id": "standard",
+      "mail": "open",
+      "members": [
+        {
+          "key": "analyst",
+          "role": "analyst"
+        },
+        {
+          "key": "executor",
+          "role": "executor"
+        },
+        {
+          "key": "reviewer",
+          "role": "reviewer"
+        }
+      ],
+      "origin": "builtin",
+      "relations": [
+        {
+          "from": "analyst",
+          "note": "the plan is ready",
+          "to": [
+            "executor"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "executor",
+          "note": "the work is submitted for review",
+          "on": "review",
+          "to": [
+            "reviewer"
+          ],
+          "type": "handoff"
+        },
+        {
+          "from": "reviewer",
+          "note": "review findings",
+          "on": "changes_requested",
+          "to": [
+            "executor"
+          ],
+          "type": "returns"
+        },
+        {
+          "from": "reviewer",
+          "note": "the verdict",
+          "to": [
+            "orchestrator"
+          ],
+          "type": "reports"
+        },
+        {
+          "from": "executor",
+          "note": "questions about the plan",
+          "to": [
+            "analyst"
+          ],
+          "type": "consults"
+        }
+      ],
+      "relationsDerived": false,
+      "stage": "delivery",
+      "title": "Стандартная",
+      "warnings": [],
+      "workspace": "worktree"
+    },
+    "usedBy": {
+      "automations": []
+    }
+  },
+  "/api/templates/standard/preview": {
+    "members": [
+      {
+        "key": "analyst",
+        "kickoff": "Welcome to team TASK-1, Sherlock! You are the analyst; teammates address you as \"sherlock\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Стандартная\"):\n- Start now.\n- When your step is done (the plan is ready), hand over to Bender (`genie mail send <name> … --intent done`).\n- Bender may ask you questions (questions about the plan): answer promptly.\n- Gandalf is the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "sherlock",
+        "role": "analyst"
+      },
+      {
+        "key": "executor",
+        "kickoff": "Welcome to team TASK-1, Bender! You are the executor; teammates address you as \"bender\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Стандартная\"):\n- You start after Sherlock (the plan is ready) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone.\n- When your step is done (the work is submitted for review), move the task to review with a note (`genie task status review --note …`): genie passes it to Gandalf.\n- Ask Sherlock directly (questions about the plan): `genie mail ask <name> \"…\"` waits for the answer.\n- Gandalf may return the work to you (review findings); genie tells you when the task moves to changes_requested: fix it and hand over again.\n- Gandalf is the team's voice to the orchestrator; message the orchestrator yourself only with a scope question or a blocker.",
+        "name": "bender",
+        "role": "executor"
+      },
+      {
+        "key": "reviewer",
+        "kickoff": "Welcome to team TASK-1, Gandalf! You are the reviewer; teammates address you as \"gandalf\". Task: TASK-1 — Example task (status ready). Read it with `genie task show`.\nWorking directory: <the team's working directory>.\nTeam: Sherlock — analyst (`sherlock`), Bender — executor (`bender`), Gandalf — reviewer (`gandalf`), plus orchestrator.\nHow the team works (template \"Стандартная\"):\n- You start after Bender (the work is submitted for review) hands over: until then set a waiting status (`genie team set-status`) and end your turn without messaging anyone. genie tells you when the task moves to review.\n- If the work does not meet the criteria, return it to Bender: move the task to changes_requested with a note (review findings); genie tells them.\n- You are the team's voice to the orchestrator: report the verdict (`genie mail send orchestrator … --intent verdict` or `done`).",
+        "name": "gandalf",
+        "role": "reviewer"
+      }
+    ],
+    "task": "TASK-1",
+    "template": "standard",
+    "warnings": []
+  }
 }
