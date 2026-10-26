@@ -5,18 +5,10 @@ import { EpicChip, EpicIcon, epicTone, moveTargets, PriorityIcon, type Status, S
 import type { Team } from "@/entities/team";
 import { Avatar, cx, Icon, Segments, Tag, WorkingArcs, ActionMenu, type MenuEntry } from "@/shared/ui";
 
-/** The exact status as a sub-status tag, in the sheet's own colours. */
-function statusTone(status: Status): "accent" | "signal" | "outline" {
-  if (status === "changes_requested") return "signal";
-  if (status === "approved") return "accent";
-  return "outline";
-}
-
 /** The epic link and move menu stay outside the draggable task button. */
-export function CardBody({ t, team, showStatus, onSelect, selected, drag }: {
+export function CardBody({ t, team, onSelect, selected, drag }: {
   t: TaskSummary;
   team?: Team;
-  showStatus: boolean;
   onSelect?: () => void;
   selected?: boolean;
   drag?: Pick<ReturnType<typeof useDraggable>, "attributes" | "listeners">;
@@ -43,7 +35,6 @@ export function CardBody({ t, team, showStatus, onSelect, selected, drag }: {
         </span>
       ) : (
         <span className="bd-context">
-          {showStatus && <span className="bd-status"><Tag tone={statusTone(t.status)}>{STATUS_NAME[t.status].toLowerCase()}</Tag></span>}
           {t.blocked ? (
             <span className="bd-note" title={t.blocked.reason}>Заблокировано: {t.blocked.reason}</span>
           ) : t.openDeps.length > 0 && <span className="bd-note" title={`Ждёт ${t.openDeps.join(", ")}`}>Ждёт {t.openDeps.join(", ")}</span>}
@@ -78,7 +69,7 @@ export function CardBody({ t, team, showStatus, onSelect, selected, drag }: {
         )}
         {t.comments > 0 && <span className="bd-comments" title={`Комментариев: ${t.comments}`}>{t.comments} комм.</span>}
         <span className="bd-labels" title={t.labels.join(", ")}>
-          {t.labels.slice(0, 1).map((l) => <Tag key={l} tone="outline">{l}</Tag>)}
+          {t.labels.slice(0, 1).map((l) => <Tag key={l}><span className="bd-label-text">{l}</span></Tag>)}
           {t.labels.length > 1 && <span className="bd-more">+{t.labels.length - 1}</span>}
         </span>
         <span className="bd-who">
@@ -154,11 +145,10 @@ function MoveMenu({ t, offline, onMove }: { t: TaskSummary; offline: boolean; on
   );
 }
 
-export function BoardCard({ t, team, selected, showStatus, offline, onSelect, onMove }: {
+export function BoardCard({ t, team, selected, offline, onSelect, onMove }: {
   t: TaskSummary;
   team?: Team;
   selected: boolean;
-  showStatus: boolean;
   offline: boolean;
   onSelect: () => void;
   onMove: (status: Status) => void;
@@ -173,7 +163,7 @@ export function BoardCard({ t, team, selected, showStatus, offline, onSelect, on
         onSelect();
       }}
     >
-      <CardBody t={t} team={team} showStatus={showStatus} onSelect={onSelect} selected={selected} drag={{ attributes, listeners }} />
+      <CardBody t={t} team={team} onSelect={onSelect} selected={selected} drag={{ attributes, listeners }} />
       <MoveMenu t={t} offline={offline} onMove={onMove} />
     </div>
   );

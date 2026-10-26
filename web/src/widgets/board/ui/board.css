@@ -79,10 +79,10 @@
 .bd-meta { display: flex; flex: none; align-items: center; flex-wrap: nowrap; overflow: hidden; gap: var(--g-space-1); min-width: 0; min-height: var(--g-space-5); padding-right: var(--g-space-6); font-size: var(--g-text-caption); color: var(--sh-m); }
 .bd-id { font-family: var(--g-font-mono); font-size: var(--g-text-dense); font-weight: 600; letter-spacing: 0.01em; }
 .bd-meta > .bd-id, .bd-meta > .g-tag, .bd-meta > svg, .bd-working { flex: none; }
-.bd-meta .epic-chip { min-height: var(--g-space-5); display: inline-flex; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--sh-t2); font-family: var(--g-font-sans); font-size: var(--g-text-caption); text-decoration: none; }
+.bd-meta .epic-chip { min-height: var(--g-space-5); display: inline-flex; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--epic-color); font-family: var(--g-font-sans); font-size: var(--g-text-caption); text-decoration: none; }
 .bd-meta .epic-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-meta .epic-chip svg { flex: none; }
-.bd-meta a.epic-chip:hover { color: var(--sh-t); text-decoration: underline; }
+.bd-meta a.epic-chip:hover { text-decoration: underline; }
 .bd-meta a.epic-chip:focus-visible { outline: 2px solid var(--g-focus); outline-offset: -2px; border-radius: var(--g-radius-xs); }
 .bd-working { display: inline-flex; align-items: center; color: var(--sh-accent); }
 .bd-title { flex: none; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; overflow-wrap: anywhere; font-size: var(--g-text-ui); font-weight: 700; line-height: 1.35; color: var(--sh-t); }
@@ -95,14 +95,12 @@
 .bd-foot { display: flex; flex: none; min-width: 0; height: calc(var(--g-control-sm) - var(--g-space-1)); overflow: hidden; margin-top: auto; align-items: center; flex-wrap: nowrap; gap: var(--g-space-1); border-top: 1px solid var(--sh-line); font-size: var(--g-text-caption); color: var(--sh-m); }
 .bd-comments { flex: none; white-space: nowrap; }
 .bd-labels { display: flex; align-items: center; min-width: 0; overflow: hidden; gap: var(--g-space-1); }
-.bd-labels .g-tag { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-labels .g-tag { min-width: 0; max-width: 100%; background: var(--g-border-strong); color: var(--sh-t); }
+.bd-label-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-context { display: flex; flex: none; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; }
 .bd-context .bd-note { flex: 1; min-width: 0; }
-.bd-status { flex: none; }
-.bd-status .g-tag { height: calc(var(--g-space-5) - var(--g-space-1)); }
 .bd-more { font-weight: 600; }
 .bd-who { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
-.bd-card .g-tag.outline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sh-line); color: var(--sh-t2); }
 .bd-card .g-avatar { box-shadow: 0 0 0 2px var(--sh-soft); }
 /* The question uses the decision card's remaining body; the whole body opens the task. */
 .bd-decision .bd-title { -webkit-line-clamp: 1; }

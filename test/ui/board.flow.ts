@@ -20,6 +20,21 @@ for (const theme of ["ink", "paper"]) {
     await expect(card.locator(".bd-main a")).toHaveCount(0);
     const link = card.getByRole("link", { name: SEED_TASKS[0].title });
     await expect(link).toHaveAttribute("href", "/epic/DM-1");
+    await expect(link).toHaveCSS("color", stripe.color);
+    await link.hover();
+    await expect(link).toHaveCSS("color", stripe.color);
+    await expect(card.locator(".bd-status")).toHaveCount(0);
+    const label = card.locator(".bd-labels .g-tag");
+    await expect(label).not.toHaveClass(/outline/);
+    const labelStyle = await label.evaluate((node) => {
+      const text = node.querySelector(".bd-label-text")!.getBoundingClientRect();
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { offset: Math.abs(text.y + text.height / 2 - box.y - box.height / 2), fill: style.backgroundColor, shadow: style.boxShadow };
+    });
+    expect(labelStyle.offset).toBeLessThan(1);
+    expect(labelStyle.fill).not.toBe("rgba(0, 0, 0, 0)");
+    expect(labelStyle.shadow).toBe("none");
     await link.focus();
     await page.keyboard.press("Space");
     await expect(page.locator(".bd-ghost")).toHaveCount(0);
