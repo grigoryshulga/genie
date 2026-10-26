@@ -57,6 +57,10 @@ const PAIRS: [string, string, number][] = [
   ["text-2", "board-label-bg", 4.5],
   ["accent-soft-text", "board-card-bg", 4.5],
   ["signal-text", "board-card-bg", 4.5],
+  ...["maybe", "decision", "prep", "queue", "work", "done"].flatMap((lane) => [
+    [`board-lane-${lane}`, "surface", 4.5],
+    [`board-lane-${lane}`, "board-card-bg", 4.5],
+  ] as [string, string, number][]),
   ["text-2", "bg", 4.5],
   ["text-2", "surface", 4.5],
   ["text-2", "surface-raised", 4.5],

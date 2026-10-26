@@ -26,24 +26,27 @@
 .g-board-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .g-lane-switch { flex: none; gap: var(--g-space-1); align-items: center; padding: var(--g-space-2) var(--g-space-4); border-bottom: 1px solid var(--g-border); overflow-x: auto; scrollbar-width: none; }
 .g-lane-switch-n { font-feature-settings: "tnum"; opacity: 0.7; }
-.g-board { flex: 1; min-width: 0; max-width: 100%; min-height: 0; display: flex; align-items: stretch; gap: var(--g-space-3); padding: var(--g-space-5) var(--g-space-6) var(--g-space-5); overflow-x: auto; overflow-y: hidden; scrollbar-width: auto; }
+.g-board { --bd-lane-accent: var(--g-text-muted); flex: 1; min-width: 0; max-width: 100%; min-height: 0; display: flex; align-items: stretch; gap: var(--g-space-3); padding: var(--g-space-5) var(--g-space-6) var(--g-space-5); overflow-x: auto; overflow-y: hidden; scrollbar-width: auto; }
 .g-board-state { flex: 1; display: grid; place-items: center; padding: var(--g-space-8) var(--g-space-6); }
 .g-board-skeleton .g-lane { gap: var(--g-space-3); }
 .g-board-skeleton .g-skeleton { flex: none; }
 
-/* ---- a lane: a quiet surface; only the owner's lane glows orange, and only when it has cards ---- */
-.g-lane { flex: 0 0 var(--g-board-lane-width); min-width: var(--g-board-lane-width); display: flex; flex-direction: column; min-height: 0; padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-xl); background: var(--g-surface); transition: border-color var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease); }
-.g-lane-decision.has { border-color: var(--g-signal); background: var(--g-signal-soft); }
-.g-lane-decision.has .g-lane-name { color: var(--g-signal-text); }
-.g-lane-decision.has .g-lane-n { background: var(--g-signal); color: var(--g-on-signal); }
+/* Stage colour stays with the lane and its cards; the epic keeps only its compact link/mark. */
+.g-lane-maybe, .bd-card[data-lane-tone="maybe"] { --bd-lane-accent: var(--g-board-lane-maybe); }
+.g-lane-decision, .bd-card[data-lane-tone="decision"] { --bd-lane-accent: var(--g-board-lane-decision); }
+.g-lane-prep, .bd-card[data-lane-tone="prep"] { --bd-lane-accent: var(--g-board-lane-prep); }
+.g-lane-queue, .bd-card[data-lane-tone="queue"] { --bd-lane-accent: var(--g-board-lane-queue); }
+.g-lane-work, .bd-card[data-lane-tone="work"] { --bd-lane-accent: var(--g-board-lane-work); }
+.g-lane-done, .bd-card[data-lane-tone="done"] { --bd-lane-accent: var(--g-board-lane-done); }
+.g-lane { flex: 0 0 var(--g-board-lane-width); min-width: var(--g-board-lane-width); display: flex; flex-direction: column; min-height: 0; padding: var(--g-space-3); border: 1px solid color-mix(in srgb, var(--bd-lane-accent) 22%, var(--g-border)); border-radius: var(--g-radius-xl); background: color-mix(in srgb, var(--bd-lane-accent) 6%, var(--g-surface)); transition: border-color var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease); }
 .g-lane-cancelled { border-style: dashed; background: transparent; }
-.g-lane.over { border-color: var(--g-accent); background: var(--g-accent-soft); }
+.g-lane.over { border-color: var(--bd-lane-accent); background: color-mix(in srgb, var(--bd-lane-accent) 12%, var(--g-surface)); }
 .g-lane.shut { flex: 0 0 var(--g-space-8); min-width: var(--g-space-8); padding: var(--g-space-1); }
 .g-lane-head { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--g-space-1); min-width: 0; padding: 0 0 var(--g-space-2); }
 .g-lane-toggle { display: flex; align-items: center; gap: var(--g-space-2); width: 100%; padding: var(--g-space-1) var(--g-space-2); border: 0; border-radius: var(--g-radius-md); background: transparent; color: var(--g-text); text-align: left; }
 .g-lane-toggle:hover { background: var(--g-surface-hover); }
-.g-lane-n { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 var(--g-space-1); border-radius: var(--g-radius-pill); background: var(--g-surface-active); color: var(--g-text-2); font: 600 var(--g-text-caption)/1 var(--g-font-sans); font-feature-settings: "tnum"; }
-.g-lane-name { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-family: var(--g-font-display); font-size: var(--g-text-h4); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
+.g-lane-n { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 var(--g-space-1); border-radius: var(--g-radius-pill); background: color-mix(in srgb, var(--bd-lane-accent) 12%, var(--g-surface)); color: var(--bd-lane-accent); font: 600 var(--g-text-caption)/1 var(--g-font-sans); font-feature-settings: "tnum"; }
+.g-lane-name { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-family: var(--g-font-display); font-size: var(--g-text-h4); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; letter-spacing: var(--g-tracking-heading); color: var(--bd-lane-accent); }
 .g-lane-chev { flex: none; margin-left: auto; color: var(--g-text-muted); transition: transform var(--g-duration) var(--g-ease); }
 .g-lane.shut .g-lane-chev { transform: rotate(-90deg); }
 /* A folded lane stays narrow while its unbroken title reads down the column. */
@@ -65,13 +68,12 @@
 
 /* ---- a card: a paper sheet on the canvas (ink on a paper theme), never resized by its content ---- */
 .bd-card { position: relative; flex: none; width: var(--g-board-card-width); height: var(--g-board-card-height); min-width: 0; display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2) var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-lg); }
-/* Quiet board-only surfaces keep the title and epic stripe prominent. */
-.g-sheet.bd-card { --sh-t: var(--g-n-100); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: var(--g-border-strong); background: var(--g-board-card-bg); }
+/* The stage tint follows the card through moves, including the detached drag copy. */
+.g-sheet.bd-card { --sh-t: var(--g-n-100); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: var(--g-border-strong); background: color-mix(in srgb, var(--bd-lane-accent, var(--g-text-muted)) 5%, var(--g-board-card-bg)); }
 [data-theme="paper"] .g-sheet.bd-card { --sh-t: var(--g-n-850); --sh-t2: var(--g-n-600); --sh-m: var(--g-n-550); --sh-accent: var(--g-green-800); --sh-soft: var(--g-green-100); --sh-line: var(--g-border-strong); }
 /* A light lift for cards on the canvas; the dragged copy keeps its overlay shadow, a selected card keeps its ring. */
 .g-sheet.bd-card:not(.bd-ghost) { box-shadow: var(--g-shadow-board-card); }
 .g-sheet.bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent), var(--g-shadow-board-card); }
-.bd-card[data-epic-tone]::before { content: ""; position: absolute; left: -1px; top: var(--g-space-5); bottom: var(--g-space-5); width: var(--g-space-1); border-radius: var(--g-radius-xs); background: var(--epic-color); pointer-events: none; }
 .bd-card.dragging { opacity: 0.35; }
 .bd-ghost { display: flex; flex-direction: column; width: var(--g-board-card-width); box-shadow: var(--g-shadow-overlay); cursor: grabbing; }
 .bd-main { flex: 1; display: flex; flex-direction: column; align-items: stretch; min-height: 0; overflow: hidden; gap: var(--g-space-1); min-width: 0; padding: 0; border: 0; border-radius: var(--g-radius-sm); background: transparent; color: inherit; text-align: left; cursor: grab; touch-action: none; }
@@ -88,7 +90,7 @@
 .bd-title { flex: none; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; overflow-wrap: anywhere; font-size: var(--g-text-ui); font-weight: 700; line-height: 1.35; color: var(--sh-t); }
 .bd-epic-mark { display: inline-flex; align-items: center; gap: 3px; margin-right: 3px; font-size: var(--g-text-caption); font-weight: 700; color: var(--sh-accent); }
 .bd-ask, .bd-note { flex: none; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; font-size: var(--g-text-caption); line-height: 1.45; color: var(--sh-t2); }
-.bd-ask { padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); background: var(--sh-soft); }
+.bd-ask { padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); background: color-mix(in srgb, var(--bd-lane-accent, var(--sh-accent)) 8%, var(--g-board-card-bg)); }
 .bd-ac { flex: none; display: flex; align-items: center; gap: var(--g-space-1); font-size: var(--g-text-caption); color: var(--sh-m); }
 .bd-ac .g-segs { width: var(--g-space-7); }
 .bd-ac b { font-weight: 600; font-feature-settings: "tnum"; color: var(--sh-t2); }
@@ -105,7 +107,7 @@
 .bd-decision .bd-title { -webkit-line-clamp: 1; }
 .bd-decision .bd-ask { flex: 1; min-height: 0; display: flex; align-items: center; gap: var(--g-space-1); padding: var(--g-space-1); }
 .bd-question { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bd-answer { flex: none; font-weight: var(--g-weight-semibold); color: var(--sh-accent); }
+.bd-answer { flex: none; font-weight: var(--g-weight-semibold); color: var(--bd-lane-accent, var(--sh-accent)); }
 .bd-move-popup { position: fixed; inset: auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--g-text); overflow: visible; }
 .bd-move-popup .g-menu { max-height: calc(100dvh - var(--g-space-5)); overflow-y: auto; }
 /* The move menu sits in the card's corner: dragging is not available on a phone or a keyboard. */
@@ -116,7 +118,7 @@
 .g-hints .g-kbd { height: 20px; min-width: 20px; font-size: 10.5px; }
 
 /* Cards move in and out of a stack with the scroll; reduced motion moves them at once. */
-.g-lane-cards > .bd-card { transition: transform 280ms var(--g-ease), opacity 280ms var(--g-ease); }
+.g-lane-cards > .bd-card { transition: transform 280ms var(--g-ease), opacity 280ms var(--g-ease), background-color var(--g-duration) var(--g-ease); }
 
 @media (prefers-reduced-motion: reduce) {
   .g-lane, .g-lane-chev, .bd-card, .g-lane-cards > .bd-card { transition: none; }

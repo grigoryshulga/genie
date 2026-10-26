@@ -95,7 +95,7 @@ for (const theme of ["ink", "paper"]) {
 for (const theme of ["ink", "paper"]) {
   test(`decision card keeps its question, answer and metadata readable (${theme})`, async ({ page, request }) => {
     const headers = { "x-genie": "1" };
-    const created = await request.post("/api/tasks?project=demo", { headers, data: { title: "Выбрать провайдера почты" } });
+    const created = await request.post("/api/tasks?project=demo", { headers, data: { title: "Выбрать провайдера почты", acceptance: ["Ответ владельца сохранён"] } });
     expect(created.ok()).toBe(true);
     const task: { id: string } = await created.json();
     const question = "Какого провайдера почты использовать для уведомлений?";
@@ -112,6 +112,8 @@ for (const theme of ["ink", "paper"]) {
     expect(line.height).toBeGreaterThanOrEqual(Math.floor(line.line));
     await expect(card.locator(".bd-answer")).toBeVisible();
     await expect(card.locator(".bd-foot")).toBeVisible();
+    await expect(card.locator(".bd-ac")).toContainText("0/1");
+    await expect(card.locator(".bd-comments")).toHaveCount(0);
     await page.screenshot({ path: `test-results/decision-card-${theme}.png`, animations: "disabled" });
     await card.getByRole("button", { name: /Выбрать провайдера почты/ }).click();
     await expect(page.getByRole("dialog", { name: `Задача ${task.id}`, exact: true })).toBeVisible();

@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { SEED_TASKS } from "./seed.ts";
+import { storedTask } from "./api.ts";
 
 for (const theme of ["ink", "paper"]) {
-  test(`board epic links are separate controls with stable stripes (${theme})`, async ({ page }) => {
+  test(`board epic links keep stable markers independent of lane tint (${theme})`, async ({ page }) => {
     await page.goto("/board");
     await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
     const card = page.locator('[data-task-id="DM-2"]');
@@ -10,19 +11,21 @@ for (const theme of ["ink", "paper"]) {
     const tone = await card.getAttribute("data-epic-tone");
     expect(tone).toMatch(/^[1-4]$/);
     await expect(sibling).toHaveAttribute("data-epic-tone", tone!);
-    const stripe = await card.evaluate((node) => {
-      const style = getComputedStyle(node, "::before");
-      return { width: style.width, color: style.backgroundColor, shadow: getComputedStyle(node).boxShadow };
+    const marker = await card.evaluate((node) => {
+      return { color: getComputedStyle(node.querySelector(".epic-icon")!).color, stripe: getComputedStyle(node, "::before").content, shadow: getComputedStyle(node).boxShadow, background: getComputedStyle(node).backgroundColor };
     });
-    expect(stripe.width).toBe("4px");
-    expect(stripe.color).not.toBe("rgba(0, 0, 0, 0)");
-    expect(stripe.shadow).toContain("0px 1px 0px");
+    expect(marker.stripe).toBe("none");
+    expect(marker.shadow).toContain("0px 1px 0px");
+    await expect(card).toHaveAttribute("data-lane-tone", "work");
+    await expect(sibling).toHaveAttribute("data-lane-tone", "queue");
+    expect(await sibling.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(marker.background);
+    await expect(sibling.locator(".epic-icon")).toHaveCSS("color", marker.color);
     await expect(card.locator(".bd-main a")).toHaveCount(0);
     const link = card.getByRole("link", { name: SEED_TASKS[0].title });
     await expect(link).toHaveAttribute("href", "/epic/DM-1");
-    await expect(link).toHaveCSS("color", stripe.color);
+    await expect(link).toHaveCSS("color", marker.color);
     await link.hover();
-    await expect(link).toHaveCSS("color", stripe.color);
+    await expect(link).toHaveCSS("color", marker.color);
     await expect(card.locator(".bd-status")).toHaveCount(0);
     const label = card.locator(".bd-labels .g-tag");
     await expect(label).not.toHaveClass(/outline/);
@@ -58,6 +61,74 @@ for (const theme of ["ink", "paper"]) {
     await page.keyboard.press("Escape");
     await expect(modal).toHaveCount(0);
     await expect(card.locator(".bd-main")).toBeFocused();
+  });
+}
+
+for (const theme of ["ink", "paper"]) {
+  test(`lane tints stay distinct and follow a saved move without recolouring the epic (${theme})`, async ({ page, request }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const headers = { "x-genie": "1" };
+    const created = await request.post("/api/tasks?project=demo", {
+      headers,
+      data: { title: `Проверка цвета дорожки ${theme}`, description: "Check lane colour after a persisted move.", acceptance: ["Colour follows the lane"], plan: "Move and verify", parent: "DM-1", draft: true },
+    });
+    expect(created.ok()).toBe(true);
+    const { id }: { id: string } = await created.json();
+    try {
+      await page.goto(`/board?q=${encodeURIComponent(`Проверка цвета дорожки ${theme}`)}`);
+      await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+      const laneBackgrounds = await page.locator('.g-lane[data-lane]:not([data-lane="cancelled"])').evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).backgroundColor));
+      expect(new Set(laneBackgrounds).size).toBe(6);
+      const card = page.locator(`[data-task-id="${id}"]`);
+      await expect(card).toHaveAttribute("data-lane-tone", "prep");
+      const before = await card.evaluate((node) => ({ background: getComputedStyle(node).backgroundColor, epic: getComputedStyle(node.querySelector(".epic-icon")!).color }));
+
+      await card.locator(".bd-main").focus();
+      await page.keyboard.press("Space");
+      const ghost = page.locator(".bd-ghost");
+      await expect(ghost).toHaveAttribute("data-lane-tone", "prep");
+      await expect(ghost.locator(".epic-icon")).toHaveCSS("color", before.epic);
+      expect(await ghost.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(before.background);
+      await page.keyboard.press("Escape");
+      await expect(ghost).toHaveCount(0);
+
+      await card.getByRole("button", { name: `Переместить ${id}` }).click();
+      await page.getByRole("menuitem", { name: /^Готово к работе/ }).click();
+      await expect(card).toHaveAttribute("data-lane-tone", "queue");
+      await expect.poll(async () => (await storedTask(request, id)).status).toBe("ready");
+      await expect.poll(() => card.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(before.background);
+      await expect(card.locator(".epic-icon")).toHaveCSS("color", before.epic);
+      await page.reload();
+      await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+      await expect(card).toHaveAttribute("data-lane-tone", "queue");
+
+      // The browser resolves color-mix; a one-pixel canvas reads the resulting sRGB values.
+      const contrasts = await page.evaluate(() => {
+        const ctx = document.createElement("canvas").getContext("2d")!;
+        const luminance = (color: string) => {
+          ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1);
+          const rgb = [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).map((value) => {
+            const c = value / 255;
+            return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          });
+          return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+        };
+        const ratio = (fg: string, bg: string) => {
+          const a = luminance(fg), b = luminance(bg);
+          return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        };
+        return [...document.querySelectorAll<HTMLElement>('.g-lane[data-lane]:not([data-lane="cancelled"])')].flatMap((lane) => {
+          const name = lane.querySelector(".g-lane-name")!, count = lane.querySelector(".g-lane-n")!;
+          return [
+            { label: `${lane.dataset.lane} heading`, ratio: ratio(getComputedStyle(name).color, getComputedStyle(lane).backgroundColor) },
+            { label: `${lane.dataset.lane} count`, ratio: ratio(getComputedStyle(count).color, getComputedStyle(count).backgroundColor) },
+          ];
+        });
+      });
+      for (const pair of contrasts) expect(pair.ratio, pair.label).toBeGreaterThanOrEqual(4.5);
+    } finally {
+      expect((await request.post(`/api/tasks/${id}/status?project=demo`, { headers, data: { status: "cancelled" } })).ok()).toBe(true);
+    }
   });
 }
 

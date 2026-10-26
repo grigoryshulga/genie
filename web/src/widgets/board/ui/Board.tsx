@@ -18,6 +18,7 @@ import {
   type Lane,
   type LaneId,
   laneDropId,
+  laneOf,
   needsQuestion,
   resolveDrop,
   type Status,
@@ -327,7 +328,7 @@ export function Board({
       </div>
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <div className={cx("g-sheet bd-card bd-ghost", dragging.needsOwner && "bd-decision")} data-epic-tone={dragging.parent && epics.has(dragging.parent) ? epicTone(dragging.parent) : undefined}>
+          <div className={cx("g-sheet bd-card bd-ghost", dragging.needsOwner && "bd-decision")} data-lane-tone={laneOf(dragging.status)?.id} data-epic-tone={dragging.parent && epics.has(dragging.parent) ? epicTone(dragging.parent) : undefined}>
             <CardBody t={dragging} team={dragging.team ? teams.get(dragging.team) : undefined} />
           </div>
         )}

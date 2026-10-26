@@ -1,7 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useLayoutEffect, useRef, useState } from "react";
 import { displayName } from "@/entities/member";
-import { EpicChip, EpicIcon, epicTone, moveTargets, PriorityIcon, type Status, STATUS_NAME, type TaskSummary, useEpicMap } from "@/entities/task";
+import { EpicChip, EpicIcon, epicTone, laneOf, moveTargets, PriorityIcon, type Status, STATUS_NAME, type TaskSummary, useEpicMap } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { Avatar, cx, Icon, Segments, Tag, WorkingArcs, ActionMenu, type MenuEntry } from "@/shared/ui";
 
@@ -155,7 +155,7 @@ export function BoardCard({ t, team, selected, offline, onSelect, onMove }: {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: t.id, disabled: offline });
   const epic = useEpicMap().get(t.parent ?? "");
   return (
-    <div ref={setNodeRef} className={cx("g-sheet interactive bd-card", t.needsOwner && "bd-decision", selected && "selected", isDragging && "dragging")} data-task-id={t.id} data-status={t.status} data-epic-tone={epic ? epicTone(epic.id) : undefined}
+    <div ref={setNodeRef} className={cx("g-sheet interactive bd-card", t.needsOwner && "bd-decision", selected && "selected", isDragging && "dragging")} data-task-id={t.id} data-status={t.status} data-lane-tone={laneOf(t.status)?.id} data-epic-tone={epic ? epicTone(epic.id) : undefined}
       onClick={(event) => {
         if (isDragging || (event.target instanceof Element && event.target.closest("a, button"))) return;
         event.currentTarget.querySelector<HTMLButtonElement>(".bd-main")?.focus();
