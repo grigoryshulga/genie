@@ -65,9 +65,9 @@
 
 /* ---- a card: a paper sheet on the canvas (ink on a paper theme), never resized by its content ---- */
 .bd-card { position: relative; flex: none; width: var(--g-board-card-width); height: var(--g-board-card-height); min-width: 0; display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2) var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-lg); }
-/* Cards are calm tints of their lane rather than the page's strongest contrast: the title still carries the card. */
-.g-sheet.bd-card { --sh-t: var(--g-n-100); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: var(--g-border-strong); background: var(--g-n-800); }
-[data-theme="paper"] .g-sheet.bd-card { --sh-t: var(--g-n-850); --sh-t2: var(--g-n-600); --sh-m: var(--g-n-550); --sh-accent: var(--g-green-800); --sh-soft: var(--g-green-100); --sh-line: var(--g-border-strong); background: var(--g-n-100); }
+/* Quiet board-only surfaces keep the title and epic stripe prominent. */
+.g-sheet.bd-card { --sh-t: var(--g-n-100); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: var(--g-border-strong); background: var(--g-board-card-bg); }
+[data-theme="paper"] .g-sheet.bd-card { --sh-t: var(--g-n-850); --sh-t2: var(--g-n-600); --sh-m: var(--g-n-550); --sh-accent: var(--g-green-800); --sh-soft: var(--g-green-100); --sh-line: var(--g-border-strong); }
 /* A light lift for cards on the canvas; the dragged copy keeps its overlay shadow, a selected card keeps its ring. */
 .g-sheet.bd-card:not(.bd-ghost) { box-shadow: var(--g-shadow-board-card); }
 .g-sheet.bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent), var(--g-shadow-board-card); }
@@ -93,9 +93,8 @@
 .bd-ac .g-segs { width: var(--g-space-7); }
 .bd-ac b { font-weight: 600; font-feature-settings: "tnum"; color: var(--sh-t2); }
 .bd-foot { display: flex; flex: none; min-width: 0; height: calc(var(--g-control-sm) - var(--g-space-1)); overflow: hidden; margin-top: auto; align-items: center; flex-wrap: nowrap; gap: var(--g-space-1); border-top: 1px solid var(--sh-line); font-size: var(--g-text-caption); color: var(--sh-m); }
-.bd-comments { flex: none; white-space: nowrap; }
 .bd-labels { display: flex; align-items: center; min-width: 0; overflow: hidden; gap: var(--g-space-1); }
-.bd-labels .g-tag { min-width: 0; max-width: 100%; background: var(--g-border-strong); color: var(--sh-t); }
+.bd-labels .g-tag { min-width: 0; max-width: 100%; background: var(--g-board-label-bg); color: var(--sh-t2); }
 .bd-label-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-context { display: flex; flex: none; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; }
 .bd-context .bd-note { flex: 1; min-width: 0; }

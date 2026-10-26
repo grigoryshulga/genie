@@ -172,6 +172,8 @@
   --g-scrim-image: rgb(6 7 9 / 0.9);
   --g-shadow-card: 0 2px 8px rgb(0 0 0 / 0.28);
   --g-shadow-board-card: 0 1px 0px rgb(0 0 0 / 0.35);
+  --g-board-card-bg: var(--g-surface-raised);
+  --g-board-label-bg: var(--g-surface-active);
   --g-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.55);
   color-scheme: dark;
 }
@@ -218,6 +220,8 @@
   --g-focus: var(--g-green-700);
   --g-shadow-card: 0 2px 8px rgb(9 9 13 / 0.08);
   --g-shadow-board-card: 0 1px 0px rgb(9 9 13 / 0.12);
+  --g-board-card-bg: var(--g-bg);
+  --g-board-label-bg: var(--g-surface-hover);
   --g-shadow-overlay: 0 20px 50px rgb(9 9 13 / 0.18);
   color-scheme: light;
 }

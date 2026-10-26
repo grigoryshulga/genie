@@ -43,7 +43,7 @@ Layer 1 holds the palette; layer 2 names the meaning. A component uses layer 2 a
 | Controls | 40 px roomy, 32 px dense (`sm`), rows 44 px. The dense variant is for lists, toolbars and settings, not for touch-first screens. |
 | Layout | content column 840 px, prose measure 64ch, board lane 344 px, card 288 × 144. Sidebar/detail rail and responsive breakpoints remain application layout CSS. |
 
-Board cards use `g-shadow-board-card`, a short unblurred lift, without changing the shared card or overlay shadows. Their epic stripe takes a stable tone from four existing text-safe semantic tokens (`g-accent-soft-text`, `g-signal-text`, `g-text-muted`, `g-text-2`), based on the epic ID; it does not encode task status or team roles. The epic name remains a separate link in the same colour as its stripe. Task status is carried by the lane; labels use a neutral fill. Human circles and agent rounded squares reuse `Avatar` unchanged.
+Board cards use `g-shadow-board-card`, a short unblurred lift, without changing the shared card or overlay shadows. Their epic stripe takes a stable tone from four existing text-safe semantic tokens (`g-accent-soft-text`, `g-signal-text`, `g-text-muted`, `g-text-2`), based on the epic ID; it does not encode task status or team roles. The epic name remains a separate link in the same colour as its stripe. Task status is carried by the lane; labels use a soft neutral fill. Board-only `g-board-card-bg` and `g-board-label-bg` keep these surfaces quieter without changing shared card or tag colours. Human circles and agent rounded squares reuse `Avatar` unchanged.
 
 ## Typography
 

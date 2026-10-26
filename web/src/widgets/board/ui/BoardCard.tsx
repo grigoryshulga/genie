@@ -60,14 +60,13 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
           {content}
         </button>
       ) : <div className="bd-main">{content}</div>}
-      {(t.acceptanceTotal > 0 || t.comments > 0 || t.labels.length > 0 || members.length > 0 || t.assignee) && <div className="bd-foot">
+      {(t.acceptanceTotal > 0 || t.labels.length > 0 || members.length > 0 || t.assignee) && <div className="bd-foot">
         {t.acceptanceTotal > 0 && (
           <span className="bd-ac">
             <Segments total={t.acceptanceTotal} done={t.acceptanceDone} label="Критерии приёмки" />
             <b>{t.acceptanceDone}/{t.acceptanceTotal}</b>
           </span>
         )}
-        {t.comments > 0 && <span className="bd-comments" title={`Комментариев: ${t.comments}`}>{t.comments} комм.</span>}
         <span className="bd-labels" title={t.labels.join(", ")}>
           {t.labels.slice(0, 1).map((l) => <Tag key={l}><span className="bd-label-text">{l}</span></Tag>)}
           {t.labels.length > 1 && <span className="bd-more">+{t.labels.length - 1}</span>}
