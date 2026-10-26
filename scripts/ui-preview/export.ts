@@ -34,6 +34,13 @@ export async function exportFixtures(base: string, output: string) {
     const url = new URL(path, base); url.searchParams.sort();
     fixtures[url.pathname + url.search] = data;
   }
+  // Role details are requested dynamically after selecting a catalogue item.
+  const catalogue = fixtures["/api/agent-config"] as { roles?: { id: string }[] } | undefined;
+  for (const role of catalogue?.roles ?? []) {
+    const path = `/api/roles/${encodeURIComponent(role.id)}`;
+    const res = await fetch(base + path, { headers: { cookie, "x-genie-project": "demo" } });
+    if (res.ok) fixtures[path] = await res.json();
+  }
   Object.assign(fixtures, synthetic);
   const text = JSON.stringify(fixtures, null, 2)
     .replace(/\/tmp\/genie-ui-[^"\s]+/g, "/preview/demo")

@@ -337,3 +337,29 @@ fieldset:disabled .ag-perm { cursor: default; }
 
 /* A role's title being renamed: the field takes the title's size and stops short of the actions. */
 .ag-role-rename { max-width: 420px; height: auto; padding: 2px var(--g-space-2); font: 700 var(--g-text-h3) / 1.25 var(--g-font-display); letter-spacing: var(--g-tracking-heading); }
+
+/* The role keeps the same section vocabulary in view and edit modes. */
+.ag-role-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--g-control) * 6)), 1fr)); gap: var(--g-space-4); margin-bottom: var(--g-space-5); }
+.ag-role-overview .ag-card { min-width: 0; }
+.ag-role-overview .ag-dl { grid-template-columns: minmax(0, 1fr); gap: var(--g-space-1); }
+.ag-role-overview .ag-dl dd { margin-bottom: var(--g-space-3); overflow-wrap: anywhere; }
+.ag-role-instructions { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ag-role-save { position: sticky; top: 0; z-index: var(--g-z-sticky); background: var(--g-bg); display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; padding: var(--g-space-3) 0; border-bottom: 1px solid var(--g-border); }
+.ag-role-save > span { flex: 1; font-size: var(--g-text-caption); }
+.ag-role-settings section { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: var(--g-space-2); }
+.ag-role-settings section h4 { color: var(--g-text); font-size: var(--g-text-h4); text-transform: none; letter-spacing: 0; }
+.ag-mcp-connections { display: grid; gap: var(--g-space-2); }
+.ag-mcp-connection { min-width: 0; border: 1px solid var(--g-border); border-radius: var(--g-radius-md); padding: var(--g-space-3); }
+.ag-mcp-connection summary { cursor: pointer; overflow-wrap: anywhere; }
+.ag-mcp-connection summary > * { margin-right: var(--g-space-3); }
+.ag-mcp-connection summary strong { font-size: var(--g-text-ui); }
+.ag-mcp-connection summary .g-muted { font-size: var(--g-text-caption); }
+.ag-mcp-tools { max-height: calc(var(--g-control) * 8); overflow: auto; padding-left: var(--g-space-5); }
+.ag-mcp-tools code { overflow-wrap: anywhere; }
+.ag-mcp-tool-picker summary, .ag-mcp-pattern-picker summary { cursor: pointer; margin-bottom: var(--g-space-3); }
+.ag-mcp-tool-picker > input { margin-bottom: var(--g-space-3); }
+
+.ag-role-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--g-control) * 6)), 1fr)); gap: var(--g-space-4); }
+.ag-role-settings section.ag-role-setting-card { grid-column: auto; align-content: start; padding: var(--g-space-4); background: var(--g-surface); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); }
+.ag-role-settings .ag-seg { flex-wrap: wrap; }
+.ag-role-overview .ag-card-head h3 { color: var(--g-text); font-size: var(--g-text-h4); text-transform: none; letter-spacing: 0; }

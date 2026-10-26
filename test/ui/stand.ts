@@ -12,12 +12,13 @@
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { genie, seedDocs, seedTask } from "./seeding.ts";
 import { OWNER } from "./seed.ts";
 import { PEOPLE, STAND_PROJECTS } from "./stand-data.ts";
+import { ROLE_FILE } from "./role-data.ts";
 import { seedTeam } from "./stand-team.ts";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -63,6 +64,12 @@ function seed() {
     for (const task of project.tasks) seedTask(bin, dataDir, project.id, task, ids);
     console.log(`  ${project.name}: ${project.tasks.length} tasks, ${project.docs.length} pages`);
   }
+  mkdirSync(join(dataDir, "agents"), { recursive: true });
+  writeFileSync(join(dataDir, "agents/integration-analyst.md"), ROLE_FILE);
+  writeFileSync(join(dataDir, "mcp.json"), JSON.stringify({ mcpServers: {
+    knowledge: { url: "http://127.0.0.1:9/knowledge", description: "База знаний команды" },
+    issues: { url: "http://127.0.0.1:9/issues", description: "Задачи проекта" },
+  } }));
   console.log(`  a running team with mail and a saved agent conversation: ${seedTeam(bin, dataDir)}`);
 }
 

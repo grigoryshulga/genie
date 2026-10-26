@@ -31,7 +31,8 @@ The data is written through the CLI by [`test/ui/stand-data.ts`](https://github.
 - three projects: a Russian one with every status, an English one, and an empty one for empty states;
 - four people: an admin owner, two members and a viewer;
 - long titles, ten-item acceptance lists, eight labels, nine-message discussions, comments of every kind, artifacts, a blocked task, tasks waiting for the owner, a finished epic and an epic in progress;
-- markdown with tables and code, and text with HTML that must be shown as text.
+- markdown with tables and code, and text with HTML that must be shown as text;
+- an integration analyst role with 48 explicit MCP grants, a full connection grant and an unavailable connection, for grouped access and inline editing.
 - a running team ([`test/ui/stand-team.ts`](https://github.com/grigoryshulga/genie/blob/dev/test/ui/stand-team.ts)) with Markdown mail, unread mail and an executor whose conversation is read from its saved session file, as after an idle session stopped.
 
 Add a case to the data file when a bug needs one; the browser tests do not read it, so their screenshots do not move.

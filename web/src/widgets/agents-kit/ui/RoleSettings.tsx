@@ -5,8 +5,8 @@ import { useState } from "react";
 import { allowDeny, basePermissions, FILES_TITLE, type Catalogue, type RoleDetail, STAGE_TITLE } from "@/entities/agent-config";
 import { useMeta, useProjects } from "@/entities/project";
 import { ModelPicker } from "@/features/agent-model";
-import { ChipInput, Icon } from "@/shared/ui";
-import { EditDialog, useRoleSave } from "./EditDialog.tsx";
+import { Button, ChipInput, Icon } from "@/shared/ui";
+import { useRoleSave } from "./EditDialog.tsx";
 import { PermissionFields, PermissionReference } from "./PermissionFields.tsx";
 import { SkillsFields, useSkillsSettings } from "./SkillsFields.tsx";
 import { McpFields, useMcpSettings } from "./McpFields.tsx";
@@ -26,7 +26,10 @@ function Segments({ label, value, options, onChange }: { label: string; value: s
   );
 }
 
-export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; cfg: Catalogue; onClose: () => void }) {
+export function RoleSettings({ detail: currentDetail, cfg: currentCfg, onClose }: { detail: RoleDetail; cfg: Catalogue; onClose: () => void }) {
+  // Keep the file hash and inherited values from when editing started.
+  const [detail] = useState(currentDetail);
+  const [cfg] = useState(currentCfg);
   const r = detail.role;
   const initial = {
     capabilities: r.capabilities,
@@ -79,18 +82,25 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
   };
   const hint = (text: string) => <span className="hint">{text}</span>;
   return (
-    <EditDialog title={`Настройки · ${r.title}`} note="Параметры сессии — со следующего запуска" busy={busy} error={error} onClose={onClose} onSave={() => void save()}>
-      <div className="ag-settings">
+    <form className="ag-role-editor" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <div className="ag-role-save">
+        <span className="g-muted">Параметры сессии — со следующего запуска</span>
+        <Button variant="ghost" disabled={busy} onClick={onClose}>Отмена</Button>
+        <Button type="submit" variant="primary" disabled={busy}>{busy ? "Сохранение…" : "Сохранить"}</Button>
+      </div>
+      {error && <p className="ag-warn" role="alert">{error}</p>}
+      <fieldset className="ag-edit-fields" disabled={busy}>
+      <div className="ag-settings ag-role-settings">
         <section>
           <h4>О роли</h4>
           <label htmlFor="rs-title">Название</label>
-          <input id="rs-title" className="g-input" value={f.title} onChange={(e) => set("title", e.target.value)} required />
+          <input autoFocus id="rs-title" className="g-input" value={f.title} onChange={(e) => set("title", e.target.value)} required />
           <label htmlFor="rs-desc">
             Описание
           </label>
           <textarea id="rs-desc" className="g-textarea" rows={2} value={f.description} onChange={(e) => set("description", e.target.value)} />
         </section>
-        <section>
+        <section className="ag-role-setting-card">
           <h4>Модель</h4>
           <label htmlFor="rs-model">
             Модель
@@ -99,10 +109,18 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
           <span className="lbl">Размышление</span>
           <Segments label="Размышление" value={f.thinking} options={THINKING.map((t) => [t, t || "по умолчанию"])} onChange={(v) => set("thinking", v)} />
         </section>
-        <section>
-          <h4>Доступ</h4>
+        <section className="ag-role-setting-card">
+          <h4>Файлы и команды</h4>
           <span className="lbl">Файлы проекта</span>
           <Segments label="Файлы проекта" value={f.files} options={(["write", "read", "none"] as const).map((x) => [x, FILES_TITLE[x]])} onChange={(v) => set("files", v)} />
+          <label htmlFor="rs-deny">
+            Запрещённые команды
+            {hint("Shell; * — любой текст")}
+          </label>
+          <ChipInput id="rs-deny" values={f.denyCommands} onChange={(v) => set("denyCommands", v)} placeholder="git push*" mono />
+        </section>
+        <section className="ag-role-setting-card">
+          <h4>Участие в работе</h4>
           <span className="lbl">
             Стадии задачи
           </span>
@@ -117,11 +135,17 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
               );
             })}
           </div>
-          <label htmlFor="rs-deny">
-            Запрещённые команды
-            {hint("Shell; * — любой текст")}
+
+          <label htmlFor="rs-projects">
+            Проекты
+            {hint("Пусто — роль видна во всех")}
           </label>
-          <ChipInput id="rs-deny" values={f.denyCommands} onChange={(v) => set("denyCommands", v)} placeholder="git push*" mono />
+          <ChipInput id="rs-projects" values={f.projects} onChange={(v) => set("projects", v)} placeholder="Добавить проект" suggestions={projects?.map((p) => p.slug)} />
+          <label htmlFor="rs-names">
+            Имена участников
+            {hint("Пусто — имена по классу")}
+          </label>
+          <ChipInput id="rs-names" values={f.names} onChange={(v) => set("names", v)} placeholder="Новое имя" />
         </section>
         {r.class !== "orchestrator" && <section className="ag-settings-stack">
           <h4>Разрешённые действия</h4>
@@ -138,19 +162,6 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
           <McpFields cfg={cfg} state={mcp} />
         </section>
         <section>
-          <h4>Команда</h4>
-          <label htmlFor="rs-projects">
-            Проекты
-            {hint("Пусто — роль видна во всех")}
-          </label>
-          <ChipInput id="rs-projects" values={f.projects} onChange={(v) => set("projects", v)} placeholder="Добавить проект" suggestions={projects?.map((p) => p.slug)} />
-          <label htmlFor="rs-names">
-            Имена участников
-            {hint("Пусто — имена по классу")}
-          </label>
-          <ChipInput id="rs-names" values={f.names} onChange={(v) => set("names", v)} placeholder="Новое имя" />
-        </section>
-        <section>
           <label htmlFor="rs-extra">
             Особенности роли
             {hint("Дописываются к промпту")}
@@ -158,6 +169,7 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
           <textarea id="rs-extra" className="g-textarea" rows={3} value={f.instructions} onChange={(e) => set("instructions", e.target.value)} />
         </section>
       </div>
-    </EditDialog>
+    </fieldset>
+    </form>
   );
 }

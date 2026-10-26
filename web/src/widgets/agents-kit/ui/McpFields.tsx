@@ -18,15 +18,22 @@ export function useMcpSettings(detail: RoleDetail, cfg: Catalogue) {
 
 export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<typeof useMcpSettings> }) {
   const { grants, setGrants, unknown } = state;
+  const [search, setSearch] = useState<Record<string, string>>({});
   return (
       <div className="ag-grants">
         <p className="g-muted ag-note">Закрытый доступ отзывается сразу. Новые инструменты появятся при следующем старте сессии.</p>
         {!cfg.mcp.length && <p className="g-muted ag-note">Подключений пока нет. Добавьте их в настройках MCP.</p>}
-        {unknown.length > 0 && <p className="ag-warn">Подключения вне библиотеки (сохранены): {unknown.join(", ")}</p>}
+        {unknown.length > 0 && <details className="ag-advanced">
+          <summary>Подключения вне библиотеки · {new Set(unknown.map((g) => g.split(":")[0])).size}</summary>
+          <p className="g-muted ag-note">Эти разрешения сохранены без изменений.</p>
+          <ul className="ag-mcp-tools">{unknown.map((g) => <li key={g}><code>{g}</code></li>)}</ul>
+        </details>}
         {cfg.mcp.map((s) => {
           const g = grants[s.id];
           const set = (v: Partial<McpGrant>) => setGrants((x) => ({ ...x, [s.id]: { ...x[s.id], ...v } }));
           const cached = s.tools ?? [];
+          const query = (search[s.id] ?? "").toLocaleLowerCase();
+          const visible = cached.filter((t) => `${t.name} ${t.description ?? ""}`.toLocaleLowerCase().includes(query));
           // Grants the cached listing does not know: an exact tool that is gone, or a pattern.
           const extra = g.tools.filter((p) => !cached.some((t) => globMatch(p, t.name)));
           const toggle = (tool: string) => {
@@ -45,7 +52,9 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
               </div>
               {g.mode === "tools" &&
                 (cached.length > 0 ? (
-                  <div className="mc-role-tools">
+                  <details className="mc-role-tools ag-mcp-tool-picker">
+                    <summary>Выбрать инструменты · {g.tools.length} правил доступа</summary>
+                    <input type="search" className="g-input" aria-label={`Поиск инструментов ${s.id}`} placeholder="Найти инструмент…" value={search[s.id] ?? ""} onChange={(e) => setSearch((x) => ({ ...x, [s.id]: e.target.value }))} />
                     {extra.length > 0 && (
                       <div className="chips g-mono" aria-label={`Выдано сверх списка ${s.id}`}>
                         {extra.map((p) => (
@@ -60,8 +69,9 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
                         ))}
                       </div>
                     )}
+                    {!visible.length && <p className="g-muted ag-note">Ничего не найдено.</p>}
                     <div className="ag-checks">
-                      {cached.map((t) => {
+                      {visible.map((t) => {
                         const on = g.tools.some((p) => globMatch(p, t.name));
                         return (
                           <label key={t.name} title={t.description}>
@@ -71,12 +81,13 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
                         );
                       })}
                     </div>
-                  </div>
+                  </details>
                 ) : (
-                  <div className="mc-role-tools">
+                  <details className="mc-role-tools ag-mcp-pattern-picker">
+                    <summary>Выбрать инструменты · {g.tools.length} правил доступа</summary>
                     <ChipInput values={g.tools} onChange={(tools) => set({ tools })} placeholder="шаблоны через запятую, например get_*" mono />
                     <p className="g-muted ag-note">Проверьте подключение в «Настройки» → «Управление» → «MCP», чтобы выбирать инструменты списком.</p>
-                  </div>
+                  </details>
                 ))}
             </div>
           );
