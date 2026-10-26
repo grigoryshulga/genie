@@ -1300,6 +1300,12 @@ fn task_manager_spec(app: &App, project: &Project, task: &str, live: bool) -> Ap
     }))
 }
 
+/// The pi session of a team member: its conversation lives in `<data>/sessions/<project>`
+/// under this id, across restarts of its process.
+pub(crate) fn member_session_id(t: &team::Team, m: &team::Member) -> String {
+    m.session_file.clone().unwrap_or_else(|| format!("{}-{}", t.id, m.name).to_lowercase())
+}
+
 /// A member of a team (`live`: as a session).
 fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, live: bool) -> AppResult<AgentSpec> {
     let agents = app.agents();
@@ -1323,7 +1329,7 @@ fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, l
         job: None,
         kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
         cwd,
-        session_id: m.session_file.clone().unwrap_or_else(|| format!("{}-{}", t.id, m.name).to_lowercase()),
+        session_id: member_session_id(t, m),
         model: Some(model),
         thinking,
         prompt,

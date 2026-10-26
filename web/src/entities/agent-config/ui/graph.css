@@ -4,7 +4,8 @@
 .team-graph { flex: none; margin: 0; display: flex; flex-direction: column; gap: var(--g-space-2); padding: var(--g-space-4) 0; border: 1px solid var(--g-border); border-radius: var(--g-radius-lg); background: var(--g-surface); min-width: 0; }
 .team-graph-head { display: flex; align-items: center; gap: var(--g-space-3); padding: 0 var(--g-space-5); font-size: var(--g-text-dense); color: var(--g-text-2); min-width: 0; }
 .team-graph-scroll { overflow-x: auto; padding: 0 var(--g-space-4); }
-.team-graph svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+/* Only the graph itself: icons in the head (the working arcs) keep their own size. */
+.team-graph-scroll > svg { display: block; width: 100%; height: auto; margin: 0 auto; }
 .team-graph .node { color: var(--g-viz-1); }
 .team-graph .node rect { fill: var(--g-bg); stroke: var(--g-border-strong); stroke-width: 1; }
 .team-graph .node.orch rect { fill: var(--g-signal-soft); stroke: var(--g-signal); }

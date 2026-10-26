@@ -497,28 +497,42 @@ export interface GraphEdge {
 export const NODE_H = 88;
 const ORCH_W = 240;
 
-/** Handoff columns run left to right; returns and consultations never advance a stage. */
+/** Each member's stage: one past the latest member that hands work to it. Returns and consultations never advance a stage. */
+export function handoffRanks(keys: string[], relations: Relation[]): Map<string, number> {
+  const known = new Set(keys);
+  const incoming = (key: string) => relations.filter((r) => r.type === "handoff" && r.to.includes(key) && known.has(r.from) && r.from !== key);
+  const ranks = new Map<string, number>();
+  let remaining = [...keys];
+  while (remaining.length) {
+    const ready = remaining.filter((key) => incoming(key).every((r) => ranks.has(r.from)));
+    // A cycle has no first handoff: keep its unresolved participants together.
+    if (!ready.length) {
+      const next = ranks.size ? Math.max(...ranks.values()) + 1 : 0;
+      remaining.forEach((key) => ranks.set(key, next));
+      break;
+    }
+    ready.forEach((key) => ranks.set(key, Math.max(0, ...incoming(key).map((r) => ranks.get(r.from)! + 1))));
+    remaining = remaining.filter((key) => !ranks.has(key));
+  }
+  return ranks;
+}
+
+/** Members grouped by stage, first stage first, each group in the given order: the team's work as one line. */
+export function flowStages(keys: string[], relations: Relation[]): string[][] {
+  const ranks = handoffRanks(keys, relations);
+  const stages: string[][] = [];
+  for (const key of keys) (stages[ranks.get(key)!] ??= []).push(key);
+  return stages.filter(Boolean);
+}
+
+/** Handoff columns run left to right (see `handoffRanks`). */
 export function layoutTeam(
   members: { key: string; label: string; sub: string }[],
   relations: Relation[],
   problems: string[] = [],
 ): { width: number; height: number; nodeW: number; nodes: GraphNode[]; edges: GraphEdge[]; stages: { x: number; label: string }[] } {
   const nodeW = 240;
-  const keys = new Set(members.map((m) => m.key));
-  const incoming = (key: string) => relations.filter((r) => r.type === "handoff" && r.to.includes(key) && keys.has(r.from) && r.from !== key);
-  const ranks = new Map<string, number>();
-  let remaining = [...members];
-  while (remaining.length) {
-    const ready = remaining.filter((m) => incoming(m.key).every((r) => ranks.has(r.from)));
-    // A cycle has no first handoff: keep its unresolved participants together.
-    if (!ready.length) {
-      const next = ranks.size ? Math.max(...ranks.values()) + 1 : 0;
-      remaining.forEach((m) => ranks.set(m.key, next));
-      break;
-    }
-    ready.forEach((m) => ranks.set(m.key, Math.max(0, ...incoming(m.key).map((r) => ranks.get(r.from)! + 1))));
-    remaining = remaining.filter((m) => !ranks.has(m.key));
-  }
+  const ranks = handoffRanks(members.map((m) => m.key), relations);
   const count = Math.max(1, ...[...ranks.values()].map((r) => r + 1));
   const width = Math.max(420, count * (nodeW + 100) + 40);
   const x = (rank: number) => 20 + nodeW / 2 + rank * (nodeW + 100);

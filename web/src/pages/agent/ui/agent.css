@@ -40,7 +40,7 @@
 
 /* ---- the conversation: what the agent said, what it ran, what it thought ---- */
 .ac-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; padding: var(--g-space-4) var(--g-space-5) var(--g-space-5); }
-.ac-inner { width: 100%; max-width: 74ch; margin-top: auto; margin-inline: auto; display: flex; flex-direction: column; }
+.ac-inner { width: 100%; max-width: var(--g-content); margin-top: auto; margin-inline: auto; display: flex; flex-direction: column; }
 /* Nothing said yet: the empty state sits in the middle of the free space, not at the bottom. */
 .ac-inner:has(> :only-child.g-empty) { margin-block: auto; }
 .ac-inner > * { margin-top: var(--g-space-4); }
@@ -48,34 +48,23 @@
 .ac-feed.dim .ac-inner > :not(.ac-caption) { opacity: 0.55; }
 .ac-caption { font-size: var(--g-text-dense); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
 
-.ac-msg, .ac-say { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: var(--g-space-3); align-items: start; }
+/* A chat: what the person wrote on the right in the accent, what the agent and its team said on the left. */
+.ac-msg, .ac-say { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--g-space-2); align-items: start; }
 .ac-msg.cont { margin-top: var(--g-space-1); }
 .ac-slot { display: grid; place-items: center; padding-top: 2px; }
-.ac-body { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
+.ac-body { display: flex; flex-direction: column; align-items: flex-start; gap: var(--g-space-1); min-width: 0; max-width: 100%; }
+.ac-msg.mine { grid-template-columns: minmax(0, 1fr); justify-items: end; padding-left: 12%; }
+.ac-msg.mine .ac-body { align-items: flex-end; }
 .ac-from { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-1) var(--g-space-2); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
 .ac-from b { font-weight: var(--g-weight-bold); color: var(--g-text); }
-.ac-say .ac-body, .ac-msg:not(.mine) .ac-text { font-size: var(--g-text-ui); line-height: var(--g-leading-prose); color: var(--g-text-2); }
 .ac-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ac-time { font-size: var(--g-text-caption); font-variant-numeric: tabular-nums; line-height: 1.7; color: var(--g-text-muted); white-space: nowrap; }
-.ac-msg.cont .ac-time { opacity: 0; transition: opacity var(--g-duration) var(--g-ease); }
-.ac-msg.cont:hover .ac-time { opacity: 1; }
-/* What the person wrote is a sheet: paper on ink, ink on paper. */
-.ac-msg.mine .ac-bubble.g-sheet { padding: var(--g-space-3) var(--g-space-4); border-radius: var(--g-radius-md); }
-.ac-msg.mine .ac-text { color: var(--sh-t); }
-.ac-msg.mine .ac-from b { color: var(--sh-t); }
-.ac-msg.mine .ac-from .g-tag { background: var(--sh-soft); color: var(--sh-accent); }
-.ac-msg.mine .ac-from .g-tag.outline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sh-line); color: var(--sh-t2); }
-/* An interrupt stops the current step: the loudest mail there is. */
-.ac-msg.urgent:not(.mine) .ac-text { padding-left: var(--g-space-3); border-left: 2px solid var(--g-signal); }
-.ac-msg.mine.urgent .ac-bubble.g-sheet { box-shadow: inset 3px 0 0 var(--g-signal); }
-.ac-receipt { font-size: var(--g-text-caption); color: var(--g-text-muted); }
-.ac-receipt.ok { color: var(--g-accent-text); }
 
-.ac-note { display: flex; align-items: baseline; gap: var(--g-space-3); padding-left: calc(28px + var(--g-space-3)); }
-.ac-note-text { flex: 1; min-width: 0; font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ac-note { display: flex; align-items: baseline; justify-content: center; gap: var(--g-space-2); padding: 0 var(--g-space-6); text-align: center; }
+.ac-note-text { min-width: 0; font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ---- the agent's steps: one faded line each, a run of them folded into one ---- */
-.ac-steps { margin-left: calc(28px + var(--g-space-3)); display: flex; flex-direction: column; gap: var(--g-space-1); }
+.ac-steps { margin-left: calc(28px + var(--g-space-2)); display: flex; flex-direction: column; gap: var(--g-space-1); }
 .ac-steps.open > .ac-steplist { margin-left: 13px; padding-left: var(--g-space-3); border-left: 1px solid var(--g-border); }
 .ac-steplist { display: flex; flex-direction: column; gap: var(--g-space-1); }
 .ac-stepitem { display: flex; flex-direction: column; gap: var(--g-space-1); }
@@ -103,7 +92,11 @@
 .ac-steprow .quote:hover { background: var(--g-surface-hover); }
 @media (hover: none) { .ac-steprow .quote { opacity: 0.6; } }
 .ac-thought { margin: 0 0 var(--g-space-1) 22px; font-size: var(--g-text-caption); font-style: italic; line-height: 1.55; color: var(--g-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
-.ac-out { margin: 0 0 var(--g-space-1) 22px; }
+.ac-out { display: flex; flex-direction: column; gap: var(--g-space-2); margin: 0 0 var(--g-space-1) 22px; }
+/* The whole call, wrapped: the line above it keeps only its start. */
+.ac-call { margin: 0; padding: var(--g-space-2) var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-sm); background: var(--g-surface); font: 500 var(--g-text-caption)/1.55 var(--g-font-mono); color: var(--g-text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ac-out .tv-out { margin-top: 0; }
+.ac-out .tv-out pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ---- the composer: how loud the correction is, then the correction ---- */
 .ac-chips { flex: none; gap: var(--g-space-2); padding: 0 var(--g-space-4) var(--g-space-2); overflow-x: auto; scrollbar-width: none; }
@@ -170,8 +163,8 @@
 
 /* ---- a column as wide as the text, like every other page ---- */
 @media (min-width: 901px) {
-  .ac-feed { padding-inline: max(var(--g-space-5), calc((100% - 74ch) / 2)); }
-  .ac-composer { max-width: calc(74ch + 2 * var(--g-space-2)); margin-inline: auto; width: calc(100% - 2 * var(--g-space-5)); }
+  .ac-feed { padding-inline: max(var(--g-space-5), calc((100% - var(--g-content)) / 2)); }
+  .ac-composer { max-width: var(--g-content); margin-inline: auto; width: calc(100% - 2 * var(--g-space-5)); }
 }
 
 /* ---- phone: the conversation first, the aside a sheet, the composer pinned ---- */
@@ -184,9 +177,8 @@
   .ac-feed { padding: var(--g-space-3) var(--g-space-4) var(--g-space-4); }
   .ac-inner { max-width: none; }
   .ac-msg, .ac-say { grid-template-columns: 26px minmax(0, 1fr); }
-  .ac-msg .ac-time, .ac-say .ac-time { grid-column: 2; grid-row: 2; }
-  .ac-msg.cont .ac-time { opacity: 1; }
-  .ac-note { padding-left: calc(26px + var(--g-space-3)); }
+  .ac-msg.mine { grid-template-columns: minmax(0, 1fr); padding-left: 8%; }
+  .ac-note { padding: 0 var(--g-space-3); }
   .ac-steps { margin-left: 0; }
   .ac-step { min-height: 40px; }
   .ac-step.group .stack, .ac-step.group .args { display: none; }
@@ -199,5 +191,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ac-step, .ac-step > svg:first-child, .ac-steprow .quote, .ac-msg.cont .ac-time { transition: none; }
+  .ac-step, .ac-step > svg:first-child, .ac-steprow .quote { transition: none; }
 }
