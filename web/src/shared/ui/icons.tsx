@@ -4,6 +4,9 @@ export type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 export const stroke = (size = 14, p: IconProps) => ({ width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true, ...p });
 
 export const Icon = {
+  fit: ({ size, ...p }: IconProps) => <svg {...stroke(size, p)}><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /><rect x="5" y="5" width="6" height="6" rx="1" /></svg>,
+  expand: ({ size, ...p }: IconProps) => <svg {...stroke(size, p)}><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4M2 2l4 4M14 2l-4 4M14 14l-4-4M2 14l4-4" /></svg>,
+  collapse: ({ size, ...p }: IconProps) => <svg {...stroke(size, p)}><path d="M6 2v4H2M10 2v4h4M10 14v-4h4M6 14v-4H2M2 2l4 4M14 2l-4 4M14 14l-4-4M2 14l4-4" /></svg>,
   eye: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)}>
       <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8Z" />
@@ -183,6 +186,9 @@ export const Icon = {
     <svg {...stroke(size, p)} strokeWidth={1.6}>
       <path d="M8 11V3M4.5 6.5L8 3l3.5 3.5M3 13h10" />
     </svg>
+  ),
+  download: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)}><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M3 13h10" /></svg>
   ),
   key: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)} strokeWidth={1.5}>

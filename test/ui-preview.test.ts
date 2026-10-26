@@ -29,6 +29,13 @@ test("mock server cannot forward unknown reads or writes; scenarios are per brow
   try {
     assert.equal((await fetch(base + "/api/not-recorded")).status, 501);
     assert.equal((await fetch(base + "/api/tasks", { method: "POST" })).status, 501);
+    assert.equal((await fetch(base + "/api/templates/full", { method: "PUT", body: "{}" })).status, 501);
+    const preview = await fetch(base + "/api/templates/full/preview", { method: "POST", body: "{}" });
+    assert.equal(preview.status, 200);
+    assert.equal((await fetch(base + "/api/templates/full/preview", { method: "POST", body: "{}", headers: { cookie: "genie-preview-state=error" } })).status, 503);
+    assert.equal((await preview.json()).template, "full");
+    assert.equal((await fetch(base + "/api/templates/full/preview", { method: "POST", body: '{"task":"DM-2"}' })).status, 501);
+    assert.equal((await fetch(base + "/api/templates/full/preview", { method: "POST", body: "broken" })).status, 400);
     assert.equal((await fetch(base + "/api/tasks", { headers: { cookie: "genie-preview-state=error" } })).status, 503);
     assert.deepEqual(await (await fetch(base + "/api/tasks", { headers: { cookie: "genie-preview-state=empty" } })).json(), []);
     assert.ok((await (await fetch(base + "/api/tasks")).json()).length > 0);

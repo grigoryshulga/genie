@@ -1,0 +1,57 @@
+/* A prompt workspace, full-width settings, and a separate technical audit trail. */
+.role-body > * { flex-shrink: 0; }
+.role-body, .role-editor, .role-settings-form, .role-settings-view { min-width: 0; width: 100%; }
+.role-editor > fieldset { display: block; width: 100%; }
+.role-runtime { display: flex; flex-wrap: wrap; gap: var(--g-space-4) var(--g-space-6); margin: 0; padding: var(--g-space-3) var(--g-space-4); background: var(--g-surface); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); }
+.role-runtime > div { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--g-space-2); }
+.role-runtime dt { color: var(--g-text-muted); font-size: var(--g-text-caption); }
+.role-runtime dd { margin: 0; font-family: var(--g-font-mono); font-size: var(--g-text-dense); overflow-wrap: anywhere; }
+.role-section { min-width: 0; width: 100%; padding-block: var(--g-space-5); border-bottom: 1px solid var(--g-border); }
+.role-section:last-child { border-bottom: 0; }
+.agents .role-body h3 { color: var(--g-text); font-size: var(--g-text-h4); font-weight: var(--g-weight-semibold); margin: 0 0 var(--g-space-4); }
+.role-prompt { min-width: 0; }
+.role-prompt > .md { max-width: var(--g-content); }
+.role-prompt-extra { border-top: 1px solid var(--g-border); margin-top: var(--g-space-5); padding-top: var(--g-space-4); }
+.role-prompt-extra h4 { font-size: var(--g-text-ui); }
+.role-model-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--g-space-4); padding-block: var(--g-space-4); border-bottom: 1px solid var(--g-border); }
+.role-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--g-space-4); }
+.role-field-grid > *, .role-model-fields > * { min-width: 0; }
+.role-prompt-input { width: 100%; font-family: var(--g-font-mono); font-size: var(--g-text-dense); line-height: var(--g-leading-prose); resize: vertical; }
+.role-prompt-editor .g-field { margin-top: var(--g-space-4); }
+.role-stage-options { display: flex; flex-wrap: wrap; gap: var(--g-space-4); margin-bottom: var(--g-space-4); }
+.role-values { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: var(--g-space-3) var(--g-space-5); margin: 0; font-size: var(--g-text-ui); }
+.role-values dt { color: var(--g-text-muted); }
+.role-values dd { margin: 0; overflow-wrap: anywhere; }
+.role-permission-row { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; }
+.role-permission-row .ag-perm { flex: 1; }
+.role-permission-row .g-icon-btn { font-size: var(--g-text-caption); color: var(--g-text-muted); }
+.role-permission-row .ag-perm:has(input:disabled) { cursor: default; }
+.role-settings-form .ag-checks label { display: flex; align-items: start; gap: var(--g-space-2); padding: var(--g-space-2); }
+.role-settings-form .ag-choice { display: grid; gap: var(--g-space-2); }
+.role-settings-form .ag-choice > label { display: flex; align-items: center; gap: var(--g-space-2); }
+.role-actions-menu { display: grid; gap: var(--g-space-2); }
+.role-actions-menu .g-btn { justify-content: flex-start; }
+.role-import { display: grid; gap: var(--g-space-4); }
+.role-import-summary { display: grid; gap: var(--g-space-2); }
+.role-import-preview { max-height: calc(var(--g-control) * 8); overflow: auto; border-top: 1px solid var(--g-border); padding-top: var(--g-space-3); }
+@media (max-width: 700px) {
+  .role-field-grid, .role-model-fields { grid-template-columns: minmax(0, 1fr); }
+  .role-runtime { gap: var(--g-space-2); }
+  .role-runtime > div { width: 100%; }
+  .role-values { grid-template-columns: minmax(0, 1fr); gap: var(--g-space-1); }
+  .role-values dd { margin-bottom: var(--g-space-3); }
+}
+.role-mobile-picker { display: none; }
+.role-list-content { display: contents; }
+@media (max-width: 900px) {
+  .role-mobile-picker { display: block; padding: var(--g-space-2) var(--g-space-3) var(--g-space-3); }
+  .role-mobile-picker .g-select { width: 100%; }
+  .role-list-content { display: none; }
+  .agents .ag-roles-layout { grid-template-rows: auto minmax(0, 1fr); }
+  .agents .ag-roles-layout .split-list { max-height: none; padding-bottom: 0; overflow: visible; }
+}
+
+.role-prompt-tools { display: flex; justify-content: flex-end; margin-bottom: var(--g-space-2); }
+
+.role-field-grid > .g-field { align-content: start; }
+.role-import-json { max-height: calc(var(--g-control) * 8); overflow: auto; font: var(--g-text-caption) / var(--g-leading-prose) var(--g-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -20,6 +20,12 @@ export function fixtureFor(fixtures: Fixtures, url: URL, state: PreviewState): u
     const key = Object.keys(fixtures).find((k) => k.split("?")[0] === url.pathname);
     if (key) value = fixtures[key];
   }
+  if (url.pathname === "/api/agent-config/history" && Array.isArray(value)) {
+    const item = url.searchParams.get("item");
+    const before = Number(url.searchParams.get("before") ?? Infinity);
+    const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit") ?? 50)));
+    value = value.filter((row: unknown) => row && typeof row === "object" && "id" in row && typeof row.id === "number" && row.id < before && (!item || ("item" in row && row.item === item))).slice(0, limit);
+  }
   if (state !== "empty" || isBootstrap(url.pathname)) return value;
   if (Array.isArray(value)) return [];
   if (value && typeof value === "object") {

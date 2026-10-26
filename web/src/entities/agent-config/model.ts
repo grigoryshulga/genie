@@ -489,6 +489,8 @@ export interface GraphEdge {
   note?: string;
   /** SVG path. */
   d: string;
+  /** Omit inline labels when no clear route segment has room. The full text remains in the tooltip. */
+  showLabel?: boolean;
   /** Where the label goes. */
   lx: number;
   ly: number;
@@ -530,7 +532,7 @@ export function layoutTeam(
   members: { key: string; label: string; sub: string }[],
   relations: Relation[],
   problems: string[] = [],
-): { width: number; height: number; nodeW: number; nodes: GraphNode[]; edges: GraphEdge[]; stages: { x: number; label: string }[] } {
+): { width: number; height: number; nodeW: number; nodes: GraphNode[]; edges: GraphEdge[]; stages: { x: number; y: number; label: string }[] } {
   const nodeW = 240;
   const ranks = handoffRanks(members.map((m) => m.key), relations);
   const count = Math.max(1, ...[...ranks.values()].map((r) => r + 1));
@@ -547,7 +549,7 @@ export function layoutTeam(
       return { ...m, x: x(rank), y: 324 + row * 140, flagged: problems.some((p) => p.includes(`\`${m.key}\``)) };
     }),
   ];
-  const stages = Array.from({ length: count }, (_, rank) => ({ x: x(rank), label: `Этап ${rank + 1}` }));
+  const stages = Array.from({ length: count }, (_, rank) => ({ x: x(rank), y: 269, label: `Этап ${rank + 1}` }));
   const at = new Map(nodes.map((n) => [n.key, n]));
   const edges: GraphEdge[] = [{ from: "project-manager", to: "orchestrator", type: "manages", d: `M ${width / 2} 98 V 134`, lx: width / 2, ly: 116 }];
   for (const r of relations) for (const to of r.to) {

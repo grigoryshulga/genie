@@ -1387,10 +1387,15 @@ impl ServerDb {
 
     /// Newest first; `item` narrows to one role, template, skill or `mcp`.
     pub fn config_changes(&self, item: Option<&str>, limit: i64) -> Result<Vec<ConfigChange>> {
+        self.config_changes_before(item, limit, None)
+    }
+
+    /// A stable history page. New edits never shift the cursor into older pages.
+    pub fn config_changes_before(&self, item: Option<&str>, limit: i64, before: Option<i64>) -> Result<Vec<ConfigChange>> {
         let mut stmt = self.conn().prepare(
-            "SELECT id, at, user, item, path, before, after FROM config_changes WHERE (?1 IS NULL OR item = ?1) ORDER BY id DESC LIMIT ?2",
+            "SELECT id, at, user, item, path, before, after FROM config_changes WHERE (?1 IS NULL OR item = ?1) AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![item, limit], |r| {
+        let rows = stmt.query_map(params![item, limit, before], |r| {
             Ok(ConfigChange {
                 id: r.get(0)?,
                 at: r.get(1)?,
@@ -1569,6 +1574,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = ServerDb::open(&dir.path().join("server.db")).unwrap();
         (dir, db)
+    }
+
+    #[test]
+    fn configuration_history_pages_preserve_snapshots_and_item_filter() {
+        let (_dir, db) = db();
+        let first = db.record_config_change("anna", "role:analyst", "agents/analyst.md", None, Some("original")).unwrap();
+        db.record_config_change("bob", "role:tester", "agents/tester.md", None, Some("other role")).unwrap();
+        let second = db.record_config_change("bob", "role:analyst", "agents/analyst.md", Some("original"), Some("revised")).unwrap();
+        let page = db.config_changes_before(Some("role:analyst"), 1, None).unwrap();
+        assert_eq!(page[0].id, second);
+        assert_eq!(page[0].before.as_deref(), Some("original"));
+        assert_eq!(page[0].after.as_deref(), Some("revised"));
+        db.record_config_change("anna", "role:analyst", "agents/analyst.md", Some("revised"), None).unwrap();
+        let older = db.config_changes_before(Some("role:analyst"), 2, Some(second)).unwrap();
+        assert_eq!(older.len(), 1);
+        assert_eq!(older[0].id, first);
+        assert!(db.config_changes_before(Some("role:analyst"), 2, Some(first)).unwrap().is_empty());
+        assert_eq!(db.config_changes(None, 10).unwrap().len(), 4);
     }
 
     #[test]

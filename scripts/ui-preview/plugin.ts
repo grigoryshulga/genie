@@ -25,6 +25,22 @@ export function uiPreviewMiddleware() {
     const state: PreviewState = states.find((s) => s === candidate) ?? "populated";
     const send = (status: number, data: unknown) => { res.statusCode = status; res.end(JSON.stringify(data)); };
     if (req.method !== "GET") {
+      // This POST only renders prompts; all writes and task-specific simulations stay on dev.
+      if (req.method === "POST" && /^\/api\/templates\/[^/]+\/preview$/.test(url.pathname)) {
+        let body = "";
+        req.on("data", (chunk) => { body += chunk; });
+        req.on("end", () => {
+          let value: unknown;
+          try { value = body ? JSON.parse(body) : {}; } catch { send(400, { error: "Invalid preview JSON" }); return; }
+          if (value && typeof value === "object" && "task" in value && value.task) { send(501, { error: "Task-specific prompts require the dev backend." }); return; }
+          if (state === "loading") return;
+          if (state === "error") { send(503, { error: "Preview: simulated server unavailable" }); return; }
+          const fixture = fixtureFor(fixtures, url, state);
+          if (fixture === undefined) send(501, { error: `No UI fixture for ${url.pathname}; use dev.` });
+          else send(200, fixture);
+        });
+        return;
+      }
       send(501, { error: "UI preview is read-only. Verify saved changes against the dev backend." }); return;
     }
     if (!isBootstrap(url.pathname)) {

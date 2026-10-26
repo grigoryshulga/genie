@@ -10,7 +10,7 @@ export function useSkillsSettings(detail: RoleDetail) {
   return { only, setOnly, chosen, setChosen, value: only ? chosen : undefined };
 }
 
-export function SkillsFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<typeof useSkillsSettings> }) {
+export function SkillsFields({ cfg, state, compact = false }: { cfg: Catalogue; state: ReturnType<typeof useSkillsSettings>; compact?: boolean }) {
   const { only, setOnly, chosen, setChosen } = state;
   const [search, setSearch] = useState("");
   const names = [...new Set([...cfg.skills.map((s) => s.name), ...chosen])];
@@ -19,7 +19,7 @@ export function SkillsFields({ cfg, state }: { cfg: Catalogue; state: ReturnType
       <div className="ag-choice">
         <label><input type="radio" name="skills-mode" checked={!only} onChange={() => setOnly(false)} />Все установленные навыки</label>
         <label><input type="radio" name="skills-mode" checked={only} onChange={() => setOnly(true)} />Выбрать навыки</label>
-        <p className="g-muted ag-note">Навыки репозитория доступны в любом режиме.</p>
+        {!compact && <p className="g-muted ag-note">Навыки репозитория доступны в любом режиме.</p>}
         {only && <>
           <input className="g-input" type="search" aria-label="Поиск навыков" placeholder="Найти навык…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <div className="ag-checks ag-option-list">

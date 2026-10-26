@@ -50,8 +50,10 @@
    cannot share a line with search and create, so the nav takes a line of its own. */
 @media (max-width: 1180px) and (min-width: 901px) {
   .g-topbar { flex-wrap: wrap; gap: var(--g-space-2) var(--g-space-3); padding-block: var(--g-space-2); }
-  .g-topbar-nav { order: 10; flex: 1 0 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .g-topbar-nav::-webkit-scrollbar { display: none; }
+  .g-topbar-nav { order: 10; flex: 1 0 100%; min-width: 0; }
+  /* Scroll destinations, keeping the overflow menu outside the clipping container. */
+  .g-topbar-nav > .g-tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .g-topbar-nav > .g-tabs::-webkit-scrollbar { display: none; }
   .g-topbar-project { max-width: 180px; }
   .g-topbar-search { width: 180px; }
 }

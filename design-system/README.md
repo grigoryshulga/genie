@@ -78,7 +78,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | --- | --- | --- |
 | Button | primary, secondary, ghost, danger × roomy/dense × resting/hover/focus/disabled/busy | `Button`; pill, 40 px (32 dense). Primary is orange with an ink label; secondary is a green outline. |
 | Icon button | resting/hover/focus/disabled | `IconButton`; needs a `label` for its accessible name. |
-| Tabs | selected/resting | `Tabs`; horizontal `g-tabs`, also usable as route links. |
+| Tabs | pills/underline × selected/resting | `Tabs`; horizontal `g-tabs`, also usable as route links. Use `variant="underline"` for subordinate navigation. |
 | Segmented | selected/resting | `Segmented`; `g-seg`, radiogroup semantics. |
 | Chip | resting/pressed | `Chip`; `pressed` reflects the toggle state. |
 | Tag | neutral, accent, signal, danger, solid-accent, solid-signal, outline | `Tag`; soft tint with the matching text colour. |
@@ -95,6 +95,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | Disclosure card | expanded/collapsed, hover/focus; persisted by caller-supplied key | `DisclosureCard`; compact rail surface, full-heading keyboard toggle and hidden body. |
 | Feedback | neutral/accent/signal/danger banner, empty, error, skeleton, working arcs | `Banner`, `EmptyState`, `ErrorState`, `Skeleton`, `WorkingArcs`. An empty list uses `EmptyState`; a failed query uses `ErrorState`. |
 | Image preview | thumbnail/inline/full/lightbox | `ImagePreview`; shared surfaces and radii, paired danger foreground for close hover. |
+| Team graph | process/configuration, inline/expanded | `TemplateGraph`; configuration uses `compact` to wrap stages at readable size, with fit/zoom/expand controls. |
 | Charts | grouped/stacked | `BarChart`; `g-viz-*` series colours, visible legend and textual totals. |
 | Rich text | reading/editing | `Markdown`, docs editor; content-specific block geometry stays local. |
 
