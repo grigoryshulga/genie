@@ -31,6 +31,8 @@ pub const MAIL_SENT: &str = "mail.sent";
 pub const MCP_CALLED: &str = "mcp.called";
 /// An agent pushed to a repository through the repository proxy.
 pub const GIT_PUSHED: &str = "git.pushed";
+/// A repository was bound to a provider connection, or a connection was disconnected or reassigned.
+pub const GIT_CONNECTION: &str = "git.connection";
 /// The proxy refused an agent's push or clone (policy).
 pub const GIT_DENIED: &str = "git.denied";
 /// A pull/merge request was opened for a task's branch.

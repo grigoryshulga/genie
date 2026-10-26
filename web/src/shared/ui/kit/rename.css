@@ -1,0 +1,12 @@
+/* Inline rename: the pencil is quiet until the name is hovered or focused; a touch screen keeps it visible. */
+.g-rename-host { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; }
+.g-rename-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--g-radius-sm); background: none; color: var(--g-text-muted); opacity: 0; cursor: pointer; transition: opacity var(--g-duration) var(--g-ease); }
+.g-rename-host:hover > .g-rename-btn, .g-rename-btn:focus-visible { opacity: 1; }
+.g-rename-btn:hover { color: var(--g-text); background: var(--g-surface-hover); }
+.g-rename-btn:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
+@media (hover: none) { .g-rename-btn { opacity: 1; } }
+.g-rename-input { flex: 1; min-width: 0; height: var(--g-control-sm); padding: 0 var(--g-space-2); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-sm); background: var(--g-surface); color: var(--g-text); font: var(--g-weight-semibold) var(--g-text-dense) var(--g-font-sans); }
+.g-rename-input:focus { outline: 2px solid var(--g-focus); outline-offset: 1px; border-color: transparent; }
+.g-rename-input.g-page-title, .g-rename-input.doc-title { height: auto; padding: 0 var(--g-space-1); }
+.doc-row-rename { cursor: text; }
+.doc-row-rename .g-rename-input { height: var(--g-control-sm); }

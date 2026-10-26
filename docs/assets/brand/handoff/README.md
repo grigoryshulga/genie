@@ -39,7 +39,7 @@ None of the new files is imported by the application yet. The first foundation t
 
 ## Integration branch and existing foundations (read before H02)
 
-- **Work lands in `dev`.** Branch from `origin/dev`, open PRs against `dev`, and obtain the owner's visual approval of a preview candidate before publishing (see `docs/development/visual-preview.md`). `main` only receives release PRs. This overrides the `origin/main` wording elsewhere in this handoff.
+- **Work lands in `dev`.** Branch from `origin/dev`, open PRs against `dev`, and obtain the owner's visual approval of a preview candidate before publishing a UI change (see `docs/development/visual-preview.md`). `main` only receives release PRs. This overrides the `origin/main` wording elsewhere in this handoff.
 - **`web/src/shared/ui/tokens.css` was the GNE-25 palette** (legacy `--bg`, `--text`, `--accent` names, accent choices, and a Figma exporter in `scripts/design-system/`). H02 aliased the legacy names to the `--g-` tokens in `compat.css`, and H33 (GNE-69) removed both files together with the accent choices, so `g-tokens.css` is now the only token source and `scripts/design-system/export.mjs` reads it directly.
 - **`shared/lib/appearance.ts` and `preferences.ts` already store appearance preferences.** H02's theme switch extends them instead of adding a second store.
 - **`test/ui` already holds Playwright browser tests and screenshot baselines** (GNE-31), and `npm run ui:capture` (GNE-41, H00) photographs every route. Baselines change deliberately with each UI task.

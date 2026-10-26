@@ -38,10 +38,6 @@ a.epic-chip:hover { border-color: var(--g-accent); color: var(--g-text); }
 .epic-arcs .fill { stroke: var(--g-accent); stroke-linecap: round; }
 
 /* -- the list of epics -------------------------------------------------------------- */
-.epics-page .ep-head { flex: none; display: flex; align-items: flex-end; gap: var(--g-space-4); flex-wrap: wrap; padding: var(--g-space-5) var(--g-space-5) var(--g-space-4); border-bottom: 1px solid var(--g-border); }
-.ep-head-text { display: flex; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
-.ep-title { margin: 0; font-family: var(--g-font-display); font-size: var(--g-text-h1); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); color: var(--g-text); }
-.ep-lede { margin: 0; max-width: var(--g-measure); color: var(--g-text-muted); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
 .epics-scroll { padding: var(--g-space-5); }
 .epic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: var(--g-space-3); align-content: start; }
 .epic-card { display: flex; flex-direction: column; gap: var(--g-space-3); min-width: 0; color: var(--g-text); text-decoration: none; }
@@ -138,8 +134,6 @@ a.epic-card:hover { border-color: var(--g-border-strong); color: var(--g-text); 
 
 @media (max-width: 900px) {
   .row .tags { display: none; }
-  .epics-page .ep-head { padding: var(--g-space-4); align-items: flex-start; }
-  .ep-title { font-size: var(--g-text-h2); }
   .epics-scroll { padding: var(--g-space-4); }
   .epic-grid { grid-template-columns: 1fr; }
   .epic-body { grid-template-columns: minmax(0, 1fr); overflow: visible; }

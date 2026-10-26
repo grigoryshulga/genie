@@ -3,10 +3,11 @@
 // drawer and the docs change signal.
 
 import { lazy, Suspense, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   buildDocNavigation,
   docSections,
+  sectionLandingPaths,
   sectionTrail,
   DocsTree,
   fieldsFromPage,
@@ -19,9 +20,9 @@ import {
   useDocsVersion,
   useSaveDoc,
 } from "@/entities/doc";
-import { useProposals } from "@/entities/platform";
 import { useSession } from "@/entities/session";
 import { ContextSearch } from "@/widgets/topbar";
+import { DocViewSwitch } from "@/widgets/docs-view-switch";
 import { useToast, Banner, EmptyState, ErrorState, Icon, LoadingState, Skeleton, useModalFocus } from "@/shared/ui";
 import { DocsOverview } from "./DocsOverview.tsx";
 import { DocSearchList } from "./DocSearchList.tsx";
@@ -32,29 +33,6 @@ import { NewDocDialog } from "./NewDocDialog.tsx";
 import "./docs-sheets.css";
 
 const DocEditor = lazy(() => import("./DocEditor.tsx").then((module) => ({ default: module.DocEditor })));
-
-/**
- * Pages / Proposals segment of the documentation header (screens.md, section 0): proposals keep
- * their own route, the segment is the way in and the count next to it. Links rather than tabs,
- * because each side is a route with its own URL state.
- */
-function ViewTabs() {
-  const proposals = useProposals().data?.length ?? 0;
-  const { pathname } = useLocation();
-  const onProposals = pathname.startsWith("/docs/proposals");
-  return (
-    <nav className="docs-view-tabs" aria-label="Документация и предложения">
-      <div className="g-tabs">
-        <Link to="/docs" aria-current={onProposals ? undefined : "page"}>
-          Страницы
-        </Link>
-        <Link to="/docs/proposals" aria-current={onProposals ? "page" : undefined}>
-          Предложения{proposals > 0 ? ` ${proposals}` : ""}
-        </Link>
-      </div>
-    </nav>
-  );
-}
 
 export function DocsPage() {
   const [sp, setSp] = useSearchParams();
@@ -126,7 +104,6 @@ export function DocsPage() {
         <DocEditor
           path={pagePath}
           pages={pages}
-          onClose={() => closeEditor(pagePath)}
           onSaved={(path) => {
             toast("Страница сохранена");
             closeEditor(path);
@@ -139,29 +116,25 @@ export function DocsPage() {
 
   const loading = tree.isPending;
 
-  const results = search.data?.results ?? [];
+  const landings = sectionLandingPaths(navigation);
+  const results = (search.data?.results ?? []).filter((result) => !landings.has(result.path));
   const grid = searchMode ? "docs-search-mode" : pagePath ? "view" : "overview";
   const showPage = !!pageQ.data;
+  // The Страницы/Предложения switch lives in the top row of the page views, not in the navigation column.
+  const overview = !tree.isError && !loading && !pagePath && !searchMode && roots.length > 0 && !!section;
 
   return (
     <main className="main docs-main">
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className={`docs-grid ${grid}`}>
         <div className="docs-tree-col">
-          <header className="docs-col-head">
+          <header className="docs-col-head side-head">
             <button type="button" className="g-icon-btn m-only" onClick={() => setDrawer(true)} aria-label="Открыть навигацию по документации">
               <Icon.list size={15} />
             </button>
-            <h1>Документация</h1>
-            {searchMode ? <span className="doc-col-tag">поиск</span> : <span className="count">{loading ? "" : pages.length}</span>}
-            <span className="grow" />
-            <button type="button" className="g-btn ghost" onClick={() => setParam({ new: "page" })}>
-              <Icon.plus size={12} />
-              Статья
-            </button>
+            <h1 className="g-page-title">Документация</h1>
+            {searchMode && <span className="doc-col-tag">поиск</span>}
           </header>
-
-          {searchMode ? null : <ViewTabs />}
 
           {loading ? (
             <div className="doc-tree-empty" aria-busy="true">
@@ -215,7 +188,7 @@ export function DocsPage() {
               </EmptyState>
             </div></div>
           ) : section ? (
-            <DocsOverview root={navigation} section={section} projectName={projectName} onSection={openSection} onOpen={openPage} onCreate={createInSection} onOpenTree={() => setDrawer(true)} />
+            <DocsOverview key={section.path} root={navigation} section={section} toolbar={<DocViewSwitch />} onSection={openSection} onOpen={openPage} onCreate={createInSection} onOpenTree={() => setDrawer(true)} />
           ) : (
             <div className="docs-content"><div className="docs-view">
               <EmptyState
@@ -273,9 +246,9 @@ export function DocsPage() {
         <div className="docs-drawer-overlay" onMouseDown={(event) => event.target === event.currentTarget && setDrawer(false)}>
           <div ref={drawerRef} className="docs-drawer" role="dialog" aria-modal="true" aria-label="Навигация по документации">
             <div className="docs-drawer-grab" />
-            <header className="docs-col-head">
-              <h1>Документация</h1>
-              <span className="count">{pages.length}</span>
+            <header className="docs-col-head side-head">
+              <span className="side-title">Документация</span>
+              <span className="count">{navigation.count}</span>
               <span className="grow" />
               <button
                 type="button"

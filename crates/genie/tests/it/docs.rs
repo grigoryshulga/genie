@@ -302,3 +302,30 @@ async fn foreign_search_candidates_cannot_crowd_out_project_results() {
     assert_eq!(found["results"].as_array().unwrap().len(), 1);
     assert_eq!(found["results"][0]["path"], "shop/match.md");
 }
+
+#[tokio::test]
+async fn project_admins_remove_sections_with_their_pages() {
+    let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
+    h.project("shop");
+    let r = &h.router;
+    let page = "---\ntitle: Гид\ntype: guide\nstatus: current\n---\n# Гид\n\nТекст.\n";
+    let (s, saved, _) =
+        call(r, "POST", "/api/docs/page").json(json!({ "path": "shop/guides/setup.md", "content": page, "mode": "create" })).send().await;
+    assert_eq!(s, StatusCode::CREATED, "{saved}");
+
+    let (s, _, _) = call(r, "DELETE", "/api/docs/section?path=shop").send().await;
+    assert!(!s.is_success(), "a space root is not a section");
+    let (s, removed, _) = call(r, "DELETE", "/api/docs/section?path=shop/guides").send().await;
+    assert_eq!(s, StatusCode::OK, "{removed}");
+    assert_eq!(removed["removed"], 1);
+    let (s, _, _) = call(r, "GET", "/api/docs/page?path=shop/guides/setup.md").send().await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+
+    let (s, _, _) =
+        call(r, "POST", "/api/docs/page").json(json!({ "path": "shop/notes.md", "content": page, "mode": "create" })).send().await;
+    assert_eq!(s, StatusCode::CREATED);
+    let (s, gone, _) = call(r, "DELETE", "/api/docs/page?path=shop/notes.md").send().await;
+    assert_eq!(s, StatusCode::OK, "{gone}");
+    let (s, _, _) = call(r, "GET", "/api/docs/page?path=shop/notes.md").send().await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}

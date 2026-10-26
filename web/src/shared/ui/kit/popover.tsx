@@ -1,19 +1,20 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { anchorPopover } from "@/shared/lib";
-import { Icon } from "@/shared/ui";
+import { cx } from "./cx.ts";
+import { useModalFocus } from "./modal-focus.ts";
+import "./popover.css";
 
-/** A filter chip of the task list with its options in a popover underneath (a bottom sheet on a phone). */
-export function FilterMenu({ label, value, active, children }: { label: string; value: string; active: boolean; children: ReactNode }) {
+/**
+ * A toolbar button that opens a panel of controls underneath it (a bottom sheet on a phone).
+ * The panel is `position: fixed`, so a scrolling toolbar cannot clip it; its place comes from the button
+ * and follows the window and any scroll while it is open.
+ */
+export function Popover({ label, icon, count, children, className }: { label: string; icon?: ReactNode; count?: number; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
-  // The filter toolbar scrolls sideways (`.g-toolbar` is overflow-x: auto), which
-  // would clip an absolutely positioned popover. The popover is `position: fixed`
-  // instead, so it leaves that scroll box; its place under the chip is set here
-  // and kept up to date while the window or the toolbar scrolls. On narrow
-  // screens the stylesheet turns it into a bottom sheet and drops these values.
   useLayoutEffect(() => {
     if (!open) return;
     const pop = popRef.current;
@@ -38,31 +39,22 @@ export function FilterMenu({ label, value, active, children }: { label: string; 
     };
   }, [open]);
 
+  // Focus goes in when it opens, Tab stays inside, Escape closes and hands focus back to the button.
+  useModalFocus(popRef, open, () => setOpen(false));
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => !wrapRef.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
+
   return (
-    <div className="fmenu" ref={wrapRef}>
-      <button
-        type="button"
-        ref={btnRef}
-        className="g-chip fchip"
-        aria-expanded={open}
-        aria-pressed={active}
-        aria-haspopup="dialog"
-        onClick={() => setOpen(!open)}
-      >
+    <div className={cx("fmenu", className)} ref={wrapRef}>
+      <button type="button" ref={btnRef} className="g-chip fchip" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>
+        {icon}
         <span className="k">{label}</span>
-        <span className="v">{value}</span>
-        <Icon.chevron size={10} className="chev" />
+        {!!count && <span className="g-tag solid-signal g-num">{count}</span>}
       </button>
       {open && (
         <div className="fpop" ref={popRef} role="dialog" aria-label={label}>

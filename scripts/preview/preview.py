@@ -25,6 +25,8 @@ import urllib.request
 import config as settings
 
 HERE = Path(__file__).resolve().parent
+DEMO_LOGIN = "preview"
+DEMO_PASSWORD = "preview123"
 
 
 def run(args, cwd=None, env=None, data=None):
@@ -84,7 +86,8 @@ def valid(entry):
 
 def process_id(pid):
     try:
-        return Path(f"/proc/{pid}/stat").read_text().split(") ", 1)[1].split()[19]
+        fields = Path(f"/proc/{pid}/stat").read_text().split(") ", 1)[1].split()
+        return None if fields[0] == "Z" else fields[19]
     except (FileNotFoundError, ProcessLookupError):
         return None
 
@@ -119,6 +122,12 @@ class Preview:
 
     def base(self):
         return git(self.root, "rev-parse", "--verify", self.config["baseRef"] + "^{commit}")
+
+    def launch(self, command, log):
+        # Shared services must survive removal of the task checkout that requested them.
+        primary = Path(git(self.root, "worktree", "list", "--porcelain").splitlines()[0].removeprefix("worktree "))
+        return spawn([sys.executable, HERE / "preview.py", "--home", self.home, "--root", primary, *command],
+                     log, cwd=primary)
 
     def urls(self, port=None):
         remote = (f"https://{self.config['tailscaleHost']}:{port or self.config['httpsPort']}"
@@ -196,8 +205,7 @@ class Preview:
                 return False
             self.selection()
         self.ensure_index()
-        spawn([sys.executable, HERE / "preview.py", "--home", self.home, "--root", self.root, "worker"],
-              self.home / "worker.log", cwd=self.root)
+        self.launch(["worker"], self.home / "worker.log")
         print("Preview queued: " + (self.urls()["remote"] or self.urls()["local"]))
         return True
 
@@ -205,8 +213,7 @@ class Preview:
         with lock(self.home / "index.lock"):
             pid_path = self.home / "index-process.json"
             if not alive(read(pid_path)):
-                proc = spawn([sys.executable, HERE / "preview.py", "--home", self.home, "--root", self.root, "serve"],
-                             self.home / "index.log", cwd=self.root)
+                proc = self.launch(["serve"], self.home / "index.log")
                 write(pid_path, proc)
             self.wait_health(self.config["indexPort"], "index", pid_path=pid_path)
 
@@ -276,6 +283,26 @@ class Preview:
         self.save_network()
         print(json.dumps({"services": endpoints, "index": self.urls()["remote"]}, indent=2))
 
+    def enable_tracker_service(self):
+        config = settings.service_config(self.home)
+        command = ["tailscale", "--socket=" + config["socket"]]
+        status = json.loads(run([*command, "status", "--json"]))
+        if status.get("BackendState") != "Running" or config["tag"] not in (status.get("Self", {}).get("Tags") or []):
+            raise RuntimeError("The dedicated service host must be logged in with its expected tag")
+        domain = status["Self"]["DNSName"].rstrip(".").split(".", 1)[1]
+        endpoint = "genie-self." + domain + ":443"
+        wanted = {"TCP": {"443": {"HTTPS": True}},
+                  "Web": {endpoint: {"Handlers": {"/": {"Proxy": "http://127.0.0.1:7422"}}}}}
+        existing = json.loads(run([*command, "serve", "status", "--json"])).get("Services", {}).get("svc:genie-self")
+        if existing and existing != wanted:
+            raise RuntimeError("Preserving unrelated genie-self Service configuration")
+        if not existing:
+            run([*command, "serve", "--service=svc:genie-self", "--https=443", "http://127.0.0.1:7422"])
+        config.update(tailnetDomain=domain, trackerService=True)
+        write(self.home / "services/config.json", config)
+        print(json.dumps({"tracker": "https://genie-self." + domain,
+                          "next": "Approve this host advertisement and run the tracker updater to apply its public URL"}, indent=2))
+
     def manifests(self):
         return [read(p) for p in sorted((self.home / "candidates").glob("*/manifest.json"))]
 
@@ -292,6 +319,8 @@ class Preview:
             if channel:
                 recipe["channel"] = channel
             cid = digest(recipe)[:20]
+            if (self.home / "retired" / (cid + ".json")).exists():
+                raise RuntimeError("This candidate was retired after merge; build the current dev composition instead")
             directory = self.home / "candidates" / cid
             manifest_path = directory / "manifest.json"
             previous = read(manifest_path)
@@ -375,7 +404,8 @@ class Preview:
         shutil.copytree(source / "web/dist", directory / "web")
 
     def next_port(self):
-        used = {p for m in self.manifests() for p in (m.get("port"), m.get("backendPort", m.get("port", 0) + 100))}
+        retained = self.manifests() + [read(p) for p in (self.home / "retired").glob("*.json")]
+        used = {p for m in retained for p in (m.get("port"), m.get("backendPort", m.get("port", 0) + 100))}
         ts = json.loads(run(["tailscale", "serve", "status", "--json"])) if self.config["tailscale"] else {}
         for port in range(self.config["candidatePortStart"], self.config["candidatePortEnd"] + 1):
             if port in used or port + self.config["backendPortOffset"] in used or str(port) in ts.get("TCP", {}):
@@ -412,12 +442,8 @@ class Preview:
         env = self.runtime_env(directory)
         binary = directory / "genie"
         if not (data / "server.db").exists():
-            password = secrets.token_urlsafe(24)
-            credential = directory / "credentials.txt"
-            credential.write_text("Login: preview\nPassword: " + password + "\n")
-            os.chmod(credential, 0o600)
             run([binary, "--data", data, "user", "add", "preview", "--admin", "--password-stdin"],
-                cwd=directory, env=env, data=(password + "\n").encode())
+                cwd=directory, env=env, data=(DEMO_PASSWORD + "\n").encode())
             run([binary, "--data", data, "project", "add", "preview", "--name", "Integration preview", "--prefix", "PV"],
                 cwd=directory, env=env)
             run([binary, "--data", data, "--project", "preview", "project", "update", "preview", "--autonomy", "manual"],
@@ -425,20 +451,39 @@ class Preview:
             for task in manifest["tasks"]:
                 run([binary, "--data", data, "--project", "preview", "task", "create", "Review " + task["task"],
                      "--description", "Included source commit: " + task["sha"]], cwd=directory, env=env)
+        self.demo_credentials(directory, data, env)
         manifest["backend"] = spawn([binary, "--data", data, "serve", "--no-agents", "--web", directory / "web"],
                                     directory / "server.log", cwd=directory, env=env)
         self.wait_health(manifest["backendPort"])
         write(directory / "manifest.json", manifest)
-        manifest["gateway"] = spawn([sys.executable, HERE / "preview.py", "--home", self.home, "--root", self.root,
-                                     "gateway", manifest["id"]], directory / "gateway.log", cwd=self.root)
+        manifest["gateway"] = self.launch(["gateway", manifest["id"]], directory / "gateway.log")
         self.wait_health(port, manifest["id"])
         if self.config["tailscale"]:
             self.publish_tailscale(port, port)
 
+    def demo_credentials(self, directory, data, env):
+        expected = f"Login: {DEMO_LOGIN}\nPassword: {DEMO_PASSWORD}\n"
+        credential = directory / "credentials.txt"
+        if not credential.exists() or credential.read_text() != expected:
+            run([directory / "genie", "--data", data, "user", "passwd", DEMO_LOGIN],
+                cwd=directory, env=env, data=(DEMO_PASSWORD + "\n").encode())
+            credential.write_text(expected)
+            credential.chmod(0o600)
+
     @staticmethod
     def stop_process(proc):
+        for sig, seconds in ((signal.SIGINT, 5), (signal.SIGTERM, 2), (signal.SIGKILL, 2)):
+            if not alive(proc):
+                return
+            try:
+                os.kill(proc["pid"], sig)
+            except ProcessLookupError:
+                return
+            until = time.monotonic() + seconds
+            while alive(proc) and time.monotonic() < until:
+                time.sleep(.05)
         if alive(proc):
-            os.kill(proc["pid"], signal.SIGINT)
+            raise RuntimeError("Preview process did not stop; preserving its files")
 
     def stop(self, cid):
         with lock(self.home / "build.lock"):
@@ -590,7 +635,7 @@ def main():
     parser.add_argument("--root", default=os.getcwd())
     parser.add_argument("--home", type=Path, help="Private runtime directory; defaults to the shared Git directory")
     subs = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "request", "serve", "withdraw", "status", "enable-tailscale", "enable-services"):
+    for name in ("prepare", "request", "serve", "withdraw", "status", "enable-tailscale", "enable-services", "enable-tracker-service", "update-tracker"):
         subs.add_parser(name)
     worker = subs.add_parser("worker")
     worker.add_argument("--channel", choices=("main", "dev"))
@@ -601,11 +646,40 @@ def main():
     for name in ("gateway", "stop", "restart"):
         sub = subs.add_parser(name)
         sub.add_argument("candidate")
+    cleanup = subs.add_parser("cleanup-merged")
+    cleanup.add_argument("--pr", required=True)
+    cleanup.add_argument("--task", required=True)
+    cleanup.add_argument("--worktree", type=Path, required=True)
+    cleanup.add_argument("--execute", action="store_true", help="Apply the verified plan; default is dry run")
+    cleanup.add_argument("--keep-worktree", action="store_true", help="Retain a still-bound T3 workspace")
+    gc = subs.add_parser("gc", help="Free disk: merged worktrees, rebuildable build output, old images, volumes, cache")
+    gc.add_argument("--execute", action="store_true", help="Apply the plan; default is dry run")
+    gc.add_argument("--only", help="Comma-separated subset of: worktrees,candidates,images,volumes,cache")
+    gc.add_argument("--keep-images", type=int, default=2, help="Newest tracker images to keep (default 2)")
+    gc.add_argument("--keep-candidates", type=int, default=3, help="Newest preview candidates to keep (default 3)")
+    gc.add_argument("--cache-gb", type=int, default=8, help="Docker build cache to keep (default 8)")
+    gc.add_argument("--idle-hours", type=int, default=24, help="Leave build output touched more recently (default 24)")
+    gc.add_argument("--no-github", action="store_true", help="Do not ask GitHub whether a branch was squash-merged")
+    gc.add_argument("--json", action="store_true")
     args = parser.parse_args()
     common = Path(git(args.root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     root = Path(git(args.root, "rev-parse", "--show-toplevel"))
     preview = Preview(root, args.home or common / "genie-preview")
-    if args.command in ("prepare", "request", "withdraw"):
+    if args.command == "gc":
+        import diskgc as collector
+        parts = tuple(args.only.split(",")) if args.only else ("worktrees", "candidates", "images", "volumes", "cache")
+        git(root, "fetch", "origin", "dev")
+        report = collector.collect(preview, args.execute, args.keep_images, args.cache_gb, args.keep_candidates,
+                                   args.idle_hours, parts, use_gh=not args.no_github)
+        print(json.dumps(report, indent=2) if args.json else collector.summary(report))
+    elif args.command == "update-tracker":
+        from tracker_update import Updater
+        print(json.dumps(Updater(root, preview.home).update(), indent=2))
+    elif args.command == "cleanup-merged":
+        from cleanup import cleanup_merged
+        print(json.dumps(cleanup_merged(preview, args.pr, args.task, args.worktree,
+                                        execute=args.execute, keep_worktree=args.keep_worktree), indent=2))
+    elif args.command in ("prepare", "request", "withdraw"):
         getattr(preview, args.command)(root)
     elif args.command == "ready":
         preview.ready(root, args.task)
@@ -613,13 +687,14 @@ def main():
         preview.build(args.channel)
     elif args.command == "channel":
         preview.ensure_index()
-        spawn([sys.executable, HERE / "preview.py", "--home", self.home, "--root", root, "worker", "--channel", args.name],
-              preview.home / "worker.log", cwd=root)
+        preview.launch(["worker", "--channel", args.name], preview.home / "worker.log")
         print("Queued isolated baseline: origin/" + args.name)
     elif args.command == "enable-tailscale":
         preview.enable_tailscale()
     elif args.command == "enable-services":
         preview.enable_services()
+    elif args.command == "enable-tracker-service":
+        preview.enable_tracker_service()
     elif args.command == "serve":
         preview.serve()
     elif args.command in ("gateway", "stop", "restart"):

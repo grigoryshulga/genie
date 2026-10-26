@@ -79,7 +79,7 @@ export function SettingsDialog({ detail, cfg, onClose }: { detail: RoleDetail; c
   };
   const hint = (text: string) => <span className="hint">{text}</span>;
   return (
-    <EditDialog title={`Настройки · ${r.title}`} note="Параметры сессии — со следующего запуска" busy={busy} error={error} onClose={onClose} onSave={() => void save()} narrow>
+    <EditDialog title={`Настройки · ${r.title}`} note="Параметры сессии — со следующего запуска" busy={busy} error={error} onClose={onClose} onSave={() => void save()}>
       <div className="ag-settings">
         <section>
           <h4>О роли</h4>

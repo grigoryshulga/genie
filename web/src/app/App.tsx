@@ -44,7 +44,6 @@ const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
 const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
 const MeSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.MeSettingsPage));
 const AutomationsSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.AutomationsSettingsPage));
-const AgentsAdminPage = lazyPage(() => import("@/pages/settings").then((m) => m.AgentsAdminPage));
 const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
 const ServerSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerSettingsPage));
 const ServerStatisticsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ServerStatisticsPage));
@@ -400,7 +399,8 @@ export const router = createBrowserRouter([
         path: "manage/server", element: <RequireServerAdmin><SettingsShell /></RequireServerAdmin>,
         children: [
           { index: true, element: <Navigate to="projects" replace /> },
-          ...["roles", "templates", "skills", "history"].map((section) => ({ path: section, element: <AgentsAdminPage /> })),
+          // The agent configuration moved to «Агенты»; the old global links land there.
+          ...["roles", "templates", "skills", "history", "agents"].map((section) => ({ path: section, element: <Navigate to={`/agents?tab=${section === "agents" ? "roles" : section}`} replace /> })),
           { path: ":section", element: <ServerSettingsPage /> },
         ],
       },

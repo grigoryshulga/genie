@@ -32,8 +32,7 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
   return (
     <div className="st-body">
       <div className="st-head">
-        <h2>Telegram</h2>
-        <p>Комментарии и смена статуса ваших задач и задач, за которыми вы следите.</p>
+        <h1 className="g-page-title">Telegram</h1>
       </div>
       {query.isPending ? (
         <SettingsLoading />

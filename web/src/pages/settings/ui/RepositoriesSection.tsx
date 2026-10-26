@@ -4,6 +4,7 @@
 // repository; rare things (the folder, the rule as JSON, a probe push) wait under a disclosure or a menu.
 
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import {
   type CheckLine,
   type GitHostInfo,
@@ -24,6 +25,7 @@ import {
 } from "@/entities/repo";
 import { ConfirmDialog, Icon, Menu, useAct } from "@/shared/ui";
 import { SettingsLoading } from "@/widgets/settings-shell";
+import { ConnectionsCard } from "./GitConnections.tsx";
 
 type Access = "read" | "write";
 
@@ -39,7 +41,7 @@ export function RepositoriesHead({ admin, onAdd }: { admin: boolean; onAdd?: () 
   return (
     <div className="rp-top">
       <div className="st-head">
-        <h2>Репозитории</h2>
+        <h1 className="g-page-title">Репозитории</h1>
         <p className="rp-lead">
           Хостинги
           <span className="rp-info" title={HOST_HINT} aria-label={HOST_HINT} role="img">
@@ -62,9 +64,12 @@ export function RepositoriesSection({ admin }: { admin: boolean }) {
   const hosts = useGitHosts(admin);
   const list = repos.data ?? [];
   const [adding, setAdding] = useState(false);
+  // GitHub brings the person back here: with the connection to pick repositories from, or with a failure.
+  const [params] = useSearchParams();
   return (
     <>
       <RepositoriesHead admin={admin} onAdd={adding ? undefined : () => setAdding(true)} />
+      <ConnectionsCard admin={admin} picking={params.get("connection") ?? undefined} failed={params.get("gitError") === "1"} />
       {admin && adding && <AddRepo hosts={hosts.data?.hosts ?? []} problems={hosts.data?.errors ?? []} loaded={!hosts.isPending} onClose={() => setAdding(false)} />}
       {list.length > 0 ? (
         <ul className="rp-list" aria-label="Репозитории проекта">
@@ -148,7 +153,8 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
   const save = (p: { access?: Access; policy?: RepoPolicy; mount?: string; token?: string }, ok: string) => act(() => patch.mutateAsync({ name: repo.name, patch: p }), ok);
   const runCheck = (probe: boolean) => void act(async () => setReport((await check.mutateAsync({ name: repo.name, probe })).lines));
 
-  const noToken = !!repo.host.kind && repo.host.kind !== "plain" && !repo.token?.set;
+  const connected = !!repo.connection;
+  const noToken = !connected && !!repo.host.kind && repo.host.kind !== "plain" && !repo.token?.set;
   const hostProblems = [
     ...(repo.host.error ? [repo.host.error] : []),
     ...(repo.host.problems ?? []),
@@ -194,6 +200,12 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
                 <span>
                   папка <span className="g-mono">{repo.mount}</span>
                 </span>
+              </>
+            )}
+            {connected && (
+              <>
+                <span aria-hidden>·</span>
+                <span title="Сервер работает с репозиторием через подключённый аккаунт GitHub; запросы на слияние открывает менеджер задачи">через подключение</span>
               </>
             )}
           </span>
@@ -292,7 +304,7 @@ function Repo({ repo, admin }: { repo: ProjectRepo; admin: boolean }) {
         )}
       </div>
 
-      {admin && (
+      {admin && !connected && (
         <div className="rp-grid">
           <label className="rp-lbl top" htmlFor={`rp-token-${repo.name}`}>
             Токен доступа

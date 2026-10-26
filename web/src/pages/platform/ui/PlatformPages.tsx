@@ -4,12 +4,13 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAutomations, useNotifications, useProposal, useProposals } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { matchesSearch, timeAgo, useTick } from "@/shared/lib";
-import { Banner, Button, Card, Character, EmptyState, GroupHead, Icon, Markdown, Prose, Radio, Sheet, Skeleton, Tag, Textarea, useRefreshingAct, useToast, WorkingArcs } from "@/shared/ui";
+import { Banner, Button, Card, Character, EmptyState, GroupHead, Icon, Markdown, PageHeader, Prose, Radio, Sheet, Skeleton, Tag, Textarea, useRefreshingAct, useToast, WorkingArcs } from "@/shared/ui";
 import { ContextSearch } from "@/widgets/topbar";
+import { DocViewSwitch } from "@/widgets/docs-view-switch";
 import { Runs } from "@/widgets/runs";
 // The platform pages carry their own sheets: the answer page (`public.css`), the split-pane and
 // notification rules (`pages.css`), then the responsive and centring layers.
@@ -181,14 +182,15 @@ export function NotificationsPage() {
   const unread = q.data?.unread ?? 0;
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Уведомления</h1>
-        {unread > 0 && <span className="sub">{unread} непрочитанных</span>}
-        <span className="grow" />
-        {unread > 0 && (
-          <Button onClick={() => void act(() => request("POST", "/api/notifications/read", {}))}>Прочитать все</Button>
-        )}
-      </header>
+      <PageHeader
+        title="Уведомления"
+        toolbar={<>
+          {unread > 0 && <span className="sub">{unread} непрочитанных</span>}
+          {unread > 0 && (
+            <Button onClick={() => void act(() => request("POST", "/api/notifications/read", {}))}>Прочитать все</Button>
+          )}
+        </>}
+      />
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="scroll">
         {q.isPending ? (
@@ -280,20 +282,19 @@ export function AutomationsPage() {
   const runNow = (rule: Automation) => void act(() => request("POST", `/api/automations/${rule.id}/run`, {}), "Запущено");
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Автоматизации</h1>
-        <span className="sub">запуск и наблюдение · правила меняют в настройках проекта</span>
-        <span className="grow" />
-        {current?.trigger === "manual" && (
+      <PageHeader
+        title="Автоматизации"
+        toolbar={current?.trigger === "manual" && (
           <Button variant="primary" onClick={() => runNow(current)}>
             <Icon.bolt size={13} />
             <span className="d-only">Запустить</span>
           </Button>
         )}
-      </header>
+      />
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="split">
         <section className="split-list" aria-label="Правила">
+          <div className="side-head"><span className="side-title">Правила</span></div>
           {rules.isPending && (
             <div className="split-skeletons" aria-hidden="true">
               {[0, 1, 2].map((i) => (
@@ -376,14 +377,7 @@ export function ProposalsPage() {
   const p = one.data?.proposal;
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Предложения</h1>
-        <span className="sub d-only">агенты предлагают правки знаний, владельцы раздела решают</span>
-        <span className="grow" />
-        <Link className="g-btn secondary" to="/docs">
-          К документации
-        </Link>
-      </header>
+      <PageHeader title="Предложения" toolbar={<DocViewSwitch />} />
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="split narrow">
         <section className="split-list" aria-label="Открытые предложения">

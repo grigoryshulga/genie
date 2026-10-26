@@ -170,6 +170,7 @@
   /* Scrims sit over content and never follow the theme: a modal backdrop and a photo overlay. */
   --g-scrim: rgb(9 9 13 / 0.6);
   --g-scrim-image: rgb(6 7 9 / 0.9);
+  --g-shadow-card: 0 2px 8px rgb(0 0 0 / 0.28);
   --g-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.55);
   color-scheme: dark;
 }
@@ -214,6 +215,7 @@
   --g-progress-early: var(--g-n-500);
 
   --g-focus: var(--g-green-700);
+  --g-shadow-card: 0 2px 8px rgb(9 9 13 / 0.08);
   --g-shadow-overlay: 0 20px 50px rgb(9 9 13 / 0.18);
   color-scheme: light;
 }

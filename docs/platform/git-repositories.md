@@ -32,6 +32,55 @@ genie repos check api --project shop
 
 The server fetches a mirror and discovers the default branch. The web equivalent is **Settings → Project settings → Repositories**. `genie repos check api --probe-push --project shop` additionally creates and deletes a test branch to verify push access.
 
+## Connect a GitHub account
+
+Instead of pasting a token per repository, a person can connect an account through the deployment's GitHub App and pick repositories from it. A project reaches only the repositories attached to it; the connection itself belongs to the person who made it.
+
+### Register the app (operator, once)
+
+Register a GitHub App for this deployment and describe it in `config.json`. The file names the secrets; it never holds them:
+
+```json
+{
+  "publicUrl": "https://genie.example.com",
+  "gitApps": {
+    "github": {
+      "host": "github",
+      "appId": 123456,
+      "slug": "genie-acme",
+      "clientId": "Iv1.0123456789abcdef",
+      "clientSecretEnv": "GENIE_GITHUB_APP_SECRET",
+      "privateKeyFile": "/etc/genie/github-app.pem"
+    }
+  }
+}
+```
+
+`host` is a `github` host of `git.json`. In the app's settings use `<publicUrl>/api/git/github/callback` as both the callback URL and the setup URL, leave "Request user authorization during installation" off, keep user token expiry on, and grant these repository permissions: Contents (read and write), Pull requests (read and write), Checks (read), Commit statuses (read), Metadata (read), and Actions (read and write) only if `genie pr rerun` should work. Do not grant Workflows or Administration: without Workflows GitHub refuses a push that edits workflow files. Keep the private key readable by the server only.
+
+### Connect, pick and attach
+
+An administrator of a project opens **Settings → Project settings → Repositories → Connected accounts** and chooses **Connect GitHub**.
+
+1. The person installs the app on an account and chooses all or selected repositories. GitHub sends them back with an `installation_id`, which anyone can forge, so it is only a claim.
+2. GitHub asks them to authorize (PKCE `S256`, bound to the browser that started the flow). The server accepts the installation only if GitHub lists it among that person's installations.
+3. **Choose repositories** lists the repositories that both the person and the installation reach. **Add** attaches one to the project; its path, default branch and id come from GitHub, not from the request.
+
+The user token behind the list lives in server memory for at most 15 minutes and is never stored; **Confirm on GitHub** renews it. Installation tokens are minted for one repository when an operation needs it, cached in memory until shortly before they expire, and never stored, logged or given to agents.
+
+A repository attached from a connection takes no token of its own and never allows force push or deleting branches, whatever its policy says.
+
+### Who may do what
+
+- Only an administrator of a project connects an account or attaches its repositories; the connection owner or a server administrator can disconnect it.
+- On a connected repository the task manager (the orchestrator, or a person) opens, reruns and merges requests. The agents of a task push their branch through the proxy and nothing more. Repositories reached with a token keep their current rules.
+- Disconnecting stops every operation at once; repositories, deliveries and links to requests stay. Connecting the same installation again revives it.
+- If the owner of a connection is deleted or disabled, operations stay blocked (`owner_removed`) until a server administrator reassigns the connection (`POST /api/git/connections/<id>/reassign` with `{"login": "…"}`).
+
+### Health and audit
+
+A connection is `ok`, `needs_attention`, `permission_missing`, `suspended`, `revoked` or `owner_removed`. Failed token mints and a check every 30 minutes (and **Check** on demand) update it; a suspended, removed, revoked or ownerless connection is refused before any call to GitHub. Connecting, granting a repository, disconnecting and reassigning are recorded in the configuration history (`config_changes`, item `git.connection:<id>`) and, for the affected projects, in the journal as `git.connection`.
+
 ## Host fields
 
 Host keys use `snake_case`; unknown fields are rejected.
@@ -50,7 +99,7 @@ Host keys use `snake_case`; unknown fields are rejected.
 
 ## Repository tokens
 
-Project administrators provide tokens per project/repository, through the web or `repos add|set --token-stdin`. The same remote can use different tokens in different projects. Tokens are not accepted as CLI arguments or MCP inputs.
+Project administrators provide tokens per project/repository (or [connect a GitHub account](#connect-a-github-account) instead), through the web or `repos add|set --token-stdin`. The same remote can use different tokens in different projects. Tokens are not accepted as CLI arguments or MCP inputs.
 
 Tokens are encrypted in `server.db` with `<data>/secrets.key` and bound to their project/repository. API responses expose only a suffix and update time. `git.json` fields `token` and `token_file` are rejected.
 

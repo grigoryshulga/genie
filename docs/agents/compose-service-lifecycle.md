@@ -2,6 +2,8 @@
 
 Use this guide when a task needs a local Compose-managed service started or updated. Replace each placeholder with the values from the current checkout and Compose configuration.
 
+For automatic updates of the repository's `genie-tracker`, use the [verified-dev updater](../development/tracker-auto-update.md). Coordinate manual changes with its timer so two deployments do not replace the service concurrently.
+
 ## Start and verify
 
 Select the Compose file, project, and service explicitly. Start the service and its declared dependencies with:
@@ -19,7 +21,7 @@ curl -fsS <health-url>
 
 ## Iterate and apply changes
 
-For web-only changes, use the repository's development server with HMR and proxy API requests to the running service. Find the command in the repository's scripts or development docs. This keeps each UI edit out of the container build loop.
+For web-only changes, use the development stand (`npm run dev:stand`): hot reload against a disposable seeded server, so the running service stays untouched. This keeps each UI edit out of the container build loop.
 
 When the task requires the running service to include completed changes, rebuild and recreate it once:
 

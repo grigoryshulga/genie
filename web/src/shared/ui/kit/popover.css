@@ -1,0 +1,23 @@
+/* ------------------------------------------------------------ toolbar popover (Popover, FilterOption) */
+/* A toolbar button with a panel underneath: a paper sheet on desktop, a bottom sheet on a phone.
+   Every value is a token; the panel is positioned by Popover through --fpop-top/left/max. */
+
+.fmenu { position: relative; flex: none; }
+.fmenu .fchip[aria-expanded="true"] { background: var(--g-surface-hover); color: var(--g-text); }
+.fpop { position: fixed; top: var(--fpop-top, -9999px); left: var(--fpop-left, 8px); z-index: var(--g-z-dropdown); display: flex; flex-direction: column; gap: 1px; min-width: 240px; max-width: 340px; max-height: var(--fpop-max, 60vh); overflow-y: auto; padding: var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-lg); background: var(--g-surface-raised); box-shadow: var(--g-shadow-overlay); }
+.fpop .fgroup { display: flex; flex-direction: column; gap: 1px; }
+.fpop .fgroup + .fgroup { margin-top: var(--g-space-2); }
+.fpop .fhead { margin: 0; padding: var(--g-space-2) var(--g-space-3); font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
+.fpop .g-seg.full { display: flex; margin: var(--g-space-1) var(--g-space-2) var(--g-space-2); }
+.fpop .g-seg.full > button { flex: 1; justify-content: center; }
+.fopt { display: flex; align-items: center; gap: var(--g-space-3); min-height: 32px; padding: 0 var(--g-space-3); border-radius: var(--g-radius-sm); font: 500 var(--g-text-ui) var(--g-font-sans); color: var(--g-text); cursor: pointer; }
+.fopt:hover { background: var(--g-surface-hover); }
+.fopt input { margin: 0; accent-color: var(--g-accent); }
+.fopt .grow { display: inline-flex; align-items: center; gap: var(--g-space-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fopt .hint { font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; font-feature-settings: "tnum"; }
+
+@media (max-width: 900px) {
+  .fchip { min-height: 36px; }
+  .fpop { top: auto; right: 0; bottom: 0; left: 0; min-width: 0; max-width: none; max-height: 70vh; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; padding-bottom: calc(var(--g-space-4) + env(safe-area-inset-bottom)); }
+  .fopt { min-height: 40px; }
+}

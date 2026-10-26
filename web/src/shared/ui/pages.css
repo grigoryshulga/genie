@@ -10,9 +10,11 @@
 .settings .auth-form > .g-btn { height: 32px; font-weight: 400; align-self: flex-start; }
 
 /* Two-pane pages: automations and proposals */
-.split { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr); }
-.split.narrow { grid-template-columns: 340px minmax(0, 1fr); }
-.split-list { border-right: 1px solid var(--g-border); padding: var(--g-space-4) var(--g-space-3); display: flex; flex-direction: column; gap: var(--g-space-1); overflow-y: auto; min-height: 0; }
+/* Every side column is the same width; its head (`.side-head`) sits flush at the top, like the screen's title row. */
+.split { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+.split.narrow { grid-template-columns: 300px minmax(0, 1fr); }
+.split-list { border-right: 1px solid var(--g-border); padding: 0 var(--g-space-3) var(--g-space-4); display: flex; flex-direction: column; gap: var(--g-space-1); overflow-y: auto; min-height: 0; }
+.split-list > .side-head { margin: 0 calc(-1 * var(--g-space-3)) var(--g-space-2); }
 .split-list .label { padding: var(--g-space-3) 14px var(--g-space-2); font-size: var(--g-text-caption); font-weight: 500; color: var(--g-text-muted); }
 .split-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .pick { display: flex; flex-direction: column; gap: var(--g-space-2); width: 100%; padding: var(--g-space-3) 14px; border: 0; border-radius: 10px; background: none; color: var(--g-text); text-align: left; text-decoration: none; }

@@ -2,6 +2,24 @@
 
 Notable changes by release. Versions follow [SemVer](https://semver.org/); entries use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Detailed implementation history remains in Git.
 
+## [0.6.1] — 2026-10-26
+
+### Added
+
+- Instant, read-only UI preview using disposable API fixtures, Vite HMR, both themes, responsive frames, and populated/empty/loading/error scenarios. Startup needs no Rust binary or backend server.
+- GitHub account connections: connect an account through the GitHub App client, choose repositories, and grant them to projects. Task delivery uses connected repositories and looks up an existing pull or merge request before creating one. A connection's problem appears behind an alert icon with details in a dialog.
+
+### Changed
+
+- Integration previews are requested by the owner, normally after task PRs reach `dev`. Candidate builds no longer belong to thread-settle or worktree-creation actions. Private preview addresses stay out of GitHub PR text.
+- Consistent page headers across the web interface, a documentation workspace, and editing of agent definitions.
+- Browser tests run on pull requests into `main`, and workflow triggers are tightened.
+- Owner-triggered preview fixtures and a development stand with hot reload on seeded data; preview garbage collection and on-demand tracker updates.
+
+### Upgrade notes
+
+- Back up the complete server data and project tracker data before upgrading from 0.6.0. This release uses server schema 11 (0.6.0 used 10); the tracker schema is unchanged at 8. Startup applies the migration. Older binaries reject schema 11, so a rollback requires restoring a compatible backup together with the older image.
+
 ## [0.6.0] — 2026-10-24
 
 ### Added

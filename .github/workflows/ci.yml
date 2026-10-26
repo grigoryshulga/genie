@@ -21,6 +21,7 @@ jobs:
   changes:
     name: Changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       docker: ${{ steps.filter.outputs.docker }}
       rust: ${{ steps.filter.outputs.rust }}
@@ -49,6 +50,7 @@ jobs:
               - "web/src/shared/api/generated/**"
               - ".github/workflows/**"
             web:
+              - "scripts/ui-preview/**"
               - "web/**"
               - "test/**"
               - "bench/**"
@@ -67,6 +69,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.preview == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -79,6 +82,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -89,8 +93,8 @@ jobs:
           # rust-cache keys on the dependencies and the toolchain, not on [profile]: a profile change
           # would keep restoring the old build, which is never replaced (a key is written once).
           key: ${{ hashFiles('Cargo.toml') }}
-          # Pull requests reuse main's cache and do not write their own (no eviction churn).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Pull requests reuse the cache of dev and main and do not write their own (no eviction churn).
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: Format
         run: cargo fmt --all --check
       - name: Lint
@@ -101,11 +105,12 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       # Node runs the fake stdio MCP servers; live sessions use the shipped native harness.
       - name: Pi-Bolt
         run: |
@@ -115,7 +120,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ hashFiles('Cargo.toml') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       # mold links the test binaries several times faster than the default linker.
       - uses: rui314/setup-mold@v1
       - uses: taiki-e/install-action@v2
@@ -154,11 +159,12 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm test
@@ -169,36 +175,14 @@ jobs:
   ui:
     name: Browser tests
     needs: changes
-    # The screens depend on the web and on the server that answers them.
-    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ hashFiles('Cargo.toml') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: rui314/setup-mold@v1
-      # The server is built before web/dist exists, so it does not embed the UI and is not rebuilt
-      # by a web-only change: the tests serve the fresh web/dist with `serve --web`.
-      - run: cargo build --locked -p genie
-      - run: npm run build:web
-      # Seeds two servers and runs Playwright in the image pinned to the installed version.
-      - run: npm run test:ui
-      - name: Upload the report, traces and screenshot diffs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-tests
-          path: test-results/
-          retention-days: 14
+    # Slow, so they run only for a release pull request into main; dev gets them every night
+    # (browser-tests.yml). The screens depend on the web and on the server that answers them.
+    if: >-
+      github.event_name == 'pull_request' && github.base_ref == 'main'
+      && (needs.changes.outputs.web == 'true' || needs.changes.outputs.rust == 'true')
+    uses: ./.github/workflows/browser-tests.yml
+    with:
+      ref: ${{ github.sha }}
 
   docker:
     name: Docker build definition
@@ -216,10 +200,32 @@ jobs:
       - name: Check compose configuration
         run: docker compose -f docker/docker-compose.yml config --quiet
 
+  # A real build only for a release: the image is what main publishes, and the definition check
+  # above cannot see a failing step (the Rust toolchain, the web build).
+  image:
+    name: Docker image build
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (loaded for the smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          load: true
+          tags: genie:ci
+          cache-from: type=gha
+      - name: Smoke test
+        run: docker/smoke-test.sh genie:ci
+
   main-release-gate:
     name: Main release gate
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -234,8 +240,9 @@ jobs:
   quality-gate:
     name: Quality gate
     if: always()
-    needs: [changes, lint, test, web, ui, docker, preview, main-release-gate]
+    needs: [changes, lint, test, web, ui, docker, image, preview, main-release-gate]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require all applicable checks to pass
         env:

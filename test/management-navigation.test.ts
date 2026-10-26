@@ -30,7 +30,8 @@ test("settings tabs validate deep links and retain standalone editor destination
   assert.equal(settingsTab("server", "accounts", null), "list");
   assert.equal(settingsTab("project", "repos", "environment"), "environment");
   assert.equal(settingsTabHref("project", "tools", "automations"), "/manage/project/automations");
-  assert.equal(settingsTabHref("server", "tools", "agents"), "/manage/server/roles");
+  // Agents left the global settings: the tab is no longer offered, so an old link falls back to the first tab.
+  assert.equal(settingsTab("server", "tools", "agents"), "mcp");
   assert.equal(settingsTabHref("server", "tools", "vault"), "/manage/server/vault");
   assert.equal(settingsTabHref("project", "tools", "mcp"), "/manage/project/tools?tab=mcp");
 });

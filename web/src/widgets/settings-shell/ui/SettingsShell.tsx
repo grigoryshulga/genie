@@ -57,7 +57,7 @@ export function SettingsShell() {
         {many && session && (
           <label className="st-rail-switch">
             <span className="sr-only">Сменить проект</span>
-            <select value={session.project ?? ""} onChange={(e) => void switchProject(e.target.value)}>
+            <select className="g-select sm" value={session.project ?? ""} onChange={(e) => void switchProject(e.target.value)}>
               {session.projects.map((p) => (
                 <option key={p.slug} value={p.slug}>
                   {p.name}

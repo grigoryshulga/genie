@@ -1,0 +1,7 @@
+/* A text field with a visible grip to set its height: a pill at the foot of the field, a line in the middle. */
+.g-resize { position: relative; display: grid; min-width: 0; }
+.g-resize > .g-resize-field { resize: none; padding-bottom: var(--g-space-6); }
+.g-resize-grip { position: absolute; left: 50%; bottom: var(--g-space-2); transform: translateX(-50%); width: 56px; height: 12px; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-active) linear-gradient(var(--g-text-muted), var(--g-text-muted)) center / 22px 2px no-repeat; cursor: ns-resize; touch-action: none; transition: background var(--g-duration) var(--g-ease), border-color var(--g-duration) var(--g-ease); }
+.g-resize-grip:hover, .g-resize-grip.dragging { border-color: var(--g-accent); background-color: var(--g-accent-soft); }
+.g-resize-grip:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .g-resize-grip { transition: none; } }

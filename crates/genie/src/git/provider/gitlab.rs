@@ -62,6 +62,10 @@ fn parse(mr: &Value) -> ChangeRequest {
 }
 
 pub(super) async fn open(api: &Api, remote: &str, r: &OpenRequest) -> ApiResult<ChangeRequest> {
+    // Lookup first: a retry after a lost answer finds the request it opened instead of relying on how the host words a duplicate.
+    if let Some(cr) = find_open(api, remote, &r.head).await? {
+        return Ok(cr);
+    }
     let base = project(remote);
     let title = if r.draft && !r.title.starts_with("Draft:") { format!("Draft: {}", r.title) } else { r.title.clone() };
     let body = json!({ "source_branch": r.head, "target_branch": r.base, "title": title, "description": r.body });

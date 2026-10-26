@@ -54,7 +54,6 @@ export const SETTINGS_TABS: Record<ManagementScope, Record<string, readonly (rea
     tools: [
       ["mcp", "MCP-серверы"],
       ["jev", "Jev"],
-      ["agents", "Агенты"],
       ["health", "Состояние"],
       ["vault", "База знаний"],
     ],
@@ -69,7 +68,6 @@ export function settingsTab(scope: ManagementScope, section: string, requested: 
 export function settingsTabHref(scope: ManagementScope, section: string, tab: string): string {
   if (scope === "project" && section === "tools" && tab === "automations") return "/manage/project/automations";
   if (scope === "server" && section === "tools") {
-    if (tab === "agents") return "/manage/server/roles";
     if (tab === "health" || tab === "vault") return `/manage/server/${tab}`;
   }
   return `/manage/${scope}/${section}?tab=${encodeURIComponent(tab)}`;

@@ -126,6 +126,8 @@
 .td-prop { gap: var(--g-space-1); }
 .td-prop .g-label { display: flex; align-items: center; gap: var(--g-space-1); font-size: var(--g-text-caption); font-weight: var(--g-weight-medium); color: var(--g-text-muted); }
 .td-prop-value { display: flex; align-items: center; flex-wrap: wrap; gap: var(--g-space-2); min-width: 0; }
+/* A long epic title stays on the control's single line instead of wrapping past its fixed height. */
+.td-prop .g-select { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-val { min-width: 0; font-size: var(--g-text-dense); color: var(--g-text); overflow-wrap: anywhere; }
 .td-val.muted { color: var(--g-text-muted); }
 .td-team { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; font-size: var(--g-text-dense); color: var(--g-text-2); }

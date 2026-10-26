@@ -25,6 +25,8 @@ COPY web/package.json ./web/package.json
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --workspace genie-web --include-workspace-root=false --ignore-scripts --no-audit --no-fund
 COPY web ./web
+# web/vite.config.ts imports the UI preview plugin from scripts/ui-preview.
+COPY scripts/ui-preview ./scripts/ui-preview
 RUN npm run build:web \
  && node web/compress-assets.mjs web/dist
 

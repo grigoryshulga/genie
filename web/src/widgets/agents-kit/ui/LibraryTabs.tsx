@@ -43,6 +43,7 @@ export function SkillsTab({
   return (
     <div className="split ag-skills-layout">
       <section className="split-list ag-list" aria-label="Навыки">
+        <div className="side-head"><span className="side-title">Навыки</span></div>
         <Problems items={sectionProblems(cfg.problems, "skills")} />
         {cfg.skills.map((s) => (
           <button type="button" key={s.name} className={`pick plain${s.name === current ? " on" : ""}`} onClick={() => onSelect(s.name)} aria-current={s.name === current}>

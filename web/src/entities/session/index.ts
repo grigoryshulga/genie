@@ -42,6 +42,14 @@ export function canWriteProject(session: Session | null | undefined): boolean {
   return role !== undefined && role !== "viewer";
 }
 
+/** Whether the signed-in person may remove documentation sections: a project admin or owner, or anyone on a local server. */
+export function canAdminProject(session: Session | null | undefined): boolean {
+  if (!session) return false;
+  if (session.mode === "local") return true;
+  const role = session.projects.find((p) => p.slug === session.project)?.role;
+  return role === "admin" || role === "owner";
+}
+
 export const sessionKey = ["session"] as const;
 
 export function useSession() {

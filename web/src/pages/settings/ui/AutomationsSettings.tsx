@@ -9,7 +9,7 @@ import { useAgentConfig } from "@/entities/agent-config";
 import { type Automation, describeStep, describeTrigger, RUN_STATUS, useAutomations, usePlaybooks } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
-import { Icon, Modal, useRefreshingAct } from "@/shared/ui";
+import { Icon, Modal, PageHeader, useRefreshingAct } from "@/shared/ui";
 import "@/shared/ui/settings.css";
 import { SettingsLoading } from "@/widgets/settings-shell";
 // The settings pages share the split-pane rules with the platform pages, then the responsive and
@@ -29,23 +29,24 @@ export function AutomationsSettingsPage() {
   const current = rules.data?.find((r) => r.id === selected);
   return (
     <main className="main">
-      <header className="topbar">
-        <h1>Автоматизации</h1>
-        <span className="sub">правила проекта</span>
-        <span className="grow" />
-        {!!playbooks.data?.length && (
-          <button type="button" className="g-btn secondary" onClick={() => setShowPlaybooks(true)}>
-            Плейбуки
+      <PageHeader
+        title="Автоматизации"
+        toolbar={<>
+          {!!playbooks.data?.length && (
+            <button type="button" className="g-btn secondary" onClick={() => setShowPlaybooks(true)}>
+              Плейбуки
+            </button>
+          )}
+          <button type="button" className="g-btn secondary" onClick={() => setEditing({ text: JSON.stringify(EMPTY_RULE, null, 2) })}>
+            <Icon.plus size={13} />
+            <span className="d-only">Новое правило</span>
           </button>
-        )}
-        <button type="button" className="g-btn secondary" onClick={() => setEditing({ text: JSON.stringify(EMPTY_RULE, null, 2) })}>
-          <Icon.plus size={13} />
-          <span className="d-only">Новое правило</span>
-        </button>
-      </header>
+        </>}
+      />
         <SettingsTabs scope="project" section="tools" current="automations" />
       <div className="split">
         <section className="split-list" aria-label="Правила">
+          <div className="side-head"><span className="side-title">Правила</span></div>
           {rules.data?.map((r) => (
             <button type="button" key={r.id} className={`pick${r.id === current?.id ? " on" : ""}`} onClick={() => setSp({ rule: String(r.id) })}>
               <span className="t">

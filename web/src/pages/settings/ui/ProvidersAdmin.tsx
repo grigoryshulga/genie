@@ -97,12 +97,9 @@ export function ProvidersAdminSection() {
     <div className="st-body">
       <div className="st-head">
         <div className="provider-headline">
-          <h2>Провайдеры и ключи сервера</h2>
+          <h1 className="g-page-title">Провайдеры и ключи сервера</h1>
           {providers.length > 0 && <button type="button" className="g-btn secondary provider-add" aria-label="Добавить провайдера" title="Добавить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
         </div>
-        <p>
-          Общие API-ключи для всех пользователей. Личный ключ имеет приоритет. Значения хранятся зашифрованными.
-        </p>
       </div>
       {shown.map(card)}
       {connecting && <ProviderConnectDialog providers={providers} scope="server" onClose={() => setConnecting(false)} />}

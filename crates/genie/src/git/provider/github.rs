@@ -78,6 +78,10 @@ async fn reviews(api: &Api, base: &str, number: i64) -> ApiResult<(u32, bool, Ve
 }
 
 pub(super) async fn open(api: &Api, remote: &str, r: &OpenRequest) -> ApiResult<ChangeRequest> {
+    // Lookup first: a retry after a lost answer finds the request it opened instead of relying on how the host words a duplicate.
+    if let Some(cr) = find_open(api, remote, &r.head).await? {
+        return Ok(cr);
+    }
     let base = repo_path(remote)?;
     let body = json!({ "title": r.title, "head": r.head, "base": r.base, "body": r.body, "draft": r.draft });
     match api.send(Method::POST, &format!("{base}/pulls"), &[], Some(body)).await {

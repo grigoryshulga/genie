@@ -66,7 +66,7 @@ function AccountTab({ user }: { user: SessionUser }) {
   return (
     <div className="st-body">
       <div className="st-head">
-        <h2>Аккаунт</h2>
+        <h1 className="g-page-title">Аккаунт</h1>
       </div>
 
       <form
@@ -257,8 +257,7 @@ function SecurityTab() {
   return (
     <div className="st-body">
       <div className="st-head">
-        <h2>Вход и пароль</h2>
-        <p>После смены пароля все сессии закрываются, в том числе эта: войдите снова с новым паролем. Токены CLI и MCP продолжают работать.</p>
+        <h1 className="g-page-title">Вход и пароль</h1>
       </div>
       <SocialAuth link />
       <form
@@ -407,10 +406,9 @@ function KeysTab() {
     <div className="st-body">
       <div className="st-head">
         <div className="provider-headline">
-          <h2>Провайдеры и ключи</h2>
+          <h1 className="g-page-title">Провайдеры и ключи</h1>
           {providers.length > 0 && <button type="button" className="g-btn secondary provider-add" aria-label="Подключить провайдера" title="Подключить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
         </div>
-        <p>Подключите провайдера через OAuth или сохраните API-ключ. Личные ключи имеют приоритет над ключами сервера.</p>
       </div>
       {shown.map(card)}
       {connecting && <ProviderConnectDialog providers={providers} scope="personal" onClose={() => setConnecting(false)} />}

@@ -102,7 +102,7 @@ test("every transition that moves a shape stops under prefers-reduced-motion", (
 // Colours belong to the token layer. The legacy palette and its compatibility aliases are gone (H33),
 // so the only files allowed a literal are the token layer and the inverted sheet that cannot follow it.
 const LITERAL_BUDGET: Record<string, { count: number; why: string }> = {
-  "shared/ui/g-tokens.css": { count: 39, why: "the token layer itself: the palette every other rule names" },
+  "shared/ui/g-tokens.css": { count: 41, why: "the token layer itself: the palette every other rule names" },
   "shared/ui/components.css": { count: 2, why: "the inverted paper sheet's hairlines, which blend with the sheet underneath and so cannot follow the theme" },
 };
 
@@ -128,6 +128,16 @@ test("the focus ring is the design system's own and is never a hairline", () => 
     if (block.file === "widgets/task-detail/ui/detail.css" && block.selector === ".composer .g-textarea:focus, .composer .g-textarea:focus-visible") {
       const wrapper = BLOCKS.find((b) => b.file === block.file && b.selector === ".composer:has(textarea:focus)");
       assert.ok(wrapper && declarations(wrapper.body).some((d) => /^outline\s*:\s*(2px|3px)\s+solid\s+var\(--g-focus\)/.test(d)), "the composer's wrapper must draw the delegated focus ring");
+      continue;
+    }
+    // A field that frames itself on focus draws the one ring on its wrapper; the control inside draws none. Each wrapper must keep that ring.
+    if (block.file === "shared/ui/components.css" && block.selector === ".app :is(.doc-chips, .g-search, .docs-filter, .search, .ac-composer, .tv-composer, .composer) :focus-visible") {
+      for (const wrapper of [".doc-chips:focus-within", ".g-search:focus-within", ".docs-filter:focus-within", ".search:focus-within", ".ac-composer:focus-within", ".tv-composer:focus-within", ".composer:has(textarea:focus)"]) {
+        assert.ok(
+          BLOCKS.some((b) => b.selector.split(",").map((s) => s.trim()).includes(wrapper) && declarations(b.body).some((d) => /^outline\s*:\s*(2px|3px)\s+solid\s+var\(--g-focus\)/.test(d))),
+          `${wrapper} must draw the focus ring that its control leaves to it`,
+        );
+      }
       continue;
     }
     assert.ok(!/outline\s*:\s*(none|0)\b/.test(outline), `${block.file} ${block.selector} removes the ring on focus`);

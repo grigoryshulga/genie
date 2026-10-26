@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { request } from "@/shared/api";
-import type { DocPage, DocReadResult, DocSearchResult } from "./model.ts";
+import { useToast } from "@/shared/ui";
+import { fieldsFromPage, serializeDoc, type DocPage, type DocReadResult, type DocSearchResult } from "./model.ts";
 
 export interface DocsTreeResponse {
   roots: string[];
@@ -76,6 +77,24 @@ export async function saveDoc(v: { path: string; content: string; mode: "create"
   return data as DocsSaveResponse;
 }
 
+/** Removes one page under the same publishing policy as an edit. */
+export const useRemoveDocPage = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (path: string) => request<{ removed: string }>("DELETE", `/api/docs/page?path=${encodeURIComponent(path)}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: docsKeys.all }),
+  });
+};
+
+/** Removes a section folder with its pages and subsections; the server answers with the count. */
+export const useRemoveDocSection = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (path: string) => request<{ removed: number; pages: string[] }>("DELETE", `/api/docs/section?path=${encodeURIComponent(path)}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: docsKeys.all }),
+  });
+};
+
 export const useDocsTree = () => useQuery({ queryKey: docsKeys.tree, queryFn: () => request<DocsTreeResponse>("GET", "/api/docs/tree") });
 
 /**
@@ -121,6 +140,33 @@ export const useSaveDoc = () => {
   return useMutation({
     mutationFn: saveDoc,
     onSuccess: () => void qc.invalidateQueries({ queryKey: docsKeys.all }),
+  });
+};
+
+export interface RenameDoc {
+  path: string;
+  title: string;
+  /** A section without an index page: the index is created with the new title. */
+  create?: boolean;
+}
+
+/**
+ * Renames a page or a section. The title lives in the frontmatter, so the path and the body stay;
+ * a section's name is its index page's title.
+ */
+export const useRenameDoc = () => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async ({ path, title, create }: RenameDoc) => {
+      if (create) {
+        return saveDoc({ path, content: serializeDoc({ title, type: "", status: "", verified: "", tags: [], paths: [], related: [], summary: null, aliases: [] }, ""), mode: "create" });
+      }
+      const page = await fetchDocPage(path);
+      return saveDoc({ path, content: serializeDoc({ ...fieldsFromPage(page), title }, page.content), mode: "update" });
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: docsKeys.all }),
+    onError: (error) => toast(error instanceof Error ? error.message : String(error), error instanceof DocSaveError && error.status === 202 ? "ok" : "error"),
   });
 };
 

@@ -17,7 +17,8 @@ test("sections take article titles from landing pages and hide the storage root"
     page("other/private.md", "Secret"),
   ], ["shop"]);
   assert.equal(root.path, "shop/");
-  assert.equal(root.count, 4);
+  // Index pages give sections their name; only install and api-guide are articles.
+  assert.equal(root.count, 2);
   const section = root.sections[0];
   assert.equal(section.title, "Начало работы");
   assert.equal(section.landing?.path, "shop/getting-started/index.md");
@@ -32,7 +33,7 @@ test("multiple roots stay distinct, index is preferred, and legacy documents are
     page("shop/index.md", "Main guide"), page("shop/README.md", "Read me"),
     page("handbook/index.md", "Handbook"), page("shop/raw_section/old-file.md", "old-file"),
   ], ["shop", "handbook"]);
-  assert.equal(root.count, 4);
+  assert.equal(root.count, 2);
   assert.deepEqual(root.sections.map((s) => s.title), ["Handbook", "Main guide"]);
   const shop = root.sections[1];
   assert.equal(shop.landing?.path, "shop/index.md");

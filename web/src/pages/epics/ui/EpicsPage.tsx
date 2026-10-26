@@ -17,7 +17,7 @@ import { type Team, useTeamMap } from "@/entities/team";
 import type { NewTaskPreset } from "@/features/create-task";
 import { plural, timeAgo, useTick } from "@/shared/lib";
 import { ContextSearch } from "@/widgets/topbar";
-import { Button, EmptyState, ErrorState, Icon, Skeleton, Tag, Tabs } from "@/shared/ui";
+import { Button, EmptyState, ErrorState, Icon, PageHeader, Skeleton, Tag, Tabs } from "@/shared/ui";
 import "./epics-sheets.css";
 
 const closed = (t: TaskSummary) => t.status === "done" || t.status === "cancelled";
@@ -46,23 +46,23 @@ export function EpicsPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
 
   return (
     <main className="main epics-page" aria-label="Эпики">
-      <header className="ep-head">
-        <div className="ep-head-text">
-          <h1 className="ep-title">Эпики</h1>
-          <p className="ep-lede">Крупные вехи: цель, критерии успеха и общие материалы. Оркестратор разбивает эпик на задачи.</p>
-        </div>
-        <Tabs
-          label="Какие эпики показать"
-          value={tab}
-          onChange={setTab}
-          items={[
-            { id: "open", label: <>Открытые · {open.length}</> },
-            { id: "closed", label: <>Завершённые · {done.length}</> },
-          ]}
-        />
-        <span className="grow" />
-        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
-      </header>
+      <PageHeader
+        title="Эпики"
+        toolbar={
+          <>
+            <Tabs
+              label="Какие эпики показать"
+              value={tab}
+              onChange={setTab}
+              items={[
+                { id: "open", label: <>Открытые · {open.length}</> },
+                { id: "closed", label: <>Завершённые · {done.length}</> },
+              ]}
+            />
+            <ContextSearch inputRef={searchRef} className="mobile-context-search" />
+          </>
+        }
+      />
 
       <div className="scroll epics-scroll">
         {tasksQ.isPending ? (

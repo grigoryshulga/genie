@@ -11,8 +11,8 @@ for (const theme of ["ink", "paper"]) {
       await expect(create).toHaveText("");
       await expect(bar.locator(".g-dock")).toHaveCount(0);
       await expect(bar.getByRole("button", { name: "Сменить тему" })).toHaveCount(0);
-      await expect(page.getByRole("toolbar", { name: "Фильтры доски" }).getByRole("button", { name: "Готово", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("toolbar", { name: "Фильтры доски" })).toBeVisible();
+      await expect(page.getByRole("toolbar", { name: "Инструменты страницы" }).getByRole("button", { name: "Готово", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("toolbar", { name: "Инструменты страницы" })).toBeVisible();
       await expect(page.locator("[data-lane]").first()).toBeVisible();
       await create.click();
       await expect(page.getByRole("dialog")).toBeVisible();

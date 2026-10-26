@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Genie UI preview</title>
+<style>
+  body { margin: 0; background: #dedede; font: 14px system-ui; }
+  form { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px; }
+  label { display: flex; gap: 6px; align-items: center; }
+  input, select, button { font: inherit; padding: 6px; }
+  iframe { display: block; border: 0; margin: auto; background: white; height: calc(100vh - 104px); max-width: 100%; }
+  p { margin: 0; padding: 0 12px 12px; }
+</style>
+<form id="controls">
+  <strong>UI fixtures</strong>
+  <label>Theme <select name="theme"><option>ink</option><option>paper</option></select></label>
+  <label>Viewport <select name="width"><option value="1440">Desktop 1440</option><option value="768">Tablet 768</option><option value="390">Phone 390</option></select></label>
+  <label>State <select name="state"><option>populated</option><option>empty</option><option>loading</option><option>error</option></select></label>
+  <label>Route <input name="route" value="/board" list="routes"></label>
+  <datalist id="routes"><option>/board<option>/tasks<option>/task/DM-2<option>/epics<option>/docs<option>/agents<option>/observations<option>/settings/me</datalist>
+  <button>Apply</button>
+</form>
+<p>Disposable, read-only mock API. Real authorization, persistence, agents and live updates are verified on dev.</p>
+<iframe title="Application preview" id="app"></iframe>
+<script>
+  const form = document.getElementById('controls');
+  let frame = document.getElementById('app');
+  let generation = 0;
+  const params = new URLSearchParams(location.search);
+  for (const key of ['theme', 'width', 'state', 'route']) {
+    if (params.has(key)) form.elements.namedItem(key).value = params.get(key);
+  }
+  function apply() {
+    const values = new FormData(form);
+    history.replaceState(null, '', '?' + new URLSearchParams(values));
+    document.cookie = 'genie-preview-state=' + values.get('state') + '; Path=/; SameSite=Strict';
+    localStorage.setItem('genie.appearance.theme', values.get('theme'));
+    // Destroy the old browsing context: pending loading requests must not block the next scenario.
+    frame.remove();
+    frame = document.createElement('iframe');
+    frame.id = 'app';
+    frame.title = 'Application preview';
+    document.body.append(frame);
+    frame.style.width = values.get('width') + 'px';
+    const route = values.get('route');
+    const safe = typeof route === 'string' && route.startsWith('/') && !route.startsWith('//') && !route.startsWith('/__preview') ? route : '/board';
+    const url = new URL(safe, location.origin);
+    url.searchParams.set('__uiPreview', String(++generation));
+    frame.src = url.pathname + url.search;
+  }
+  form.addEventListener('submit', event => { event.preventDefault(); apply(); });
+  apply();
+</script>
+</html>

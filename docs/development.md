@@ -9,9 +9,14 @@ status: current
 
 Requires stable Rust, Node 22.19+, Git, and bubblewrap for Linux sandbox tests. See [Architecture](platform/backend.md) for the code map.
 
-Follow the [repository workflow](development/genie-cli.md) to track a task, isolate changes, and publish a PR with successful CI.
+The [repository workflow](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines how a task is tracked, isolated, published and cleaned up. In short:
 
-Before publishing a task branch or opening its PR, prepare a [fixed integration preview](development/visual-preview.md) and obtain the owner's visual approval. That guide also documents machine-local T3 Project Actions, combined task candidates and private Tailscale access.
+- Iterate on the [development stand](development/testing-workflow.md): hot reload on varied seeded data.
+- Run the [checks](#checks) that cover the changed paths; CI runs the same commands.
+- A UI change is also shown to the owner with the [instant fixture preview](development/visual-preview.md) (`npm run preview:ui`, or a fixed integration candidate on request) and needs their approval before its PR is published. Every other change is published once its checks pass.
+- The local tracker follows `dev` when you run `preview update-tracker` (see the [tracker updater](development/tracker-auto-update.md)), and `preview gc` frees disk space ([testing workflow](development/testing-workflow.md#keeping-the-disk-clean)).
+
+The tracker task commands are in the [genie CLI guide](development/genie-cli.md).
 
 ## Release flow
 
@@ -30,24 +35,21 @@ GENIE_WEB_DIST=web/dist cargo build -p genie
 cargo run -p genie -- serve
 ```
 
-For web development, run Vite's HMR server without rebuilding or restarting Genie:
+For web development, use the stand: it builds `genie`, seeds a disposable data directory and starts Vite's hot-reload server in front of it, with no image build or restart:
 
 ```bash
-npm run dev:web
+npm run dev:stand
 ```
 
-By default Vite proxies `/api` to `http://127.0.0.1:7420`. To work against the primary local tracker instead, set its target:
+To run Vite alone against a server you already have, use `npm run dev:web`. It proxies `/api` to `http://127.0.0.1:7420` unless `GENIE_API_PROXY_TARGET` selects another server, for example the primary tracker at `http://127.0.0.1:7422`; actions then change that server's real tasks.
+
+For production-image validation, the Docker web stage builds and compresses the static assets independently from the Rust binary, so after the first image build a web-only rebuild reuses the cached Rust stage. Build the image without deploying it:
 
 ```bash
-GENIE_API_PROXY_TARGET=http://127.0.0.1:7422 npm run dev:web
+docker compose -p genie-tracker -f docker/docker-compose.tracker.yml build
 ```
 
-The UI updates immediately while requests use the selected Genie server. For production-image validation, the Docker web stage builds and compresses the static assets independently from the Rust binary. After the first image build, a web-only Docker rebuild reuses the cached Rust stage. To rebuild and recreate the local tracker with its explicit project and Compose file:
-
-```bash
-docker compose -p genie-tracker -f docker/docker-compose.tracker.yml up -d --build
-curl -fsS http://127.0.0.1:7422/api/health
-```
+The running tracker is changed only by `preview update-tracker` or the optional timer, never by a build from an unmerged checkout.
 
 `genie serve --web web/dist` also serves a local static build without rebuilding the binary.
 
@@ -137,7 +139,7 @@ GENIE_UI_THEMES=ink,paper npm run ui:capture        # one set per data-theme val
 
 PNGs land in `test-results/captures/<route>-<theme>-<1440|390>.png` (ignored by git), at 1440x900 and 390x844, with animations disabled and the clock fixed. Attach the before and after sets to the UI task that changed them. Known gaps: team and agent chat screens need running agents, so they are not captured; full-page shots do not include content scrolled inside a panel (the board's wide lanes are clipped to the viewport); the server health page shows the throwaway data path.
 
-Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. Open a trace with `npx playwright show-trace <path>/trace.zip`.
+Reports, traces, and screenshot diffs are written to `test-results/`; CI uploads them when the `Browser tests` job fails. CI runs that job (`.github/workflows/browser-tests.yml`) only on pull requests into `main` (releases), because it is slow, and every night on `dev`; it can also be started by hand from the Actions tab. Run `npm run test:ui` locally before a change that touches screens. Open a trace with `npx playwright show-trace <path>/trace.zip`.
 
 The [agent benchmark](https://github.com/grigoryshulga/genie/tree/main/bench) compares task outcomes before and after changes to roles, prompts, skills, or team templates.
 

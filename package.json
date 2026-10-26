@@ -1,6 +1,6 @@
 {
   "name": "genie",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "The web UI of the genie server, the pi extensions its agents run with, and their tests.",
   "type": "module",
@@ -10,13 +10,17 @@
     "test:ui": "node test/ui/run.ts",
     "ui:capture": "node test/ui/run.ts --capture",
     "build:web": "npm run build --workspace genie-web",
+    "preview:ui": "GENIE_UI_MOCK=1 npm run dev:web -- --host 127.0.0.1",
+    "test:ui-preview": "node scripts/ui-preview/test.ts",
+    "preview:ui:fixtures": "node test/ui/run.ts --export-fixtures",
     "dev:web": "npm run dev --workspace genie-web --",
     "typecheck": "tsc -p . && tsc -p web",
     "lint:web": "steiger web/src",
     "docs:dev": "npm --prefix docs run dev --",
     "docs:check": "npm --prefix docs run check",
     "docs:build": "npm --prefix docs run build",
-    "docs:preview": "npm --prefix docs run preview --"
+    "docs:preview": "npm --prefix docs run preview --",
+    "dev:stand": "node test/ui/stand.ts"
   },
   "engines": {
     "node": ">=22.19.0"
