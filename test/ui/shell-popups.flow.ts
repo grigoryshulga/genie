@@ -81,7 +81,8 @@ async function serveNotifications(page: Page, items: FixtureNotification[]) {
 const popupOf = (page: Page) => page.getByRole("dialog", { name: "Уведомления" });
 
 for (const theme of ["ink", "paper"]) {
-  for (const width of [1440, 390]) {
+  // The phone's bar has no bell: its sheet links to the notifications page (see the test below).
+  for (const width of [1440]) {
     test(`the bell opens the notification popup in place (${theme}, ${width})`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await serveNotifications(page, NOTIFICATIONS);
@@ -111,6 +112,18 @@ for (const theme of ["ink", "paper"]) {
     });
   }
 }
+
+test("on a phone the sheet carries the notifications with their unread count", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await serveNotifications(page, NOTIFICATIONS);
+  await page.goto("/board");
+  await expect(page.getByRole("button", { name: /^Уведомления/ }).filter({ visible: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Открыть меню разделов" }).click();
+  const link = page.getByRole("dialog", { name: "Навигация" }).getByRole("link", { name: /Уведомления/ });
+  await expect(link).toContainText("2");
+  await link.click();
+  await expect(page).toHaveURL(/\/notifications$/);
+});
 
 test("an outside click closes the popup and leaves focus where the click went", async ({ page }) => {
   await serveNotifications(page, NOTIFICATIONS);
@@ -200,13 +213,14 @@ for (const width of [1440, 390]) {
     await page.route(/\/api\/docs\/proposals\?status=open$/, async (route) => await route.fulfill({ json: PROPOSALS }));
     await page.goto("/board");
 
+    const docs = page.getByRole("navigation", { name: "Навигация" }).getByRole("link", { name: /Документация/ });
+    await expect(docs).toBeVisible();
+    await expect(docs).toHaveAttribute("href", "/docs");
+    await expect(docs).toHaveAccessibleName(/Документация\s+предложений к документации: 2/);
+    // A count inside a count's entry, not a second link inside a link.
+    await expect(docs.locator("a")).toHaveCount(0);
+
     if (width > 900) {
-      const docs = page.getByRole("navigation", { name: "Навигация" }).getByRole("link", { name: /Документация/ });
-      await expect(docs).toBeVisible();
-      await expect(docs).toHaveAttribute("href", "/docs");
-      await expect(docs).toHaveAccessibleName(/Документация\s+предложений к документации: 2/);
-      // A count inside a count's entry, not a second link inside a link.
-      await expect(docs.locator("a")).toHaveCount(0);
       // The standalone entry is gone from the overflow menu; the other destinations stay.
       await page.getByRole("button", { name: "Ещё" }).click();
       const more = page.getByRole("menu", { name: "Ещё" });
@@ -214,12 +228,9 @@ for (const width of [1440, 390]) {
       await expect(more.getByRole("menuitem", { name: /Предложения/ })).toHaveCount(0);
       await expect(more.getByRole("menuitem", { name: /Автоматизации/ })).toBeVisible();
     } else {
+      // The phone's bar carries the destinations; the sheet behind «Ещё» carries the rest.
       await page.getByRole("button", { name: "Открыть меню разделов" }).click();
       const sheet = page.getByRole("dialog", { name: "Навигация" });
-      const docs = sheet.getByRole("link", { name: /Документация/ });
-      await expect(docs).toBeVisible();
-      await expect(docs).toHaveAttribute("href", "/docs");
-      await expect(docs).toHaveAccessibleName(/Документация\s+предложений к документации: 2/);
       await expect(sheet.getByRole("link", { name: "Предложения", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("link", { name: "Уведомления", exact: true })).toBeVisible();
     }
@@ -245,7 +256,7 @@ test("the current tab's count reads on the accent pill", async ({ page }) => {
     return { number: getComputedStyle(number).color, pill: getComputedStyle(node).color };
   });
   expect(colors.number).toBe(colors.pill);
-  await page.screenshot({ path: "test-results/shell-topbar-tab-count.png", clip: { x: 0, y: 0, width: 900, height: 64 }, animations: "disabled" });
+  await page.screenshot({ path: "test-results/shell-topbar-tab-count.png", clip: { x: 0, y: 0, width: 1000, height: 72 }, animations: "disabled" });
 });
 
 test("the project switcher lists names on one line without role hints", async ({ page }) => {

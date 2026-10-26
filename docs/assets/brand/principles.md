@@ -34,7 +34,7 @@ Genie is where a person supervises a team of agents that does real work. The per
 
 ## Layout
 
-- **Shell.** A top bar (logo, primary navigation, search, create, notifications, profile) over a content area. Detail opens beside or over the content, never replaces the list silently. The page title is the headline of the state, not a label.
+- **Shell.** A floating pill (primary navigation with an icon on every entry, search, create, notifications, profile) centred over a content area, with the project as a round button of its own beside it. On a phone the pill drops to the bottom edge as icons with small labels, and the rest sits in a sheet behind «Ещё». Detail opens beside or over the content, never replaces the list silently. The page title is the headline of the state, not a label.
 - **Width.** Work surfaces use the full width with 32px page padding (16px on phones). Reading surfaces cap at 70 characters. Forms cap at 640px.
 - **Rhythm.** 4px base. Related items sit 8-12px apart; groups sit 24-32px apart; sections sit 48-64px apart. If two gaps look similar they should be equal.
 - **Alignment.** Left-align text and forms. Right-align numbers in tables. Centre only empty states and hero moments.
@@ -62,7 +62,7 @@ Genie is where a person supervises a team of agents that does real work. The per
 - **Primary** (always visible): Board, Tasks, Epics, Docs, Agents. Five or fewer; the selected one is the only filled pill.
 - **Secondary** live under a "More" menu or the profile menu: Proposals, Automations, Notifications history, Management, Settings, Statistics.
 - **Global actions** sit at the right of the top bar in this order: search (opens the command palette), create, notifications, theme, profile. Create is a secondary button (see principle 3).
-- **Project switcher** is the logo area: click the project name to switch.
+- **Project switcher** is the round project icon floating left of the bar (no name; the name is its accessible label): click it to switch.
 - **Live work** ("working now") is a compact status dock fed by the character, not a sidebar list; it opens the team views.
 - **Settings is a mode.** Entering Settings or Management swaps the top-bar navigation for a section rail and a "back to work" action, as today.
 - Keep every existing URL and keyboard shortcut working.

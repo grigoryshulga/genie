@@ -6,19 +6,31 @@
 .app > .g-topbar, .app > .g-banner { grid-column: 1 / -1; }
 .app > .g-banner { border-radius: 0; }
 
-.g-topbar { position: relative; z-index: var(--g-z-sticky); display: flex; align-items: center; gap: var(--g-space-3); min-height: 60px; padding: 0 var(--g-space-5); border-bottom: 1px solid var(--g-border); background: var(--g-bg); }
-.g-topbar-nav { display: flex; align-items: center; gap: var(--g-space-2); }
-.g-topbar-grow { flex: 1; }
-.g-topbar-project { display: inline-flex; align-items: center; gap: var(--g-space-3); height: var(--g-control); padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text); font: 700 var(--g-text-ui) var(--g-font-display); max-width: 240px; }
+/* The bar floats: a transparent row reserves the space at the top (so the page below is never covered),
+   and the controls hang in it as a pill centred over the screen with the project beside it as a round
+   button of its own. Both wear the raised surface and the card shadow, so they read in ink and in paper. */
+.g-topbar { --g-topbar-h: 48px; position: relative; z-index: var(--g-z-sticky); display: flex; align-items: center; justify-content: center; min-height: calc(var(--g-topbar-h) + 2 * var(--g-space-3)); padding: var(--g-space-3) calc(var(--g-topbar-h) + 2 * var(--g-space-5)); background: transparent; }
+.g-topbar-pill { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; max-width: 100%; min-height: var(--g-topbar-h); padding: var(--g-space-1) var(--g-space-3) var(--g-space-1) var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface-raised); box-shadow: var(--g-shadow-card); }
+.g-topbar-nav { display: flex; align-items: center; gap: var(--g-space-1); min-width: 0; }
+.g-topbar-sep { flex: none; width: 1px; height: var(--g-space-5); background: var(--g-border-strong); }
+.g-topbar-utility { display: flex; align-items: center; gap: var(--g-space-1); }
+.g-topbar-project { display: inline-grid; place-items: center; width: var(--g-topbar-h); height: var(--g-topbar-h); padding: 0; border: 1px solid var(--g-border-strong); border-radius: 50%; background: var(--g-surface-raised); box-shadow: var(--g-shadow-card); color: var(--g-text); cursor: pointer; }
 .g-topbar-project:hover { background: var(--g-surface-hover); }
-.g-topbar-project .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.g-topbar-project svg { flex: none; color: var(--g-accent-text); }
-.g-topbar .g-tabs > a { text-decoration: none; }
+.g-topbar-project .project-icon { width: var(--g-control); height: var(--g-control); }
+.g-topbar .g-tabs { padding: 0; border: 0; background: transparent; }
+.g-topbar .g-tabs > a { position: relative; text-decoration: none; }
+.g-topbar .g-tabs > a > svg { flex: none; }
+/* The epic mark is drawn in the accent; on the filled tab that would vanish, so it follows the tab's ink. */
+.g-topbar .g-tabs .epic-icon { color: inherit; }
 .g-topbar .g-tabs .g-tag { height: 18px; }
 .g-topbar-search { width: 220px; }
-.g-topbar-search.search { height: var(--g-control-sm); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-pill); background: transparent; }
+.g-topbar-search.search { height: var(--g-control-sm); border: 1px solid var(--g-border); border-radius: var(--g-radius-pill); background: var(--g-surface); }
+.g-tab-short { display: none; }
+.g-bar-more { border: 0; background: transparent; color: var(--g-text-2); font: 600 var(--g-text-eyebrow)/1 var(--g-font-sans); cursor: pointer; }
+.g-bar-more-icon { position: relative; display: grid; place-items: center; }
+.g-bar-more-icon .g-unread { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--g-signal); }
 .g-popover-host { position: relative; display: inline-flex; }
-.g-popover { position: absolute; top: calc(100% + 8px); z-index: var(--g-z-dropdown); }
+.g-popover { position: absolute; top: calc(100% + var(--g-space-3)); z-index: var(--g-z-dropdown); }
 .g-popover.left { left: 0; }
 .g-popover.right { right: 0; }
 .g-dock { display: inline-flex; align-items: center; gap: var(--g-space-2); height: var(--g-control); padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font: 600 var(--g-text-dense) var(--g-font-sans); }
@@ -32,7 +44,7 @@
 .g-bell .g-unread { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--g-signal); }
 .g-avatar-btn { position: relative; display: inline-grid; place-items: center; width: var(--g-control-sm); height: var(--g-control-sm); padding: 0; border: 0; border-radius: 50%; background: var(--g-text); color: var(--g-bg); font: 700 11px/1 var(--g-font-sans); }
 .g-avatar-btn img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.g-online { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%; background: var(--g-accent); box-shadow: 0 0 0 2px var(--g-bg); }
+.g-online { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%; background: var(--g-accent); box-shadow: 0 0 0 2px var(--g-surface-raised); }
 .g-online.off { background: var(--g-danger); }
 .g-dialog.sheet { margin: auto auto 0; width: 100%; }
 .g-dialog.sheet .g-modal { width: 100%; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; }
@@ -41,30 +53,45 @@
 .g-sheet-nav button { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control); padding: 0 var(--g-space-4); border-radius: var(--g-radius-md); color: var(--g-text); font-weight: 600; text-decoration: none; }
 /* The palette is a button rather than a destination: it wears the same row as the links beside it. */
 .g-sheet-nav button { width: 100%; border: 0; background: none; font-family: inherit; font-size: inherit; line-height: inherit; text-align: start; cursor: pointer; }
+.g-sheet-count { margin-left: auto; color: var(--g-text-muted); font-variant-numeric: tabular-nums; }
 .g-sheet-nav a[aria-current="page"] { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
 
 /* ------------------------------------------------------------ the bar on a narrow screen */
-/* A phone bar carries the project, search, create, the dock, notifications and the person:
-   five 40px targets plus the project name only fit 390px if the gaps close and the name
-   gives way first. Between the one-column breakpoint and 1180px the five destinations
-   cannot share a line with search and create, so the nav takes a line of its own. */
-@media (max-width: 1180px) and (min-width: 901px) {
-  .g-topbar { flex-wrap: wrap; gap: var(--g-space-2) var(--g-space-3); padding-block: var(--g-space-2); }
-  .g-topbar-nav { order: 10; flex: 1 0 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .g-topbar-nav::-webkit-scrollbar { display: none; }
-  .g-topbar-project { max-width: 180px; }
-  .g-topbar-search { width: 180px; }
+/* Below 1280px the destinations share the pill with search, create and the person: only the current
+   one keeps its label, the others shrink to icons (their names stay for assistive tech and as tooltips). */
+@media (max-width: 1280px) and (min-width: 901px) {
+  .g-topbar { padding-inline: calc(var(--g-topbar-h) + 2 * var(--g-space-4)); }
+  .g-topbar .g-tabs > a:not([aria-current="page"]) .g-tab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .g-topbar .g-tabs > a:not([aria-current="page"]) { padding: 0 var(--g-space-3); }
+  .g-topbar-search { width: 150px; }
 }
 
+/* On a phone the bar drops to the bottom edge, under the thumb: the destinations become icons with a
+   small label beneath, the project stays a round button beside the pill, and everything the pill has
+   no room for (search, create, notifications, the person) lives in the sheet behind «Ещё». The bar
+   itself ignores the pointer between its parts, so the page stays tappable around them. */
 @media (max-width: 900px) {
-  .g-topbar { gap: var(--g-space-2); padding: 0 var(--g-space-2); padding-top: env(safe-area-inset-top, 0); }
-  /* The project name is what gives way when the bar runs out of room; the controls never do. */
-  .g-topbar-project { flex: 1 1 auto; min-width: 0; max-width: none; gap: var(--g-space-2); padding: 0 var(--g-space-2); }
-  .g-topbar-grow { display: none; }
-  /* Width stays at the narrow bar budget so the project name survives; height is the touch target. */
-  .g-topbar .g-icon-btn, .g-topbar .g-avatar-btn { flex: none; width: var(--g-control-sm); height: var(--g-control); }
-  .g-dock { flex: none; padding: 0 var(--g-space-2); }
+  .app { --g-bar-reserve: calc(var(--g-space-8) + var(--g-space-5)); padding-bottom: calc(var(--g-bar-reserve) + env(safe-area-inset-bottom, 0px)); }
+  .app > .g-topbar { position: fixed; inset: auto 0 0 0; min-height: 0; justify-content: flex-start; gap: var(--g-space-2); padding: 0 var(--g-space-3) calc(var(--g-space-2) + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+  .g-topbar > * { pointer-events: auto; }
+  .g-topbar-project-switcher { flex: none; }
+  .g-topbar-pill { flex: 1 1 0; padding: var(--g-space-1); gap: 0; border-radius: var(--g-radius-xl); }
+  .g-topbar-nav { flex: 1 1 auto; gap: 0; }
+  .g-topbar .g-tabs { flex: 1 1 auto; min-width: 0; gap: 0; }
+  .g-topbar .g-tabs > a, .g-bar-more { position: relative; flex: 1 1 0; min-width: 0; flex-direction: column; justify-content: center; gap: var(--g-space-1); height: calc(var(--g-control) + var(--g-space-3)); padding: 0 2px; border-radius: var(--g-radius-lg); font-size: var(--g-text-eyebrow); line-height: 1; }
+  .g-bar-more { align-items: center; }
+  .g-topbar .g-tabs > a > svg, .g-bar-more svg { width: 22px; height: 22px; }
+  .g-tab-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The long name keeps the accessible name; the short one is what fits under an icon. */
+  .g-tab-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .g-tab-short { display: inline; }
+  /* Counts become badges on the icon's corner instead of widening the item. */
+  .g-topbar .g-tabs > a .g-tag, .g-topbar .g-tabs > a .g-topbar-open { position: absolute; top: 2px; left: calc(50% + var(--g-space-2)); }
+  .g-topbar .g-tabs > a .g-tag { min-width: 16px; height: 16px; justify-content: center; padding: 0 var(--g-space-1); font-size: var(--g-text-eyebrow); }
+  /* The plain open-task count has no room beside the badge that asks for the person's decision. */
+  .g-topbar .g-tabs > a .g-tag ~ .g-topbar-open { display: none; }
   .g-sheet-nav a, .g-sheet-nav button { min-height: var(--g-row); }
+  .g-topbar-project-switcher .g-popover { top: auto; bottom: calc(100% + var(--g-space-3)); }
 }
 
 .spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--g-border-strong); border-top-color: var(--g-focus); animation: spin 0.9s linear infinite; flex: none; }

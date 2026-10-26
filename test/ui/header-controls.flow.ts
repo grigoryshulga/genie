@@ -7,26 +7,42 @@ for (const theme of ["ink", "paper"]) {
       await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
       await page.goto("/board");
       const bar = page.locator(".g-topbar");
-      const create = bar.getByRole("button", { name: "Новая задача", exact: true }).filter({ visible: true });
-      await expect(create).toHaveText("");
       await expect(bar.locator(".g-dock")).toHaveCount(0);
       await expect(bar.getByRole("button", { name: "Сменить тему" })).toHaveCount(0);
       await expect(page.getByRole("toolbar", { name: "Инструменты страницы" }).getByRole("button", { name: "Готово", exact: true })).toHaveCount(0);
       await expect(page.getByRole("toolbar", { name: "Инструменты страницы" })).toBeVisible();
       await expect(page.locator("[data-lane]").first()).toBeVisible();
-      await create.click();
-      await expect(page.getByRole("dialog")).toBeVisible();
-      await page.keyboard.press("Escape");
-      const profile = bar.getByRole("button", { name: /^Профиль:/ });
-      await profile.click();
-      const light = page.getByRole("menuitemcheckbox", { name: "Светлая тема" });
-      await expect(light).toHaveAttribute("aria-checked", String(theme === "paper"));
-      await light.click();
-      await expect(page.locator("html")).toHaveAttribute("data-theme", theme === "paper" ? "ink" : "paper");
-      await expect(profile).toBeFocused();
-      await profile.click();
-      await expect(light).toHaveAttribute("aria-checked", String(theme !== "paper"));
-      await light.click();
+      const flip = theme === "paper" ? "ink" : "paper";
+      if (width > 900) {
+        const create = bar.getByRole("button", { name: "Новая задача", exact: true });
+        await expect(create).toHaveText("");
+        await create.click();
+        await expect(page.getByRole("dialog")).toBeVisible();
+        await page.keyboard.press("Escape");
+        const profile = bar.getByRole("button", { name: /^Профиль:/ });
+        await profile.click();
+        const light = page.getByRole("menuitemcheckbox", { name: "Светлая тема" });
+        await expect(light).toHaveAttribute("aria-checked", String(theme === "paper"));
+        await light.click();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", flip);
+        await expect(profile).toBeFocused();
+        await profile.click();
+        await expect(light).toHaveAttribute("aria-checked", String(theme !== "paper"));
+        await light.click();
+      } else {
+        // On a phone the bar sits at the bottom; creating a task and the theme live in the sheet behind «Ещё».
+        const more = bar.getByRole("button", { name: "Открыть меню разделов" });
+        await more.click();
+        const sheet = page.getByRole("dialog", { name: "Навигация" });
+        await sheet.getByRole("button", { name: "Новая задача" }).click();
+        await expect(page.getByRole("dialog", { name: "Новая задача" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await more.click();
+        await sheet.getByRole("button", { name: "Светлая тема" }).click();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", flip);
+        await more.click();
+        await sheet.getByRole("button", { name: "Светлая тема" }).click();
+      }
       await page.goto("/tasks?task=DM-5");
       const modal = page.getByRole("dialog", { name: "Задача DM-5", exact: true });
       const header = modal.locator(".td-bar");

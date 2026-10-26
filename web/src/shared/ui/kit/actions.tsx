@@ -23,7 +23,7 @@ export function IconButton({ label, className, children, ...rest }: ButtonHTMLAt
   );
 }
 
-export type TabItem<T extends string> = { id: T; label: ReactNode; to?: string };
+export type TabItem<T extends string> = { id: T; label: ReactNode; to?: string; /** Tooltip for a tab whose label is collapsed to its icon. */ title?: string };
 
 /** Tabs: a rail of pills; the selected one is the only filled pill. Arrow keys move focus, Home and End jump. */
 export function Tabs<T extends string>({ items, value, onChange, label }: { items: TabItem<T>[]; value: T; onChange?: (id: T) => void; label: string }) {
@@ -40,7 +40,7 @@ export function Tabs<T extends string>({ items, value, onChange, label }: { item
     <div className="g-tabs" role={items.some((i) => i.to) ? undefined : "tablist"} aria-label={label}>
       {items.map((item, i) =>
         item.to ? (
-          <Link key={item.id} to={item.to} ref={(el) => void (refs.current[i] = el)} aria-current={item.id === value ? "page" : undefined} onKeyDown={(e) => onKey(e, i)}>
+          <Link key={item.id} to={item.to} title={item.title} ref={(el) => void (refs.current[i] = el)} aria-current={item.id === value ? "page" : undefined} onKeyDown={(e) => onKey(e, i)}>
             {item.label}
           </Link>
         ) : (

@@ -3,9 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { initials, ProjectIcon, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
-import { useProposals } from "@/entities/platform";
+import { useNotifications, useProposals } from "@/entities/platform";
 import { OBSERVATION_TEXT } from "@/entities/observation";
-import { inTaskViews, OPEN, useTasks } from "@/entities/task";
+import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
 import { canManageProject, saveAppearancePreferences, useTick } from "@/shared/lib";
 import { ActionMenu, Banner, Dialog, Icon, IconButton, type MenuEntry, Tabs, Tag } from "@/shared/ui";
@@ -50,14 +50,38 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
   const canCreate = project?.role !== "viewer";
   const me = session?.mode === "users" ? session.user.name || session.user.login : "Локальный режим";
   const [sheet, setSheet] = useState(false);
+  const unread = useNotifications().data?.unread ?? 0;
 
-  const primary: { id: Primary; label: React.ReactNode; to: string }[] = [
-    { id: "board", label: "Доска", to: "/board" },
+  // Every destination wears an icon: the bar collapses to icons (with the label under them on a phone)
+  // when the window is narrow. The label stays in the DOM so the accessible name never changes.
+  const label = (text: string, short?: string) => (
+    <span className="g-tab-label">
+      <span className={short ? "g-tab-full" : undefined}>{text}</span>
+      {short && (
+        <span className="g-tab-short" aria-hidden="true">
+          {short}
+        </span>
+      )}
+    </span>
+  );
+  const primary: { id: Primary; label: React.ReactNode; to: string; title: string }[] = [
+    {
+      id: "board",
+      label: (
+        <>
+          <Icon.board size={16} />
+          {label("Доска")}
+        </>
+      ),
+      to: "/board",
+      title: "Доска",
+    },
     {
       id: "tasks",
       label: (
         <>
-          Задачи
+          <Icon.list size={16} />
+          {label("Задачи")}
           {waiting > 0 && (
             <Tag tone="solid-signal" title="ждут вашего решения">
               {waiting}
@@ -67,15 +91,27 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
         </>
       ),
       to: "/tasks",
+      title: "Задачи",
     },
-    { id: "epics", label: "Эпики", to: "/epics" },
+    {
+      id: "epics",
+      label: (
+        <>
+          <EpicIcon size={16} />
+          {label("Эпики")}
+        </>
+      ),
+      to: "/epics",
+      title: "Эпики",
+    },
     {
       id: "docs",
       // Pending proposals belong to the documentation: the count rides on its entry, and the
       // proposals themselves stay reachable on their own route.
       label: (
         <>
-          Документация
+          <Icon.file size={16} />
+          {label("Документация", "Доки")}
           {proposals > 0 && (
             <>
               <span className="g-caption g-topbar-open" aria-hidden="true">
@@ -87,8 +123,23 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
         </>
       ),
       to: "/docs",
+      title: "Документация",
     },
-    ...(agents.isSuccess ? [{ id: "agents" as const, label: "Агенты", to: "/agents" }] : []),
+    ...(agents.isSuccess
+      ? [
+          {
+            id: "agents" as const,
+            label: (
+              <>
+                <Icon.spark size={16} />
+                {label("Агенты")}
+              </>
+            ),
+            to: "/agents",
+            title: "Агенты",
+          },
+        ]
+      : []),
   ];
   const current = activePrimary(pathname) ?? ("none" as Primary);
 
@@ -116,17 +167,12 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
   return (
     <>
       <header className="g-topbar">
+        {/* The project floats apart from the bar as an icon of its own; its name is the button's label. */}
         <div className="g-topbar-project-switcher">
           <Popover
             label={project ? `Проект ${project.name}` : "Проект"}
             className="g-topbar-project"
-            trigger={
-              <>
-                <ProjectIcon name={project?.name ?? meta?.project ?? "genie"} src={project?.icon} />
-                <span className="name">{project?.name ?? meta?.project ?? "genie"}</span>
-                {(session?.projects.length ?? 0) > 1 && <Icon.updown size={12} />}
-              </>
-            }
+            trigger={<ProjectIcon name={project?.name ?? meta?.project ?? "genie"} src={project?.icon} />}
           >
             {(close) => (
               <ActionMenu
@@ -145,56 +191,55 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
           </Popover>
         </div>
 
-        <nav className="g-topbar-nav d-only" aria-label="Навигация">
-          <Tabs label="Разделы" items={primary} value={current} />
-          <Popover label="Ещё" className="g-icon-btn" trigger={<Icon.dots size={16} />}>
-            {(close) => <ActionMenu label="Ещё" items={more} onClose={close} />}
-          </Popover>
-        </nav>
+        <div className="g-topbar-pill">
+          <nav className="g-topbar-nav" aria-label="Навигация">
+            <Tabs label="Разделы" items={primary} value={current} />
+            <Popover label="Ещё" className="g-icon-btn d-only" trigger={<Icon.dots size={16} />}>
+              {(close) => <ActionMenu label="Ещё" items={more} onClose={close} />}
+            </Popover>
+            <button type="button" className="g-bar-more m-only" aria-label="Открыть меню разделов" aria-haspopup="dialog" aria-expanded={sheet} onClick={() => setSheet(true)}>
+              <span className="g-bar-more-icon">
+                <Icon.dots size={16} />
+                {unread > 0 && <i className="g-unread" aria-hidden="true" />}
+              </span>
+              <span className="g-tab-label" aria-hidden="true">Ещё</span>
+            </button>
+          </nav>
 
-        <span className="g-topbar-grow" />
+          <span className="g-topbar-sep d-only" aria-hidden="true" />
 
-        <ContextSearch inputRef={searchRef} className="g-topbar-search d-only" />
-        {canCreate && (
-          <IconButton label="Новая задача" className="g-topbar-create d-only" onClick={onNew}>
-            <Icon.plus size={20} />
-          </IconButton>
-        )}
+          <ContextSearch inputRef={searchRef} className="g-topbar-search d-only" />
+          {canCreate && (
+            <IconButton label="Новая задача" className="g-topbar-create d-only" onClick={onNew}>
+              <Icon.plus size={20} />
+            </IconButton>
+          )}
 
-        <NotificationsPopover />
-        <Popover
-          label={`Профиль: ${me}`}
-          className="g-avatar-btn"
-          align="right"
-          trigger={
-            <>
-              {session?.mode === "users" && session.user.avatar ? <img src={session.user.avatar} alt="" /> : <span className="init">{initials(me)}</span>}
-              <i className={`g-online${online ? "" : " off"}`} aria-hidden="true" />
-            </>
-          }
-        >
-          {(close) => {
-            // Read when the popup opens: appearance can also change in Settings.
-            const paper = document.documentElement.dataset.theme === "paper";
-            return <ActionMenu label="Профиль" items={[
-              { id: "theme", label: "Светлая тема", hint: paper ? "Вкл" : "Выкл", checked: paper, onSelect: toggleTheme },
-              "separator",
-              ...profile,
-            ]} onClose={close} />;
-          }}
-        </Popover>
-
-        <button type="button" className="g-icon-btn m-only" aria-label="Поиск" onClick={onOpenSearch}>
-          <Icon.search size={17} />
-        </button>
-        {canCreate && (
-          <button type="button" className="g-icon-btn g-topbar-create m-only" aria-label="Новая задача" onClick={onNew}>
-            <Icon.plus size={17} />
-          </button>
-        )}
-        <button type="button" className="g-icon-btn m-only" aria-label="Открыть меню разделов" aria-haspopup="dialog" aria-expanded={sheet} onClick={() => setSheet(true)}>
-          <Icon.menu size={18} />
-        </button>
+          <div className="g-topbar-utility d-only">
+            <NotificationsPopover />
+            <Popover
+              label={`Профиль: ${me}`}
+              className="g-avatar-btn"
+              align="right"
+              trigger={
+                <>
+                  {session?.mode === "users" && session.user.avatar ? <img src={session.user.avatar} alt="" /> : <span className="init">{initials(me)}</span>}
+                  <i className={`g-online${online ? "" : " off"}`} aria-hidden="true" />
+                </>
+              }
+            >
+              {(close) => {
+                // Read when the popup opens: appearance can also change in Settings.
+                const paper = document.documentElement.dataset.theme === "paper";
+                return <ActionMenu label="Профиль" items={[
+                  { id: "theme", label: "Светлая тема", hint: paper ? "Вкл" : "Выкл", checked: paper, onSelect: toggleTheme },
+                  "separator",
+                  ...profile,
+                ]} onClose={close} />;
+              }}
+            </Popover>
+          </div>
+        </div>
       </header>
       {!online && (
         <Banner tone="danger" title="Нет связи с сервером">
@@ -203,7 +248,30 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
       )}
       {sheet && (
         <Dialog title="Навигация" sheet onClose={() => setSheet(false)}>
+          {/* The destinations live in the bar under the thumb; the sheet carries everything the bar has no room for. */}
           <nav className="g-sheet-nav" aria-label="Разделы" onClick={(e) => (e.target as HTMLElement).closest("a") && setSheet(false)}>
+            {canCreate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSheet(false);
+                  onNew();
+                }}
+              >
+                <Icon.plus size={16} />
+                Новая задача
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSheet(false);
+                onOpenSearch();
+              }}
+            >
+              <Icon.search size={16} />
+              Поиск
+            </button>
             {/* A thumb has no ⌘K: the sheet carries the palette as a row like every destination beside it. */}
             <button
               type="button"
@@ -212,23 +280,48 @@ export function TopBar({ onNew, online, searchRef, onOpenSearch, onOpenPalette }
                 onOpenPalette();
               }}
             >
-              <Icon.search size={16} />
+              <Icon.bolt size={16} />
               Команды
             </button>
-            {primary.map((p) => (
-              <Link key={p.id} to={p.to} aria-current={p.id === current ? "page" : undefined}>
-                {p.label}
-              </Link>
-            ))}
-            <Link to="/automations">Автоматизации</Link>
-            <Link to="/observations">{OBSERVATION_TEXT.nav}</Link>
-            <Link to="/notifications">Уведомления</Link>
-            <Link to="/settings">Настройки</Link>
+            <Link to="/automations">
+              <Icon.restart size={16} />
+              Автоматизации
+            </Link>
+            <Link to="/observations">
+              <Icon.eye size={16} />
+              {OBSERVATION_TEXT.nav}
+            </Link>
+            <Link to="/notifications">
+              <Icon.bell size={16} />
+              Уведомления
+              {unread > 0 && <span className="g-caption g-sheet-count">{unread}</span>}
+            </Link>
             {teams.map((t) => (
               <Link key={t.id} to={`/team/${encodeURIComponent(t.id)}`}>
+                <Icon.user size={16} />
                 Команда {t.id}
               </Link>
             ))}
+            <Link to="/settings">
+              <Icon.gear size={16} />
+              Настройки
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setSheet(false);
+                toggleTheme();
+              }}
+            >
+              <Icon.theme size={16} />
+              Светлая тема
+            </button>
+            {session?.mode === "users" && (
+              <button type="button" onClick={() => void logout()}>
+                <Icon.logout size={16} />
+                {`Выйти (${session.user.login})`}
+              </button>
+            )}
           </nav>
         </Dialog>
       )}

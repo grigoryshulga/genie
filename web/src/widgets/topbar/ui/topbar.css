@@ -14,12 +14,10 @@
 
 /* The grid item and every wrapper must shrink before a long project name can ellipsize. */
 .g-topbar { min-width: 0; }
-.g-topbar-project .name { min-width: 0; }
 .g-topbar-project-switcher .g-popover-host { min-width: 0; }
+.g-topbar-project-switcher { position: absolute; left: var(--g-space-5); top: 50%; translate: 0 -50%; }
 @media (max-width: 900px) {
-  .g-topbar-project-switcher { flex: 1 1 0; }
-  .g-topbar-project-switcher > .g-popover-host { width: 100%; }
-  .g-topbar-project-switcher .g-topbar-project { width: 100%; }
+  .g-topbar-project-switcher { position: static; translate: none; }
 }
 
 .g-topbar .g-topbar-create { color: var(--g-accent-text); flex: none; }
