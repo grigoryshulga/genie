@@ -16,7 +16,7 @@ Genie is where a person supervises a team of agents that does real work. The per
 
 **4. Flat, massive, geometric.** Solid fields, large radii, pill controls, no gradients, one overlay shadow. Depth comes from a surface step and a 1px border. Shapes are circles, rounded squares, and quarter arcs; avoid new shape families.
 
-**5. Type does the hierarchy.** Unbounded speaks (display, h1, h2; never below 24px). Manrope works (everything else). Hierarchy comes from size and weight steps in the scale, not from colour or boxes. One Unbounded heading per view is usually enough.
+**5. Type does the hierarchy.** Unbounded speaks (display, h1, h2; never below 24px). Golos Text works (everything else). Hierarchy comes from size and weight steps in the scale, not from colour or boxes. One Unbounded heading per view is usually enough.
 
 **6. Two themes, one design.** Ink and paper are equals. Nothing is designed in one and patched into the other. If a component needs a hard-coded colour to work in a theme, the token set is missing something; add the token.
 

@@ -45,7 +45,7 @@ Layer 1 holds the palette; layer 2 names the meaning. A component uses layer 2 a
 
 ## Typography
 
-Unbounded for display, Manrope for everything else, Geist Mono for identifiers, code and numeric metadata. Both Latin faces are self-hosted variable fonts (`@fontsource-variable`); the mono face is self-hosted too, so the app renders identically offline.
+Unbounded for display, Golos Text for everything else, Geist Mono for identifiers, code and numeric metadata. The display and body faces are self-hosted variable fonts (`@fontsource-variable`); the mono face is self-hosted too, so the app renders identically offline.
 
 | Style | Size / weight / line-height | Token |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ Unbounded for display, Manrope for everything else, Geist Mono for identifiers, 
 | Eyebrow | 11 / 600 / 1.45, uppercase, tracking 0.14em | `g-text-eyebrow` |
 | IDs and code | Geist Mono 12-13 / 400 | `g-font-mono` |
 
-Unbounded never goes below 24 px: it is very wide and loses Cyrillic legibility when small. Anything smaller is Manrope. Turn on `font-feature-settings: "tnum"` wherever digits align in columns.
+Unbounded never goes below 24 px: it is very wide and loses Cyrillic legibility when small. Anything smaller is Golos Text. Turn on `font-feature-settings: "tnum"` wherever digits align in columns.
 
 ## Component inventory
 

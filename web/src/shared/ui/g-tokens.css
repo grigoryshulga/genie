@@ -42,9 +42,9 @@
   --g-n-0: #fbf9f7;
 
   /* ---- type ---- */
-  /* Unbounded is for display sizes only (>= 24px). Manrope carries everything smaller; see the spec. */
-  --g-font-display: Unbounded, Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --g-font-sans: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Unbounded is for display sizes only (>= 24px). Golos Text carries everything smaller; see the spec. */
+  --g-font-display: Unbounded, "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --g-font-sans: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
   --g-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --g-weight-regular: 400;

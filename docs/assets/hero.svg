@@ -12,7 +12,7 @@
     </g>
   </g>
   <rect x="0.5" y="0.5" width="1279" height="399" rx="16" fill="none" stroke="#2f2e30"/>
-  <g font-family="Unbounded, Manrope, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <g font-family="Unbounded, Golos Text, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
     <g transform="translate(80 96)">
       <rect width="56" height="56" rx="14" fill="#19191c"/>
       <svg x="9" y="8" width="38" height="40" viewBox="90 30 665 700" fill="none" stroke="#2fbf94" stroke-width="44">
@@ -27,7 +27,7 @@
     </g>
     <text x="80" y="232" fill="#f4f1ea" font-size="84" font-weight="700" letter-spacing="-3">genie</text>
   </g>
-  <g font-family="Manrope, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="26" fill="#c0beb9">
+  <g font-family="Golos Text, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="26" fill="#c0beb9">
     <text x="82" y="283">Tasks, knowledge and teams of AI agents,</text>
     <text x="82" y="318">on one self-hosted server.</text>
   </g>
