@@ -36,6 +36,8 @@
 .ip-ft .g-btn.primary { height: 40px; font-size: var(--g-text-ui); }
 
 /* «Новая задача»: how to file it. */
+/* The new-task dialog is wide enough for its description and criteria to be read and edited without a squeeze. */
+.nt-dialog .g-modal { width: min(760px, calc(100vw - 32px)); }
 .nt-mode { display: inline-flex; gap: var(--g-space-1); padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-pill); }
 .nt-title { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nt-mode button { height: 28px; padding: 0 var(--g-space-3); border: 0; border-radius: var(--g-radius-pill); background: none; color: var(--g-text-2); font: 600 var(--g-text-caption) var(--g-font-sans); display: flex; align-items: center; gap: var(--g-space-1); white-space: nowrap; }

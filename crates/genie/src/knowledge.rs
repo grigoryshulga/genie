@@ -76,6 +76,34 @@ pub fn write_doc(
     }
 }
 
+/// Remove a documentation section (its folder, pages and subsections) on behalf of a person or an agent.
+/// Returns the removed page paths; the removal is journaled against the section path.
+pub fn remove_section(app: &App, project: &str, path: &str, author: Author<'_>) -> AppResult<Vec<String>> {
+    let message = format!("{}: remove section {path}", author.login);
+    let pages = app.with_vault(|v| v.remove_section(project, path, author.kind, (author.name, author.login), &message))?;
+    let role = match author.kind {
+        AuthorKind::Human => "human",
+        AuthorKind::Agent => "agent",
+        AuthorKind::System => "system",
+    };
+    let section = path.trim().trim_matches('/');
+    doc_event(app, section, "doc.section_removed", author.login, role, json!({ "path": section, "pages": pages.len() }));
+    Ok(pages)
+}
+
+/// Remove one documentation page on behalf of a person or an agent. Returns its path.
+pub fn remove_page(app: &App, project: &str, path: &str, author: Author<'_>) -> AppResult<String> {
+    let message = format!("{}: remove {path}", author.login);
+    let rel = app.with_vault(|v| v.remove_page(project, path, author.kind, (author.name, author.login), &message))?;
+    let role = match author.kind {
+        AuthorKind::Human => "human",
+        AuthorKind::Agent => "agent",
+        AuthorKind::System => "system",
+    };
+    doc_event(app, &rel, "doc.removed", author.login, role, json!({ "path": rel }));
+    Ok(rel)
+}
+
 /// A file name from a title: its letters and digits, a dash between words, at most 60 characters.
 pub fn slug(title: &str) -> String {
     let mut out = String::new();

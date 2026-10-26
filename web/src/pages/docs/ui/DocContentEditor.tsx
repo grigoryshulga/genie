@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { Markdown } from "@tiptap/markdown";
 import { DocBody } from "@/entities/doc";
+import { Icon } from "@/shared/ui";
 import { articleExtensions, visualEditingIssue } from "../model/rich-markdown.ts";
 import { formatMarkdown, type ArticleFormat } from "../model/format-markdown.ts";
 
 type Mode = "visual" | "source" | "split";
-const MODES: { id: Mode; label: string }[] = [
-  { id: "visual", label: "Статья" }, { id: "source", label: "Markdown" }, { id: "split", label: "Вместе" },
+const MODES: { id: Mode; label: string; icon: ReactNode }[] = [
+  { id: "visual", label: "Статья", icon: <Icon.file size={14} /> }, { id: "source", label: "Markdown", icon: <Icon.markdown size={14} /> }, { id: "split", label: "Вместе", icon: <Icon.columns size={14} /> },
 ];
 const FORMATS: { id: ArticleFormat; label: string; icon: string }[] = [
   { id: "bold", label: "Жирный (Ctrl+B)", icon: "B" }, { id: "italic", label: "Курсив (Ctrl+I)", icon: "I" },
@@ -30,7 +31,8 @@ export function DocContentEditor({ value, onChange, title }: { value: string; on
   const extensions = useMemo(() => [...articleExtensions(), Markdown], []);
   const editor = useEditor({
     extensions, content: value, contentType: "markdown",
-    editorProps: { attributes: { role: "textbox", "aria-label": "Текст статьи", "aria-multiline": "true" } },
+    // The same prose typography as the article reader (g-prose), so the editor shows what the page will look like.
+    editorProps: { attributes: { class: "g-prose", role: "textbox", "aria-label": "Текст статьи", "aria-multiline": "true" } },
     onUpdate: ({ editor }) => {
       const markdown = editor.getMarkdown();
       lastOutput.current = markdown;
@@ -88,18 +90,16 @@ export function DocContentEditor({ value, onChange, title }: { value: string; on
   };
 
   return <div className="doc-content-editor">
-    <div className="doc-editor-controls">
-      <div className="g-seg doc-editor-modes" role="group" aria-label="Режим редактора">
-        {MODES.map((item) => <button type="button" key={item.id} aria-pressed={effectiveMode === item.id} disabled={item.id === "visual" && !!issue} title={item.id === "visual" ? issue : undefined} className={effectiveMode === item.id ? "on" : ""} onClick={() => { setMode(item.id); setLink(null); }}>{item.label}</button>)}
-      </div>
-      {issue && <span className="doc-editor-format-hint">{issue}</span>}
-    </div>
     <div className="doc-format-toolbar" role="toolbar" aria-label="Форматирование статьи">
       {FORMATS.map((format) => <button key={format.id} type="button" aria-label={format.label} title={format.label} aria-pressed={effectiveMode === "visual" && format.id !== "divider" ? !!state?.[format.id] : undefined} onMouseDown={(e) => e.preventDefault()} onClick={() => format.id === "link" ? setLink(effectiveMode === "visual" ? String(editor?.getAttributes("link").href ?? "https://") : "https://") : apply(format.id)}>{format.icon}</button>)}
       {effectiveMode === "visual" && <>
         <button type="button" aria-label="Отменить" title="Отменить (Ctrl+Z)" disabled={!state?.undo} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().undo().run()}>↶</button>
         <button type="button" aria-label="Повторить" title="Повторить (Ctrl+Shift+Z)" disabled={!state?.redo} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().redo().run()}>↷</button>
       </>}
+      {issue && <span className="doc-editor-format-hint">{issue}</span>}
+      <div className="g-seg doc-editor-modes" role="group" aria-label="Режим редактора">
+        {MODES.map((item) => <button type="button" key={item.id} aria-label={item.label} aria-pressed={effectiveMode === item.id} disabled={item.id === "visual" && !!issue} title={item.id === "visual" && issue ? issue : item.label} className={effectiveMode === item.id ? "on" : ""} onClick={() => { setMode(item.id); setLink(null); }}>{item.icon}</button>)}
+      </div>
     </div>
     {link !== null && <form className="doc-link-form" onSubmit={(e) => { e.preventDefault(); apply("link", link); setLink(null); }}>
       <label>Адрес ссылки <input autoFocus aria-label="Адрес ссылки" value={link} onChange={(e) => setLink(e.target.value)} /></label>

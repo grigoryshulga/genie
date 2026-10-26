@@ -16,7 +16,7 @@ import {
   useObservationIncidents,
 } from "@/entities/observation";
 import "@/shared/ui/agents.css";
-import { EmptyState, LoadingState, Segmented } from "@/shared/ui";
+import { EmptyState, LoadingState, PageHeader, Segmented } from "@/shared/ui";
 import { TaskLinks, when } from "./parts.tsx";
 import "./observations.css";
 
@@ -43,12 +43,11 @@ export function ObservationsPage() {
 
   return (
     <main className="main">
-      <header className="topbar obs-topbar">
-        <h1>{OBSERVATION_TEXT.nav}</h1>
-        <span className="sub d-only">что дали выполненные задачи и как они работают после выпуска</span>
-        <span className="grow" />
-        <Segmented label="Какие наблюдения показать" value={filter} onChange={choose} items={FILTERS.map((f) => ({ id: f, label: FILTER_LABEL[f] }))} />
-      </header>
+      <PageHeader
+        className="obs-topbar"
+        title={OBSERVATION_TEXT.nav}
+        toolbar={<Segmented label="Какие наблюдения показать" value={filter} onChange={choose} items={FILTERS.map((f) => ({ id: f, label: FILTER_LABEL[f] }))} />}
+      />
       <div className="scroll obs-body">
         {incidents.isError && (
           <p className="obs-error" role="alert">

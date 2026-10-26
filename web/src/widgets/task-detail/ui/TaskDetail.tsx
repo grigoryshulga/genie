@@ -162,9 +162,11 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const pageLink = `/task/${encodeURIComponent(t.id)}`;
   const last = activity.at(-1);
 
+  // On its own page the task title is the screen's title; in the side panel it stays a section heading.
+  const TitleTag = page ? "h1" : "h2";
   const title = (
-    <h2
-      className="title"
+    <TitleTag
+      className={page ? "title g-page-title" : "title"}
       contentEditable={writable}
       suppressContentEditableWarning
       spellCheck={false}
@@ -179,7 +181,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
     >
       {t.title}
-    </h2>
+    </TitleTag>
   );
 
   // What keeps the task from moving: open dependencies, a block, a cancellation. Said in words, above the text.
@@ -523,8 +525,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           {description}
           {criteria}
           {!isEpic && <TaskDelivery task={t.id} />}
-          {!isEpic && <TaskManager key={t.id} task={t} />}
-          {!isEpic && <TaskObservation key={t.id} task={t} />}
+          {!isEpic && <TaskManager key={`manager-${t.id}`} task={t} />}
+          {!isEpic && <TaskObservation key={`observation-${t.id}`} task={t} />}
           {!isEpic && <TaskIntelligence task={t.id} />}
           <footer className="detail-more">
             {last && <span className="muted">Последнее: {last.kind === "event" ? `${last.h.actor} ${historyText(last.h, isEpic)}` : `${last.c.author}, ${KIND_NAME[last.c.kind] ?? last.c.kind}`} · {timeAgo(last.at)}</span>}
@@ -579,8 +581,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             {description}
             {criteria}
             {!isEpic && <TaskDelivery task={t.id} />}
-            {!isEpic && <TaskManager key={t.id} task={t} />}
-            {!isEpic && <TaskObservation key={t.id} task={t} />}
+            {!isEpic && <TaskManager key={`manager-${t.id}`} task={t} />}
+            {!isEpic && <TaskObservation key={`observation-${t.id}`} task={t} />}
             {!isEpic && <TaskIntelligence task={t.id} />}
             {t.plan.trim() && (
               <CollapsibleSection title={isEpic ? "Дорожная карта" : "План"}>

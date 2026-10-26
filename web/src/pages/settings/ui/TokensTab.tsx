@@ -97,10 +97,7 @@ export function TokensTab() {
       </div>
       {mode === "tokens" && <div className="st-col">
         <div className="st-head">
-          <h2>Токены CLI и MCP</h2>
-          <p>
-            Токены дают доступ от вашего имени.
-          </p>
+          <h1 className="g-page-title">Токены CLI и MCP</h1>
         </div>
 
         <form

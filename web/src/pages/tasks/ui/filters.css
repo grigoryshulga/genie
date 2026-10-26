@@ -1,55 +1,8 @@
-/* ------------------------------------------------------------ task list filters and board filters (ink and paper) */
-/* The chip rail, the chip that carries a native select, the popover under a chip, and the phone filter
-   sheet. Shared by the task list and the board; component-local, every value a token. */
+/* ------------------------------------------------------------ task list and board toolbar (ink and paper) */
+/* The toolbar's own controls. The filter popover and its options live in the kit (shared/ui/kit/popover.css). */
 
 .g-filters { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; }
 .g-filters .fmenu { flex: none; }
-
-/* ---- a filter chip: the label stays quiet, the value carries the weight ---- */
-.fchip .v { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-.fchip .chev { flex: none; color: var(--g-text-muted); transition: transform var(--g-duration) var(--g-ease); }
-.fchip[aria-expanded="true"] .chev { transform: rotate(180deg); }
-.fchip[aria-expanded="true"] { background: var(--g-surface-hover); color: var(--g-text); }
-
-/* ---- the popover: a paper sheet under the chip. Fixed, because the chip rail scrolls sideways and
-   would clip it; FilterMenu sets --fpop-top/left/max from the chip. On a phone it becomes a bottom sheet. ---- */
-.fmenu { position: relative; flex: none; }
-.fpop { position: fixed; top: var(--fpop-top, -9999px); left: var(--fpop-left, 8px); z-index: var(--g-z-dropdown); display: flex; flex-direction: column; gap: 1px; min-width: 240px; max-width: 340px; max-height: var(--fpop-max, 60vh); overflow-y: auto; padding: var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-lg); background: var(--g-surface-raised); box-shadow: var(--g-shadow-overlay); }
-.fpop .fhead { padding: var(--g-space-2) var(--g-space-3); font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }
-.fpop .g-seg.full { display: flex; margin: var(--g-space-1) var(--g-space-2) var(--g-space-2); }
-.fpop .g-seg.full > button { flex: 1; justify-content: center; }
-.fopt { display: flex; align-items: center; gap: var(--g-space-3); min-height: 32px; padding: 0 var(--g-space-3); border-radius: var(--g-radius-sm); font: 500 var(--g-text-ui) var(--g-font-sans); color: var(--g-text); cursor: pointer; }
-.fopt:hover { background: var(--g-surface-hover); }
-.fopt input { margin: 0; accent-color: var(--g-accent); }
-.fopt .grow { display: inline-flex; align-items: center; gap: var(--g-space-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fopt .hint { font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; font-feature-settings: "tnum"; }
-
-/* ---- the phone filter sheet: every filter of the rail in one panel from the bottom edge ---- */
-.g-scrim.g-fsheet-scrim { display: flex; align-items: flex-end; animation: f-fade var(--g-duration) var(--g-ease); }
-.g-fsheet { display: flex; flex-direction: column; width: 100%; max-height: 86vh; overflow: hidden; border-top: 1px solid var(--g-border-strong); border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; background: var(--g-surface-raised); box-shadow: var(--g-shadow-overlay); animation: f-rise var(--g-duration) var(--g-ease); }
-@keyframes f-fade { from { opacity: 0; } }
-@keyframes f-rise { from { opacity: 0; transform: translateY(14px); } }
-.g-fsheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: var(--g-space-4); border-bottom: 1px solid var(--g-border); }
-.g-fsheet-body { flex: 1; min-height: 0; display: grid; gap: var(--g-space-4); overflow-y: auto; padding: var(--g-space-4) var(--g-space-4) calc(var(--g-space-5) + env(safe-area-inset-bottom)); }
-.g-fsheet-group { display: grid; gap: var(--g-space-1); }
-.g-fsheet-group > .g-eyebrow { margin-bottom: var(--g-space-1); }
-.g-fsheet-note { margin: 0 0 var(--g-space-1); font-size: var(--g-text-caption); color: var(--g-text-muted); }
-.g-fsheet-row { display: flex; flex-wrap: wrap; gap: var(--g-space-2); }
-.g-fsheet-body .fopt { min-height: 40px; }
-.g-fsheet-body .g-seg { display: flex; width: 100%; }
-.g-fsheet-body .g-seg > button { flex: 1; justify-content: center; }
-.g-fsheet-body .g-btn { justify-self: start; }
-
-@media (max-width: 900px) {
-  .fchip { min-height: 36px; }
-  .fpop { top: auto; right: 0; bottom: 0; left: 0; min-width: 0; max-width: none; max-height: 70vh; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; padding-bottom: calc(var(--g-space-4) + env(safe-area-inset-bottom)); }
-  .fopt { min-height: 40px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fchip .chev { transition: none; }
-  .g-fsheet, .g-fsheet-scrim { animation: none; }
-}
 
 /* ---- legacy rules still used by other screens: the shared filter bar of the settings and epics pages,
    and the small button used across the app. The task list and the board no longer render them. ---- */

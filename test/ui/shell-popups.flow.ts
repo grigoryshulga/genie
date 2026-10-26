@@ -139,7 +139,7 @@ test("a notification opens its task and the notification becomes read", async ({
   await expect(page).toHaveURL(/\/task\/DM-2$/);
   await expect(popupOf(page)).toHaveCount(0);
   expect(reads).toEqual([3]);
-  await expect(page.getByRole("heading", { level: 2, name: SEED_TASKS[1].title })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: SEED_TASKS[1].title })).toBeVisible();
 });
 
 test("a notification without a link is only marked read", async ({ page }) => {
@@ -229,7 +229,7 @@ for (const width of [1440, 390]) {
 test("the proposals page keeps its own address and a way in from the documentation", async ({ page }) => {
   await page.goto("/docs/proposals");
   await expect(page.getByRole("heading", { level: 1, name: "Предложения" })).toBeVisible();
-  await page.getByRole("link", { name: "К документации" }).click();
+  await page.getByRole("link", { name: "Страницы" }).click();
   await expect(page).toHaveURL(/\/docs$/);
 });
 

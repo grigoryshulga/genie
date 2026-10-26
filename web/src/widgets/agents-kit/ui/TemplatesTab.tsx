@@ -51,6 +51,7 @@ export function TemplatesTab({
   return (
     <div className="split ag-templates-layout">
       <section className="split-list ag-list" aria-label="Шаблоны команд">
+        <div className="side-head"><span className="side-title">Шаблоны команд</span></div>
         <Problems items={sectionProblems(cfg.problems, "templates").filter((p) => p.item !== `team:${current}`)} />
         {cfg.teams.map((t) => (
           <button type="button" key={t.id} className={`pick${t.id === current ? " on" : ""}`} onClick={() => onSelect(t.id)} aria-current={t.id === current}>

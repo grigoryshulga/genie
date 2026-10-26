@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { useSession } from "@/entities/session";
-import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
+import { inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
 import { useOnline } from "@/shared/api";
 import { readPref, writePref } from "@/shared/lib";
-import { Banner, Button, Chip, EmptyState, ErrorState, Icon, Kbd, Skeleton, cx } from "@/shared/ui";
+import { Banner, Button, EmptyState, ErrorState, FilterOption, Icon, Kbd, PageHeader, Popover, Skeleton } from "@/shared/ui";
 import { Board } from "@/widgets/board";
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 
@@ -39,6 +39,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
       (!q || t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q) || t.labels.some((l) => l.includes(q))),
   );
   const myOpen = login ? all.filter((t) => inTaskViews(t) && t.assignee === login && OPEN.includes(t.status)).length : 0;
+  const activeFilters = (mine ? 1 : 0) + (epicFilter ? 1 : 0);
 
   const setParam = (key: string, value?: string) => {
     const next = new URLSearchParams(sp);
@@ -57,35 +58,40 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main g-board-page" aria-label="Доска">
+      <PageHeader
+        title="Доска"
+        toolbar={
+          <>
+            <Popover label="Фильтры" icon={<Icon.filter size={13} />} count={activeFilters}>
+              {login && (
+                <section className="fgroup">
+                  <h3 className="fhead">Исполнитель</h3>
+                  <FilterOption kind="checkbox" checked={mine} onChange={toggleMine} hint={myOpen > 0 ? myOpen : undefined}>
+                    Мои задачи
+                  </FilterOption>
+                </section>
+              )}
+              <section className="fgroup">
+                <h3 className="fhead">Эпик</h3>
+                <FilterOption kind="radio" checked={!epicFilter} onChange={() => setParam("epic", undefined)}>
+                  Любой
+                </FilterOption>
+                {epics.map((e) => (
+                  <FilterOption key={e.id} kind="radio" checked={epicFilter === e.id} onChange={() => setParam("epic", e.id)} hint={e.id}>
+                    {e.title}
+                  </FilterOption>
+                ))}
+              </section>
+            </Popover>
+            <ContextSearch inputRef={searchRef} className="mobile-context-search" />
+          </>
+        }
+      />
       {!online && (
         <Banner tone="signal" title="Нет связи с сервером">
           Перетаскивать карточки нельзя, пока соединение не вернётся. Доска обновится сама.
         </Banner>
       )}
-
-      <div className="g-toolbar" role="toolbar" aria-label="Фильтры доски">
-        {login && (
-          <Chip pressed={mine} onClick={toggleMine}>
-            <Icon.user size={13} />
-            Мои задачи
-            {myOpen > 0 && <span className="k g-num">{myOpen}</span>}
-          </Chip>
-        )}
-        <label className={cx("g-chip g-chip-select", epicFilter && "on")}>
-          <EpicIcon size={12} />
-          <span className="k">Эпик</span>
-          <select value={epicFilter ?? ""} onChange={(e) => setParam("epic", e.target.value || undefined)} aria-label="Эпик">
-            <option value="">любой</option>
-            {epics.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.id} · {e.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="grow" />
-        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
-      </div>
 
       {tasksQ.isPending ? (
         <div className="g-board g-board-skeleton" aria-busy="true" aria-label="Загрузка доски">

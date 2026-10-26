@@ -29,6 +29,7 @@ import type { Team } from "@/entities/team";
 import { plural } from "@/shared/lib";
 import { Button, Chip, Dialog, Field, Icon, Textarea, cx, useToast } from "@/shared/ui";
 import { BoardCard, CardBody } from "./BoardCard.tsx";
+import { StackedList } from "./StackedList.tsx";
 import "./board.css";
 
 const countText = (n: number) => `${n} ${plural(n, "задача", "задачи", "задач")}`;
@@ -105,7 +106,7 @@ function LaneSection({
         )}
       </header>
       {!collapsed && (
-        <div className="g-lane-cards">
+        <StackedList>
           {tasks.map((t) => (
             <BoardCard
               key={t.id}
@@ -119,7 +120,7 @@ function LaneSection({
             />
           ))}
           {!n && <p className="g-lane-empty">{dragging ? "Перетащите сюда" : "Ничего"}</p>}
-        </div>
+        </StackedList>
       )}
     </section>
   );
@@ -153,7 +154,7 @@ function CancelledStrip({
         {!open && <p className="g-lane-hint">Вне дорожек</p>}
       </header>
       {open && (
-        <div className="g-lane-cards">
+        <StackedList>
           {tasks.map((t) => (
             <BoardCard
               key={t.id}
@@ -166,7 +167,7 @@ function CancelledStrip({
               onMove={(status) => onMove(t.id, status)}
             />
           ))}
-        </div>
+        </StackedList>
       )}
     </section>
   );

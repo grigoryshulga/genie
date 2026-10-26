@@ -14,10 +14,12 @@ import {
   type RoleDef,
   type RoleDetail,
   STAGE_TITLE,
+  setFrontmatterKey,
   useDeleteConfig,
   useRole,
+  useSaveConfig,
 } from "@/entities/agent-config";
-import { Badge, ConfirmDialog, Icon, LoadingState, Section, useAct } from "@/shared/ui";
+import { Badge, ConfirmDialog, Icon, IconButton, LoadingState, RenameButton, RenameField, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
 import { Problems } from "./Problems.tsx";
@@ -59,6 +61,7 @@ export function RolesTab({
   return (
     <div className="split ag-roles-layout">
       <section className="split-list ag-list" aria-label="Роли">
+        <div className="side-head"><span className="side-title">Роли</span></div>
         <div className="ag-list-search"><input type="search" className="g-input" aria-label="Поиск ролей" placeholder="Найти роль…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
         <Problems items={sectionProblems(cfg.problems, "roles").filter((p) => p.item !== `role:${current}`)} />
         {team.filter(matches).map(pick)}
@@ -79,6 +82,8 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
   const detail = useRole(id);
   const [dialog, setDialog] = useState<Dialog>();
   const remove = useDeleteConfig();
+  const saveConfig = useSaveConfig();
+  const [renaming, setRenaming] = useState(false);
   const act = useAct();
   const d = detail.data;
   if (!d) {
@@ -89,6 +94,11 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
   const admin = d.admin && !readOnly;
   const hasFile = d.file.content !== null;
   const close = () => setDialog(undefined);
+  // A rename is one frontmatter field of the role file, saved like any other edit of it.
+  const rename = (title: string) => {
+    const text = setFrontmatterKey(d.file.content ?? "---\n---\n", "title", title);
+    return act(() => saveConfig("role", r.id, { content: text }, d.file.hash), "Название роли сохранено");
+  };
   const parent = r.extends ? (cfg.roles.find((x) => x.id === r.extends)?.title ?? r.extends) : undefined;
   const used = [
     ...d.usedBy.templates.map((t) => (
@@ -106,13 +116,32 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
     <>
       <div className="pane-head">
         <div className="ttl">
-          <h2>
-            {r.title}
-            {!admin && <span className="ag-readonly">Только чтение</span>}
-          </h2>
+          {admin && renaming ? (
+            <RenameField className="ag-role-rename" value={r.title} label="Название роли" onCommit={(title) => { setRenaming(false); void rename(title); }} onCancel={() => setRenaming(false)} />
+          ) : (
+            <div className={admin ? "g-rename-host" : undefined}>
+              <h2>
+                {r.title}
+                {!admin && <span className="ag-readonly">Только чтение</span>}
+              </h2>
+              {admin && <RenameButton label="Переименовать роль" onClick={() => setRenaming(true)} />}
+            </div>
+          )}
           {r.description && <p className="desc">{r.description}</p>}
         </div>
-        {admin && <button type="button" className="g-btn primary" onClick={() => setDialog("settings")}><Icon.gear size={13} />Настроить роль</button>}
+        {admin && (
+          <IconButton label="Редактировать роль" onClick={() => setDialog("settings")}>
+            <Icon.pencil size={14} />
+          </IconButton>
+        )}
+        {admin && hasFile && (
+          <IconButton
+            label={d.builtin !== null ? "Вернуть встроенную" : "Удалить роль"}
+            onClick={() => (d.builtin !== null ? void act(() => remove("role", r.id, d.file.hash), "Роль снова встроенная") : setDialog("delete"))}
+          >
+            <Icon.trash size={14} />
+          </IconButton>
+        )}
         <button type="button" className="g-btn secondary" onClick={() => setDialog("prompt")}>
           Промпт
         </button>
@@ -154,17 +183,6 @@ function RolePane({ id, cfg, readOnly = false, base = "/agents" }: { id: string;
               <button type="button" className="g-btn secondary" onClick={() => setDialog("file")}>
                 <Icon.file size={13} />
                 Файл
-              </button>
-            )}
-            {admin && hasFile && d.builtin !== null && (
-              <button type="button" className="g-btn ghost" onClick={() => void act(() => remove("role", r.id, d.file.hash), "Роль снова встроенная")}>
-                Вернуть встроенную
-              </button>
-            )}
-            {admin && hasFile && d.builtin === null && (
-              <button type="button" className="g-btn ghost" onClick={() => setDialog("delete")}>
-                <Icon.trash size={13} />
-                Удалить
               </button>
             )}
           </div>

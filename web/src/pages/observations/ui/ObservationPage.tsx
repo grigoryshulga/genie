@@ -172,7 +172,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
       <section className="obs-head">
         <div className="obs-title">
           <span className="mono muted">{c.key}</span>
-          <h1>{c.title}</h1>
+          <h1 className="g-page-title">{c.title}</h1>
         </div>
         <dl className="obs-facts">
           <div>

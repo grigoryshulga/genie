@@ -35,7 +35,7 @@ for (const theme of ["ink", "paper"]) {
     test(`artifact lightbox stays interactive above its artifact dialog (${theme}, ${width})`, async ({ page, request }) => {
       await page.setViewportSize({ width, height: 844 });
       await page.goto("/tasks");
-      await expect(page.locator(".g-toolbar")).toBeVisible();
+      await expect(page.getByRole("toolbar", { name: "Инструменты страницы" })).toBeVisible();
     const image = await page.screenshot({ clip: { x: 0, y: 0, width: 320, height: 240 } });
       const headers = { "x-genie": "1" };
       const created = await request.post("/api/tasks?project=demo", { headers, data: { title: "Image artifact regression" } });

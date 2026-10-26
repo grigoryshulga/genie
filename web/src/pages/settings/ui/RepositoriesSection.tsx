@@ -41,7 +41,7 @@ export function RepositoriesHead({ admin, onAdd }: { admin: boolean; onAdd?: () 
   return (
     <div className="rp-top">
       <div className="st-head">
-        <h2>Репозитории</h2>
+        <h1 className="g-page-title">Репозитории</h1>
         <p className="rp-lead">
           Хостинги
           <span className="rp-info" title={HOST_HINT} aria-label={HOST_HINT} role="img">

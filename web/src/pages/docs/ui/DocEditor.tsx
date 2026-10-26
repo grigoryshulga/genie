@@ -13,7 +13,6 @@ import {
   DOC_TYPES,
   DocRequestError,
   DocSaveError,
-  articleTitle,
   fieldsFromPage,
   isIsoDate,
   readDocPage,
@@ -26,7 +25,7 @@ import { DocContentEditor } from "./DocContentEditor.tsx";
 import "./editor.css";
 import { DiagIcon, StaleIcon } from "@/entities/doc";
 import { plural } from "@/shared/lib";
-import { Button, Dialog, DisclosureCard, Icon, IconButton, LoadingState } from "@/shared/ui";
+import { Button, Dialog, DisclosureCard, Icon, LoadingState } from "@/shared/ui";
 
 function countChanges(before: string, after: string): number {
   const a = before.replace(/\r/g, "").split("\n");
@@ -74,7 +73,7 @@ function Chips({ value, onChange, placeholder, mono, label }: { value: string[];
   );
 }
 
-export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pages: { path: string; title: string }[]; onClose: () => void; onSaved: (path: string) => void }) {
+export function DocEditor({ path, pages, onSaved }: { path: string; pages: { path: string; title: string }[]; onSaved: (path: string) => void }) {
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   useEffect(() => {
@@ -310,44 +309,6 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
 
   return (
     <div className="docs-editor doc-editor-fullscreen" onKeyDown={onKeyDown}>
-      <header className="docs-topbar">
-        <IconButton label="Вернуться к странице" onClick={onClose}>
-          <Icon.back size={15} />
-        </IconButton>
-        <nav className="doc-crumbs" aria-label="Навигация по документации"><Link to="/docs">Документация</Link><span className="sep">›</span>{articleTitle({ path, title })}</nav>
-        {dirty ? (
-          <span className="doc-chip-state" title="Изменения не сохранены">
-            <i className="dot" />
-            Не сохранено{changedLines > 0 ? ` · ${changedLines} ${plural(changedLines, "строка", "строки", "строк")} изменения` : ""}
-          </span>
-        ) : (
-          <span className="doc-chip-state clean">
-            <Icon.check size={11} />
-            Сохранено
-          </span>
-        )}
-        {narrow && <Button sm aria-expanded={propertiesOpen} onClick={() => setPropertiesOpen(true)}>Свойства статьи</Button>}
-        <span className="grow" />
-        {externallyChanged && (
-          <span className="doc-chip-state warn" title="Файл на диске изменился после открытия редактора">
-            <StaleIcon size={11} />
-            Изменено на диске
-          </span>
-        )}
-        {errors.length > 0 && (
-          <span className="doc-chip-state error">
-            {errors.length} {plural(errors.length, "поле", "поля", "полей")} с ошибкой
-          </span>
-        )}
-        <Link className="g-btn secondary" to={`/docs?page=${encodeURIComponent(path)}`}>
-          Отмена
-        </Link>
-        <Button variant="primary" onClick={() => void submit()} busy={save.isPending} disabled={save.isPending || errors.length > 0}>
-          <Icon.check size={13} />
-          {save.isPending ? "Сохраняю…" : "Сохранить"}
-        </Button>
-      </header>
-
       {conflict?.kind === "gone" && (
         <div className="doc-banner diag editor g-banner danger">
           <DiagIcon size={15} />
@@ -414,6 +375,40 @@ export function DocEditor({ path, pages, onClose, onSaved }: { path: string; pag
         {!narrow && <aside className="doc-editor-sidebar" aria-label="Свойства статьи">{properties}</aside>}
       </div>
       {narrow && propertiesOpen && <Dialog title="Свойства статьи" sheet onClose={() => setPropertiesOpen(false)}>{properties}</Dialog>}
+      {/* Save state and actions sit at the bottom: the status of the text, then the way out and the way in. */}
+      <footer className="doc-editor-footer">
+        {dirty ? (
+          <span className="doc-chip-state" title="Изменения не сохранены">
+            <i className="dot" />
+            Не сохранено{changedLines > 0 ? ` · ${changedLines} ${plural(changedLines, "строка", "строки", "строк")} изменения` : ""}
+          </span>
+        ) : (
+          <span className="doc-chip-state clean">
+            <Icon.check size={11} />
+            Сохранено
+          </span>
+        )}
+        {externallyChanged && (
+          <span className="doc-chip-state warn" title="Файл на диске изменился после открытия редактора">
+            <StaleIcon size={11} />
+            Изменено на диске
+          </span>
+        )}
+        {errors.length > 0 && (
+          <span className="doc-chip-state error">
+            {errors.length} {plural(errors.length, "поле", "поля", "полей")} с ошибкой
+          </span>
+        )}
+        {narrow && <Button sm aria-expanded={propertiesOpen} onClick={() => setPropertiesOpen(true)}>Свойства статьи</Button>}
+        <span className="grow" />
+        <Link className="g-btn secondary" to={`/docs?page=${encodeURIComponent(path)}`}>
+          Отмена
+        </Link>
+        <Button variant="primary" onClick={() => void submit()} busy={save.isPending} disabled={save.isPending || errors.length > 0}>
+          <Icon.check size={13} />
+          {save.isPending ? "Сохраняю…" : "Сохранить"}
+        </Button>
+      </footer>
 
     </div>
   );

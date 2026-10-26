@@ -1,6 +1,7 @@
-import { cloneElement, type InputHTMLAttributes, isValidElement, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId } from "react";
+import { cloneElement, type InputHTMLAttributes, isValidElement, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId, useRef, useState } from "react";
 import { cx } from "./cx.ts";
 import "./select.css";
+import "./resize.css";
 
 /** A label, the control, optional help and error. The control gets its id and aria wiring from here. */
 export function Field({ label, help, error, className, children }: { label: ReactNode; help?: ReactNode; error?: ReactNode; className?: string; children: ReactElement<Record<string, unknown>> }) {
@@ -41,6 +42,55 @@ export function Select({ sm, className, children, ...rest }: SelectHTMLAttribute
 
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...rest} className={cx("g-textarea", className)} />;
+}
+
+const RESIZE_MIN = 72;
+const RESIZE_MAX = 480;
+const RESIZE_STEP = 16;
+
+/** A text area whose height the grip sets, by drag or with the arrow keys; it starts at its rows. */
+export function ResizableTextarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  const [height, setHeight] = useState<number>();
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ y: number; height: number } | null>(null);
+  const clamp = (value: number) => Math.min(RESIZE_MAX, Math.max(RESIZE_MIN, value));
+  const current = () => field.current?.offsetHeight ?? RESIZE_MIN;
+  const onPointerDown = (event: PointerEvent<HTMLSpanElement>) => {
+    drag.current = { y: event.clientY, height: current() };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragging(true);
+  };
+  const onPointerMove = (event: PointerEvent<HTMLSpanElement>) => {
+    if (drag.current) setHeight(clamp(drag.current.height + event.clientY - drag.current.y));
+  };
+  const onPointerUp = () => {
+    drag.current = null;
+    setDragging(false);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    setHeight(clamp(current() + (event.key === "ArrowDown" ? RESIZE_STEP : -RESIZE_STEP)));
+  };
+  return (
+    <div className="g-resize">
+      <textarea {...rest} ref={field} style={height === undefined ? undefined : { height }} className={cx("g-textarea g-resize-field", className)} />
+      <span
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Изменить высоту поля"
+        title="Потяните, чтобы изменить высоту"
+        tabIndex={0}
+        className={cx("g-resize-grip", dragging && "dragging")}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onKeyDown={onKeyDown}
+      />
+    </div>
+  );
 }
 
 export function Checkbox({ label, className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { label: ReactNode }) {

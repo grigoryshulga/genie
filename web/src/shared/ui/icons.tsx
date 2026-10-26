@@ -42,6 +42,11 @@ export const Icon = {
       <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
     </svg>
   ),
+  filter: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)}>
+      <path d="M2 3h12l-4.6 5.4v4.1l-2.8 1.5V8.4L2 3Z" />
+    </svg>
+  ),
   board: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)}>
       <rect x="2" y="2.5" width="3.2" height="11" rx="1" />
@@ -227,10 +232,28 @@ export const Icon = {
       <circle cx="12.5" cy="8" r="1.3" />
     </svg>
   ),
+  markdown: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.4}>
+      <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" />
+      <path d="M4 10V6l1.6 2 1.6-2v4M10.5 6v4M9 8.5l1.5 1.5 1.5-1.5" />
+    </svg>
+  ),
+  columns: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.4}>
+      <rect x="1.5" y="3" width="13" height="10" rx="1.5" />
+      <path d="M8 3v10" />
+    </svg>
+  ),
   pencil: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)} strokeWidth={1.5}>
       <path d="M11 2.2a1.9 1.9 0 0 1 2.7 2.7l-8.2 8.2-3.4.7.7-3.4z" />
       <path d="M10.2 3l2.7 2.7" />
+    </svg>
+  ),
+  copy: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.5}>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+      <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3.5A1.5 1.5 0 0 0 2 3v5.5a1.5 1.5 0 0 0 1.5 1.5h.5" />
     </svg>
   ),
 };

@@ -12,12 +12,24 @@
 /* One ring for the whole app. It is scoped to the shell so it outranks the single-class field rules
    (`.g-field select`, `.search input`) that hide the browser's own outline in favour of this one. */
 .app :focus-visible, .g-root :focus-visible, .g-focusable:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
+/* A field that frames itself on focus (its wrapper gets the ring) gives its own input no ring: one frame, not two. */
+.app :is(.doc-chips, .g-search, .docs-filter, .search, .ac-composer, .tv-composer, .composer) :focus-visible { outline: 0; }
 
 /* ---- type roles ---- */
 .g-display, .g-h1, .g-h2 { margin: 0; font-family: var(--g-font-display); text-wrap: balance; }
 .g-display { font-size: var(--g-text-display); font-weight: 900; line-height: var(--g-leading-display); letter-spacing: var(--g-tracking-display); }
 .g-h1 { font-size: var(--g-text-h1); font-weight: 700; line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); }
 .g-h2 { font-size: var(--g-text-h2); font-weight: 700; line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); }
+/* The title of every top-level screen: one size and face across the application (Агенты' heading). */
+.g-page-title { margin: 0; font-family: var(--g-font-display); font-size: var(--g-text-h3); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); color: var(--g-text); text-wrap: balance; }
+/* The screen's controls at the right edge of its title row. They scroll sideways rather than wrap. */
+.page-head { gap: var(--g-space-3); }
+.page-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: var(--g-space-2); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.page-toolbar::-webkit-scrollbar { display: none; }
+/* The head of a side column (a list, a tree, a rule list): the same height and rule as the title row. */
+.side-head { flex: none; min-height: 56px; display: flex; align-items: center; gap: var(--g-space-3); padding: 0 var(--g-space-4); border-bottom: 1px solid var(--g-border); }
+.side-title { margin: 0; font-family: var(--g-font-sans); font-size: var(--g-text-h4); font-weight: var(--g-weight-bold); letter-spacing: var(--g-tracking-heading); color: var(--g-text); white-space: nowrap; }
+.side-head .count { font-size: var(--g-text-dense); font-weight: var(--g-weight-medium); color: var(--g-text-muted); }
 .g-h3 { margin: 0; font-size: var(--g-text-h3); font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; }
 .g-h4 { margin: 0; font-size: var(--g-text-h4); font-weight: 600; line-height: 1.35; }
 .g-eyebrow { margin: 0; font-size: var(--g-text-eyebrow); font-weight: 600; letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); }

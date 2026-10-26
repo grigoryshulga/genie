@@ -26,23 +26,21 @@ import {
 } from "@/entities/task";
 import { useTeamMap } from "@/entities/team";
 import { isTyping, plural } from "@/shared/lib";
-import { Button, ErrorState, Icon, IconButton, Kbd, useModalFocus } from "@/shared/ui";
+import { Button, ErrorState, FilterOption, Icon, Kbd, PageHeader, Popover } from "@/shared/ui";
 import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 import { TaskList } from "@/widgets/task-list";
-import { FilterMenu, FilterOption } from "./FilterMenu.tsx";
-// The task screen renders the task list rows, the shared toolbar/chip chrome and its filter sheet.
+// The task screen renders the task list rows and the shared toolbar chrome.
 import "./tasks-sheets.css";
 
 /** One choice inside a filter: a checkbox for sets, a radio for single choices. */
 type Choice = { id: string; kind: "checkbox" | "radio"; checked: boolean; onChange: () => void; label: ReactNode; hint?: ReactNode };
-/** One filter: a chip over its menu on a wide screen, a section of the sheet on a phone. */
+/** One filter: a titled group of options in the «Фильтры» popover. */
 type FilterGroup = { key: string; label: string; value: string; active: boolean; head?: string; extra?: ReactNode; choices: Choice[] };
 
 /** «Задачи»: the project's tasks as a list, with search and filters by status, readiness, time and more. */
 export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
   const [sp, setSp] = useSearchParams();
   const [focused, setFocused] = useState<string | undefined>();
-  const [sheet, setSheet] = useState(false);
   const tasksQ = useTasks();
   const teams = useTeamMap();
   const session = useSession().data;
@@ -91,11 +89,6 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
-
-  // The filter sheet is the phone's filter rail in a dialog: it takes focus, keeps Tab inside and
-  // hands focus back to the chip that opened it.
-  const sheetRef = useRef<HTMLDivElement>(null);
-  useModalFocus(sheetRef, sheet, () => setSheet(false));
 
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const preset = PRESETS.find((p) => sameSet(p.statuses, f.statuses));
@@ -256,64 +249,30 @@ export function TasksPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
 
   return (
     <main className="main g-tasks-page" aria-label="Задачи">
-      <div className="g-toolbar" role="toolbar" aria-label="Фильтры и вид">
-        <ContextSearch inputRef={searchRef} className="mobile-context-search" />
-        <div className="g-filters g-rail d-only">
-          {filters.map((g) => (
-            <FilterMenu key={g.key} label={g.label} value={g.value} active={g.active}>
-              {g.head && <span className="fhead">{g.head}</span>}
-              {g.extra}
-              {g.choices.map(choice)}
-            </FilterMenu>
-          ))}
-        </div>
-        <div className="m-only">
-          <button type="button" className="g-chip" aria-expanded={sheet} aria-haspopup="dialog" onClick={() => setSheet(true)}>
-            <Icon.list size={12} />
-            Фильтры
-            {active.length > 0 && <span className="g-tag solid-signal g-num">{active.length}</span>}
-          </button>
-        </div>
-        <span className="grow" />
-        <div className="d-only g-filters">{viewChips}</div>
-        {isFiltered(f) && (
-          <Button variant="ghost" sm onClick={reset}>
-            Сбросить
-          </Button>
-        )}
-      </div>
-
-      {sheet && (
-        <div className="g-scrim g-fsheet-scrim" role="presentation" onClick={() => setSheet(false)}>
-          <div ref={sheetRef} className="g-fsheet" role="dialog" aria-modal="true" aria-label="Фильтры" onClick={(e) => e.stopPropagation()}>
-            <header className="g-fsheet-head">
-              <span className="g-h3">Фильтры</span>
-              <IconButton label="Закрыть" onClick={() => setSheet(false)}>
-                <Icon.close size={16} />
-              </IconButton>
-            </header>
-            <div className="g-fsheet-body">
+      <PageHeader
+        title="Задачи"
+        toolbar={
+          <>
+            <ContextSearch inputRef={searchRef} className="mobile-context-search" />
+            <Popover label="Фильтры" icon={<Icon.filter size={13} />} count={active.length}>
               {filters.map((g) => (
-                <section key={g.key} className="g-fsheet-group">
-                  <h3 className="g-eyebrow">{g.label}</h3>
-                  {g.head && <p className="g-fsheet-note">{g.head}</p>}
+                <section key={g.key} className="fgroup">
+                  <h3 className="fhead">{g.label}</h3>
+                  {g.head}
                   {g.extra}
                   {g.choices.map(choice)}
                 </section>
               ))}
-              <section className="g-fsheet-group">
-                <h3 className="g-eyebrow">Вид</h3>
-                <div className="g-fsheet-row">{viewChips}</div>
-              </section>
-              {isFiltered(f) && (
-                <Button variant="secondary" onClick={reset}>
-                  Сбросить фильтры
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+            </Popover>
+            {viewChips}
+            {isFiltered(f) && (
+              <Button variant="ghost" sm onClick={reset}>
+                Сбросить
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {tasksQ.isPending ? (
         <div className="g-tasks-scroll" aria-busy="true">
