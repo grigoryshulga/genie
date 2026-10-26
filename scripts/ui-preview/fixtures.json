@@ -2049,9 +2049,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000005,
+                  "numerator": 5e-06,
                   "unit": "hours",
-                  "value": 0.000005
+                  "value": 5e-06
                 },
                 "attemptTelemetryCoverage": {
                   "denominator": 2,
@@ -2121,17 +2121,17 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "executionHoursP90": {
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "failedWorkCost": {
                   "denominator": 0,
@@ -2193,9 +2193,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000010555555555555555,
+                  "numerator": 1.0555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000010555555555555555
+                  "value": 1.0555555555555555e-05
                 }
               },
               "smallSample": true,
@@ -2220,9 +2220,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000005,
+                  "numerator": 5e-06,
                   "unit": "hours",
-                  "value": 0.000005
+                  "value": 5e-06
                 },
                 "attemptTelemetryCoverage": {
                   "denominator": 2,
@@ -2292,17 +2292,17 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "executionHoursP90": {
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "failedWorkCost": {
                   "denominator": 0,
@@ -2364,9 +2364,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000010555555555555555,
+                  "numerator": 1.0555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000010555555555555555
+                  "value": 1.0555555555555555e-05
                 }
               },
               "smallSample": true,
@@ -2391,9 +2391,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000005,
+                  "numerator": 5e-06,
                   "unit": "hours",
-                  "value": 0.000005
+                  "value": 5e-06
                 },
                 "attemptTelemetryCoverage": {
                   "denominator": 2,
@@ -2463,17 +2463,17 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "executionHoursP90": {
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "failedWorkCost": {
                   "denominator": 0,
@@ -2535,9 +2535,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000010555555555555555,
+                  "numerator": 1.0555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000010555555555555555
+                  "value": 1.0555555555555555e-05
                 }
               },
               "smallSample": true,
@@ -2567,9 +2567,9 @@
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000005,
+              "numerator": 5e-06,
               "unit": "hours",
-              "value": 0.000005
+              "value": 5e-06
             },
             "attemptTelemetryCoverage": {
               "denominator": 2,
@@ -2639,17 +2639,17 @@
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000015555555555555555,
+              "numerator": 1.5555555555555555e-05,
               "unit": "hours",
-              "value": 0.000015555555555555555
+              "value": 1.5555555555555555e-05
             },
             "executionHoursP90": {
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000015555555555555555,
+              "numerator": 1.5555555555555555e-05,
               "unit": "hours",
-              "value": 0.000015555555555555555
+              "value": 1.5555555555555555e-05
             },
             "failedWorkCost": {
               "denominator": 0,
@@ -2711,16 +2711,16 @@
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000010555555555555555,
+              "numerator": 1.0555555555555555e-05,
               "unit": "hours",
-              "value": 0.000010555555555555555
+              "value": 1.0555555555555555e-05
             }
           },
           "schemaVersion": 1,
           "since": "2026-05-01T12:00:00Z",
           "tasks": [
             {
-              "activeHours": 0.000005,
+              "activeHours": 5e-06,
               "attemptCostCoverage": "not_measured",
               "attemptIds": [
                 6
@@ -2740,7 +2740,7 @@
               "costs": [],
               "deliveredAt": "2026-05-01T12:00:00Z",
               "escalations": null,
-              "executionHours": 0.000015555555555555555,
+              "executionHours": 1.5555555555555555e-05,
               "finalTopology": null,
               "firstPassAccepted": true,
               "humanInterventions": 0,
@@ -2767,7 +2767,7 @@
               "task": "DM-13",
               "title": "Обновить зависимости клиента",
               "unpricedTokens": 0,
-              "waitingHours": 0.000010555555555555555
+              "waitingHours": 1.0555555555555555e-05
             },
             {
               "activeHours": null,
@@ -2962,9 +2962,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000005,
+                  "numerator": 5e-06,
                   "unit": "hours",
-                  "value": 0.000005
+                  "value": 5e-06
                 },
                 "attemptTelemetryCoverage": {
                   "denominator": 2,
@@ -3034,17 +3034,17 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "executionHoursP90": {
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "failedWorkCost": {
                   "denominator": 0,
@@ -3106,9 +3106,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000010555555555555555,
+                  "numerator": 1.0555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000010555555555555555
+                  "value": 1.0555555555555555e-05
                 }
               },
               "smallSample": true,
@@ -3133,9 +3133,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000005,
+                  "numerator": 5e-06,
                   "unit": "hours",
-                  "value": 0.000005
+                  "value": 5e-06
                 },
                 "attemptTelemetryCoverage": {
                   "denominator": 2,
@@ -3205,17 +3205,17 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "executionHoursP90": {
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "failedWorkCost": {
                   "denominator": 0,
@@ -3277,9 +3277,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000010555555555555555,
+                  "numerator": 1.0555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000010555555555555555
+                  "value": 1.0555555555555555e-05
                 }
               },
               "smallSample": true,
@@ -3304,9 +3304,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000005,
+                  "numerator": 5e-06,
                   "unit": "hours",
-                  "value": 0.000005
+                  "value": 5e-06
                 },
                 "attemptTelemetryCoverage": {
                   "denominator": 2,
@@ -3376,17 +3376,17 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "executionHoursP90": {
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000015555555555555555,
+                  "numerator": 1.5555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000015555555555555555
+                  "value": 1.5555555555555555e-05
                 },
                 "failedWorkCost": {
                   "denominator": 0,
@@ -3448,9 +3448,9 @@
                   "denominator": 1,
                   "eligible": 1,
                   "missing": 0,
-                  "numerator": 0.000010555555555555555,
+                  "numerator": 1.0555555555555555e-05,
                   "unit": "hours",
-                  "value": 0.000010555555555555555
+                  "value": 1.0555555555555555e-05
                 }
               },
               "smallSample": true,
@@ -3480,9 +3480,9 @@
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000005,
+              "numerator": 5e-06,
               "unit": "hours",
-              "value": 0.000005
+              "value": 5e-06
             },
             "attemptTelemetryCoverage": {
               "denominator": 2,
@@ -3552,17 +3552,17 @@
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000015555555555555555,
+              "numerator": 1.5555555555555555e-05,
               "unit": "hours",
-              "value": 0.000015555555555555555
+              "value": 1.5555555555555555e-05
             },
             "executionHoursP90": {
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000015555555555555555,
+              "numerator": 1.5555555555555555e-05,
               "unit": "hours",
-              "value": 0.000015555555555555555
+              "value": 1.5555555555555555e-05
             },
             "failedWorkCost": {
               "denominator": 0,
@@ -3624,16 +3624,16 @@
               "denominator": 1,
               "eligible": 1,
               "missing": 0,
-              "numerator": 0.000010555555555555555,
+              "numerator": 1.0555555555555555e-05,
               "unit": "hours",
-              "value": 0.000010555555555555555
+              "value": 1.0555555555555555e-05
             }
           },
           "schemaVersion": 1,
           "since": "2026-05-01T12:00:00Z",
           "tasks": [
             {
-              "activeHours": 0.000005,
+              "activeHours": 5e-06,
               "attemptCostCoverage": "not_measured",
               "attemptIds": [
                 6
@@ -3653,7 +3653,7 @@
               "costs": [],
               "deliveredAt": "2026-05-01T12:00:00Z",
               "escalations": null,
-              "executionHours": 0.000015555555555555555,
+              "executionHours": 1.5555555555555555e-05,
               "finalTopology": null,
               "firstPassAccepted": true,
               "humanInterventions": 0,
@@ -3680,7 +3680,7 @@
               "task": "DM-13",
               "title": "Обновить зависимости клиента",
               "unpricedTokens": 0,
-              "waitingHours": 0.000010555555555555555
+              "waitingHours": 1.0555555555555555e-05
             },
             {
               "activeHours": null,
@@ -8128,5 +8128,250 @@
         "full"
       ]
     }
-  }
+  },
+  "/api/agent-config/history": [
+    {
+      "id": 47,
+      "at": "2026-10-18T10:29:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 46,
+      "at": "2026-10-18T09:22:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 45,
+      "at": "2026-10-18T08:15:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 44,
+      "at": "2026-10-17T16:08:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 43,
+      "at": "2026-10-17T15:01:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 42,
+      "at": "2026-10-17T14:54:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 41,
+      "at": "2026-10-16T13:47:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 40,
+      "at": "2026-10-16T12:40:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 39,
+      "at": "2026-10-16T11:33:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 38,
+      "at": "2026-10-15T10:26:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 37,
+      "at": "2026-10-15T09:19:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 36,
+      "at": "2026-10-15T08:12:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 35,
+      "at": "2026-10-14T16:05:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 34,
+      "at": "2026-10-14T15:58:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 33,
+      "at": "2026-10-14T14:51:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 32,
+      "at": "2026-10-13T13:44:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 31,
+      "at": "2026-10-13T12:37:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 30,
+      "at": "2026-10-13T11:30:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 29,
+      "at": "2026-10-12T10:23:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 28,
+      "at": "2026-10-12T09:16:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 27,
+      "at": "2026-10-12T08:09:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 26,
+      "at": "2026-10-11T16:02:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 25,
+      "at": "2026-10-11T15:55:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 24,
+      "at": "2026-10-11T14:48:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 23,
+      "at": "2026-10-10T13:41:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 22,
+      "at": "2026-10-10T12:34:24Z",
+      "user": "codex-agent",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    },
+    {
+      "id": 21,
+      "at": "2026-10-10T11:27:24Z",
+      "user": "owner",
+      "item": "role:integration-analyst",
+      "path": "agents/integration-analyst.md",
+      "before": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-haiku-4-5\nthinking: low\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n",
+      "after": "---\ntitle: Аналитик интеграций\nbase: analyst\nmodel: anthropic/claude-sonnet-4-6\nthinking: medium\ndescription: Изучает документацию и задачи, готовит план для команды.\nfiles: read\ndenyCommands: [\"git push*\", \"rm -rf*\"]\nstages: [refinement, delivery]\nnames: [sherlock, poirot]\nmcp: [\"knowledge:read_document_1\",\"knowledge:read_document_2\",\"knowledge:read_document_3\",\"knowledge:read_document_4\",\"knowledge:read_document_5\",\"knowledge:read_document_6\",\"knowledge:read_document_7\",\"knowledge:read_document_8\",\"knowledge:read_document_9\",\"knowledge:read_document_10\",\"knowledge:read_document_11\",\"knowledge:read_document_12\",\"knowledge:read_document_13\",\"knowledge:read_document_14\",\"knowledge:read_document_15\",\"knowledge:read_document_16\",\"knowledge:read_document_17\",\"knowledge:read_document_18\",\"knowledge:read_document_19\",\"knowledge:read_document_20\",\"knowledge:read_document_21\",\"knowledge:read_document_22\",\"knowledge:read_document_23\",\"knowledge:read_document_24\",\"knowledge:read_document_25\",\"knowledge:read_document_26\",\"knowledge:read_document_27\",\"knowledge:read_document_28\",\"knowledge:read_document_29\",\"knowledge:read_document_30\",\"knowledge:read_document_31\",\"knowledge:read_document_32\",\"knowledge:read_document_33\",\"knowledge:read_document_34\",\"knowledge:read_document_35\",\"knowledge:read_document_36\",\"knowledge:read_document_37\",\"knowledge:read_document_38\",\"knowledge:read_document_39\",\"knowledge:read_document_40\",\"knowledge:read_document_41\",\"knowledge:read_document_42\",\"knowledge:read_document_43\",\"knowledge:read_document_44\",\"knowledge:read_document_45\",\"knowledge:read_document_46\",\"knowledge:read_document_47\",\"knowledge:read_document_48\",\"issues\",\"archived:read_*\"]\ninstructions: Сначала изучи связанные документы, затем сформулируй проверяемый план.\n---\nInvestigate the task and prepare a plan. Do not change project files.\n"
+    }
+  ]
 }

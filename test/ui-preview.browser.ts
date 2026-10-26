@@ -44,7 +44,7 @@ test("recorded docs, catalogue and settings render without frontend exceptions",
 });
 
 for (const theme of ["ink", "paper"]) for (const width of [1440, 390]) {
-  test(`role layout ${theme} ${width}: grouped grants and inline editing`, async ({ page }) => {
+  test(`role workspace ${theme} ${width}: prompt, settings and compact model controls`, async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.route("**/api/agent-config", async (route) => {
@@ -55,34 +55,68 @@ for (const theme of ["ink", "paper"]) for (const width of [1440, 390]) {
     });
     await page.goto(`/__preview?theme=${theme}&width=${width}&route=${encodeURIComponent("/agents?id=integration-analyst")}`);
     const app = page.frameLocator("#app");
-    await expect(app.getByRole("heading", { name: "Аналитик интеграций", exact: true })).toBeVisible();
+    await expect(app.getByRole("region", { name: "Промпт роли", exact: true })).toContainText("Investigate the task");
+    expect(await app.locator(".role-runtime").evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(120);
+    await app.getByRole("tab", { name: "Настройки", exact: true }).click();
+    await expect(app.locator(".ag-mcp-connection")).toHaveCount(3);
+    await expect(app.locator(".ag-mcp-connection li").first()).not.toBeVisible();
     const createRole = app.getByRole("region", { name: "Роли", exact: true }).getByRole("button", { name: "Новая роль", exact: true });
     await expect(createRole).toBeVisible();
-    await expect(app.getByRole("button", { name: "Новая роль", exact: true })).toHaveCount(1);
     await createRole.click();
     await expect(app.getByRole("dialog", { name: "Новая роль", exact: true })).toBeVisible();
     await app.getByRole("dialog").getByRole("button", { name: "Отмена", exact: true }).click();
-    await expect(app.locator(".ag-mcp-connection")).toHaveCount(3);
-    await expect(app.locator(".ag-mcp-connection li").first()).not.toBeVisible();
     await app.getByRole("button", { name: "Редактировать роль", exact: true }).click();
     await expect(app.getByRole("dialog")).toHaveCount(0);
     await expect(app.getByLabel("Название", { exact: true })).toHaveValue("Аналитик интеграций");
+    await app.locator(".split-main").evaluate((el) => el.scrollTo(0, 0));
+    await app.locator("body").evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: `test-results/role-settings-${theme}-${width}.png`, fullPage: true });
+    await app.getByLabel("Размышление", { exact: true }).selectOption("high");
+    const widths = await app.locator(".role-field-grid").first().evaluate((el) => ({ fields: el.getBoundingClientRect().width, editor: el.closest("form")!.getBoundingClientRect().width }));
+    expect(widths.editor - widths.fields).toBeLessThan(4);
+    await expect(app.locator("body")).not.toContainText("Ограничения и технические ключи");
+    await expect(app.locator("body")).not.toContainText("Технические сведения и обслуживание");
+    await expect(app.locator("body")).not.toContainText("Используется:");
     const tools = app.locator(".ag-mcp-tool-picker");
-    await expect(tools).toHaveCount(1);
-    await expect(tools.getByRole("checkbox").first()).not.toBeVisible();
     await tools.locator("summary").click();
     await app.getByRole("searchbox", { name: "Поиск инструментов knowledge" }).fill("read_document_48");
     await expect(tools.getByRole("checkbox")).toHaveCount(1);
-    await expect(tools.getByRole("checkbox")).toBeChecked();
     await tools.getByRole("checkbox").uncheck();
-    // The fixture server rejects writes explicitly; the draft must remain editable.
     await app.getByLabel("Описание", { exact: true }).fill("Черновик");
+    await app.getByRole("tab", { name: "Промпт", exact: true }).click();
+    await app.getByLabel("Текст промпта").fill("Updated role instructions");
+    await app.getByRole("tab", { name: "Настройки", exact: true }).click();
+    await expect(app.getByLabel("Описание", { exact: true })).toHaveValue("Черновик");
+    await expect(app.getByLabel("Размышление", { exact: true })).toHaveValue("high");
     await app.getByRole("button", { name: "Сохранить", exact: true }).click();
     await expect(app.getByRole("alert")).toContainText("read-only");
-    await expect(app.getByLabel("Описание", { exact: true })).toHaveValue("Черновик");
     expect(await app.locator("html").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
     await app.getByRole("button", { name: "Отмена", exact: true }).click();
-    await expect(app.locator(".ag-role-editor")).toHaveCount(0);
+    await app.getByRole("tab", { name: "Промпт", exact: true }).click();
+    await expect(app.getByRole("region", { name: "Промпт роли", exact: true })).toBeVisible();
+    await app.locator(".split-main").evaluate((el) => el.scrollTo(0, 0));
+    await app.locator("body").evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: `test-results/role-prompt-${theme}-${width}.png`, fullPage: true });
     expect(errors).toEqual([]);
   });
 }
+
+test("role history has absolute timestamps, field snapshots and stable pages", async ({ page }) => {
+  await page.goto(`/__preview?route=${encodeURIComponent("/agents?id=integration-analyst&view=history")}`);
+  const app = page.frameLocator("#app");
+  await expect(app.locator(".role-history-table > tbody > tr")).toHaveCount(20);
+  await expect(app.locator("time").first()).toHaveAttribute("datetime", /2026-/);
+  await app.getByRole("button", { name: "Сравнить ревизию 47", exact: true }).click();
+  const diff = app.getByRole("table", { name: "Изменения ревизии 47" });
+  await expect(diff).toContainText("thinking");
+  await expect(diff).toContainText("low");
+  await expect(diff).toContainText("medium");
+  await page.screenshot({ path: "test-results/role-history.png", fullPage: true });
+  await app.getByRole("button", { name: "Старее", exact: true }).click();
+  await expect(app.locator(".role-history-pagination")).toContainText("Страница 2");
+  await expect(app.locator(".role-history-table > tbody > tr")).toHaveCount(7);
+  await expect(app.getByRole("button", { name: "Старее", exact: true })).toBeDisabled();
+  await app.getByRole("button", { name: "Новее", exact: true }).click();
+  await expect(app.getByRole("button", { name: "Сравнить ревизию 47", exact: true })).toBeVisible();
+});

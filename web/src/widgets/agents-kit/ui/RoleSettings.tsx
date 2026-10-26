@@ -1,32 +1,16 @@
-// The role's settings as a form: every changed field is written back to the
-// role's file, the rest keep their inherited or built-in values.
-
+// One draft and one save for the prompt and configuration, across both role tabs.
 import { useState } from "react";
-import { allowDeny, basePermissions, FILES_TITLE, type Catalogue, type RoleDetail, STAGE_TITLE } from "@/entities/agent-config";
+import { allowDeny, basePermissions, FILES_TITLE, THINKING_LEVELS, type Catalogue, type RoleDetail, STAGE_TITLE } from "@/entities/agent-config";
 import { useMeta, useProjects } from "@/entities/project";
 import { ModelPicker } from "@/features/agent-model";
-import { Button, ChipInput, Icon } from "@/shared/ui";
+import { Button, ChipInput, Field, Icon, IconButton, Input, Markdown, Select, Textarea } from "@/shared/ui";
 import { useRoleSave } from "./EditDialog.tsx";
-import { PermissionFields, PermissionReference } from "./PermissionFields.tsx";
+import { PermissionFields } from "./PermissionFields.tsx";
 import { SkillsFields, useSkillsSettings } from "./SkillsFields.tsx";
 import { McpFields, useMcpSettings } from "./McpFields.tsx";
 
-const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
-
-/** One choice of a few, as a segmented control. */
-function Segments({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
-  return (
-    <div role="radiogroup" aria-label={label} className="g-seg ag-seg">
-      {options.map(([v, title]) => (
-        <button key={v || "default"} type="button" role="radio" aria-checked={value === v} aria-pressed={value === v} onClick={() => onChange(v)}>
-          {title}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function RoleSettings({ detail: currentDetail, cfg: currentCfg, onClose }: { detail: RoleDetail; cfg: Catalogue; onClose: () => void }) {
+export function RoleSettings({ detail: currentDetail, cfg: currentCfg, view, onClose }: { detail: RoleDetail; cfg: Catalogue; view: "prompt" | "settings"; onClose: () => void }) {
+  const [preview, setPreview] = useState(false);
   // Keep the file hash and inherited values from when editing started.
   const [detail] = useState(currentDetail);
   const [cfg] = useState(currentCfg);
@@ -43,6 +27,7 @@ export function RoleSettings({ detail: currentDetail, cfg: currentCfg, onClose }
     denyCommands: r.denyCommands,
     names: r.names,
     instructions: r.instructions ?? "",
+    prompt: r.prompt ?? "",
   };
   const skills = useSkillsSettings(detail);
   const mcp = useMcpSettings(detail, cfg);
@@ -77,99 +62,43 @@ export function RoleSettings({ detail: currentDetail, cfg: currentCfg, onClose }
     if (JSON.stringify(skills.value) !== JSON.stringify(r.skills)) fields.push(["skills", skills.value]);
     // Preserve wildcard grants and unknown entries unless access was actually edited.
     if (JSON.stringify(mcp.grants) !== JSON.stringify(initialMcp)) fields.push(["mcp", mcp.value()]);
-    if (!fields.length) return onClose();
-    await saveFields(fields, "Настройки роли сохранены");
+    const body = f.prompt !== initial.prompt ? f.prompt : undefined;
+    if (!fields.length && body === undefined) return onClose();
+    await saveFields(fields, "Роль сохранена", body);
   };
-  const hint = (text: string) => <span className="hint">{text}</span>;
-  return (
-    <form className="ag-role-editor" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <div className="ag-role-save">
-        <span className="g-muted">Параметры сессии — со следующего запуска</span>
-        <Button variant="ghost" disabled={busy} onClick={onClose}>Отмена</Button>
-        <Button type="submit" variant="primary" disabled={busy}>{busy ? "Сохранение…" : "Сохранить"}</Button>
-      </div>
-      {error && <p className="ag-warn" role="alert">{error}</p>}
-      <fieldset className="ag-edit-fields" disabled={busy}>
-      <div className="ag-settings ag-role-settings">
-        <section>
-          <h4>О роли</h4>
-          <label htmlFor="rs-title">Название</label>
-          <input autoFocus id="rs-title" className="g-input" value={f.title} onChange={(e) => set("title", e.target.value)} required />
-          <label htmlFor="rs-desc">
-            Описание
-          </label>
-          <textarea id="rs-desc" className="g-textarea" rows={2} value={f.description} onChange={(e) => set("description", e.target.value)} />
-        </section>
-        <section className="ag-role-setting-card">
-          <h4>Модель</h4>
-          <label htmlFor="rs-model">
-            Модель
-          </label>
-          <ModelPicker id="rs-model" value={f.model} onChange={(m) => set("model", m)} fallback={meta?.roleModels?.[r.id]?.model} />
-          <span className="lbl">Размышление</span>
-          <Segments label="Размышление" value={f.thinking} options={THINKING.map((t) => [t, t || "по умолчанию"])} onChange={(v) => set("thinking", v)} />
-        </section>
-        <section className="ag-role-setting-card">
-          <h4>Файлы и команды</h4>
-          <span className="lbl">Файлы проекта</span>
-          <Segments label="Файлы проекта" value={f.files} options={(["write", "read", "none"] as const).map((x) => [x, FILES_TITLE[x]])} onChange={(v) => set("files", v)} />
-          <label htmlFor="rs-deny">
-            Запрещённые команды
-            {hint("Shell; * — любой текст")}
-          </label>
-          <ChipInput id="rs-deny" values={f.denyCommands} onChange={(v) => set("denyCommands", v)} placeholder="git push*" mono />
-        </section>
-        <section className="ag-role-setting-card">
-          <h4>Участие в работе</h4>
-          <span className="lbl">
-            Стадии задачи
-          </span>
-          <div className="ag-toggles">
-            {(["refinement", "delivery"] as const).map((s) => {
-              const on = f.stages.includes(s);
-              return (
-                <button key={s} type="button" aria-pressed={on} className={on ? "on" : ""} onClick={() => set("stages", on ? f.stages.filter((x) => x !== s) : [...f.stages, s])}>
-                  <Icon.check />
-                  {STAGE_TITLE[s]}
-                </button>
-              );
-            })}
-          </div>
 
-          <label htmlFor="rs-projects">
-            Проекты
-            {hint("Пусто — роль видна во всех")}
-          </label>
-          <ChipInput id="rs-projects" values={f.projects} onChange={(v) => set("projects", v)} placeholder="Добавить проект" suggestions={projects?.map((p) => p.slug)} />
-          <label htmlFor="rs-names">
-            Имена участников
-            {hint("Пусто — имена по классу")}
-          </label>
-          <ChipInput id="rs-names" values={f.names} onChange={(v) => set("names", v)} placeholder="Новое имя" />
+  return <form id="role-edit" className="role-editor" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+    <div className="role-save-bar"><Button variant="ghost" disabled={busy} onClick={onClose}>Отмена</Button><Button type="submit" variant="primary" busy={busy}>Сохранить</Button></div>
+    {error && <p className="ag-warn" role="alert">{error}</p>}
+    <fieldset className="ag-edit-fields" disabled={busy}>
+      <div className="role-model-fields">
+        <Field label="Модель"><ModelPicker value={f.model} onChange={(m) => set("model", m)} fallback={meta?.roleModels?.[r.id]?.model} /></Field>
+        <Field label="Размышление"><Select value={f.thinking} onChange={(e) => set("thinking", e.target.value)}><option value="">По умолчанию</option>{THINKING_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}</Select></Field>
+      </div>
+      <div hidden={view !== "prompt"}>
+        <section className="role-section role-prompt-editor">
+          <div className="role-prompt-tools"><IconButton label={preview ? "Редактировать текст промпта" : "Предпросмотр промпта"} aria-pressed={preview} onClick={() => setPreview(!preview)}>{preview ? <Icon.pencil /> : <Icon.eye />}</IconButton></div>
+          {preview ? <div className="role-prompt"><Markdown text={f.prompt} /></div> : <Textarea autoFocus={view === "prompt"} className="role-prompt-input" aria-label="Текст промпта" rows={20} spellCheck={false} value={f.prompt} onChange={(e) => set("prompt", e.target.value)} />}
+          <Field label="Дополнительные инструкции"><Textarea rows={3} value={f.instructions} onChange={(e) => set("instructions", e.target.value)} /></Field>
         </section>
-        {r.class !== "orchestrator" && <section className="ag-settings-stack">
-          <h4>Разрешённые действия</h4>
-          <p className="g-muted ag-note">Действуют сразу. Пояснения — в подсказках и технических сведениях.</p>
-          <PermissionFields wanted={f.capabilities} onChange={(v) => set("capabilities", v)} />
-          <PermissionReference />
-        </section>}
-        <section className="ag-settings-stack">
-          <h4>Навыки</h4>
-          <SkillsFields cfg={cfg} state={skills} />
+      </div>
+      <div hidden={view !== "settings"} className="role-settings-form">
+        <section className="role-section"><h3>О роли</h3><div className="role-field-grid">
+          <Field label="Название"><Input autoFocus={view === "settings"} value={f.title} onChange={(e) => set("title", e.target.value)} required /></Field>
+          <Field label="Описание"><Textarea rows={2} value={f.description} onChange={(e) => set("description", e.target.value)} /></Field>
+        </div></section>
+        <section className="role-section"><h3>Доступ к проекту</h3><div className="role-field-grid">
+          <Field label="Файлы проекта"><Select value={f.files} onChange={(e) => set("files", e.target.value)}>{(["write", "read", "none"] as const).map((mode) => <option key={mode} value={mode}>{FILES_TITLE[mode]}</option>)}</Select></Field>
+          <Field label="Запрещённые команды"><ChipInput values={f.denyCommands} onChange={(v) => set("denyCommands", v)} placeholder="git push*" mono /></Field>
+        </div></section>
+        <section className="role-section"><h3>Участие в работе</h3>
+          <div className="role-stage-options">{(["refinement", "delivery"] as const).map((stage) => <label className="g-check" key={stage}><input type="checkbox" checked={f.stages.includes(stage)} onChange={(e) => set("stages", e.target.checked ? [...f.stages, stage] : f.stages.filter((s) => s !== stage))} />{STAGE_TITLE[stage]}</label>)}</div>
+          <div className="role-field-grid"><Field label="Проекты"><ChipInput values={f.projects} onChange={(v) => set("projects", v)} placeholder="Все проекты" suggestions={projects?.map((p) => p.slug)} /></Field><Field label="Имена участников"><ChipInput values={f.names} onChange={(v) => set("names", v)} placeholder="По классу роли" /></Field></div>
         </section>
-        <section className="ag-settings-stack">
-          <h4>Инструменты MCP</h4>
-          <McpFields cfg={cfg} state={mcp} />
-        </section>
-        <section>
-          <label htmlFor="rs-extra">
-            Особенности роли
-            {hint("Дописываются к промпту")}
-          </label>
-          <textarea id="rs-extra" className="g-textarea" rows={3} value={f.instructions} onChange={(e) => set("instructions", e.target.value)} />
-        </section>
+        {r.class !== "orchestrator" && <section className="role-section"><h3>Разрешённые действия</h3><PermissionFields wanted={f.capabilities} onChange={(v) => set("capabilities", v)} /></section>}
+        <section className="role-section"><h3>Навыки</h3><SkillsFields cfg={cfg} state={skills} compact /></section>
+        <section className="role-section"><h3>Инструменты MCP</h3><McpFields cfg={cfg} state={mcp} /></section>
       </div>
     </fieldset>
-    </form>
-  );
+  </form>;
 }

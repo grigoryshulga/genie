@@ -12,7 +12,7 @@ export async function exportFixtures(base: string, output: string) {
   const fixtures: Record<string, unknown> = {};
   const paths = [
     "/api/auth/me", "/api/meta", "/api/projects", "/api/users", "/api/teams", "/api/tasks?closed=1",
-    "/api/notifications", "/api/notifications/unread", "/api/agent-config", "/api/agents", "/api/automations",
+    "/api/agent-config/history", "/api/notifications", "/api/notifications/unread", "/api/agent-config", "/api/agents", "/api/automations",
     "/api/observations", "/api/docs/tree", "/api/docs/version", "/api/docs/proposals", "/api/doctor",
     "/api/stats?days=30", "/api/stats?days=7", "/api/auth/tokens", "/api/repos", "/api/git/hosts",
     "/api/me/keys", "/api/me/telegram", "/api/providers", "/api/model-prices", "/api/vault/sync",

@@ -9,7 +9,7 @@ import "./popover.css";
  * The panel is `position: fixed`, so a scrolling toolbar cannot clip it; its place comes from the button
  * and follows the window and any scroll while it is open.
  */
-export function Popover({ label, icon, count, children, className }: { label: string; icon?: ReactNode; count?: number; children: ReactNode; className?: string }) {
+export function Popover({ label, icon, count, children, className, iconOnly = false }: { label: string; icon?: ReactNode; count?: number; children: ReactNode; className?: string; iconOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -51,9 +51,9 @@ export function Popover({ label, icon, count, children, className }: { label: st
 
   return (
     <div className={cx("fmenu", className)} ref={wrapRef}>
-      <button type="button" ref={btnRef} className="g-chip fchip" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>
+      <button type="button" ref={btnRef} className="g-chip fchip" aria-label={iconOnly ? label : undefined} title={iconOnly ? label : undefined} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>
         {icon}
-        <span className="k">{label}</span>
+        {!iconOnly && <span className="k">{label}</span>}
         {!!count && <span className="g-tag solid-signal g-num">{count}</span>}
       </button>
       {open && (

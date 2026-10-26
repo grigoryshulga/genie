@@ -61,6 +61,7 @@
         h(kit.Button, { variant: "primary", busy: true }, "Busy"),
         h(kit.Button, { sm: true }, "Dense"),
         h(kit.IconButton, { label: "More actions" }, "⋯"),
+        h(kit.Popover, { label: "File actions", icon: h(kit.Icon.dots), iconOnly: true }, h(kit.Button, { variant: "ghost" }, "Export")),
         h(kit.SplitButton, { menuLabel: "Send options", items: [{ id: "normal", label: "Normal", checked: true, onSelect: () => {} }, { id: "interrupt", label: "Interrupt", hint: "once, stops the step", checked: false, onSelect: () => {} }] }, "Send"))),
     block("Tabs, segments, chips, tags, key caps",
       row(h(kit.Tabs, { label: "Views", value: "board", items: [{ id: "board", label: "Board" }, { id: "list", label: "List" }] }),

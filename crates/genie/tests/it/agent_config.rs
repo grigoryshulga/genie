@@ -143,6 +143,11 @@ async fn admins_change_roles_and_templates_everyone_reads_them() {
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "the template still uses the role");
     assert!(e["error"].as_str().unwrap().contains("team:qa-pair"), "{e}");
 
+    let (s, _, _) = call(r, "GET", "/api/agent-config/history?item=role:qa&before=100").bearer(&member).send().await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "history snapshots stay administrator-only on every page");
+    let (s, _, _) = call(r, "GET", "/api/agent-config/history?before=0").bearer(&admin).send().await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+
     let (s, hist, _) = call(r, "GET", "/api/agent-config/history?item=role:qa").bearer(&admin).send().await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(hist.as_array().unwrap().len(), 1, "one saved edit: {hist}");

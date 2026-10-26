@@ -19,7 +19,7 @@ const TABS: { id: Tab; title: string; adminOnly?: boolean }[] = [
   { id: "templates", title: "Шаблоны команд" },
   { id: "skills", title: "Навыки" },
   { id: "mcp", title: "MCP" },
-  { id: "history", title: "История", adminOnly: true },
+  { id: "history", title: "Журнал", adminOnly: true },
 ];
 const NEW: Partial<Record<Tab, { kind: CreateKind; label: string }>> = {
   roles: { kind: "roles", label: "Новая роль" },

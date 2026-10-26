@@ -137,3 +137,13 @@ genie team peek <member> --deep
 ```
 
 See [agent runtime](agent-bus.md) for delivery, interruption, and recovery.
+
+## Role workspace and portable roles
+
+The role page opens its prompt. Settings and the role's audit history have separate tabs. Prompt and setting edits share one draft and one optimistic-lock save. Permissions expose their descriptions and technical keys on the individual control.
+
+The role list's action group creates or imports a role and downloads its schema. The selected role exports resolved settings and its prompt as `genie.role/v1` JSON. Exports contain effective permissions and MCP grants, not server paths, provider secrets, history or dependencies on custom parent roles. Imported orchestrator copies inherit Genie's built-in orchestrator; its permissions remain fixed. Skills, MCP connections and the selected model must be available on the destination server.
+
+For external authoring, download the JSON template and `genie-role.schema.json` from the import dialog. The schema is also served at `/genie-role.schema.json`. Save both files together, edit the template, then import it. Import previews the prompt, rejects malformed or unknown fields, and requires an explicit replacement choice for an existing ID. Server validation and the original file hash protect the final save. Use a different ID to create a copy. Schema source is `web/src/entities/agent-config/role-transfer.ts`; regenerate the public artifact with `node scripts/export-role-schema.ts` and verify it with `--check`.
+
+The history tab pages through recorded configuration changes, with absolute local timestamps, authors, field-level before/after values and full file snapshots. `GET /api/agent-config/history?item=role:<id>&limit=21&before=<id>` retains the existing array response and administrator authorization. `before` is an exclusive, positive change-ID cursor; the UI requests one extra row to detect the next page. Changes recorded after a cursor is selected do not shift older pages. Direct edits outside Genie's configuration API are not recorded by this audit log.

@@ -300,12 +300,19 @@ async fn report(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>>
 struct HistoryQuery {
     item: Option<String>,
     limit: Option<i64>,
+    before: Option<i64>,
 }
 
 async fn history(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<HistoryQuery>) -> ApiResult<Json<Value>> {
     ctx.server_admin()?;
-    let out =
-        app.blocking(move |app| app.with_server(|db| db.config_changes(q.item.as_deref(), q.limit.unwrap_or(50).clamp(1, 500)))).await?;
+    if q.before.is_some_and(|id| id <= 0) {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "before must be a positive history id"));
+    }
+    let out = app
+        .blocking(move |app| {
+            app.with_server(|db| db.config_changes_before(q.item.as_deref(), q.limit.unwrap_or(50).clamp(1, 500), q.before))
+        })
+        .await?;
     Ok(Json(json!(out)))
 }
 

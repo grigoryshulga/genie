@@ -21,11 +21,9 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
   const [search, setSearch] = useState<Record<string, string>>({});
   return (
       <div className="ag-grants">
-        <p className="g-muted ag-note">Закрытый доступ отзывается сразу. Новые инструменты появятся при следующем старте сессии.</p>
         {!cfg.mcp.length && <p className="g-muted ag-note">Подключений пока нет. Добавьте их в настройках MCP.</p>}
         {unknown.length > 0 && <details className="ag-advanced">
           <summary>Подключения вне библиотеки · {new Set(unknown.map((g) => g.split(":")[0])).size}</summary>
-          <p className="g-muted ag-note">Эти разрешения сохранены без изменений.</p>
           <ul className="ag-mcp-tools">{unknown.map((g) => <li key={g}><code>{g}</code></li>)}</ul>
         </details>}
         {cfg.mcp.map((s) => {
@@ -43,7 +41,7 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
           return (
             <div key={s.id}>
               <div className="ag-grant">
-                <span><strong>{s.id}</strong>{s.description && <span className="g-muted ag-option-description">{s.description}</span>}</span>
+                <span><strong title={s.description}>{s.id}</strong></span>
                 <select value={g.mode} onChange={(e) => set({ mode: e.target.value as McpGrant["mode"] })} aria-label={`Доступ к ${s.id}`}>
                   <option value="none">нет доступа</option>
                   <option value="all">все инструменты</option>
@@ -53,7 +51,7 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
               {g.mode === "tools" &&
                 (cached.length > 0 ? (
                   <details className="mc-role-tools ag-mcp-tool-picker">
-                    <summary>Выбрать инструменты · {g.tools.length} правил доступа</summary>
+                    <summary>Инструменты · {g.tools.length}</summary>
                     <input type="search" className="g-input" aria-label={`Поиск инструментов ${s.id}`} placeholder="Найти инструмент…" value={search[s.id] ?? ""} onChange={(e) => setSearch((x) => ({ ...x, [s.id]: e.target.value }))} />
                     {extra.length > 0 && (
                       <div className="chips g-mono" aria-label={`Выдано сверх списка ${s.id}`}>
@@ -84,9 +82,8 @@ export function McpFields({ cfg, state }: { cfg: Catalogue; state: ReturnType<ty
                   </details>
                 ) : (
                   <details className="mc-role-tools ag-mcp-pattern-picker">
-                    <summary>Выбрать инструменты · {g.tools.length} правил доступа</summary>
+                    <summary>Инструменты · {g.tools.length}</summary>
                     <ChipInput values={g.tools} onChange={(tools) => set({ tools })} placeholder="шаблоны через запятую, например get_*" mono />
-                    <p className="g-muted ag-note">Проверьте подключение в «Настройки» → «Управление» → «MCP», чтобы выбирать инструменты списком.</p>
                   </details>
                 ))}
             </div>
