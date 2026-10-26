@@ -1,0 +1,6 @@
+/* Epic identity uses the existing theme-aware categorical palette, independently of roles and status. */
+[data-epic-tone="1"] { --epic-color: var(--g-viz-1); }
+[data-epic-tone="2"] { --epic-color: var(--g-viz-2); }
+[data-epic-tone="3"] { --epic-color: var(--g-viz-3); }
+[data-epic-tone="4"] { --epic-color: var(--g-viz-4); }
+.epic-icon[data-epic-tone] { color: var(--epic-color); }

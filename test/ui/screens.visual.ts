@@ -28,6 +28,16 @@ test("board", async ({ page }) => {
   await expect(page).toHaveScreenshot("board.png", { fullPage: true });
 });
 
+test("board in paper", async ({ page }) => {
+  await page.goto("/board");
+  await settle(page);
+  await page.evaluate(() => { document.documentElement.dataset.theme = "paper"; });
+  if (page.viewportSize()!.width < 640) {
+    await page.locator('[data-lane="work"]').evaluate((node) => node.scrollIntoView({ inline: "start", block: "nearest", behavior: "instant" }));
+  }
+  await expect(page).toHaveScreenshot("board-paper.png", { fullPage: true });
+});
+
 test("task", async ({ page }) => {
   await page.goto("/task/DM-2");
   await settle(page);

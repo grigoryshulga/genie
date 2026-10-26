@@ -142,7 +142,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
           )}
         </div>
       ) : (
-        <Board tasks={tasks} teams={teams} showDone={showDone} onDoneVisibilityChange={setDoneVisibility} onOpen={(id) => setParam("task", id)} offline={!online} />
+        <Board tasks={tasks} teams={teams} selected={sp.get("task") ?? undefined} showDone={showDone} onDoneVisibilityChange={setDoneVisibility} onOpen={(id) => setParam("task", id)} offline={!online} />
       )}
 
       <footer className="g-hints" aria-label="Подсказки клавиш">

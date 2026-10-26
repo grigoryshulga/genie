@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   groupByLane,
+  epicTone,
   LANES,
   type Lane,
   type LaneId,
@@ -24,6 +25,7 @@ import {
   statusDropId,
   type TaskSummary,
   useMoveTask,
+  useEpicMap,
 } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { plural } from "@/shared/lib";
@@ -196,6 +198,7 @@ export function Board({
   offline?: boolean;
 }) {
   const move = useMoveTask();
+  const epics = useEpicMap();
   const toast = useToast();
   const [dragging, setDragging] = useState<TaskSummary | undefined>();
   // Every dnd-kit sensor cancels on the physical Escape code, including pending gestures.
@@ -328,7 +331,7 @@ export function Board({
       </div>
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <div className={cx("g-sheet bd-card bd-ghost", dragging.needsOwner && "bd-decision")}>
+          <div className={cx("g-sheet bd-card bd-ghost", dragging.needsOwner && "bd-decision")} data-epic-tone={dragging.parent && epics.has(dragging.parent) ? epicTone(dragging.parent) : undefined}>
             <CardBody t={dragging} team={dragging.team ? teams.get(dragging.team) : undefined} showStatus />
           </div>
         )}

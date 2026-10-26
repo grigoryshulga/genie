@@ -102,7 +102,7 @@ test("every transition that moves a shape stops under prefers-reduced-motion", (
 // Colours belong to the token layer. The legacy palette and its compatibility aliases are gone (H33),
 // so the only files allowed a literal are the token layer and the inverted sheet that cannot follow it.
 const LITERAL_BUDGET: Record<string, { count: number; why: string }> = {
-  "shared/ui/g-tokens.css": { count: 41, why: "the token layer itself: the palette every other rule names" },
+  "shared/ui/g-tokens.css": { count: 43, why: "the token layer itself: the palette every other rule names, including board shadow pairs" },
   "shared/ui/components.css": { count: 2, why: "the inverted paper sheet's hairlines, which blend with the sheet underneath and so cannot follow the theme" },
 };
 

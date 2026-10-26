@@ -64,39 +64,51 @@
 .g-lane-empty { align-self: stretch; margin: var(--g-space-2) 0; padding: var(--g-space-5) var(--g-space-3); border: 1.5px dashed var(--g-border); border-radius: var(--g-radius-lg); text-align: center; font-size: var(--g-text-caption); color: var(--g-text-muted); }
 
 /* ---- a card: a paper sheet on the canvas (ink on a paper theme), never resized by its content ---- */
-.bd-card { position: relative; flex: none; width: var(--g-board-card-width); height: var(--g-board-card-height); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--g-space-2); padding: var(--g-space-3); border-radius: var(--g-radius-lg); }
+.bd-card { position: relative; flex: none; width: var(--g-board-card-width); height: var(--g-board-card-height); min-width: 0; display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2) var(--g-space-3); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-lg); }
 /* Cards are calm tints of their lane rather than the page's strongest contrast: the title still carries the card. */
-.g-sheet.bd-card { --sh-t: var(--g-n-100); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: var(--g-border); background: var(--g-n-800); }
-[data-theme="paper"] .g-sheet.bd-card { --sh-t: var(--g-n-850); --sh-t2: var(--g-n-600); --sh-m: var(--g-n-550); --sh-accent: var(--g-green-800); --sh-soft: var(--g-green-100); --sh-line: var(--g-border); background: var(--g-n-100); }
+.g-sheet.bd-card { --sh-t: var(--g-n-100); --sh-t2: var(--g-n-300); --sh-m: var(--g-n-400); --sh-accent: var(--g-green-400); --sh-soft: var(--g-green-950); --sh-line: var(--g-border-strong); background: var(--g-n-800); }
+[data-theme="paper"] .g-sheet.bd-card { --sh-t: var(--g-n-850); --sh-t2: var(--g-n-600); --sh-m: var(--g-n-550); --sh-accent: var(--g-green-800); --sh-soft: var(--g-green-100); --sh-line: var(--g-border-strong); background: var(--g-n-100); }
 /* A light lift for cards on the canvas; the dragged copy keeps its overlay shadow, a selected card keeps its ring. */
-.g-sheet.bd-card:not(.bd-ghost) { box-shadow: var(--g-shadow-card); }
-.bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent), var(--g-shadow-card); }
+.g-sheet.bd-card:not(.bd-ghost) { box-shadow: var(--g-shadow-board-card); }
+.g-sheet.bd-card.selected { box-shadow: 0 0 0 2px var(--g-accent), var(--g-shadow-board-card); }
+.bd-card[data-epic-tone]::before { content: ""; position: absolute; left: -1px; top: var(--g-space-5); bottom: var(--g-space-5); width: var(--g-space-1); border-radius: var(--g-radius-xs); background: var(--epic-color); pointer-events: none; }
 .bd-card.dragging { opacity: 0.35; }
 .bd-ghost { display: flex; flex-direction: column; width: var(--g-board-card-width); box-shadow: var(--g-shadow-overlay); cursor: grabbing; }
-.bd-main { display: flex; flex-direction: column; align-items: stretch; min-height: 0; overflow: hidden; gap: var(--g-space-1); min-width: 0; padding: 0; border: 0; border-radius: var(--g-radius-md); background: transparent; color: inherit; text-align: left; cursor: grab; touch-action: none; }
+.bd-main { flex: 1; display: flex; flex-direction: column; align-items: stretch; min-height: 0; overflow: hidden; gap: var(--g-space-1); min-width: 0; padding: 0; border: 0; border-radius: var(--g-radius-sm); background: transparent; color: inherit; text-align: left; cursor: grab; touch-action: none; }
 .bd-main:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 3px; }
-.bd-meta { display: flex; flex: none; align-items: center; flex-wrap: nowrap; overflow: hidden; gap: var(--g-space-1); min-width: 0; min-height: 20px; padding-right: var(--g-space-6); font-size: var(--g-text-caption); color: var(--sh-m); }
+.bd-meta { display: flex; flex: none; align-items: center; flex-wrap: nowrap; overflow: hidden; gap: var(--g-space-1); min-width: 0; min-height: var(--g-space-5); padding-right: var(--g-space-6); font-size: var(--g-text-caption); color: var(--sh-m); }
 .bd-id { font-family: var(--g-font-mono); font-size: var(--g-text-dense); font-weight: 600; letter-spacing: 0.01em; }
+.bd-meta > .bd-id, .bd-meta > .g-tag, .bd-meta > svg, .bd-working { flex: none; }
+.bd-meta .epic-chip { min-height: var(--g-space-5); display: inline-flex; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--sh-t2); font-family: var(--g-font-sans); font-size: var(--g-text-caption); text-decoration: none; }
+.bd-meta .epic-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-meta .epic-chip svg { flex: none; }
+.bd-meta a.epic-chip:hover { color: var(--sh-t); text-decoration: underline; }
+.bd-meta a.epic-chip:focus-visible { outline: 2px solid var(--g-focus); outline-offset: -2px; border-radius: var(--g-radius-xs); }
 .bd-working { display: inline-flex; align-items: center; color: var(--sh-accent); }
 .bd-title { flex: none; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; overflow-wrap: anywhere; font-size: var(--g-text-ui); font-weight: 700; line-height: 1.35; color: var(--sh-t); }
 .bd-epic-mark { display: inline-flex; align-items: center; gap: 3px; margin-right: 3px; font-size: var(--g-text-caption); font-weight: 700; color: var(--sh-accent); }
-.bd-ask, .bd-note { flex: none; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--g-text-caption); line-height: 1.45; color: var(--sh-t2); }
+.bd-ask, .bd-note { flex: none; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; font-size: var(--g-text-caption); line-height: 1.45; color: var(--sh-t2); }
 .bd-ask { padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); background: var(--sh-soft); }
-.bd-ac { flex: none; display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-caption); color: var(--sh-m); }
-.bd-ac .g-segs { flex: 1; }
+.bd-ac { flex: none; display: flex; align-items: center; gap: var(--g-space-1); font-size: var(--g-text-caption); color: var(--sh-m); }
+.bd-ac .g-segs { width: var(--g-space-7); }
 .bd-ac b { font-weight: 600; font-feature-settings: "tnum"; color: var(--sh-t2); }
-.bd-foot { display: flex; flex: none; min-width: 0; max-height: var(--g-control-sm); overflow: hidden; margin-top: auto; align-items: center; flex-wrap: nowrap; gap: var(--g-space-1); padding-top: var(--g-space-2); border-top: 1px solid var(--sh-line); font-size: var(--g-text-caption); color: var(--sh-m); }
-.bd-epic { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sh-accent); }
+.bd-foot { display: flex; flex: none; min-width: 0; height: calc(var(--g-control-sm) - var(--g-space-1)); overflow: hidden; margin-top: auto; align-items: center; flex-wrap: nowrap; gap: var(--g-space-1); border-top: 1px solid var(--sh-line); font-size: var(--g-text-caption); color: var(--sh-m); }
+.bd-comments { flex: none; white-space: nowrap; }
+.bd-labels { display: flex; align-items: center; min-width: 0; overflow: hidden; gap: var(--g-space-1); }
+.bd-labels .g-tag { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-context { display: flex; flex: none; align-items: center; gap: var(--g-space-1); min-width: 0; overflow: hidden; }
+.bd-context .bd-note { flex: 1; min-width: 0; }
+.bd-status { flex: none; }
+.bd-status .g-tag { height: calc(var(--g-space-5) - var(--g-space-1)); }
 .bd-more { font-weight: 600; }
-.bd-who { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.bd-who { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
 .bd-card .g-tag.outline { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sh-line); color: var(--sh-t2); }
 .bd-card .g-avatar { box-shadow: 0 0 0 2px var(--sh-soft); }
 /* The question uses the decision card's remaining body; the whole body opens the task. */
 .bd-decision .bd-title { -webkit-line-clamp: 1; }
-.bd-decision .bd-ask { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2); }
-.bd-question { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-.bd-answer { flex: none; margin-top: auto; font-weight: var(--g-weight-semibold); color: var(--sh-accent); }
-.bd-decision .bd-ac, .bd-decision .bd-foot { display: none; }
+.bd-decision .bd-ask { flex: 1; min-height: 0; display: flex; align-items: center; gap: var(--g-space-1); padding: var(--g-space-1); }
+.bd-question { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-answer { flex: none; font-weight: var(--g-weight-semibold); color: var(--sh-accent); }
 .bd-move-popup { position: fixed; inset: auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--g-text); overflow: visible; }
 .bd-move-popup .g-menu { max-height: calc(100dvh - var(--g-space-5)); overflow-y: auto; }
 /* The move menu sits in the card's corner: dragging is not available on a phone or a keyboard. */

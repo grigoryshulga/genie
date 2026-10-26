@@ -1,4 +1,94 @@
 import { expect, test } from "@playwright/test";
+import { SEED_TASKS } from "./seed.ts";
+
+for (const theme of ["ink", "paper"]) {
+  test(`board epic links are separate controls with stable stripes (${theme})`, async ({ page }) => {
+    await page.goto("/board");
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    const card = page.locator('[data-task-id="DM-2"]');
+    const sibling = page.locator('[data-task-id="DM-3"]');
+    const tone = await card.getAttribute("data-epic-tone");
+    expect(tone).toMatch(/^[1-4]$/);
+    await expect(sibling).toHaveAttribute("data-epic-tone", tone!);
+    const stripe = await card.evaluate((node) => {
+      const style = getComputedStyle(node, "::before");
+      return { width: style.width, color: style.backgroundColor, shadow: getComputedStyle(node).boxShadow };
+    });
+    expect(stripe.width).toBe("4px");
+    expect(stripe.color).not.toBe("rgba(0, 0, 0, 0)");
+    expect(stripe.shadow).toContain("0px 1px 0px");
+    await expect(card.locator(".bd-main a")).toHaveCount(0);
+    const link = card.getByRole("link", { name: SEED_TASKS[0].title });
+    await expect(link).toHaveAttribute("href", "/epic/DM-1");
+    await link.focus();
+    await page.keyboard.press("Space");
+    await expect(page.locator(".bd-ghost")).toHaveCount(0);
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/epic\/DM-1$/);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: SEED_TASKS[0].title })).toBeVisible();
+    const epicMark = page.locator(".ep-id .epic-icon");
+    await expect(epicMark).toHaveAttribute("data-epic-tone", tone!);
+
+    await page.goto("/board?q=Форма");
+    await expect(card).toHaveAttribute("data-epic-tone", tone!);
+    await card.getByRole("link").click();
+    await expect(page).toHaveURL(/\/epic\/DM-1$/);
+    await page.goto("/board?q=Форма");
+    await page.reload();
+    await expect(card).toHaveAttribute("data-epic-tone", tone!);
+    await card.locator(".bd-ac").click();
+    const modal = page.getByRole("dialog", { name: "Задача DM-2", exact: true });
+    await expect(modal).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(modal).toHaveCount(0);
+    await expect(card.locator(".bd-main")).toBeFocused();
+  });
+}
+
+for (const reducedMotion of ["no-preference", "reduce"] as const) {
+  for (const width of [1440, 390]) {
+    test(`board task transition preserves native dialog and focus (${reducedMotion}, ${width})`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ reducedMotion });
+      await page.addInitScript(() => {
+        const animate = Element.prototype.animate;
+        Element.prototype.animate = function (frames, options) {
+          if (this.matches(".task-modal")) {
+            const log = JSON.parse(document.documentElement.dataset.taskMotion ?? "[]");
+            log.push({ frames, options });
+            document.documentElement.dataset.taskMotion = JSON.stringify(log);
+          }
+          return animate.call(this, frames, options);
+        };
+      });
+      await page.goto("/board?q=Форма");
+      const opener = page.locator('[data-task-id="DM-2"] .bd-main');
+      await opener.click();
+      const modal = page.getByRole("dialog", { name: "Задача DM-2", exact: true });
+      await expect(modal).toBeVisible();
+      await expect(modal.getByRole("heading", { name: SEED_TASKS[1].title })).toBeVisible();
+      expect(await modal.evaluate((node) => node.matches(":modal"))).toBe(true);
+      await page.keyboard.press("Escape");
+      await expect(modal).toHaveCount(0);
+      await expect(page).toHaveURL(/\/board\?q=/);
+      await expect(page).not.toHaveURL(/[?&]task=/);
+      await expect(opener).toBeFocused();
+      const motions: { frames: { transform: string }[]; options: { duration: number } }[] = await page.evaluate(() => JSON.parse(document.documentElement.dataset.taskMotion ?? "[]"));
+      if (reducedMotion === "reduce") expect(motions).toEqual([]);
+      else {
+        expect(motions.map((motion) => motion.options.duration)).toEqual([200, 150]);
+        expect(motions[0].frames[0].transform).toContain("translate(");
+        expect(motions[1].frames[1].transform).toContain("scale(");
+      }
+      await opener.click();
+      await expect(modal).toBeVisible();
+      await modal.getByRole("button", { name: width === 390 ? "Назад" : "Закрыть", exact: true }).click();
+      await expect(modal).toHaveCount(0);
+      await expect(opener).toBeFocused();
+    });
+  }
+}
 
 for (const theme of ["ink", "paper"]) {
   test(`board cards keep their size as lanes fold and the viewport changes (${theme})`, async ({ page }) => {
