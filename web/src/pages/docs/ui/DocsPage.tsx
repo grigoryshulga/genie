@@ -21,7 +21,6 @@ import {
   useSaveDoc,
 } from "@/entities/doc";
 import { useSession } from "@/entities/session";
-import { ContextSearch } from "@/widgets/topbar";
 import { DocViewSwitch } from "@/widgets/docs-view-switch";
 import { useToast, Banner, EmptyState, ErrorState, Icon, LoadingState, Skeleton, useModalFocus } from "@/shared/ui";
 import { DocsOverview } from "./DocsOverview.tsx";
@@ -125,14 +124,14 @@ export function DocsPage() {
 
   return (
     <main className="main docs-main">
-      <ContextSearch className="mobile-context-search mobile-search-bar" />
+
       <div className={`docs-grid ${grid}`}>
         <div className="docs-tree-col">
           <header className="docs-col-head side-head">
             <button type="button" className="g-icon-btn m-only" onClick={() => setDrawer(true)} aria-label="Открыть навигацию по документации">
               <Icon.list size={15} />
             </button>
-            <h1 className="g-page-title">Документация</h1>
+            <h1 className="g-page-title">Знания</h1>
             {searchMode && <span className="doc-col-tag">поиск</span>}
           </header>
 
@@ -247,7 +246,7 @@ export function DocsPage() {
           <div ref={drawerRef} className="docs-drawer" role="dialog" aria-modal="true" aria-label="Навигация по документации">
             <div className="docs-drawer-grab" />
             <header className="docs-col-head side-head">
-              <span className="side-title">Документация</span>
+              <span className="side-title">Знания</span>
               <span className="count">{navigation.count}</span>
               <span className="grow" />
               <button

@@ -35,6 +35,7 @@
   import React from "react";
   import { createRoot } from "react-dom/client";
   import * as kit from "/src/shared/ui/index.ts";
+  import { TemplateGraph } from "/src/entities/agent-config/ui/TemplateGraph.tsx";
   import { StatusIcon, PriorityIcon } from "/src/entities/task/ui/StatusIcon.tsx";
 
   document.getElementById("theme").onchange = (event) => { document.documentElement.dataset.theme = event.target.value; };
@@ -46,6 +47,11 @@
 
   const colors = ["bg", "surface", "surface-raised", "surface-hover", "border-strong", "text", "text-2", "text-muted", "accent", "signal", "danger", "viz-1", "viz-2", "viz-3", "viz-4"];
   const statuses = ["inbox", "draft", "refining", "ready", "in_progress", "changes_requested", "review", "approved", "needs_owner", "done", "cancelled"];
+
+  function AnimatedTabsSpecimen() {
+    const [value, select] = React.useState("board");
+    return h(kit.Tabs, { label: "Animated navigation", animated: true, value, onChange: select, items: [{ id: "tasks", label: "Tasks" }, { id: "board", label: "Board" }, { id: "knowledge", label: "Knowledge" }] });
+  }
 
   createRoot(document.getElementById("root")).render(h(React.Fragment, null,
     block("Surfaces and semantic colour",
@@ -60,14 +66,27 @@
         h(kit.Button, { variant: "primary", disabled: true }, "Disabled"),
         h(kit.Button, { variant: "primary", busy: true }, "Busy"),
         h(kit.Button, { sm: true }, "Dense"),
-        h(kit.IconButton, { label: "More actions" }, "⋯"))),
+        h(kit.IconButton, { label: "More actions" }, "⋯"),
+        h(kit.Popover, { label: "File actions", icon: h(kit.Icon.dots), iconOnly: true }, h(kit.Button, { variant: "ghost" }, "Export")),
+        h(kit.SplitButton, { menuLabel: "Send options", items: [{ id: "normal", label: "Normal", checked: true, onSelect: () => {} }, { id: "interrupt", label: "Interrupt", hint: "once, stops the step", checked: false, onSelect: () => {} }] }, "Send"))),
+    block("Animated tabs", h(AnimatedTabsSpecimen)),
     block("Tabs, segments, chips, tags, key caps",
       row(h(kit.Tabs, { label: "Views", value: "board", items: [{ id: "board", label: "Board" }, { id: "list", label: "List" }] }),
+        h(kit.Tabs, { label: "Role views", variant: "underline", value: "prompt", items: [{ id: "prompt", label: "Prompt" }, { id: "settings", label: "Settings" }, { id: "history", label: "History" }] }),
         h(kit.Segmented, { label: "Density", value: "roomy", onChange: () => {}, items: [{ id: "roomy", label: "Roomy" }, { id: "dense", label: "Dense" }] }),
         h(kit.Chip, { pressed: true }, "Selected chip"),
         h(kit.Chip, null, "Chip"),
         ...["neutral", "accent", "signal", "danger", "solid-accent", "solid-signal", "outline"].map((tone) => h(kit.Tag, { key: tone, tone }, tone)),
         h("span", null, "Search ", h(kit.Kbd, null, "⌘K")))),
+    block("Menu with adjacent action",
+      h(kit.ActionMenu, { label: "Projects specimen", onClose: () => {}, items: [
+        { id: "genie", label: "Genie", checked: true, onSelect: () => {}, action: { label: "Manage Genie", icon: h(kit.Icon.gear, { size: 16 }), onSelect: () => {} } },
+        { id: "read-only", label: "Read-only project", checked: false, onSelect: () => {}, action: { label: "Manage read-only project", icon: h(kit.Icon.gear, { size: 16 }), disabled: true, onSelect: () => {} } }
+      ] })),
+    block("Team graph",
+      h(TemplateGraph, { compact: true, roles: [], members: [{ key: "analyst", role: "analyst" }, { key: "executor", role: "executor" }, { key: "reviewer", role: "reviewer" }], relations: [{ from: "analyst", to: ["executor"], type: "handoff" }, { from: "executor", to: ["reviewer"], type: "handoff" }, { from: "reviewer", to: ["orchestrator"], type: "reports" }] })),
+    block("Graph controls",
+      row(h(kit.IconButton, { label: "Fit graph" }, h(kit.Icon.fit)), h(kit.IconButton, { label: "Expand graph" }, h(kit.Icon.expand)), h(kit.IconButton, { label: "Collapse graph" }, h(kit.Icon.collapse)))),
     block("Fields",
       row(h(kit.Field, { label: "Name", help: "Shown in the sidebar" }, h(kit.Input, { placeholder: "Project name", defaultValue: "" })),
         h(kit.Field, { label: "Status" }, h(kit.Select, { defaultValue: "ready" }, h("option", { value: "ready" }, "Ready for work"), h("option", { value: "in_progress" }, "In progress"))),
@@ -90,10 +109,10 @@
       h("p", { className: "g-display" }, "Display"),
       h("p", { className: "g-h1" }, "H1 · Unbounded"),
       h("p", { className: "g-h2" }, "H2 · Unbounded"),
-      h("p", { className: "g-h3" }, "H3 · Manrope"),
-      h("p", { className: "g-h4" }, "H4 · Manrope"),
-      h("p", null, "Body · Manrope 400"),
-      h("p", { className: "g-caption" }, "Caption · Manrope 500"),
+      h("p", { className: "g-h3" }, "H3 · Golos Text"),
+      h("p", { className: "g-h4" }, "H4 · Golos Text"),
+      h("p", null, "Body · Golos Text 400"),
+      h("p", { className: "g-caption" }, "Caption · Golos Text 500"),
       h("p", { className: "g-eyebrow" }, "Eyebrow"),
       h("p", { style: { fontFamily: "var(--g-font-mono)" } }, "GNE-69 · Geist Mono")),
     block("Disclosure cards",

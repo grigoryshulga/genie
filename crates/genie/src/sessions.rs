@@ -1010,6 +1010,46 @@ pub fn reload(app: &App, key: &AgentKey) {
     }
 }
 
+/// The conversation a session keeps on disk (pi's session file under `dir`), in the
+/// shape `get_messages` returns: what a stopped or unresponsive agent said so far.
+/// `None` when the agent has no conversation yet.
+pub fn saved_messages(dir: &std::path::Path, session_id: &str) -> Option<Vec<Value>> {
+    // pi names the file `<started>_<id>.jsonl`; the newest one is the conversation that goes on.
+    let (suffix, bare) = (format!("_{session_id}.jsonl"), format!("{session_id}.jsonl"));
+    let file = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| n.ends_with(&suffix) || *n == bare)
+        .max()?;
+    Some(branch_messages(&std::fs::read_to_string(dir.join(file)).ok()?))
+}
+
+/// The messages of a pi session file on its current branch: the chain of parents from
+/// the last entry back to the first.
+fn branch_messages(text: &str) -> Vec<Value> {
+    let entries: Vec<Value> = text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+    let by_id: HashMap<&str, &Value> = entries.iter().filter_map(|e| Some((e["id"].as_str()?, e))).collect();
+    let mut chain = Vec::new();
+    let mut at = entries.iter().rev().find(|e| e["id"].is_string());
+    // A malformed file could loop: no branch is longer than the file.
+    while let Some(e) = at.filter(|_| chain.len() < entries.len()) {
+        chain.push(e);
+        at = e["parentId"].as_str().and_then(|p| by_id.get(p).copied());
+    }
+    chain
+        .into_iter()
+        .rev()
+        .filter_map(|e| match e["type"].as_str()? {
+            "message" if e["message"]["role"] != "system" => Some(e["message"].clone()),
+            "custom_message" => {
+                let at = e["timestamp"].as_str().and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok()).map(|t| t.timestamp_millis());
+                Some(json!({ "role": "custom", "customType": e["customType"], "content": e["content"], "details": e["details"], "timestamp": at }))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 /// Whether a live session holds `key` right now.
 pub fn is_live(app: &App, key: &AgentKey) -> bool {
     app.sessions.get(key).is_some()
@@ -1019,5 +1059,42 @@ pub fn is_live(app: &App, key: &AgentKey) -> bool {
 pub fn stop_all(app: &App) {
     for s in app.sessions.all() {
         s.stdin.lock().unwrap_or_else(|e| e.into_inner()).take();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_saved_conversation_follows_the_current_branch() {
+        let file = [
+            r#"{"type":"session","version":3,"id":"t-1-ada","timestamp":"2026-10-19T10:01:35.972Z"}"#,
+            r#"{"type":"model_change","id":"a","parentId":null,"modelId":"m"}"#,
+            r#"{"type":"message","id":"b","parentId":"a","message":{"role":"system","content":""}}"#,
+            r#"{"type":"custom_message","customType":"genie-mail","content":"hello","details":{"mailIds":[7]},"id":"c","parentId":"b","timestamp":"2026-10-19T10:01:36.084Z"}"#,
+            r#"{"type":"message","id":"d","parentId":"c","message":{"role":"assistant","content":[{"type":"text","text":"abandoned"}]}}"#,
+            r#"{"type":"message","id":"e","parentId":"c","message":{"role":"assistant","content":[{"type":"text","text":"kept"}],"timestamp":1}}"#,
+            "not json",
+        ]
+        .join("\n");
+        let messages = branch_messages(&file);
+        assert_eq!(messages.len(), 2, "{messages:?}");
+        assert_eq!(messages[0]["customType"], "genie-mail");
+        assert_eq!(messages[0]["details"]["mailIds"][0], 7);
+        assert_eq!(messages[0]["timestamp"], 1792404096084_i64);
+        assert_eq!(messages[1]["content"][0]["text"], "kept");
+    }
+
+    #[test]
+    fn the_newest_session_file_of_an_agent_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = |text: &str| format!(r#"{{"type":"message","id":"x","parentId":null,"message":{{"role":"user","content":"{text}"}}}}"#);
+        std::fs::write(dir.path().join("2026-10-01T00-00-00-000Z_t-1-ada.jsonl"), line("old")).unwrap();
+        std::fs::write(dir.path().join("2026-10-02T00-00-00-000Z_t-1-ada.jsonl"), line("new")).unwrap();
+        std::fs::write(dir.path().join("2026-10-03T00-00-00-000Z_t-1-bob.jsonl"), line("other")).unwrap();
+        let messages = saved_messages(dir.path(), "t-1-ada").unwrap();
+        assert_eq!(messages[0]["content"], "new");
+        assert!(saved_messages(dir.path(), "t-1-eve").is_none());
     }
 }

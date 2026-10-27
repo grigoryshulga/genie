@@ -56,7 +56,7 @@ export function TaskObservation({ task }: { task: Task }) {
       {
         onSuccess: (view) => {
           setFormOpen(false);
-          navigate(`/observation/${view.case.id}`);
+          navigate(`/manage/project/observation/${view.case.id}`);
         },
         onError: (err) => toast(`Не удалось: ${err.message}`, "error"),
       },
@@ -115,7 +115,7 @@ export function TaskObservation({ task }: { task: Task }) {
         <ul className="td-cases">
           {cases.map((c) => (
             <li key={c.id}>
-              <Link className="artifact line" to={`/observation/${c.id}`}>
+              <Link className="artifact line" to={`/manage/project/observation/${c.id}`}>
                 <span className="mono">{c.key}</span>
                 <span className="nm">{c.title}</span>
                 <span className="who">{caseState(c)}</span>

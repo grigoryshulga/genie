@@ -52,7 +52,6 @@ export function CreateDialog({ kind, cfg, onClose, onCreated }: { kind: CreateKi
       onClose={onClose}
       footer={
         <>
-          <span className="ag-save-note">Файл появится в каталоге данных сервера</span>
           <button type="button" className="g-btn ghost" onClick={onClose}>
             Отмена
           </button>
@@ -71,7 +70,7 @@ export function CreateDialog({ kind, cfg, onClose, onCreated }: { kind: CreateKi
         }}
       >
           <label className="g-field">
-            {kind === "skills" ? "Имя навыка" : "Идентификатор"} — латиницей, строчными, через дефис
+            {kind === "skills" ? "Имя навыка" : "Идентификатор"}
             <input className="g-input" value={id} onChange={(e) => setId(e.target.value.trim())} pattern="[a-z][a-z0-9-]*" required autoFocus placeholder={kind === "roles" ? "security-reviewer" : kind === "templates" ? "security-review" : "owasp-review"} />
           </label>
           {id && !ID.test(id) && <span className="ag-warn">Только a–z, цифры и дефис, с буквы.</span>}
@@ -83,7 +82,7 @@ export function CreateDialog({ kind, cfg, onClose, onCreated }: { kind: CreateKi
             </label>
           )}
           <label className="g-field">
-            Описание — {kind === "skills" ? "когда агенту им пользоваться" : "по нему оркестратор выбирает"}
+            Описание
             <textarea className="g-textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} required />
           </label>
           {kind === "roles" && (
@@ -115,7 +114,6 @@ export function CreateDialog({ kind, cfg, onClose, onCreated }: { kind: CreateKi
               <textarea className="g-textarea" rows={6} value={body} onChange={(e) => setBody(e.target.value)} placeholder={kind === "roles" && base.startsWith("role:") ? "Пусто — промпт родительской роли" : ""} />
             </label>
           )}
-          {kind === "templates" && <p className="g-muted ag-note">Шаблон начнётся с пары «исполнитель → ревьюер»: состав и связи правятся в редакторе шаблона.</p>}
           {error && (
             <div className="ag-form-error" role="alert">
               {error}

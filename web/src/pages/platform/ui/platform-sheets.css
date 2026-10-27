@@ -5,3 +5,5 @@
 @import "../../../shared/ui/pages.css";
 @import "../../../shared/ui/search-and-docs.css";
 @import "../../../shared/ui/content.css";
+
+.management-search { flex: none; width: auto; margin: var(--g-space-3) var(--g-space-4); }

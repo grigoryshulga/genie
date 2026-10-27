@@ -5,6 +5,7 @@ import { useStartIdea } from "@/features/shape-idea";
 import type { TaskType } from "@/shared/api";
 import { Icon, Modal, ResizableTextarea, useToast } from "@/shared/ui";
 import "@/features/shape-idea/ui/idea.css";
+import "./new-task.css";
 
 const TYPES: [TaskType, string][] = [
   ["task", "Задача"],
@@ -194,11 +195,13 @@ export function NewTaskDialog({
         )}
         <div className="mf">
           <StatusIcon status={talk ? "refining" : "inbox"} />
-          {talk
-            ? "Менеджер проекта поможет подготовить план до запуска задач"
-            : isEpic
-              ? "Менеджер проекта уточнит цель и выделит задачи эпика"
-              : "Менеджер проекта получит задачу и уточнит детали"}
+          <span className="nt-context">
+            {talk
+              ? "Менеджер проекта поможет подготовить план до запуска задач"
+              : isEpic
+                ? "Менеджер проекта уточнит цель и выделит задачи эпика"
+                : "Менеджер проекта получит задачу и уточнит детали"}
+          </span>
           <span className="grow" />
           <button type="button" className="g-btn ghost" onClick={onClose}>
             Отмена

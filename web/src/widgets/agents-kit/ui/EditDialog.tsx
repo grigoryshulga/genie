@@ -2,7 +2,7 @@
 // hooks that apply those fields to it and save them.
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { setFrontmatterKey, type RoleDetail, useSaveConfig } from "@/entities/agent-config";
+import { setBody, setFrontmatterKey, type RoleDetail, useSaveConfig } from "@/entities/agent-config";
 import { Dialog, useToast } from "@/shared/ui";
 
 /** Changed frontmatter fields of a role file: a key with its new value (`undefined` removes it). */
@@ -11,9 +11,10 @@ type RoleFields = [string, string | string[] | undefined][];
 /** Save changed fields of the role file. */
 export function useRoleEdit(detail: RoleDetail) {
   const save = useSaveConfig();
-  return (fields: RoleFields) => {
+  return (fields: RoleFields, body?: string) => {
     let text = detail.file.content ?? "---\n---\n";
     for (const [k, v] of fields) text = setFrontmatterKey(text, k, v);
+    if (body !== undefined) text = setBody(text, body);
     return save("role", detail.role.id, { content: text }, detail.file.hash);
   };
 }
@@ -24,12 +25,12 @@ export function useRoleSave(detail: RoleDetail, onClose: () => void) {
   const toast = useToast();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const save = async (fields: RoleFields, ok: string) => {
+  const save = async (fields: RoleFields, ok: string, body?: string) => {
     if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
-      await edit(fields);
+      await edit(fields, body);
       toast(ok);
       onClose();
     } catch (e) {

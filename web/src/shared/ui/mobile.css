@@ -3,7 +3,6 @@
 @media (max-width: 900px) {
   body { overflow: auto; }
   .app, .app.with-detail, .app.team-view { grid-template-columns: 1fr; height: auto; min-height: 100vh; grid-template-rows: auto; }
-  .app > .g-topbar { position: sticky; top: 0; padding: 0 var(--g-space-3); }
   .app.with-detail .main { display: none; }
   .m-only { display: flex; }
   .d-only { display: none !important; }

@@ -43,6 +43,8 @@ const contrast = (a: string, b: string) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
+const AGENT_ROLES = ["executor", "analyst", "researcher", "reviewer", "tester", "documenter", "planner", "orchestrator", "project-manager"];
+
 // [foreground, background, minimum ratio]: 4.5 for body text, 3 for non-text UI such as outlines and focus rings.
 const PAIRS: [string, string, number][] = [
   ["text", "bg", 7],
@@ -51,6 +53,16 @@ const PAIRS: [string, string, number][] = [
   ["text", "accent-soft", 7],
   ["text", "surface-hover", 7],
   ["text", "surface-active", 7],
+  ["text", "board-card-bg", 7],
+  ["text-2", "board-card-bg", 4.5],
+  ["text-muted", "board-card-bg", 4.5],
+  ["text-2", "board-label-bg", 4.5],
+  ["accent-soft-text", "board-card-bg", 4.5],
+  ["signal-text", "board-card-bg", 4.5],
+  ...["maybe", "decision", "prep", "queue", "work", "done"].flatMap((lane) => [
+    [`board-lane-${lane}`, "surface", 4.5],
+    [`board-lane-${lane}`, "board-card-bg", 4.5],
+  ] as [string, string, number][]),
   ["text-2", "bg", 4.5],
   ["text-2", "surface", 4.5],
   ["text-2", "surface-raised", 4.5],
@@ -87,6 +99,7 @@ const PAIRS: [string, string, number][] = [
   ["focus", "surface", 3],
   ["focus", "surface-raised", 3],
   ...[1, 2, 3, 4].flatMap((n) => [[`viz-${n}`, "bg", 3], [`viz-${n}`, "surface", 3], [`viz-${n}`, "surface-raised", 3]] as [string, string, number][]),
+  ...AGENT_ROLES.map((role) => ["on-agent", `agent-${role}`, 4.5] as [string, string, number]),
 ];
 
 for (const [name, selector] of [["ink", ":root"], ["paper", '[data-theme="paper"]']] as const) {
@@ -119,7 +132,7 @@ test("the paper theme sets every colour the pairs above depend on", () => {
 // names. A divider is decorative by definition — it separates, it does not carry meaning — so it owes no
 // ratio. Every other colour token must appear in a pair, or nothing would notice it drifting below its
 // ratio: a token nobody checks is a token that silently breaks.
-const PALETTE = /^--g-(ink|paper|green|orange|red|n-)/;
+const PALETTE = /^--g-(ink|paper|green|orange|red|n-|hue-)/;
 const DECORATIVE = new Set(["--g-border", "--g-border-strong", "--g-viz-grid"]);
 
 test("every colour token is covered by a contrast pair", () => {
@@ -150,5 +163,15 @@ test("epic progress keeps distinct theme-aware stages", () => {
     });
     assert.equal(new Set(colors).size, PROGRESS.length, `${selector} collapses progress stages`);
     assert.ok(contrast(color("progress-early"), color("bg")) >= 3, `${selector} hides the draft stage`);
+  }
+});
+
+// Agent roles are told apart by colour at a glance: every role has its own, none borrows a semantic one.
+test("every standard agent role has its own colour, apart from signal and danger", () => {
+  for (const selector of [":root", '[data-theme="paper"]']) {
+    const color = theme(selector);
+    const colours = AGENT_ROLES.map((role) => color(`agent-${role}`).toLowerCase());
+    assert.equal(new Set(colours).size, AGENT_ROLES.length, `${selector} gives two roles one colour`);
+    for (const semantic of ["signal", "danger", "signal-text", "danger-text"]) assert.ok(!colours.includes(color(semantic).toLowerCase()), `${selector}: a role uses --g-${semantic}`);
   }
 });

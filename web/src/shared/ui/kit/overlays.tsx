@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
+import { IconButton } from "./actions.tsx";
 import { cx } from "./cx.ts";
 import { useModalFocus } from "./modal-focus.ts";
 import { nextIndex } from "./menu-nav.ts";
@@ -74,44 +75,46 @@ export function Dialog({
   );
 }
 
-export type MenuEntry = { id: string; label: ReactNode; hint?: ReactNode; checked?: boolean; disabled?: boolean; onSelect: () => void } | "separator";
+export type MenuEntry = { id: string; label: ReactNode; hint?: ReactNode; checked?: boolean; disabled?: boolean; onSelect: () => void; action?: { label: string; icon: ReactNode; disabled?: boolean; onSelect: () => void } } | "separator";
 
 /** Arrow keys move through the items, Enter or Space selects, Escape closes. The caller owns open/close and focus return. */
 export function ActionMenu({ label, items, onClose }: { label: string; items: MenuEntry[]; onClose: () => void }) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const actionable = items.flatMap((item, i) => (item !== "separator" && !item.disabled ? [i] : []));
-  useEffect(() => void refs.current[actionable[0]]?.focus(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const root = useRef<HTMLDivElement>(null);
+  const buttons = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+  useEffect(() => void buttons()[0]?.focus(), []);
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") return onClose();
-    const at = actionable.indexOf(refs.current.findIndex((el) => el === document.activeElement));
-    const next = nextIndex(at, e.key, actionable.length);
+    const items = buttons();
+    const at = items.findIndex((el) => el === document.activeElement);
+    const next = nextIndex(at, e.key, items.length);
     if (next !== at) {
       e.preventDefault();
-      refs.current[actionable[next]]?.focus();
+      items[next]?.focus();
     }
   }
   return (
-    <div className="g-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}>
+    <div ref={root} className="g-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}>
       {items.map((item, i) =>
         item === "separator" ? (
           <div key={i} className="g-menu-sep" role="separator" />
         ) : (
-          <button
-            key={item.id}
-            type="button"
-            role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
-            aria-checked={item.checked}
-            disabled={item.disabled}
-            className="g-menu-item"
-            ref={(el) => void (refs.current[i] = el)}
-            onClick={() => {
-              item.onSelect();
-              onClose();
-            }}
-          >
-            {item.label}
-            {item.hint && <span className="hint">{item.hint}</span>}
-          </button>
+          <div key={item.id} className={item.action ? "g-menu-action-row" : undefined} role="none">
+            <button
+              type="button"
+              role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+              aria-checked={item.checked}
+              disabled={item.disabled}
+              className="g-menu-item"
+              onClick={() => {
+                item.onSelect();
+                onClose();
+              }}
+            >
+              {item.label}
+              {item.hint && <span className="hint">{item.hint}</span>}
+            </button>
+            {item.action && <IconButton label={item.action.label} role="menuitem" disabled={item.action.disabled} onClick={() => { item.action?.onSelect(); onClose(); }}>{item.action.icon}</IconButton>}
+          </div>
         ),
       )}
     </div>

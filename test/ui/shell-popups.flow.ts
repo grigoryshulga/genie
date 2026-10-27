@@ -5,7 +5,7 @@
 // fixtures below through `page.route` — fixtures, not live data. Everything else is the real
 // server: the shell, its routes, and opening a task from a notification.
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { PROJECT, SEED_TASKS } from "./seed.ts";
 
 /** A notification as the fixture states it (the server's own shape). */
@@ -112,6 +112,7 @@ for (const theme of ["ink", "paper"]) {
   }
 }
 
+
 test("an outside click closes the popup and leaves focus where the click went", async ({ page }) => {
   await serveNotifications(page, NOTIFICATIONS);
   await page.goto("/board");
@@ -119,7 +120,7 @@ test("an outside click closes the popup and leaves focus where the click went", 
   await bell.click();
   await expect(popupOf(page)).toBeVisible();
   // The empty stretch of the top bar between the sections and the search: an outside click.
-  await page.mouse.click(700, 30);
+  await page.getByRole("heading", { name: "Доска", exact: true }).click();
   await expect(popupOf(page)).toBeHidden();
   await expect(bell).toHaveAttribute("aria-expanded", "false");
   // The click, not the closing popup, decides where focus lands.
@@ -195,34 +196,24 @@ test("the notifications page stays its own route", async ({ page }) => {
 });
 
 for (const width of [1440, 390]) {
-  test(`pending proposals ride on the Documentation entry (${width})`, async ({ page }) => {
+  test(`pending proposals ride on the Knowledge entry (${width})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.route(/\/api\/docs\/proposals\?status=open$/, async (route) => await route.fulfill({ json: PROPOSALS }));
     await page.goto("/board");
 
-    if (width > 900) {
-      const docs = page.getByRole("navigation", { name: "Навигация" }).getByRole("link", { name: /Документация/ });
-      await expect(docs).toBeVisible();
-      await expect(docs).toHaveAttribute("href", "/docs");
-      await expect(docs).toHaveAccessibleName(/Документация\s+предложений к документации: 2/);
-      // A count inside a count's entry, not a second link inside a link.
-      await expect(docs.locator("a")).toHaveCount(0);
-      // The standalone entry is gone from the overflow menu; the other destinations stay.
-      await page.getByRole("button", { name: "Ещё" }).click();
-      const more = page.getByRole("menu", { name: "Ещё" });
-      await expect(more).toBeVisible();
-      await expect(more.getByRole("menuitem", { name: /Предложения/ })).toHaveCount(0);
-      await expect(more.getByRole("menuitem", { name: /Автоматизации/ })).toBeVisible();
-    } else {
-      await page.getByRole("button", { name: "Открыть меню разделов" }).click();
-      const sheet = page.getByRole("dialog", { name: "Навигация" });
-      const docs = sheet.getByRole("link", { name: /Документация/ });
-      await expect(docs).toBeVisible();
-      await expect(docs).toHaveAttribute("href", "/docs");
-      await expect(docs).toHaveAccessibleName(/Документация\s+предложений к документации: 2/);
-      await expect(sheet.getByRole("link", { name: "Предложения", exact: true })).toHaveCount(0);
-      await expect(sheet.getByRole("link", { name: "Уведомления", exact: true })).toBeVisible();
-    }
+    const docs = page.getByRole("navigation", { name: "Навигация" }).getByRole("link", { name: /Знания/ });
+    await expect(docs).toBeVisible();
+    await expect(docs).toHaveAttribute("href", "/docs");
+    await expect(docs).toHaveAccessibleName(/Знания\s+предложений к документации: 2/);
+    // A count inside a count's entry, not a second link inside a link.
+    await expect(docs.locator("a")).toHaveCount(0);
+
+    await expect(page.getByRole("button", { name: "Ещё", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /^Профиль:/ }).click();
+    const profile = page.getByRole("menu", { name: "Профиль", exact: true });
+    await expect(profile.getByRole("menuitem", { name: "Быстрые команды" })).toBeVisible();
+    await expect(profile.getByRole("menuitem", { name: /Автоматизации|Наблюдения/ })).toHaveCount(0);
+
   });
 }
 
@@ -245,7 +236,7 @@ test("the current tab's count reads on the accent pill", async ({ page }) => {
     return { number: getComputedStyle(number).color, pill: getComputedStyle(node).color };
   });
   expect(colors.number).toBe(colors.pill);
-  await page.screenshot({ path: "test-results/shell-topbar-tab-count.png", clip: { x: 0, y: 0, width: 900, height: 64 }, animations: "disabled" });
+  await page.screenshot({ path: "test-results/shell-topbar-tab-count.png", clip: { x: 0, y: 0, width: 1000, height: 72 }, animations: "disabled" });
 });
 
 test("the project switcher lists names on one line without role hints", async ({ page }) => {
@@ -261,3 +252,62 @@ test("the project switcher lists names on one line without role hints", async ({
   expect(name).toEqual({ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
   await page.screenshot({ path: "test-results/shell-project-menu.png", clip: { x: 0, y: 0, width: 460, height: 220 }, animations: "disabled" });
 });
+
+for (const theme of ["ink", "paper"]) {
+  for (const width of [1440, 390]) {
+    test(`shell menus stay above sticky task-list groups (${theme}, ${width})`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
+      await serveNotifications(page, NOTIFICATIONS);
+      await page.goto("/tasks");
+      await expect(page.locator(".tl-group-head").first()).toBeVisible();
+      await page.getByRole("button", { name: /^Профиль:/ }).click();
+      const profile = page.getByRole("menu", { name: "Профиль", exact: true });
+      await expect(profile).toBeVisible();
+      const exposed = (popup: Locator) => popup.evaluate((menu) => [...menu.querySelectorAll<HTMLElement>("button:not(:disabled)")].every((row) => {
+        const rect = row.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return !!hit && row.contains(hit);
+      }));
+      await expect.poll(() => exposed(profile)).toBe(true);
+      await page.screenshot({ path: `test-results/shell-menu-layer-${theme}-${width}.png`, animations: "disabled" });
+      await profile.getByRole("menuitem", { name: "Быстрые команды" }).click();
+      await expect(page.getByRole("dialog", { name: "Команды", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: /^Проект / }).click();
+      const projects = page.getByRole("menu", { name: "Проекты", exact: true });
+      await expect(projects).toBeVisible();
+      await expect(projects.getByRole("menuitemcheckbox").first()).toBeInViewport();
+      await expect.poll(() => exposed(projects)).toBe(true);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: /^Уведомления/ }).click();
+      const notifications = popupOf(page);
+      await expect(notifications).toBeVisible();
+      await expect(notifications.getByRole("button", { name: "Прочитать все" })).toBeVisible();
+      await expect.poll(() => exposed(notifications)).toBe(true);
+    });
+  }
+}
+
+for (const theme of ["ink", "paper"]) {
+  test(`phone dock stays above task groups while scrolling (${theme})`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((value) => localStorage.setItem("genie.appearance.theme", value), theme);
+    await page.goto("/tasks");
+    await expect(page.locator(".tl-group-head").first()).toBeVisible();
+    // Move each real sticky group through the dock's center, rather than assuming a fixed list length.
+    for (const group of await page.locator(".tl-group-head").all()) {
+      await group.evaluate((node) => {
+        const dock = document.querySelector(".g-topbar-nav")!.getBoundingClientRect();
+        const head = node.getBoundingClientRect();
+        window.scrollBy(0, head.top - (dock.top + (dock.height - head.height) / 2));
+      });
+      const exposed = await page.locator(".g-topbar-nav").evaluate((dock) => [...dock.querySelectorAll("a"), document.querySelector(".g-topbar-create")!].every((link) => {
+        const box = link.getBoundingClientRect();
+        return link.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+      }));
+      expect(exposed).toBe(true);
+    }
+    await page.screenshot({ path: `test-results/dock-over-list-${theme}.png`, animations: "disabled" });
+  });
+}

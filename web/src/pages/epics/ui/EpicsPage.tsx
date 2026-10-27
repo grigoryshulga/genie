@@ -16,7 +16,6 @@ import {
 import { type Team, useTeamMap } from "@/entities/team";
 import type { NewTaskPreset } from "@/features/create-task";
 import { plural, timeAgo, useTick } from "@/shared/lib";
-import { ContextSearch } from "@/widgets/topbar";
 import { Button, EmptyState, ErrorState, Icon, PageHeader, Skeleton, Tag, Tabs } from "@/shared/ui";
 import "./epics-sheets.css";
 
@@ -29,7 +28,7 @@ function statusTone(status: Status): "accent" | "signal" | "outline" {
   return "outline";
 }
 
-export function EpicsPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset) => void; searchRef: React.RefObject<HTMLInputElement | null> }) {
+export function EpicsPage({ onNew }: { onNew: (preset?: NewTaskPreset) => void }) {
   useTick();
   const tasksQ = useTasks();
   const teams = useTeamMap();
@@ -59,11 +58,9 @@ export function EpicsPage({ onNew, searchRef }: { onNew: (preset?: NewTaskPreset
                 { id: "closed", label: <>Завершённые · {done.length}</> },
               ]}
             />
-            <ContextSearch inputRef={searchRef} className="mobile-context-search" />
           </>
         }
       />
-
       <div className="scroll epics-scroll">
         {tasksQ.isPending ? (
           <div className="epic-grid" aria-busy="true" aria-label="Эпики загружаются">

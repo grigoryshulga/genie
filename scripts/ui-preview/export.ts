@@ -12,7 +12,7 @@ export async function exportFixtures(base: string, output: string) {
   const fixtures: Record<string, unknown> = {};
   const paths = [
     "/api/auth/me", "/api/meta", "/api/projects", "/api/users", "/api/teams", "/api/tasks?closed=1",
-    "/api/notifications", "/api/notifications/unread", "/api/agent-config", "/api/agents", "/api/automations",
+    "/api/agent-config/history", "/api/notifications", "/api/notifications/unread", "/api/agent-config", "/api/agents", "/api/automations",
     "/api/observations", "/api/docs/tree", "/api/docs/version", "/api/docs/proposals", "/api/doctor",
     "/api/stats?days=30", "/api/stats?days=7", "/api/auth/tokens", "/api/repos", "/api/git/hosts",
     "/api/me/keys", "/api/me/telegram", "/api/providers", "/api/model-prices", "/api/vault/sync",
@@ -33,6 +33,21 @@ export async function exportFixtures(base: string, output: string) {
     const data: unknown = await res.json();
     const url = new URL(path, base); url.searchParams.sort();
     fixtures[url.pathname + url.search] = data;
+  }
+  // Role details are requested dynamically after selecting a catalogue item.
+  const catalogue = fixtures["/api/agent-config"] as { roles?: { id: string }[]; teams?: { id: string }[] } | undefined;
+  for (const role of catalogue?.roles ?? []) {
+    const path = `/api/roles/${encodeURIComponent(role.id)}`;
+    const res = await fetch(base + path, { headers: { cookie, "x-genie-project": "demo" } });
+    if (res.ok) fixtures[path] = await res.json();
+  }
+  for (const team of catalogue?.teams ?? []) {
+    const path = `/api/templates/${encodeURIComponent(team.id)}`;
+    const headers = { cookie, "x-genie-project": "demo", "x-genie": "1", "content-type": "application/json" };
+    const detail = await fetch(base + path, { headers });
+    if (detail.ok) fixtures[path] = await detail.json();
+    const preview = await fetch(base + path + "/preview", { method: "POST", headers, body: "{}" });
+    if (preview.ok) fixtures[path + "/preview"] = await preview.json();
   }
   Object.assign(fixtures, synthetic);
   const text = JSON.stringify(fixtures, null, 2)

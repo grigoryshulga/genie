@@ -38,14 +38,19 @@ Layer 1 holds the palette; layer 2 names the meaning. A component uses layer 2 a
 | Status | Icons, board tints and epic progress share the semantic colours; glyph shape and the label also carry the status, so colour is never the only signal. |
 | Charts | `g-viz-1` to `g-viz-4` for series, `g-viz-grid` for the grid; at most four series with direct labels. `paper` darkens the orange to hold 3:1 against the surface. |
 | Avatars | One shape per kind of actor (`agent`, `human`) plus the name; identity is never carried by colour alone. |
+| Agent roles | `g-agent-<role>` with `g-on-agent` for the nine standard roles, the same in both themes so a role is recognised anywhere: avatars (`Avatar tone`), the team graph and role lists. A custom role takes the colour of the role it extends. The hues share one lightness with the brand green and stay clear of signal orange and danger red. |
 | Spacing | 4 px base: 4, 8, 12, 16, 24, 32, 48, 64, 96. Repeated padding and gaps use it; layout coordinates stay local geometry. |
 | Radius | small 8 (controls, rows), medium 12 (fields, list rows), large 20 (cards), extra-large 28 (hero panels), pill 999 (buttons, chips, tags). |
 | Controls | 40 px roomy, 32 px dense (`sm`), rows 44 px. The dense variant is for lists, toolbars and settings, not for touch-first screens. |
 | Layout | content column 840 px, prose measure 64ch, board lane 344 px, card 288 × 144. Sidebar/detail rail and responsive breakpoints remain application layout CSS. |
 
+Board cards use `g-shadow-board-card`, a short unblurred lift, without changing shared card or overlay shadows. Each of the six existing lanes uses its own `g-board-lane-*` colour: grey backlog, orange owner decision, blue preparation, ochre queue, green work and muted green completion. Lane surfaces mix 6% of that colour with `g-surface`; card surfaces mix 5% with `g-board-card-bg`. Folded and empty lanes retain their identity, and drag copies use the task's existing status-to-lane mapping. Cancelled tasks stay neutral outside the workflow.
+
+Epic identity is independent: its stable four-tone palette remains on the compact `EpicChip` link and `EpicIcon`, without a competing card stripe. Task status is carried by the lane; comment counters stay hidden. Board-only `g-board-card-bg` and `g-board-label-bg` keep surfaces and filled labels quiet. Human circles and agent rounded squares reuse `Avatar` unchanged; role colours are not changed.
+
 ## Typography
 
-Unbounded for display, Manrope for everything else, Geist Mono for identifiers, code and numeric metadata. Both Latin faces are self-hosted variable fonts (`@fontsource-variable`); the mono face is self-hosted too, so the app renders identically offline.
+Unbounded for display, Golos Text for everything else, Geist Mono for identifiers, code and numeric metadata. The display and body faces are self-hosted variable fonts (`@fontsource-variable`); the mono face is self-hosted too, so the app renders identically offline.
 
 | Style | Size / weight / line-height | Token |
 | --- | --- | --- |
@@ -63,7 +68,7 @@ Unbounded for display, Manrope for everything else, Geist Mono for identifiers, 
 | Eyebrow | 11 / 600 / 1.45, uppercase, tracking 0.14em | `g-text-eyebrow` |
 | IDs and code | Geist Mono 12-13 / 400 | `g-font-mono` |
 
-Unbounded never goes below 24 px: it is very wide and loses Cyrillic legibility when small. Anything smaller is Manrope. Turn on `font-feature-settings: "tnum"` wherever digits align in columns.
+Unbounded never goes below 24 px: it is very wide and loses Cyrillic legibility when small. Anything smaller is Golos Text. Turn on `font-feature-settings: "tnum"` wherever digits align in columns.
 
 ## Component inventory
 
@@ -73,7 +78,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | --- | --- | --- |
 | Button | primary, secondary, ghost, danger × roomy/dense × resting/hover/focus/disabled/busy | `Button`; pill, 40 px (32 dense). Primary is orange with an ink label; secondary is a green outline. |
 | Icon button | resting/hover/focus/disabled | `IconButton`; needs a `label` for its accessible name. |
-| Tabs | selected/resting | `Tabs`; horizontal `g-tabs`, also usable as route links. |
+| Tabs | pills/underline × selected/resting | `Tabs`; horizontal `g-tabs`, also usable as route links. Use `variant="underline"` for subordinate navigation. |
 | Segmented | selected/resting | `Segmented`; `g-seg`, radiogroup semantics. |
 | Chip | resting/pressed | `Chip`; `pressed` reflects the toggle state. |
 | Tag | neutral, accent, signal, danger, solid-accent, solid-signal, outline | `Tag`; soft tint with the matching text colour. |
@@ -90,6 +95,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | Disclosure card | expanded/collapsed, hover/focus; persisted by caller-supplied key | `DisclosureCard`; compact rail surface, full-heading keyboard toggle and hidden body. |
 | Feedback | neutral/accent/signal/danger banner, empty, error, skeleton, working arcs | `Banner`, `EmptyState`, `ErrorState`, `Skeleton`, `WorkingArcs`. An empty list uses `EmptyState`; a failed query uses `ErrorState`. |
 | Image preview | thumbnail/inline/full/lightbox | `ImagePreview`; shared surfaces and radii, paired danger foreground for close hover. |
+| Team graph | process/configuration, inline/expanded | `TemplateGraph`; configuration uses `compact` to wrap stages at readable size, with fit/zoom/expand controls. |
 | Charts | grouped/stacked | `BarChart`; `g-viz-*` series colours, visible legend and textual totals. |
 | Rich text | reading/editing | `Markdown`, docs editor; content-specific block geometry stays local. |
 

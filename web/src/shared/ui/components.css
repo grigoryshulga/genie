@@ -66,6 +66,12 @@
    and on an accent fill it lands at 1.4:1. */
 .g-tabs > [aria-selected="true"] .g-caption, .g-tabs > a[aria-current="page"] .g-caption, .g-chip[aria-pressed="true"] .g-caption { color: inherit; }
 
+/* Secondary navigation uses text and an underline instead of another filled rail. */
+.g-tabs.underline { gap: var(--g-space-4); padding: 0; border: 0; border-radius: 0; }
+.g-tabs.underline > :is([role="tab"], a) { height: var(--g-control); padding-inline: var(--g-space-2); border-radius: 0; border-bottom: 2px solid transparent; background: transparent; }
+.g-tabs.underline > :is([role="tab"], a):hover { background: transparent; color: var(--g-text); }
+.g-tabs.underline > :is([aria-selected="true"], a[aria-current="page"]) { border-bottom-color: var(--g-accent); background: transparent; color: var(--g-text); }
+
 /* ---- chips, tags, status ---- */
 .g-chip { display: inline-flex; align-items: center; gap: var(--g-space-2); height: var(--g-control-sm); padding: 0 var(--g-space-4); border: 1.5px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font: 600 var(--g-text-dense)/1 var(--g-font-sans); cursor: pointer; }
 .g-chip:hover { background: var(--g-surface-hover); color: var(--g-text); }
@@ -181,6 +187,18 @@
 /* Agents are rounded squares, people are circles, so who acted reads at a glance. */
 .g-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; font: 700 11px/1 var(--g-font-sans); flex: none; }
 .g-avatar.agent { border-radius: 9px; background: var(--g-accent); color: var(--g-on-accent); }
+/* An agent's role colour (`data-tone`): avatars here, and any role mark that reads `--agent-tone`
+   (the team graph, role lists). Unknown roles keep the accent. */
+[data-tone="executor"] { --agent-tone: var(--g-agent-executor); }
+[data-tone="analyst"] { --agent-tone: var(--g-agent-analyst); }
+[data-tone="researcher"] { --agent-tone: var(--g-agent-researcher); }
+[data-tone="reviewer"] { --agent-tone: var(--g-agent-reviewer); }
+[data-tone="tester"] { --agent-tone: var(--g-agent-tester); }
+[data-tone="documenter"] { --agent-tone: var(--g-agent-documenter); }
+[data-tone="planner"] { --agent-tone: var(--g-agent-planner); }
+[data-tone="orchestrator"] { --agent-tone: var(--g-agent-orchestrator); }
+[data-tone="project-manager"] { --agent-tone: var(--g-agent-project-manager); }
+.g-avatar.agent[data-tone] { background: var(--agent-tone); color: var(--g-on-agent); }
 .g-avatar.human { border-radius: 50%; background: var(--g-text); color: var(--g-bg); }
 .g-avatar.sm { width: 24px; height: 24px; font-size: 10.5px; }
 .g-avatars { display: inline-flex; }
@@ -274,3 +292,17 @@
 /* Actions row at the foot of an edit form: the task detail's forms and the project icon form both
    render it, so the row lives with the shared primitives instead of the detail sheet. */
 .td-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--g-space-2); }
+
+/* A menu row may expose an independent adjacent action without nesting buttons. */
+.g-menu-action-row { display: flex; align-items: center; gap: var(--g-space-1); }
+.g-menu-action-row > .g-menu-item { flex: 1; min-width: 0; }
+.g-menu-action-row > .g-icon-btn { flex: none; }
+
+/* One moving fill follows the active tab while labels keep their native focus and keyboard behavior. */
+.g-tabs-motion { position: relative; isolation: isolate; }
+.g-tabs-motion > a, .g-tabs-motion > [role="tab"] { position: relative; z-index: 1; transition: color var(--g-duration) var(--g-ease); }
+.g-tabs-motion > a[aria-current="page"], .g-tabs-motion > [aria-selected="true"] { background: transparent; }
+.g-tabs-indicator { position: absolute; left: 0; top: 0; z-index: 0; border-radius: var(--g-radius-pill); background: var(--g-accent); pointer-events: none; transition: transform calc(2 * var(--g-duration)) var(--g-ease), width calc(2 * var(--g-duration)) var(--g-ease), height calc(2 * var(--g-duration)) var(--g-ease); }
+@media (prefers-reduced-motion: reduce) {
+  .g-tabs-indicator, .g-tabs-motion > a, .g-tabs-motion > [role="tab"] { transition: none; }
+}

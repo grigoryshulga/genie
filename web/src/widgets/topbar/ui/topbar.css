@@ -12,14 +12,39 @@
 .g-topbar-project-switcher .g-menu-item { min-width: 0; }
 .g-topbar-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* The grid item and every wrapper must shrink before a long project name can ellipsize. */
 .g-topbar { min-width: 0; }
-.g-topbar-project .name { min-width: 0; }
 .g-topbar-project-switcher .g-popover-host { min-width: 0; }
-@media (max-width: 900px) {
-  .g-topbar-project-switcher { flex: 1 1 0; }
-  .g-topbar-project-switcher > .g-popover-host { width: 100%; }
-  .g-topbar-project-switcher .g-topbar-project { width: 100%; }
+.g-topbar .g-topbar-create { flex: none; background: var(--g-signal); color: var(--g-on-signal); }
+.g-topbar .g-topbar-create:hover { background: var(--g-signal-hover); color: var(--g-on-signal); }
+
+/* Reveal the search field in place, then restore navigation with the same quiet motion. */
+.g-topbar-search-mode { animation: g-search-appear calc(2 * var(--g-duration)) var(--g-ease) both; }
+@media (min-width: 901px) {
+  .g-topbar:not(.searching) .g-topbar-nav { animation: g-nav-appear var(--g-duration) var(--g-ease) both; }
+}
+@keyframes g-search-appear {
+  from { opacity: 0; transform: translateY(var(--g-space-1)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes g-nav-appear {
+  from { opacity: 0; transform: translateX(calc(-1 * var(--g-space-2))); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .g-topbar-search-mode, .g-topbar:not(.searching) .g-topbar-nav { animation: none; }
 }
 
-.g-topbar .g-topbar-create { color: var(--g-accent-text); flex: none; }
+/* Image corners fit inside the circular trigger as well as wide and tall project marks. */
+.g-topbar-project .project-icon { border-radius: 50%; overflow: hidden; }
+.g-topbar-project .project-icon img { box-sizing: border-box; width: var(--g-control); height: var(--g-control); object-fit: contain; padding: var(--g-space-2); }
+
+/* Search is one surface with the bar: focus belongs to its outer contour, never an inner capsule. */
+.g-topbar-search.search:focus-within { border: 0; outline: none; }
+.g-topbar-search kbd { display: none; }
+.g-topbar.searching .g-topbar-pill:has(.g-topbar-search:focus-within) { border-color: var(--g-accent); box-shadow: var(--g-shadow-card), 0 0 0 1px var(--g-focus); }
+
+.g-topbar-search-mode > .g-icon-btn { width: var(--g-control); height: var(--g-control); }
+
+@media (max-width: 900px) {
+  .g-topbar .g-tabs-indicator { border-radius: var(--g-radius-lg); }
+}

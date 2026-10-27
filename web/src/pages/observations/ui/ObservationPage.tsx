@@ -94,7 +94,7 @@ function Frame({ actions, children }: { actions?: ReactNode; children?: ReactNod
   return (
     <main className="main">
       <header className="topbar obs-topbar">
-        <Link className="g-btn ghost sm" to="/observations">
+        <Link className="g-btn ghost sm" to="/manage/project/observations">
           ← {OBSERVATION_TEXT.nav}
         </Link>
         <span className="grow" />

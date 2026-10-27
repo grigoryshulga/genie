@@ -12,6 +12,7 @@ import { canManageProject, managementDestination, isTyping, rememberWorkRoute } 
 import { Dialog, LoadingState, Skeleton } from "@/shared/ui";
 import { TopBar } from "@/widgets/topbar";
 import { lazyPage } from "./lazyPage.ts";
+import { useTaskModalMotion } from "./useTaskModalMotion.ts";
 import "./task-modal.css";
 // Legacy cross-layer compatibility layer (`#root` height plus old class names other sheets still
 // target). It stays with the app shell until the H33 cleanup retires those rules.
@@ -24,10 +25,7 @@ import "@/shared/ui/markdown.css";
 // and every page the shell renders itself. Lazy screens re-inline them in their own chunk (see
 // `<screen>-sheets.css`) so that they still load after that screen's area sheets.
 import "@/shared/ui/mobile.css";
-// The phone replacement for the top bar's search field is rendered by the screens that ask for it,
-// so its rules have to load after `shell.css` (the field is `.search`) and after the phone layer
-// (which widens `.search`): the shared sheet rides the shell's tail here, and the screens that show
-// the field re-inline it in their own chunk.
+// Shared document layout rules load after the responsive layer.
 import "@/shared/ui/search-and-docs.css";
 import "@/shared/ui/content.css";
 
@@ -84,14 +82,8 @@ function Shell() {
     setDialog("new");
   }, []);
   const searchRef = useRef<HTMLInputElement>(null);
-  const mobileSearchRef = useRef<HTMLInputElement>(null);
-  const focusSearch = useCallback(() => {
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      (mobileSearchRef.current ?? document.querySelector<HTMLInputElement>(".mobile-context-search input"))?.focus();
-      return;
-    }
-    searchRef.current?.focus();
-  }, []);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const focusSearch = useCallback(() => { setSearchOpen(true); searchRef.current?.focus(); }, []);
   const teams = useTeamMap();
   const tasks = useTasks().data;
   const teamRoute = location.pathname.startsWith("/team/");
@@ -127,6 +119,7 @@ function Shell() {
     next.delete("task");
     setSp(next);
   }, [sp, setSp]);
+  const requestCloseTask = useTaskModalMotion(openTaskId, location.pathname === "/board", closeTask);
 
   const actions: PaletteActions = useMemo(
     () => ({
@@ -192,14 +185,14 @@ function Shell() {
   const cls = agentRoute ? "app team-view agent-view" : teamRoute ? "app team-view" : "app";
   return (
     <div className={cls}>
-      <TopBar onNew={() => newTask()} online={online} searchRef={searchRef} onOpenSearch={focusSearch} onOpenPalette={() => setDialog("palette")} />
+      <TopBar onNew={() => newTask()} online={online} searchRef={searchRef} searchOpen={searchOpen} onOpenSearch={focusSearch} onCloseSearch={() => setSearchOpen(false)} onOpenPalette={() => setDialog("palette")} />
       <Suspense fallback={<PageFallback />}>
-        <Outlet context={{ onNew: newTask, searchRef: mobileSearchRef }} />
+        <Outlet context={{ onNew: newTask }} />
       </Suspense>
       {openTaskId && (
-        <Dialog bare className="task-modal" title={`Задача ${openTaskId}`} onClose={closeTask}>
+        <Dialog bare className="task-modal" title={`Задача ${openTaskId}`} onClose={requestCloseTask}>
           <Suspense fallback={<PageFallback />}>
-            <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={closeTask} />
+            <TaskDetail key={openTaskId} id={openTaskId} team={openTask?.team ? teams.get(openTask.team) : undefined} onClose={requestCloseTask} />
           </Suspense>
         </Dialog>
       )}
@@ -230,16 +223,14 @@ function Shell() {
   );
 }
 
-type ShellContext = { onNew: (preset?: NewTaskPreset) => void; searchRef: React.RefObject<HTMLInputElement | null> };
+type ShellContext = { onNew: (preset?: NewTaskPreset) => void };
 
 function TasksRoute() {
-  const ctx = useOutletContext<ShellContext>();
-  return <TasksPage searchRef={ctx.searchRef} />;
+  return <TasksPage />;
 }
 
 function BoardRoute() {
-  const ctx = useOutletContext<ShellContext>();
-  return <BoardPage searchRef={ctx.searchRef} />;
+  return <BoardPage />;
 }
 
 /** The task list with a preset's statuses, "mine" narrowing it to the viewer. */
@@ -263,8 +254,8 @@ function LegacyView() {
 }
 
 function EpicsRoute() {
-  const { onNew, searchRef } = useOutletContext<ShellContext>();
-  return <EpicsPage onNew={onNew} searchRef={searchRef} />;
+  const { onNew } = useOutletContext<ShellContext>();
+  return <EpicsPage onNew={onNew} />;
 }
 
 function EpicRoute() {
@@ -338,6 +329,13 @@ function LegacyServer() {
   return <LegacyManagement scope="server" legacySection={useParams().tab ?? "health"} />;
 }
 
+/** Preserve bookmarks and notification links when operational tools move into management. */
+function LegacyWorkTool({ path }: { path: string }) {
+  const { caseId } = useParams();
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: `/manage/project/${path}${caseId ? `/${encodeURIComponent(caseId)}` : ""}`, search, hash }} replace />;
+}
+
 export const router = createBrowserRouter([
   { path: "/invite", element: <InvitePage /> },
   // `/answer` is outside the shell, so its page brings its own loading boundary.
@@ -368,9 +366,9 @@ export const router = createBrowserRouter([
           { path: "docs", element: <DocsPage /> },
           { path: "docs/edit", element: <DocsPage /> },
           { path: "docs/proposals", element: <ProposalsPage /> },
-          { path: "automations", element: <AutomationsPage /> },
-          { path: "observations", element: <ObservationsPage /> },
-          { path: "observation/:caseId", element: <ObservationPage /> },
+          { path: "automations", element: <LegacyWorkTool path="automation-runs" /> },
+          { path: "observations", element: <LegacyWorkTool path="observations" /> },
+          { path: "observation/:caseId", element: <LegacyWorkTool path="observation" /> },
           { path: "agents", element: <AgentsPage /> },
           { path: "notifications", element: <NotificationsPage /> },
           { path: "statistics", element: <RequireServerAdmin><ServerStatisticsPage /></RequireServerAdmin> },
@@ -388,11 +386,14 @@ export const router = createBrowserRouter([
       { path: "settings/project/:section?", element: <LegacyManagement scope="project" /> },
       { path: "settings/server/:section?", element: <LegacyManagement scope="server" /> },
       {
-        path: "manage/project", element: <RequireProjectAdmin><SettingsShell /></RequireProjectAdmin>,
+        path: "manage/project", element: <SettingsShell />,
         children: [
           { index: true, element: <Navigate to="general" replace /> },
-          { path: "automations", element: <AutomationsSettingsPage /> },
-          { path: ":section", element: <ProjectSettingsPage /> },
+          { path: "automation-runs", element: <AutomationsPage /> },
+          { path: "observations", element: <ObservationsPage /> },
+          { path: "observation/:caseId", element: <ObservationPage /> },
+          { path: "automations", element: <RequireProjectAdmin><AutomationsSettingsPage /></RequireProjectAdmin> },
+          { path: ":section", element: <RequireProjectAdmin><ProjectSettingsPage /></RequireProjectAdmin> },
         ],
       },
       {

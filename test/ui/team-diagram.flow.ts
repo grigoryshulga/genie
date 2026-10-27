@@ -1,8 +1,9 @@
-// A live card separates identity from activity and opens the corresponding conversation.
+// The team page shows its members as one line in handoff order; the graph of relations opens on demand,
+// its live cards separate identity from activity and open the corresponding conversation.
 import { expect, test } from "@playwright/test";
 import type { TaskSummary } from "../../web/src/shared/api/types.ts";
 
-test("team cards show roles and one activity line, and open the agent chat", async ({ page }) => {
+test("the team line shows who works and who waits; the graph opens on demand and its cards open the agent chat", async ({ page }) => {
   const response = await page.request.get("/api/tasks?closed=1");
   expect(response.ok()).toBe(true);
   const tasks: TaskSummary[] = await response.json();
@@ -26,6 +27,23 @@ test("team cards show roles and one activity line, and open the agent chat", asy
   await page.route("**/api/teams?*", (route) => route.fulfill({ json: [team] }));
   await page.route(`**/api/teams/${team.id}`, (route) => route.fulfill({ json: team }));
   await page.goto(`/task/${task.id}/team`);
+  const line = page.getByRole("list", { name: "Порядок работы" });
+  await expect(line.locator(".tv-flow-member")).toHaveText([/Бендер.*работает/, /Лиза.*ждёт Бендер/]);
+  // Hovering the line changes no row's height.
+  const before = (await line.boundingBox())!.height;
+  await line.locator(".tv-flow-member").first().hover();
+  expect((await line.boundingBox())!.height).toBe(before);
+  await expect(page.locator(".team-graph")).toHaveCount(0);
+  // How urgent a message is stays behind the send button's chevron; the choice becomes the default.
+  await expect(page.getByRole("group", { name: "Важность" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Как отправить" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /Важное/ }).click();
+  await expect(page.getByRole("button", { name: "Как отправить" })).toBeFocused();
+  await page.reload();
+  await page.getByRole("button", { name: "Как отправить" }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: /Важное/ })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Схема связей" }).click();
   const reviewer = page.locator(".team-graph a").filter({ hasText: "Лиза" });
   await expect(reviewer.locator("text.nr")).toHaveText("ревьюер");
   await expect(reviewer.locator("text").filter({ hasText: /^ждёт Бендер$/ })).toHaveCount(1);

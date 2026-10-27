@@ -1,5 +1,6 @@
 export * from "./model.ts";
 export * from "./lanes.ts";
+export * from "./epic-tone.ts";
 export * from "./api.ts";
 export * from "./ui/StatusIcon.tsx";
 export * from "./ui/StageBars.tsx";

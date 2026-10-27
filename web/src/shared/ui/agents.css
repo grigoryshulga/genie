@@ -39,9 +39,8 @@
 
 /* An agent is a rounded square, never a circle — the same shape as `.g-avatar.agent`. */
 .ag-class { width: var(--g-space-5); height: var(--g-space-5); border-radius: var(--g-radius-sm); display: inline-grid; place-items: center; font-size: var(--g-text-eyebrow); font-weight: var(--g-weight-bold); flex: none; background: var(--g-n-500); color: var(--g-ink); }
-.ag-class.c-analyst { background: var(--g-viz-2); } .ag-class.c-executor { background: var(--g-viz-3); } .ag-class.c-reviewer { background: var(--g-viz-4); }
-.ag-class.c-tester { background: var(--g-viz-1); } .ag-class.c-documenter { background: var(--g-viz-2); } .ag-class.c-orchestrator { background: var(--g-signal); }
-.ag-class, .ag-class[class*="c-"] { color: var(--g-ink); }
+/* A role's own colour (components.css maps `data-tone` to `--agent-tone`); a role without one stays neutral. */
+.ag-class[data-tone] { background: var(--agent-tone); color: var(--g-on-agent); }
 .ag-avatars { display: inline-flex; }
 .ag-avatars .ag-class { margin-left: calc(-1 * var(--g-space-1)); box-shadow: 0 0 0 2px var(--g-bg); }
 .ag-avatars .ag-class:first-child { margin-left: 0; }
@@ -338,3 +337,16 @@ fieldset:disabled .ag-perm { cursor: default; }
 
 /* A role's title being renamed: the field takes the title's size and stops short of the actions. */
 .ag-role-rename { max-width: 420px; height: auto; padding: 2px var(--g-space-2); font: 700 var(--g-text-h3) / 1.25 var(--g-font-display); letter-spacing: var(--g-tracking-heading); }
+
+.ag-mcp-connections { display: grid; gap: var(--g-space-2); }
+.ag-mcp-connection { min-width: 0; border: 1px solid var(--g-border); border-radius: var(--g-radius-md); padding: var(--g-space-3); }
+.ag-mcp-connection summary { cursor: pointer; overflow-wrap: anywhere; }
+.ag-mcp-connection summary > * { margin-right: var(--g-space-3); }
+.ag-mcp-connection summary strong { font-size: var(--g-text-ui); }
+.ag-mcp-connection summary .g-muted { font-size: var(--g-text-caption); }
+.ag-mcp-tools { max-height: calc(var(--g-control) * 8); overflow: auto; padding-left: var(--g-space-5); }
+.ag-mcp-tools code { overflow-wrap: anywhere; }
+.ag-mcp-tool-picker summary, .ag-mcp-pattern-picker summary { cursor: pointer; margin-bottom: var(--g-space-3); }
+.ag-mcp-tool-picker > input { margin-bottom: var(--g-space-3); }
+
+.ag-roles-layout .side-head { justify-content: space-between; }

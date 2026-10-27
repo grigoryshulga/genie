@@ -1,5 +1,8 @@
-import { type PointerEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type PointerEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useId, useRef, useState } from "react";
+import { Icon } from "@/shared/ui/icons.tsx";
+import { agentTone } from "../../member/tone.ts";
 import "./graph.css";
+import { layoutTemplate, templateColumns } from "../template-graph.ts";
 import { capitalized, type LiveState, layoutTeam, type MemberDef, NODE_H, ON_TITLE, type Relation, RELATION_TITLE, type RoleDef } from "../model.ts";
 
 /** How a relation is drawn: by its kind in a template, by what has happened in a running team. */
@@ -21,12 +24,16 @@ const STATE_TITLE: Record<LiveState, string> = { working: "работает", wa
 /** Text left of this x is the avatar. */
 const TEXT_X = 36;
 
+const NO_PROBLEMS: string[] = [];
+const NO_CARDS: Record<string, { href: string; role: string; activity: string }> = {};
+
 let measurer: CanvasRenderingContext2D | null | undefined;
 /** Width of a text in the graph's font (an estimate until the canvas is there). */
 function textWidth(text: string, font: string): number {
   if (measurer === undefined) measurer = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
   if (!measurer) return text.length * 7;
-  measurer.font = `${font} Manrope, system-ui, sans-serif`;
+  const family = getComputedStyle(document.documentElement).getPropertyValue("--g-font-sans").trim();
+  measurer.font = `${font} ${family}`;
   return measurer.measureText(text).width;
 }
 
@@ -61,14 +68,17 @@ export function TemplateGraph({
   members,
   relations,
   roles,
-  problems = [],
+  problems = NO_PROBLEMS,
   live,
   pending = [],
   done = [],
   head,
   onConnect,
-  cards = {},
+  cards = NO_CARDS,
+  compact = false,
 }: {
+  /** Compact toolbar and a readable wrapped layout for configuration workspaces. */
+  compact?: boolean;
   cards?: Record<string, { href: string; role: string; activity: string }>;
   members: MemberDef[];
   relations: Relation[];
@@ -88,6 +98,7 @@ export function TemplateGraph({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [columns, setColumns] = useState(3);
   useEffect(() => {
     if (expanded) dialogRef.current?.showModal();
     else if (restoreFocus.current) expandButtonRef.current?.focus();
@@ -97,8 +108,8 @@ export function TemplateGraph({
   const [drag, setDrag] = useState<{ from: string; x: number; y: number }>();
   const role = (m: MemberDef) => roles.find((r) => r.id === m.role);
   const title = (m: MemberDef) => role(m)?.title ?? m.role;
-  const g = layoutTeam(
-    members.map((m) => {
+  const g = useMemo(() => {
+    const graphMembers = members.map((m) => {
       const l = live?.[m.key];
       // Detailed live cards reserve the subtitle for the role; activity appears once below.
       const sub = cards[m.key]?.role ?? (l
@@ -113,12 +124,12 @@ export function TemplateGraph({
             ? m.key
             : "");
       return { key: m.key, label: m.name ? capitalized(m.name) : title(m), sub };
-    }),
-    relations,
-    problems,
-  );
+    });
+    return compact ? layoutTemplate(graphMembers, relations, problems, columns) : layoutTeam(graphMembers, relations, problems);
+  }, [members, relations, roles, problems, live, cards, compact, columns]);
   const w = g.nodeW;
-  const classOf = (key: string) => ((key === "orchestrator" || key === "project-manager") ? "orchestrator" : (role(members.find((m) => m.key === key)!)?.class ?? ""));
+  // The managers keep their own colours; a member takes its role's.
+  const toneOf = (key: string) => (key === "orchestrator" || key === "project-manager" ? key : agentTone(members.find((m) => m.key === key)?.role ?? key, roles));
   const nameOf = (key: string) => g.nodes.find((n) => n.key === key)?.label ?? key;
   const lookOf = (e: (typeof g.edges)[number]): Look => {
     if (!live || e.type === "manages") return e.type;
@@ -147,6 +158,15 @@ export function TemplateGraph({
     const el = scrollRef.current;
     if (el) changeZoom(Math.min((el.clientWidth - 24) / g.width, expanded ? el.clientHeight / g.height : Infinity));
   };
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!compact || !element) return;
+    const measure = () => setColumns(templateColumns(element.clientWidth - 32));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [compact, expanded]);
   const figure = (
     <figure className="team-graph">
       {head && <div className="team-graph-head">{head}</div>}
@@ -154,9 +174,9 @@ export function TemplateGraph({
         <button type="button" className="g-btn ghost sm" aria-label="Отдалить схему" disabled={zoom <= 0.25} onClick={() => changeZoom(zoom - 0.25)}>−</button>
         <output aria-label="Масштаб схемы">{Math.round(zoom * 100)}%</output>
         <button type="button" className="g-btn ghost sm" aria-label="Приблизить схему" disabled={zoom >= 2.5} onClick={() => changeZoom(zoom + 0.25)}>+</button>
-        <button type="button" className="g-btn ghost sm" onClick={fitGraph}>Вписать целиком</button>
-        <button type="button" className="g-btn ghost sm" ref={expandButtonRef} aria-pressed={expanded} onClick={() => { setDrag(undefined); setExpanded(!expanded); }}>
-          {expanded ? "Свернуть область" : "Развернуть схему"}
+        <button type="button" className="g-btn ghost sm" aria-label="Вписать целиком" title="Вписать целиком" onClick={fitGraph}>{compact ? <Icon.fit /> : "Вписать целиком"}</button>
+        <button type="button" className="g-btn ghost sm" ref={expandButtonRef} aria-label={expanded ? "Свернуть область" : "Развернуть схему"} title={expanded ? "Свернуть область" : "Развернуть схему"} aria-pressed={expanded} onClick={() => { setDrag(undefined); setExpanded(!expanded); }}>
+          {compact ? expanded ? <Icon.collapse /> : <Icon.expand /> : expanded ? "Свернуть область" : "Развернуть схему"}
         </button>
       </div>
       <div className="team-graph-scroll" ref={scrollRef}>
@@ -190,15 +210,16 @@ export function TemplateGraph({
               </marker>
             ))}
           </defs>
-          {g.stages.map((stage) => <text key={stage.x} x={stage.x} y={269} textAnchor="middle" className="ns">{stage.label} · →</text>)}
+          {g.stages.map((stage) => <text key={`${stage.x}:${stage.y}`} x={stage.x} y={stage.y} textAnchor="middle" className="ns">{stage.label} · →</text>)}
           {g.edges.map((e, i) => {
             const look = lookOf(e);
             // One relation to several members is labelled once.
-            const again = g.edges.slice(0, i).some((x) => x.from === e.from && x.type === e.type && x.on === e.on && lookOf(x) === look);
-            const label = e.on && look !== "later" && !again ? (ON_TITLE[e.on] ?? e.on) : undefined;
+            const again = g.edges.slice(0, i).some((x) => x.from === e.from && x.type === e.type && x.on === e.on && x.showLabel !== false && lookOf(x) === look);
+            const label = e.on && e.showLabel !== false && look !== "later" && !again ? (ON_TITLE[e.on] ?? e.on) : undefined;
             return (
               <g key={i} className={`edge ${look}`}>
                 <title>{`${nameOf(e.from)} → ${nameOf(e.to)}: ${e.type === "manages" ? "ведёт задачу" : RELATION_TITLE[e.type]}${e.on ? `, когда задача «${ON_TITLE[e.on] ?? e.on}»` : ""}${e.note ? ` — ${e.note}` : ""}`}</title>
+                {compact && <path className="edge-underlay" d={e.d} fill="none" />}
                 <path d={e.d} fill="none" style={{ stroke: LOOK[look].color }} strokeWidth={1.6} strokeDasharray={LOOK[look].dash} markerEnd={`url(#${uid}-${look})`} />
                 {label && (
                   <text x={e.lx} y={e.ly + 4} textAnchor="middle" className="edge-label">
@@ -228,7 +249,7 @@ export function TemplateGraph({
               >
                 <title>{`${n.label}${n.sub ? ` — ${n.sub}` : ""}${card ? ` — ${card.activity}` : ""}${state && state !== "waiting" && live?.[n.key].note ? `\n${live[n.key].note}` : ""}`}</title>
                 <rect width={nw} height={NODE_H} rx={10} />
-                <rect x={9.5} y={NODE_H / 2 - 9.5} width={19} height={19} rx={6} className={`dot c-${classOf(n.key)}`} />
+                <rect x={9.5} y={NODE_H / 2 - 9.5} width={19} height={19} rx={6} className="dot" data-tone={toneOf(n.key)} />
                 <text x={19} y={NODE_H / 2 + 3.8} textAnchor="middle" className="dl">
                   {n.label.slice(0, 1).toUpperCase()}
                 </text>

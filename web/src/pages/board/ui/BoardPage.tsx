@@ -7,7 +7,7 @@ import { useOnline } from "@/shared/api";
 import { readPref, writePref } from "@/shared/lib";
 import { Banner, Button, EmptyState, ErrorState, FilterOption, Icon, Kbd, PageHeader, Popover, Skeleton } from "@/shared/ui";
 import { Board } from "@/widgets/board";
-import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
+import { TeamsSummary } from "@/widgets/topbar";
 
 /**
  * The board offers the same "new task" action as the C shortcut, so one code path opens the dialog.
@@ -16,7 +16,7 @@ import { ContextSearch, TeamsSummary } from "@/widgets/topbar";
 const pressC = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
 
 /** «Доска»: the project's six lanes, narrowed by filters («Мои задачи», an epic). */
-export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputElement | null> }) {
+export function BoardPage() {
   const [sp, setSp] = useSearchParams();
   const query = sp.get("q") ?? "";
   const [showDone, setShowDone] = useState(() => readPref<string>("genie.showDone", "0") === "1");
@@ -83,7 +83,6 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
                 ))}
               </section>
             </Popover>
-            <ContextSearch inputRef={searchRef} className="mobile-context-search" />
           </>
         }
       />
@@ -142,7 +141,7 @@ export function BoardPage({ searchRef }: { searchRef: React.RefObject<HTMLInputE
           )}
         </div>
       ) : (
-        <Board tasks={tasks} teams={teams} showDone={showDone} onDoneVisibilityChange={setDoneVisibility} onOpen={(id) => setParam("task", id)} offline={!online} />
+        <Board tasks={tasks} teams={teams} selected={sp.get("task") ?? undefined} showDone={showDone} onDoneVisibilityChange={setDoneVisibility} onOpen={(id) => setParam("task", id)} offline={!online} />
       )}
 
       <footer className="g-hints" aria-label="Подсказки клавиш">

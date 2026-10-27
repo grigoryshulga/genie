@@ -1,4 +1,4 @@
-import { displayName } from "@/entities/member";
+import { agentTone, displayName } from "@/entities/member";
 import { Avatar, cx } from "@/shared/ui";
 import "./avatar.css";
 
@@ -11,7 +11,7 @@ export function PartyAvatar({ role, name, activity, state, sm }: { role: string;
   const label = human ? (name ?? "Вы") : role === "orchestrator" ? "Оркестратор" : displayName(name ?? role);
   return (
     <span className={cx("tv-av", activity === "working" && "working", activity === "error" && "error", (state === "stopped" || state === "lost") && "stopped")}>
-      <Avatar kind={human ? "human" : "agent"} name={label} sm={sm} />
+      <Avatar kind={human ? "human" : "agent"} name={label} sm={sm} tone={human ? undefined : agentTone(role)} />
     </span>
   );
 }

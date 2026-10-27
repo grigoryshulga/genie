@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Genie role v1",
+  "description": "Portable resolved role. Save this schema as genie-role.schema.json beside your role JSON. Import validates the role again on the Genie server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "id",
+    "title",
+    "base",
+    "prompt"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "genie.role/v1"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "base": {
+      "type": "string",
+      "enum": [
+        "analyst",
+        "executor",
+        "reviewer",
+        "tester",
+        "documenter",
+        "orchestrator"
+      ]
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The role's main system instructions, in Markdown."
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Additional instructions appended to the main prompt."
+    },
+    "model": {
+      "type": "string",
+      "description": "provider/model identifier available on the target server."
+    },
+    "thinking": {
+      "type": "string",
+      "enum": [
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    "files": {
+      "type": "string",
+      "enum": [
+        "write",
+        "read",
+        "none"
+      ]
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "Effective permission identifiers. Omit to use the base class defaults."
+    },
+    "names": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      },
+      "uniqueItems": true
+    },
+    "denyCommands": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "Omit to allow all installed skills; [] allows repository skills only."
+    },
+    "mcp": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "refinement",
+          "delivery"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  }
+}

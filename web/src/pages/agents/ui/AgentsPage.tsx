@@ -7,7 +7,6 @@ import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { matchesSearch } from "@/shared/lib";
-import { ContextSearch } from "@/widgets/topbar";
 import { ErrorState, Icon, PageHeader, Skeleton } from "@/shared/ui";
 import { CreateDialog, History, McpTab, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
 import "./agents-sheets.css";
@@ -19,7 +18,7 @@ const TABS: { id: Tab; title: string; adminOnly?: boolean }[] = [
   { id: "templates", title: "Шаблоны команд" },
   { id: "skills", title: "Навыки" },
   { id: "mcp", title: "MCP" },
-  { id: "history", title: "История", adminOnly: true },
+  { id: "history", title: "Журнал", adminOnly: true },
 ];
 const NEW: Partial<Record<Tab, { kind: CreateKind; label: string }>> = {
   roles: { kind: "roles", label: "Новая роль" },
@@ -68,7 +67,7 @@ export function AgentsPage() {
               <span className="d-only">Настроить</span>
             </Link>
           )}
-          {create && c && (
+          {create && c && tab !== "roles" && tab !== "templates" && (
             <button type="button" className="g-btn secondary" onClick={() => setCreating(create.kind)}>
               <Icon.plus size={13} />
               <span className="d-only">{create.label}</span>
@@ -76,7 +75,7 @@ export function AgentsPage() {
           )}
         </>}
       />
-      <ContextSearch className="mobile-context-search mobile-search-bar" />
+
       {!c ? (
         cfg.error ? (
           <div className="ag-pane-empty"><ErrorState message={cfg.error.message} onRetry={() => void cfg.refetch()} /></div>
@@ -87,9 +86,9 @@ export function AgentsPage() {
           </div>
         )
       ) : tab === "roles" ? (
-        <RolesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
+        <RolesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} onCreate={isAdmin ? () => setCreating("roles") : undefined} />
       ) : tab === "templates" ? (
-        <TemplatesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
+        <TemplatesTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} onCreate={isAdmin ? () => setCreating("templates") : undefined} />
       ) : tab === "skills" ? (
         <SkillsTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
       ) : tab === "mcp" ? (
@@ -102,7 +101,7 @@ export function AgentsPage() {
       {creating && c && (
         <CreateDialog
           kind={creating}
-          cfg={c}
+          cfg={cfg.data ?? c}
           onClose={() => setCreating(undefined)}
           onCreated={(id) => {
             setCreating(undefined);
