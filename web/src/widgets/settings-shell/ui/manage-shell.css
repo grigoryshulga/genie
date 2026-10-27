@@ -23,7 +23,6 @@
 
 @media (max-width: 900px) {
   .app > .st-hub { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .st-hub .st-rail-head { display: none; }
   .st-hub-groups { flex-direction: row; gap: var(--g-space-3); overflow-x: auto; scrollbar-width: none; }
   .st-hub-group { flex: none; flex-direction: row; align-items: center; }
   .st-hub-group-label { padding: 0; white-space: nowrap; }

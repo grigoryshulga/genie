@@ -8,7 +8,6 @@
 import { createContext, type ReactNode, Suspense, useContext, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, Navigate, Outlet, useLocation } from "react-router";
-import { PROJECT_ROLE_NAME } from "@/entities/project";
 import { useSession } from "@/entities/session";
 import { activeHubItem, canManageProject, canOpen, currentHubTab, HUB_TABS, type HubViewer, visibleHub } from "@/shared/lib";
 import { Tabs } from "@/shared/ui";
@@ -24,23 +23,14 @@ export function useHubViewer(): HubViewer | undefined {
 }
 
 export function ManageShell() {
-  const session = useSession().data;
   const viewer = useHubViewer();
   const { pathname } = useLocation();
-  const project = session?.projects.find((p) => p.slug === session.project);
   const active = activeHubItem(pathname);
   const groups = viewer ? visibleHub(viewer) : [];
-  const sub = session?.mode === "local" ? "локальный режим" : project ? `${project.name} · ${PROJECT_ROLE_NAME[project.role]}` : "genie";
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   return (
     <div className="settings-mode st-hub">
       <nav className="st-rail" aria-label="Управление">
-        <div className="st-rail-head">
-          <span className="st-rail-id">
-            <b>Управление</b>
-            <span className="g-muted">{sub}</span>
-          </span>
-        </div>
         <div className="st-hub-groups">
           {groups.map((group) => (
             <section key={group.id} className="st-hub-group" aria-labelledby={`st-hub-${group.id}`}>

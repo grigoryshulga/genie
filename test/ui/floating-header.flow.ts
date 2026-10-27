@@ -76,7 +76,8 @@ test("project gear switches the selected project before opening its management",
   await expect(page).toHaveURL(/\/board$/);
   release();
   await expect(page).toHaveURL(/\/manage\/project\/general$/);
-  await expect(page.locator(".st-rail-head")).toContainText("Другой проект");
+  // The hub has no title of its own: the top bar's project button names the project being managed.
+  await expect(page.getByRole("button", { name: "Проект Другой проект", exact: true })).toBeVisible();
 });
 
 test("a failed project switch keeps the person in the current project", async ({ page }) => {
