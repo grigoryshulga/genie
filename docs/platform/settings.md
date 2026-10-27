@@ -11,19 +11,24 @@ Open `/settings`, use the sidebar gear, or press `G` then `S` for personal setti
 
 Personal settings also include **Appearance** (`/settings/me/appearance`). Choose a light or dark theme, follow the system appearance, and select one of six accent colors. Appearance preferences are stored in this browser and do not change other browsers or users.
 
-The working sidebar places contextual search above the accent-colored New task action. Search filters the current board, task list, epics, documentation, proposals, agent catalog tab, automations, notifications, or statistics projects. Queries use `?q=` and preserve other filters and selections. On detail pages, search opens the task list. `/` focuses search; Escape clears it. The compact sidebar expands when its search icon is selected. Mobile layouts retain a search field in the page toolbar.
+The top bar has three destinations. Each label opens the section and its chevron opens a menu of the section's pages:
 
-The working sidebar has a separate **Management** group:
+- **Tasks**: List (`/tasks`), Board (`/board`) and Epics (`/epics`). The label reopens the view used last.
+- **Knowledge**: Documentation (`/docs`) and Proposals (`/docs/proposals`).
+- **Management** (`/manage`): the project hub, shown under the same top bar as the work pages. Its rail groups the pages that the current person may open:
+  - **General settings** (project and server administrators): Project (`/manage/project/general`), Knowledge base, Notifications (the project's Telegram bot) and Repositories and environment.
+  - **Agents**: Roles, Team templates, Skills and MCP servers (`/manage/agents/...`), each showing the shared server catalog, plus Automations (rules, runs, observations and their sources). Skills and MCP servers have an **In the project** tab where project administrators choose what the project uses. Jev and Agent work mode are for project administrators. Server administrators edit the catalog.
+  - **Administration** (server administrators only): Projects, Accounts, Project members, Providers, Server tools (MCP and Jev), Health, Knowledge vault, Statistics (`/manage/server/stats`: activity, costs and [Factory Analytics](task-intelligence.md#statistics)) and the agent configuration history.
 
-- **Project management** (`/manage/project/general`): project and server administrators only. Its sidebar contains General settings, Repositories and environment, Tools, Access and roles, Communication channels, and Knowledge base.
-- **Global settings** (`/manage/server/projects`): server administrators only. Its sidebar contains Projects, Accounts, Providers, and Tools.
-- **Statistics** (`/statistics`): server-wide activity, costs and [Factory Analytics](task-intelligence.md#statistics), available to server administrators.
+Old addresses (`/agents`, `/statistics`, `/automations`, `/observations` and the earlier `/manage/project/...` sections) redirect to their new pages.
+
+Contextual search filters the current board, task list, epics, documentation, proposals, agent catalog page, automation runs, notifications or statistics projects. Queries use `?q=` and preserve other filters and selections. On detail pages, search opens the task list. `/` focuses search; Escape clears it.
 
 Project general settings include an optional project icon beside the name. Project administrators can upload PNG, JPEG or WebP images or remove the current icon. The browser fits the image into a 256px transparent square; the server stores at most 512 KiB and requires project membership to read it. The header and project switcher show the image, or a monogram derived from the project name when no image is available. The icon is shared by project members and survives browser reloads.
 
-Most sections have URL-backed tabs (`?tab=`), including project general settings, repositories, tools, access, knowledge storage, server projects, and accounts. Project Tools has Skills, MCP, Jev, and Automations tabs; global Tools has MCP, Jev, Agents, Health, and Knowledge tabs. General settings, tool selections, and account creation retain drafts when switching tabs on the same page.
+Sections with several views keep a URL per view: repositories, server projects, accounts and project members use `?tab=`, and the Skills, MCP servers and Automations pages use a path per tab. Tool selections and account creation retain drafts when switching tabs on the same page.
 
-General settings include project naming, agent autonomy, and result integration. Project Tools selects installed server skills and available MCP connections, configures Jev, and links to automation rules. Global Tools retains MCP connections, agent roles, team templates, skill editing, configuration history, server health, and whole-vault synchronization. The Jev connection card shows server configuration and links to provider credentials. Endpoint, model, and enablement still require `decisions` in `config.json` and a server restart.
+The Project page covers naming and the project icon; Agent work mode covers agent autonomy and result integration. Server tools keep MCP connections and the server's Jev settings; Health and Knowledge vault cover server checks and whole-vault synchronization. The Jev connection card shows server configuration and links to provider credentials. Endpoint, model, and enablement still require `decisions` in `config.json` and a server restart.
 
 Project tool selections are stored in `<data>/project-tools/<slug>.json`, with optimistic version checks and configuration history. An omitted/null list inherits current and future server tools; an empty list selects none. Skill selections intersect explicit role lists; repository-local skills remain available. MCP selections intersect server project restrictions and role grants, including gateway authorization and running-agent policies. Changes affect skill loading on subsequent agent starts; MCP policy refresh follows the existing reload behavior. Broken selection files keep the last valid restriction, or deny all tools on a cold load.
 
@@ -52,7 +57,7 @@ Configuration not exposed in the UI remains in `<data>/config.json`. Restart the
 
 ## Task intelligence policy
 
-Open **Project management → Tools → Jev → Task assessment and mandatory checks**.
+Open **Management → Agents → Jev → Task assessment and mandatory checks**.
 The policy is disabled by default. A human project administrator can enable it,
 map independent checks to delivery reviewer roles, protect repository path prefixes,
 and choose a safe fallback team. Optional semantic assessment uses the existing Jev
@@ -137,7 +142,7 @@ Team limits bound concurrency independently of monetary budgets.
 
 People receive web notifications and can link Telegram or email in personal settings.
 
-Project administrators manage a dedicated bot in **Project settings → Telegram**. Create
+Project administrators manage a dedicated bot in **Management → General settings → Notifications**. Create
 it with `/newbot` in [BotFather](https://t.me/BotFather), then paste its token into Genie.
 Genie validates the bot through `getMe`, rejects bots with webhooks and bots already
 assigned to another project, seals the token with `secrets.key`, and starts long polling

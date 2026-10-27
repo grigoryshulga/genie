@@ -6,11 +6,14 @@ export function searchContext(pathname: string): { label: string; path: string }
     ["/epics", "Поиск эпиков"],
     ["/docs/proposals", "Поиск предложений"],
     ["/docs", "Поиск по документации"],
-    ["/agents", "Поиск агентов и инструментов"],
-    ["/automations", "Поиск автоматизаций"],
-    ["/manage/project/automation-runs", "Поиск автоматизаций"],
+    // The more specific management page goes first: runs live under «Агенты».
+    ["/manage/agents/automations/runs", "Поиск автоматизаций"],
+    ["/manage/agents/roles", "Поиск агентов и инструментов"],
+    ["/manage/agents/templates", "Поиск агентов и инструментов"],
+    ["/manage/agents/skills", "Поиск агентов и инструментов"],
+    ["/manage/agents/mcp", "Поиск агентов и инструментов"],
     ["/notifications", "Поиск уведомлений"],
-    ["/statistics", "Поиск проектов"],
+    ["/manage/server/stats", "Поиск проектов"],
   ];
   const match = sections.find(([path]) => pathname === path || pathname.startsWith(`${path}/`));
   return match ? { label: match[1], path: pathname } : { label: "Поиск задач", path: "/tasks" };

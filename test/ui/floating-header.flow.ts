@@ -101,14 +101,16 @@ for (const role of ["owner", "member", "viewer"]) {
       await route.fulfill({ json: { ...session, user: { ...session.user, isAdmin: false }, projects: session.projects.map((p: object) => ({ ...p, role })) } });
     });
     await page.goto("/automations?rule=1&q=demo#runs");
-    await expect(page).toHaveURL(/\/manage\/project\/automation-runs\?rule=1&q=demo#runs$/);
-    const rail = page.getByRole("navigation", { name: "Управление проектом", exact: true });
-    await expect(rail).toBeVisible();
-    await rail.getByRole("link", { name: "Наблюдения", exact: true }).click();
-    await expect(page).toHaveURL(/\/manage\/project\/observations$/);
+    await expect(page).toHaveURL(/\/manage\/agents\/automations\/runs\?rule=1&q=demo#runs$/);
+    // The hub stays under the top bar: «Управление» is the current destination, not a separate mode.
+    await expect(page.getByRole("navigation", { name: "Навигация", exact: true }).getByRole("link", { name: "Управление" })).toHaveAttribute("aria-current", "page");
+    const rail = page.getByRole("navigation", { name: "Управление", exact: true });
+    await expect(rail.getByRole("link", { name: "Автоматизации", exact: true })).toHaveAttribute("aria-current", "page");
+    await page.locator(".st-tabs-band").getByRole("link", { name: "Наблюдения", exact: true }).click();
+    await expect(page).toHaveURL(/\/manage\/agents\/automations\/observations$/);
     await expect(page.getByRole("heading", { name: "Наблюдения", exact: true })).toBeVisible();
     await page.goto("/observation/O-1?tab=contract#evidence");
-    await expect(page).toHaveURL(/\/manage\/project\/observation\/O-1\?tab=contract#evidence$/);
+    await expect(page).toHaveURL(/\/manage\/agents\/automations\/observation\/O-1\?tab=contract#evidence$/);
   });
 }
 
@@ -145,23 +147,24 @@ for (const width of [1440, 390]) {
     await page.evaluate(() => document.fonts.ready);
     const nav = page.getByRole("navigation", { name: "Навигация", exact: true });
     const indicator = nav.locator(".g-tabs-indicator");
-    const active = nav.locator('[aria-current="page"]');
+    // Each destination is a label-and-chevron pair; the pill covers the whole pair.
+    const active = nav.locator(".g-tab-split[data-current]");
     const aligned = async () => {
       const fill = (await indicator.boundingBox())!;
       const tab = (await active.boundingBox())!;
       return Math.max(Math.abs(fill.x - tab.x), Math.abs(fill.y - tab.y), Math.abs(fill.width - tab.width), Math.abs(fill.height - tab.height));
     };
     await expect.poll(aligned).toBeLessThan(0.5);
-    await nav.getByRole("link", { name: /Задачи/ }).click();
+    await nav.getByRole("link", { name: /Знания/ }).click();
     await expect.poll(() => indicator.evaluate((node) => node.getAnimations().filter((animation) => animation.playState === "running").length)).toBeGreaterThan(0);
     await expect.poll(aligned).toBeLessThan(0.5);
     // Rapid changes must settle under the final destination, not an earlier animation's target.
-    await nav.getByRole("link", { name: "Эпики", exact: true }).click();
-    await nav.getByRole("link", { name: "Доска", exact: true }).click();
+    await nav.getByRole("link", { name: /Управление/ }).click();
+    await nav.getByRole("link", { name: /Задачи/ }).click();
     await expect.poll(aligned).toBeLessThan(0.5);
     await page.setViewportSize({ width: width > 900 ? 1000 : 360, height: 900 });
     await expect.poll(aligned).toBeLessThan(0.5);
-    await active.focus();
+    await nav.getByRole("link", { name: /Задачи/ }).focus();
     await page.keyboard.press("ArrowRight");
     await expect(nav.getByRole("link", { name: /Знания/ })).toBeFocused();
     await page.keyboard.press("Enter");
@@ -169,7 +172,7 @@ for (const width of [1440, 390]) {
     await expect.poll(aligned).toBeLessThan(0.5);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(indicator).toHaveCSS("transition-duration", "0s");
-    await nav.getByRole("link", { name: "Доска", exact: true }).click();
+    await nav.getByRole("link", { name: /Задачи/ }).click();
     await expect.poll(aligned).toBeLessThan(0.5);
   });
 }

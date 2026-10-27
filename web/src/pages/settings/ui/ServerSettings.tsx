@@ -7,7 +7,7 @@ import { ProvidersAdminSection } from "./ProvidersAdmin.tsx";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import {
   AUTONOMY,
   DOCTOR_AREA,
@@ -34,11 +34,11 @@ import {
 } from "@/entities/project";
 import { useSession } from "@/entities/session";
 import { ContextSearch } from "@/widgets/topbar";
-import { matchesSearch, settingsTabHref } from "@/shared/lib";
+import { matchesSearch } from "@/shared/lib";
 import { request } from "@/shared/api";
 import { BarChart, ConfirmDialog, Icon, Menu, PageHeader, useAct, useToast } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
-import { FirstAdmin } from "./ProjectSettings.tsx";
+import { FirstAdmin, ProjectMembers } from "./ProjectSettings.tsx";
 import { SettingsTabs, useSettingsTab } from "./SettingsTabs.tsx";
 import { SystemOneSettings } from "./SystemOneSettings.tsx";
 import { Costs } from "./ServerCosts.tsx";
@@ -51,16 +51,16 @@ export function ServerSettingsPage() {
   const { section = "health" } = useParams();
   const local = session?.mode === "local";
   const tab = useSettingsTab("server", section);
-  if (section === "tools" && (tab === "health" || tab === "vault"))
-    return <Navigate to={settingsTabHref("server", "tools", tab)} replace />;
   return (
     <main className="main">
-      <SettingsTabs scope="server" section={section === "health" || section === "vault" ? "tools" : section} current={section === "health" || section === "vault" ? section : undefined} />
+      <SettingsTabs scope="server" section={section} />
       <div className="scroll">
         {section === "projects" ? (
           <Projects current={session?.project} tab={tab} />
         ) : section === "accounts" ? (
           local ? <div className="st-body"><FirstAdmin /></div> : <Accounts me={session?.user.login} tab={tab} />
+        ) : section === "members" ? (
+          <ProjectMembers tab={tab} />
         ) : section === "providers" ? (
           <ProvidersAdminSection />
         ) : section === "tools" ? (
@@ -165,7 +165,7 @@ function Week() {
       <div className="sv-section-head">
         <h3>Последние 7 дней</h3>
         <span className="g-muted">все проекты</span>
-        <Link to="/statistics" className="sv-more">
+        <Link to="/manage/server/stats" className="sv-more">
           Вся статистика
           <Icon.chevron size={12} />
         </Link>

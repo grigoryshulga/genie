@@ -12,7 +12,7 @@ export function ProjectToolsSection({ slug, tab }: { slug: string; tab: string }
       <div hidden={tab === "jev"}>
         <div className="st-body">
           <div className="st-head">
-            <h1 className="g-page-title">Инструменты проекта</h1>
+            <h1 className="g-page-title">{tab === "mcp" ? "MCP-серверы в проекте" : "Навыки в проекте"}</h1>
           </div>
           {query.data ? (
             <Selection key={`${slug}:${query.data.hash}`} slug={slug} data={query.data} kind={tab === "mcp" ? "mcp" : "skills"} />

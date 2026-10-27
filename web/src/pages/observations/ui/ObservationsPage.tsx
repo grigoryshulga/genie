@@ -84,7 +84,7 @@ export function ObservationsPage() {
                       <tr key={c.id}>
                         <td className="mono">{c.key}</td>
                         <td>
-                          <Link className="obs-table-cell-link" to={`/manage/project/observation/${c.id}`}>
+                          <Link className="obs-table-cell-link" to={`/manage/agents/automations/observation/${c.id}`}>
                             {c.title}
                           </Link>
                         </td>

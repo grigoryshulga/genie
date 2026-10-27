@@ -9,7 +9,7 @@ test("template workspace persists composition, portable files, conflict protecti
   const created = await request.put(`/api/templates/${id}`, { headers, data: { template: TEMPLATE_FILE, baseHash: "" } });
   expect(created.ok(), await created.text()).toBe(true);
   try {
-    await page.goto(`/agents?tab=templates&id=${id}`);
+    await page.goto(`/manage/agents/templates?id=${id}`);
     await expect(page.getByRole("heading", { name: TEMPLATE_FILE.title, exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Редактировать шаблон", exact: true }).click();
     const member = page.locator(".template-member").first();
@@ -57,7 +57,7 @@ test("template workspace persists composition, portable files, conflict protecti
     await dialog.getByRole("button", { name: "Импортировать", exact: true }).click();
     await expect(dialog).toBeHidden();
     expect((await (await request.get(`/api/templates/${importedId}`)).json()).template.members).toEqual(stored.template.members);
-    await page.goto(`/agents?tab=templates&id=${id}&view=settings`);
+    await page.goto(`/manage/agents/templates?id=${id}&view=settings`);
     await page.getByRole("button", { name: "Редактировать шаблон", exact: true }).click();
     await page.getByLabel("Описание", { exact: true }).fill("Conflicting draft");
     const current = await (await request.get(`/api/templates/${id}`)).json();
@@ -67,7 +67,7 @@ test("template workspace persists composition, portable files, conflict protecti
     expect((await (await request.get(`/api/templates/${id}`)).json()).template.description).toBe("Concurrent editor update");
     await page.getByRole("button", { name: "Отмена", exact: true }).click();
     for (let i = 0; i < 23; i++) expect((await request.put(`/api/templates/${id}`, { headers, data: { content: stored.file.content.replace("Saved across both tabs", `Audit ${i}`) } })).ok()).toBe(true);
-    await page.goto(`/agents?tab=templates&id=${id}&view=history`);
+    await page.goto(`/manage/agents/templates?id=${id}&view=history`);
     await expect(page.locator(".config-history-table > tbody > tr")).toHaveCount(20);
     await page.locator(".config-history-table > tbody > tr").first().getByRole("button", { name: /Сравнить/ }).click();
     await expect(page.locator(".config-history-diff")).toContainText("description");
@@ -86,7 +86,7 @@ test("template workspace persists composition, portable files, conflict protecti
     const automatic = JSON.parse(stored.file.content);
     delete automatic.relations;
     expect((await request.put(`/api/templates/${id}`, { headers, data: { template: automatic } })).ok()).toBe(true);
-    await page.goto(`/agents?tab=templates&id=${id}`);
+    await page.goto(`/manage/agents/templates?id=${id}`);
     await page.getByRole("button", { name: "Редактировать шаблон", exact: true }).click();
     await expect(page.getByLabel("Режим связей", { exact: true })).toHaveValue("auto");
     await page.locator(".template-member").first().getByLabel("Ключ", { exact: true }).fill("auto-builder");
