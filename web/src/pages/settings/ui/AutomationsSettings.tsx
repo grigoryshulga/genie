@@ -2,16 +2,15 @@
 // playbooks, enabling and deleting. Running a rule and watching its runs is the
 // management runs page; defining rules is here.
 
-import { SettingsTabs } from "./SettingsTabs.tsx";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { type Automation, describeStep, describeTrigger, RUN_STATUS, useAutomations, usePlaybooks } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo, useTick } from "@/shared/lib";
-import { Icon, Modal, PageHeader, useRefreshingAct } from "@/shared/ui";
+import { Icon, Modal, useRefreshingAct } from "@/shared/ui";
 import "@/shared/ui/settings.css";
-import { SettingsLoading } from "@/widgets/settings-shell";
+import { HubActions, SettingsLoading } from "@/widgets/settings-shell";
 // The settings pages share the split-pane rules with the platform pages, then the responsive and
 // centring layers.
 import "./settings-sheets.css";
@@ -29,9 +28,7 @@ export function AutomationsSettingsPage() {
   const current = rules.data?.find((r) => r.id === selected);
   return (
     <main className="main">
-      <PageHeader
-        title="Автоматизации"
-        toolbar={<>
+      <HubActions>
           {!!playbooks.data?.length && (
             <button type="button" className="g-btn secondary" onClick={() => setShowPlaybooks(true)}>
               Плейбуки
@@ -41,12 +38,9 @@ export function AutomationsSettingsPage() {
             <Icon.plus size={13} />
             <span className="d-only">Новое правило</span>
           </button>
-        </>}
-      />
-        <SettingsTabs scope="project" section="tools" current="automations" />
+      </HubActions>
       <div className="split">
         <section className="split-list" aria-label="Правила">
-          <div className="side-head"><span className="side-title">Правила</span></div>
           {rules.data?.map((r) => (
             <button type="button" key={r.id} className={`pick${r.id === current?.id ? " on" : ""}`} onClick={() => setSp({ rule: String(r.id) })}>
               <span className="t">

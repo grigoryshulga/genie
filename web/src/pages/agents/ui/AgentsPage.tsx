@@ -7,13 +7,13 @@ import { Link, useSearchParams } from "react-router";
 import { useAgentConfig } from "@/entities/agent-config";
 import { useSession } from "@/entities/session";
 import { matchesSearch } from "@/shared/lib";
-import { ErrorState, Icon, PageHeader, Skeleton } from "@/shared/ui";
+import { ErrorState, Icon, Skeleton } from "@/shared/ui";
+import { HubActions } from "@/widgets/settings-shell";
 import { CreateDialog, History, McpTab, RolesTab, SkillsTab, TemplatesTab, type CreateKind } from "@/widgets/agents-kit";
 import "./agents-sheets.css";
 import "@/shared/ui/agents.css";
 
 export type AgentsTab = "roles" | "templates" | "skills" | "mcp" | "history";
-const TITLE: Record<AgentsTab, string> = { roles: "Роли", templates: "Шаблоны команд", skills: "Навыки", mcp: "MCP-серверы", history: "Журнал агентов" };
 const NEW: Partial<Record<AgentsTab, { kind: CreateKind; label: string }>> = {
   roles: { kind: "roles", label: "Новая роль" },
   templates: { kind: "templates", label: "Новый шаблон" },
@@ -41,9 +41,7 @@ export function AgentsPage({ tab }: { tab: AgentsTab }) {
   const create = isAdmin ? NEW[tab] : undefined;
   return (
     <main className="main agents">
-      <PageHeader
-        title={TITLE[tab]}
-        toolbar={<>
+      <HubActions>
           {tab === "mcp" && isAdmin && (
             <Link to="/manage/server/tools?tab=mcp" className="g-btn secondary sm">
               <Icon.gear size={13} />
@@ -56,8 +54,7 @@ export function AgentsPage({ tab }: { tab: AgentsTab }) {
               <span className="d-only">{create.label}</span>
             </button>
           )}
-        </>}
-      />
+      </HubActions>
 
       {!c ? (
         cfg.error ? (

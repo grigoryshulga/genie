@@ -122,7 +122,7 @@ export const SETTINGS_TABS: Record<ManagementScope, Record<string, readonly (rea
     ],
     members: [
       ["members", "Участники"],
-      ["invites", "Приглашения"],
+      ["invites", "Пригласить"],
       ["activity", "Активность"],
     ],
     tools: [
@@ -131,6 +131,16 @@ export const SETTINGS_TABS: Record<ManagementScope, Record<string, readonly (rea
     ],
   },
 };
+
+/** Views that create something are actions, not tabs: the hub's head offers them as a button, and their
+    form offers a way back instead of a tab. */
+export const SETTINGS_ACTION_TABS: Partial<Record<ManagementScope, Record<string, readonly string[]>>> = {
+  server: { projects: ["create"], accounts: ["create"], members: ["invites"] },
+};
+
+export function isActionTab(scope: ManagementScope, section: string, tab: string): boolean {
+  return !!SETTINGS_ACTION_TABS[scope]?.[section]?.includes(tab);
+}
 
 export function settingsTab(scope: ManagementScope, section: string, requested: string | null): string {
   const tabs = SETTINGS_TABS[scope][section] ?? [];

@@ -58,12 +58,11 @@ export function ProjectSettingsPage({ section: fixed, tab: fixedTab }: { section
         ) : section === "observation" ? (
           <ObservationSources key={project.slug} admin={admin} />
         ) : section === "channels" ? (
-          <><div className="st-body"><div className="st-head"><h1 className="g-page-title">Уведомления</h1><p>Куда проект отправляет уведомления. Сейчас доступен Telegram; Slack и Mattermost планируются.</p></div></div><TelegramSettings key={project.slug} project={project.slug} admin={admin} /></>
+          <TelegramSettings key={project.slug} project={project.slug} admin={admin} />
         ) : section === "tools" ? (
           <ProjectToolsSection key={project.slug} slug={project.slug} tab={tab} />
         ) : section === "knowledge" ? (
           <div className="st-body">
-            <div className="st-head"><h1 className="g-page-title">База знаний</h1><p>Документация проекта и её хранение.</p></div>
             <section className="st-card"><div className="st-card-head"><h3>Документация</h3></div><div className="st-card-body"><p>Раздел проекта: <code>{project.space}/</code></p><Link to="/docs">Открыть базу знаний</Link></div></section>
             <FeatureRequest id="GNE-8" title="Резервные копии и удалённое хранение">Создание бэкапов, настройка удалённого хранилища и восстановление базы знаний проекта появятся позже.</FeatureRequest>
           </div>
@@ -100,8 +99,7 @@ export function ProjectMembers({ tab }: { tab: string }) {
     <div className="st-body">
       <div className="st-col" hidden={tab !== "members"}>
         <div className="st-head">
-          <h1 className="g-page-title">Участники проекта</h1>
-          <p>{project.name}. Администраторы сервера имеют права владельца во всех проектах.</p>
+          <p>Проект «{project.name}». Администраторы сервера имеют права владельца во всех проектах.</p>
         </div>
         <People slug={project.slug} admin={admin} me={session?.user.login} />
         <details className="st-card">
@@ -131,10 +129,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
   const dirty = name.trim() !== project.name;
   return (
     <div className="st-body">
-      <div className="st-head">
-        <h1 className="g-page-title">Проект</h1>
-        {!admin && <p>Изменять настройки могут администраторы и владельцы проекта.</p>}
-      </div>
+      {!admin && <div className="st-head"><p>Изменять настройки могут администраторы и владельцы проекта.</p></div>}
       <form
         className="st-card"
         onSubmit={(e) => {
@@ -143,7 +138,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
         }}
       >
         <div className="st-card-head">
-          <h3>Проект</h3>
+          <h3>Основное</h3>
         </div>
         <div className="st-row">
           <label className="lbl" htmlFor="pj-name">
@@ -257,9 +252,6 @@ function AgentsTab({ project, admin }: { project: ProjectInfo; admin: boolean })
   ];
   return (
     <div className="st-body">
-      <div className="st-head">
-        <h1 className="g-page-title">Режим работы</h1>
-      </div>
       <section className="st-card">
         <div className="st-card-head">
           <h3>Оркестратор</h3>

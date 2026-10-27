@@ -20,6 +20,8 @@ The top bar has three destinations. Each label opens the section and its chevron
   - **Agents**: Roles, Team templates, Skills and MCP servers (`/manage/agents/...`), each showing the shared server catalog, plus Automations (rules, runs, observations and their sources). Skills and MCP servers have an **In the project** tab where project administrators choose what the project uses. Jev and Agent work mode are for project administrators. Server administrators edit the catalog.
   - **Administration** (server administrators only): Projects, Accounts, Project members, Providers, Server tools (MCP and Jev), Health, Knowledge vault, Statistics (`/manage/server/stats`: activity, costs and [Factory Analytics](task-intelligence.md#statistics)) and the agent configuration history.
 
+Every Management page has the same head: the page's name from the rail and, on the right, the page's actions. Tabs sit under the head, and pages do not repeat the name. Creating something (a project, an account, an invitation link) is a head button that opens the form; the form's **Cancel** returns to the list.
+
 Old addresses (`/agents`, `/statistics`, `/automations`, `/observations` and the earlier `/manage/project/...` sections) redirect to their new pages.
 
 Contextual search filters the current board, task list, epics, documentation, proposals, agent catalog page, automation runs, notifications or statistics projects. Queries use `?q=` and preserve other filters and selections. On detail pages, search opens the task list. `/` focuses search; Escape clears it.

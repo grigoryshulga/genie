@@ -16,7 +16,7 @@ import {
   useSkillFiles,
 } from "@/entities/agent-config";
 import { displayName } from "@/entities/member";
-import { bytes, timeAgo } from "@/shared/lib";
+import { bytes, plural, timeAgo } from "@/shared/lib";
 import { Badge, ConfirmDialog, Dialog, Icon, LoadingState, Markdown, Section, useAct } from "@/shared/ui";
 import { FileEditor } from "./FileEditor.tsx";
 import { History } from "./History.tsx";
@@ -43,7 +43,7 @@ export function SkillsTab({
   return (
     <div className="split ag-skills-layout">
       <section className="split-list ag-list" aria-label="Навыки">
-        <div className="side-head"><span className="side-title">Навыки</span></div>
+        <div className="side-head"><span className="side-title">{cfg.skills.length} {plural(cfg.skills.length, "навык", "навыка", "навыков")}</span></div>
         <Problems items={sectionProblems(cfg.problems, "skills")} />
         {cfg.skills.map((s) => (
           <button type="button" key={s.name} className={`pick plain${s.name === current ? " on" : ""}`} onClick={() => onSelect(s.name)} aria-current={s.name === current}>

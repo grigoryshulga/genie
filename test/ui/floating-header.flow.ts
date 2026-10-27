@@ -108,7 +108,9 @@ for (const role of ["owner", "member", "viewer"]) {
     await expect(rail.getByRole("link", { name: "Автоматизации", exact: true })).toHaveAttribute("aria-current", "page");
     await page.locator(".st-tabs-band").getByRole("link", { name: "Наблюдения", exact: true }).click();
     await expect(page).toHaveURL(/\/manage\/agents\/automations\/observations$/);
-    await expect(page.getByRole("heading", { name: "Наблюдения", exact: true })).toBeVisible();
+    // One head names the hub page; the tab says which of its views is open.
+    await expect(page.getByRole("heading", { level: 1, name: "Автоматизации", exact: true })).toBeVisible();
+    await expect(page.locator(".st-tabs-band").getByRole("link", { name: "Наблюдения", exact: true })).toHaveAttribute("aria-current", "page");
     await page.goto("/observation/O-1?tab=contract#evidence");
     await expect(page).toHaveURL(/\/manage\/agents\/automations\/observation\/O-1\?tab=contract#evidence$/);
   });

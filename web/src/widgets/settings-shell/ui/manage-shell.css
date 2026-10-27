@@ -2,7 +2,13 @@
    On a phone the rail becomes a strip of pills above the page, the groups one after another. */
 
 .app > .st-hub { display: grid; grid-template-columns: 264px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; }
-.st-hub > .main { border-right: 0; }
+.st-hub > .st-rail { background: transparent; }
+/* The page column: the shared head, then the page's tabs, then the page with its own scroll. */
+.st-hub-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.st-hub-main > .main, .st-hub-main > .st-hub-section { flex: 1; min-height: 0; border-right: 0; }
+.st-hub-head { flex: none; }
+.st-hub-actions { display: flex; align-items: center; gap: var(--g-space-2); }
+.st-hub-actions:empty { display: none; }
 .st-hub-groups { display: flex; flex-direction: column; gap: var(--g-space-5); }
 .st-hub-group { display: flex; flex-direction: column; gap: var(--g-space-2); }
 .st-hub-group-label { margin: 0; padding: 0 var(--g-space-4); color: var(--g-text-muted); font: 600 var(--g-text-eyebrow)/1.2 var(--g-font-sans); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; }

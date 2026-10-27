@@ -11,9 +11,6 @@ export function ProjectToolsSection({ slug, tab }: { slug: string; tab: string }
     <>
       <div hidden={tab === "jev"}>
         <div className="st-body">
-          <div className="st-head">
-            <h1 className="g-page-title">{tab === "mcp" ? "MCP-серверы в проекте" : "Навыки в проекте"}</h1>
-          </div>
           {query.data ? (
             <Selection key={`${slug}:${query.data.hash}`} slug={slug} data={query.data} kind={tab === "mcp" ? "mcp" : "skills"} />
           ) : (
@@ -49,7 +46,7 @@ function Selection({ slug, data, kind }: { slug: string; kind: "skills" | "mcp";
         return (
           <section className="st-card" key={kind}>
             <div className="st-card-head">
-              <h3>{kind === "skills" ? "Навыки проекта" : "MCP-серверы проекта"}</h3>
+              <p>{kind === "skills" ? "Какие навыки из каталога сервера получают агенты этого проекта." : "К каким MCP-серверам из каталога сервера обращаются агенты этого проекта."}</p>
             </div>
             <div className="st-card-body">
               <label className="pj-check">

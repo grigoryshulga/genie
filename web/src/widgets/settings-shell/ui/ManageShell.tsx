@@ -1,8 +1,12 @@
 // «Управление» lives inside the work shell, under the top bar: a rail grouped into «Общие настройки»,
 // «Агенты» and «Администрирование», and the page beside it. Each person sees only the pages they may
 // open; the route guards repeat the same rule, so a hidden page stays closed when its URL is typed.
+//
+// Every hub page wears the same head: the page's name from the rail, then its tabs, then the page. Pages
+// do not title themselves; their actions go into the head through `HubActions`.
 
-import { Suspense } from "react";
+import { createContext, type ReactNode, Suspense, useContext, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, Outlet, useLocation } from "react-router";
 import { PROJECT_ROLE_NAME } from "@/entities/project";
 import { useSession } from "@/entities/session";
@@ -27,6 +31,7 @@ export function ManageShell() {
   const active = activeHubItem(pathname);
   const groups = viewer ? visibleHub(viewer) : [];
   const sub = session?.mode === "local" ? "локальный режим" : project ? `${project.name} · ${PROJECT_ROLE_NAME[project.role]}` : "genie";
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   return (
     <div className="settings-mode st-hub">
       <nav className="st-rail" aria-label="Управление">
@@ -51,10 +56,33 @@ export function ManageShell() {
           ))}
         </div>
       </nav>
-      <Suspense fallback={<div className="st-rail-fallback"><SettingsLoading rows={5} /></div>}>
-        <Outlet />
-      </Suspense>
+      <div className="st-hub-main">
+        <header className="topbar page-head st-hub-head">
+          <h1 className="g-page-title">{active?.label ?? "Управление"}</h1>
+          <span className="grow" />
+          <div ref={setSlot} className="st-hub-actions" />
+        </header>
+        <HubSlot.Provider value={slot}>
+          <Suspense fallback={<div className="st-rail-fallback"><SettingsLoading rows={5} /></div>}>
+            <Outlet />
+          </Suspense>
+        </HubSlot.Provider>
+      </div>
     </div>
+  );
+}
+
+const HubSlot = createContext<HTMLElement | null>(null);
+
+/** A hub page's actions, shown at the right of the hub's head. Outside the hub there is no head and nothing renders. */
+export function HubActions({ children }: { children: ReactNode }) {
+  const slot = useContext(HubSlot);
+  if (!slot) return null;
+  return createPortal(
+    <div className="page-toolbar" role="toolbar" aria-label="Инструменты страницы">
+      {children}
+    </div>,
+    slot,
   );
 }
 
