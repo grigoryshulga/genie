@@ -94,7 +94,7 @@ test("the task rail folds its cards and keeps the team reachable", async ({ page
   await page.locator(".tp-team-card").getByRole("link", { name: /Перейти к команде/ }).click();
   await expect(page).toHaveURL(/\/task\/DM-2\/team$/);
   await expect(page.getByRole("link", { name: "Перейти к команде" })).toHaveCount(0);
-  await page.getByRole("link", { name: "К описанию задачи" }).click();
+  await page.getByRole("button", { name: "К описанию задачи" }).click();
   await expect(page).toHaveURL(/\/task\/DM-2$/);
   await expect(page.getByRole("heading", { name: SEED_TASKS[1].title })).toBeVisible();
 });
@@ -113,6 +113,7 @@ test("ticking a criterion and changing the status on the task page are saved", a
 
   const status = page.getByLabel("Статус", { exact: true });
   await status.selectOption("review");
+  await page.getByRole("tab", { name: "Активность" }).click();
   await expect(page.getByText("В работе → На ревью")).toBeVisible();
 
   const stored = await storedTask(page.request, "DM-2");
@@ -162,3 +163,23 @@ for (const width of [1440, 390]) {
     await expect(plus).toBeFocused();
   });
 }
+
+test("task labels can be edited on the task page and persist", async ({ page, request }) => {
+  const created = await request.post("/api/tasks?project=demo", {
+    headers: { "x-genie": "1" },
+    data: { title: "Проверить редактирование меток", labels: ["existing"] },
+  });
+  expect(created.ok()).toBe(true);
+  const task: { id: string } = await created.json();
+  await page.goto(`/task/${task.id}`);
+  await page.getByRole("button", { name: "Изменить метки" }).click();
+  await page.getByLabel("Метки через запятую").fill("existing, новая, новая");
+  await page.getByRole("button", { name: "Сохранить метки" }).click();
+  await expect.poll(async () => (await storedTask(request, task.id)).labels).toEqual(["existing", "новая"]);
+  await page.reload();
+  await expect(page.getByText("новая", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Изменить метки" }).click();
+  await page.getByLabel("Метки через запятую").fill("");
+  await page.getByRole("button", { name: "Сохранить метки" }).click();
+  await expect.poll(async () => (await storedTask(request, task.id)).labels).toEqual([]);
+});
