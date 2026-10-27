@@ -183,6 +183,19 @@ export function auditPage(): AuditResult {
   const background = (el: Element) => {
     const layers: { r: number; g: number; b: number; a: number }[] = [];
     for (let node: Element | null = el; node; node = node.parentElement) {
+      // Animated tab indicators are siblings behind the selected tab, not ancestors of its text.
+      if (node.matches('.g-tabs-motion')) {
+        const indicator = node.querySelector(':scope > .g-tabs-indicator');
+        const textBox = el.getBoundingClientRect();
+        const box = indicator?.getBoundingClientRect();
+        if (indicator && box && box.left <= textBox.left && box.right >= textBox.right && box.top <= textBox.top && box.bottom >= textBox.bottom) {
+          const color = parse(getComputedStyle(indicator).backgroundColor);
+          if (color && color.a > 0) {
+            layers.push(color);
+            if (color.a === 1) break;
+          }
+        }
+      }
       const c = parse(getComputedStyle(node).backgroundColor);
       if (!c || c.a === 0) continue;
       layers.push(c);
