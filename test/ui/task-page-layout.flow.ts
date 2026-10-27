@@ -49,7 +49,7 @@ for (const theme of ["ink", "paper"]) {
       await expect(reviewer).toContainText("ждёт RoboCop");
       await expect(reviewer).toContainText("✉ 1");
       await expect(reviewer.locator(".tp-member-when")).toHaveText(/4 мин/);
-      const description = page.locator(".tp-main > .sec").first();
+      const description = page.locator(".tp-main .tp-tab-content:not([hidden]) > .sec").first();
       const box = (await description.boundingBox())!;
       const rail = (await page.locator(".tp-rail").boundingBox())!;
       if (width >= 1440) expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThan(2);
@@ -61,3 +61,24 @@ for (const theme of ["ink", "paper"]) {
     });
   }
 }
+
+test("task popup keeps its tabs and criteria usable", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/tasks?task=DM-2");
+  const dialog = page.getByRole("dialog", { name: "Задача DM-2", exact: true });
+  const tabs = dialog.getByRole("tablist", { name: "Содержимое задачи" });
+  await expect(tabs.getByRole("tab")).toHaveCount(4);
+  const criteria = dialog.locator(".criteria");
+  const bar = criteria.locator(".g-segs");
+  await expect(bar).toBeVisible();
+  const [criteriaBox, barBox] = await Promise.all([criteria.boundingBox(), bar.boundingBox()]);
+  expect(Math.abs(criteriaBox!.width - barBox!.width)).toBeLessThan(2);
+  await tabs.getByRole("tab", { name: "Активность" }).click();
+  await expect(dialog.getByRole("textbox", { name: "Комментарий" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Активность" })).toHaveCount(0);
+  await tabs.getByRole("tab", { name: "Команда" }).click();
+  await expect(dialog.getByRole("textbox", { name: "Комментарий" })).toBeHidden();
+  await expect(dialog.getByText("Команда не собрана")).toBeVisible();
+  await tabs.getByRole("tab", { name: "Вложения" }).click();
+  await expect(dialog.getByText("Вложений пока нет")).toBeVisible();
+});

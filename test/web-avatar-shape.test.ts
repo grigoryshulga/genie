@@ -28,11 +28,12 @@ test("member avatars are shaped by role", () => {
 });
 
 test("the surfaces that show member avatars take them from that component", () => {
-  for (const file of ["widgets/task-list/ui/TaskList.tsx", "widgets/task-detail/ui/TaskDetail.tsx", "pages/epic/ui/EpicPage.tsx"]) {
+  for (const file of ["widgets/task-list/ui/TaskList.tsx", "pages/epic/ui/EpicPage.tsx"]) {
     const source = read(file);
     assert.match(source, /@\/entities\/member/, `${file} takes the avatars from the member entity`);
     assert.match(source, /<Avatars\b/, `${file} renders the member avatars`);
   }
+  assert.match(read("widgets/task-detail/ui/TaskDetail.tsx"), /<PartyAvatar\b/, "task detail renders the roster's team avatars");
 });
 
 test("an agent's colour follows its role, a custom role the role it extends", async () => {
