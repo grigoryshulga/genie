@@ -19,16 +19,19 @@ test("the empty team tab shows one character and keeps its call to action", asyn
 });
 
 test("a slow page shows skeleton rows under one status instead of bare loading text", async ({ page }) => {
+  let releasePage!: () => void;
+  const pageReady = new Promise<void>((resolve) => { releasePage = resolve; });
   await page.route("**/api/docs/page?path=*", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await pageReady;
     await route.continue();
   });
-  await page.goto(`/docs?page=${FLOW_DOC.path}`);
+  await page.goto(`/docs?page=${FLOW_DOC.path}`, { waitUntil: "domcontentloaded" });
   const status = page.getByRole("status").filter({ hasText: "Загрузка страницы" });
   await expect(status).toBeVisible();
   await expect(status.locator(".g-skeleton").first()).toBeVisible();
   // The old bare row is gone.
   await expect(page.getByText("Загрузка страницы…", { exact: true })).toHaveCount(0);
+  releasePage();
   await expect(status).toBeHidden({ timeout: 20000 });
   await expect(page.getByRole("heading", { name: /Как запустить/ })).toBeVisible();
 });
