@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "genie"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "aws-lc-rs",
  "axum",
@@ -730,7 +730,7 @@ dependencies = [
 
 [[package]]
 name = "genie-core"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "argon2",
  "chacha20poly1305",

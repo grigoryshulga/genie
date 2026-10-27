@@ -2,6 +2,21 @@
 
 Notable changes by release. Versions follow [SemVer](https://semver.org/); entries use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Detailed implementation history remains in Git.
 
+## [0.6.2] — 2026-10-27
+
+### Added
+
+- Dedicated role and team template workspaces with inline settings, configuration history, and portable import and export files.
+
+### Changed
+
+- Floating navigation with a mobile bottom bar, responsive team and agent chat, role-specific colors, and refined board cards and workflow lanes.
+- Golos Text replaces Manrope for body and interface typography, with updated design assets and browser screenshot baselines.
+
+### Fixed
+
+- Pi OAuth extension events reach the server through the correct output stream.
+
 ## [0.6.1] — 2026-10-26
 
 ### Added
