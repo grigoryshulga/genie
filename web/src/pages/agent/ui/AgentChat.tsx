@@ -614,7 +614,7 @@ function AgentInfo({ member, team, live, st, queued }: { member: Member; team: T
         <span>
           <b>{displayName(member.name)}</b>
           <span className="ac-muted">
-            {ROLE_TITLE_RU[member.role] ?? member.role} · <Link to={`/agents?tab=roles&id=${encodeURIComponent(member.role)}`}>роль</Link>
+            {ROLE_TITLE_RU[member.role] ?? member.role} · <Link to={`/manage/agents/roles?id=${encodeURIComponent(member.role)}`}>роль</Link>
           </span>
         </span>
       </div>

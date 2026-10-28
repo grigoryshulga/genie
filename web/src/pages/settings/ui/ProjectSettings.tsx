@@ -2,7 +2,7 @@
 
 import { ProjectIconSettings } from "./ProjectIconSettings.tsx";
 import { useState } from "react";
-import { Link, Navigate, useParams } from "react-router";
+import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import {
   AUTONOMY,
   type Membership,
@@ -22,7 +22,6 @@ import {
 } from "@/entities/project";
 import { useRepos } from "@/entities/repo";
 import { useSession } from "@/entities/session";
-import { settingsTabHref } from "@/shared/lib";
 import { request } from "@/shared/api";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
 import { TelegramSettings } from "./TelegramSettings.tsx";
@@ -37,15 +36,19 @@ import { SettingsLoading } from "@/widgets/settings-shell";
 
 export const ROLES: ProjectRole[] = ["viewer", "member", "admin", "owner"];
 
-export function ProjectSettingsPage() {
+/** A project page of the management hub; routes that name their page pass `section` (and a fixed `tab`). */
+export function ProjectSettingsPage({ section: fixed, tab: fixedTab }: { section?: string; tab?: string }) {
   const session = useSession().data;
   const projects = useProjects();
-  const { section = "general" } = useParams();
-  const tab = useSettingsTab("project", section);
+  const { section: routeSection = "general" } = useParams();
+  const section = fixed ?? routeSection;
+  const requestedTab = useSettingsTab("project", section);
+  const tab = fixedTab ?? requestedTab;
   const project = projects.data?.find((p) => p.slug === session?.project);
-  const local = session?.mode === "local";
   const admin = !!project && (project.role === "admin" || project.role === "owner");
-  if (section === "tools" && tab === "automations") return <Navigate to={settingsTabHref("project", "tools", tab)} replace />;
+  // «Работа агентов» was a tab of the general page; it is «Агенты → Режим работы» now.
+  const [search] = useSearchParams();
+  if (section === "general" && search.get("tab") === "agents") return <Navigate to="/manage/agents/work" replace />;
   return (
     <main className="main">
       <SettingsTabs scope="project" section={section} />
@@ -55,14 +58,13 @@ export function ProjectSettingsPage() {
         ) : section === "observation" ? (
           <ObservationSources key={project.slug} admin={admin} />
         ) : section === "channels" ? (
-          <><div className="st-body"><div className="st-head"><h2>Каналы связи</h2><p>Подключения для уведомлений проекта. Сейчас доступен Telegram; Slack и Mattermost планируются.</p></div></div><TelegramSettings key={project.slug} project={project.slug} admin={admin} /></>
+          <TelegramSettings key={project.slug} project={project.slug} admin={admin} />
         ) : section === "tools" ? (
           <ProjectToolsSection key={project.slug} slug={project.slug} tab={tab} />
         ) : section === "knowledge" ? (
           <div className="st-body">
-            <div className="st-head"><h2>База знаний</h2><p>Документация проекта и её хранение.</p></div>
-            {tab === "pages" ? <section className="st-card"><div className="st-card-body"><p>Раздел проекта: <code>{project.space}/</code></p><Link to="/docs">Открыть базу знаний</Link></div></section> :
-              <FeatureRequest id="GNE-8" title={tab === "storage" ? "Удалённое хранение" : "Резервные копии"}>Создание бэкапов, настройка удалённого хранилища и восстановление базы знаний проекта появятся позже.</FeatureRequest>}
+            <section className="st-card"><div className="st-card-head"><h3>Документация</h3></div><div className="st-card-body"><p>Раздел проекта: <code>{project.space}/</code></p><Link to="/docs">Открыть базу знаний</Link></div></section>
+            <FeatureRequest id="GNE-8" title="Резервные копии и удалённое хранение">Создание бэкапов, настройка удалённого хранилища и восстановление базы знаний проекта появятся позже.</FeatureRequest>
           </div>
         ) : section === "repos" ? (
           <div className="st-body">
@@ -70,40 +72,51 @@ export function ProjectSettingsPage() {
               <FeatureRequest id="GNE-5" title="Git-токены">Управление токенами доступа к Git-репозиториям проекта появится позже.</FeatureRequest> :
               <FeatureRequest id="GNE-6" title="Окружение проекта">Настройка зависимостей, инструментов подготовки и песочницы появится позже.</FeatureRequest>}
           </div>
-        ) : section === "people" ? (
-          local ? (
-            <div className="st-body">
-              <FirstAdmin />
-            </div>
-          ) : (
-            <div className="st-body">
-              <div className="st-col" hidden={tab !== "members"}>
-                <div className="st-head">
-                  <h2>Доступ и роли</h2>
-                  <p>Администраторы сервера имеют права владельца во всех проектах.</p>
-                </div>
-                <People slug={project.slug} admin={admin} me={session?.user.login} />
-                <details className="st-card">
-                  <summary>Что может каждая роль</summary>
-                  <dl className="st-roles">
-                    {ROLES.map((r) => (
-                      <div key={r}>
-                        <dt>{PROJECT_ROLE_NAME[r][0].toUpperCase() + PROJECT_ROLE_NAME[r].slice(1)}</dt>
-                        <dd>{PROJECT_ROLE_HINT[r]}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </details>
-              </div>
-              {tab === "invites" && admin && <Invite slug={project.slug} />}
-              {tab === "activity" && <FeatureRequest id="GNE-7" title="Активность участников">История действий и активности каждого участника появится позже.</FeatureRequest>}
-            </div>
-          )
+        ) : section === "work" ? (
+          <AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} />
         ) : (
-          <><div hidden={tab !== "project"}><General key={`${project.slug}:${project.name}`} project={project} admin={admin} /></div><div hidden={tab !== "agents"}><AgentsTab key={`${project.slug}:${project.integration}`} project={project} admin={admin} /></div></>
+          <General key={`${project.slug}:${project.name}`} project={project} admin={admin} />
         )}
       </div>
     </main>
+  );
+}
+
+/** The current project's members, invitations and activity; the hub shows it under «Администрирование». */
+export function ProjectMembers({ tab }: { tab: string }) {
+  const session = useSession().data;
+  const project = useProjects().data?.find((p) => p.slug === session?.project);
+  if (!project) return <SettingsLoading />;
+  // Server administrators own every project, so every member action is open to them here.
+  const admin = true;
+  if (session?.mode === "local")
+    return (
+      <div className="st-body">
+        <FirstAdmin />
+      </div>
+    );
+  return (
+    <div className="st-body">
+      <div className="st-col" hidden={tab !== "members"}>
+        <div className="st-head">
+          <p>Проект «{project.name}». Администраторы сервера имеют права владельца во всех проектах.</p>
+        </div>
+        <People slug={project.slug} admin={admin} me={session?.user.login} />
+        <details className="st-card">
+          <summary>Что может каждая роль</summary>
+          <dl className="st-roles">
+            {ROLES.map((r) => (
+              <div key={r}>
+                <dt>{PROJECT_ROLE_NAME[r][0].toUpperCase() + PROJECT_ROLE_NAME[r].slice(1)}</dt>
+                <dd>{PROJECT_ROLE_HINT[r]}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      </div>
+      {tab === "invites" && <Invite slug={project.slug} />}
+      {tab === "activity" && <FeatureRequest id="GNE-7" title="Активность участников">История действий и активности каждого участника появится позже.</FeatureRequest>}
+    </div>
   );
 }
 
@@ -116,10 +129,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
   const dirty = name.trim() !== project.name;
   return (
     <div className="st-body">
-      <div className="st-head">
-        <h1 className="g-page-title">Общие настройки</h1>
-        {!admin && <p>Изменять настройки могут администраторы и владельцы проекта.</p>}
-      </div>
+      {!admin && <div className="st-head"><p>Изменять настройки могут администраторы и владельцы проекта.</p></div>}
       <form
         className="st-card"
         onSubmit={(e) => {
@@ -128,7 +138,7 @@ function General({ project, admin }: { project: ProjectInfo; admin: boolean }) {
         }}
       >
         <div className="st-card-head">
-          <h3>Проект</h3>
+          <h3>Основное</h3>
         </div>
         <div className="st-row">
           <label className="lbl" htmlFor="pj-name">
@@ -242,9 +252,6 @@ function AgentsTab({ project, admin }: { project: ProjectInfo; admin: boolean })
   ];
   return (
     <div className="st-body">
-      <div className="st-head">
-        <h2>Работа агентов</h2>
-      </div>
       <section className="st-card">
         <div className="st-card-head">
           <h3>Оркестратор</h3>
@@ -528,7 +535,7 @@ export function FirstAdmin() {
           void act(async () => {
             await request("POST", "/api/users", { login: form.login.trim(), name: form.name.trim(), password: form.password, isAdmin: true });
             await request("POST", "/api/auth/login", { login: form.login.trim(), password: form.password });
-            window.location.assign("/manage/project/people");
+            window.location.assign("/manage/server/members");
           });
         }}
       >

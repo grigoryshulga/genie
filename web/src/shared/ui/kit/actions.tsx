@@ -2,6 +2,7 @@ import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, useId, u
 import { Link } from "react-router";
 import { cx } from "./cx.ts";
 import { nextIndex } from "./menu-nav.ts";
+import { NavMenu, type NavMenuEntry } from "./nav-menu.tsx";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -23,18 +24,28 @@ export function IconButton({ label, className, children, ref, ...rest }: ButtonH
   );
 }
 
-export type TabItem<T extends string> = { id: T; label: ReactNode; to?: string; /** Tooltip for a tab whose label is collapsed to its icon. */ title?: string };
+export type TabItem<T extends string> = {
+  id: T;
+  label: ReactNode;
+  to?: string;
+  /** Tooltip for a tab whose label is collapsed to its icon. */
+  title?: string;
+  /** A link tab's sibling pages: a chevron beside the label opens them as a menu. */
+  menu?: { label: string; items: NavMenuEntry[] };
+};
 
 /** Tabs: a rail of pills; the selected one is the only filled pill. Arrow keys move focus, Home and End jump. */
 export function Tabs<T extends string>({ items, value, onChange, label, animated = false, variant = "pills" }: { items: TabItem<T>[]; value: T; onChange?: (id: T) => void; label: string; animated?: boolean; variant?: "pills" | "underline" }) {
   const refs = useRef<(HTMLElement | null)[]>([]);
+  // A tab with a menu is a pair (label and chevron): focus goes to the label, the pill covers both.
+  const boxes = useRef<(HTMLElement | null)[]>([]);
   const base = useId();
   const rail = useRef<HTMLDivElement>(null);
   const [indicator, setIndicator] = useState<{ x: number; y: number; width: number; height: number }>();
   const selected = items.findIndex((item) => item.id === value);
   useLayoutEffect(() => {
     const root = rail.current;
-    const target = refs.current[selected];
+    const target = boxes.current[selected] ?? refs.current[selected];
     if (!animated || variant !== "pills" || !root || !target) { setIndicator(undefined); return; }
     const measure = () => {
       const outer = root.getBoundingClientRect();
@@ -62,7 +73,14 @@ export function Tabs<T extends string>({ items, value, onChange, label, animated
     <div ref={rail} className={cx("g-tabs", variant === "underline" && "underline", animated && indicator && "g-tabs-motion")} role={items.some((i) => i.to) ? undefined : "tablist"} aria-label={label}>
       {animated && indicator && <span className="g-tabs-indicator" aria-hidden="true" style={{ width: indicator.width, height: indicator.height, transform: `translate(${indicator.x}px, ${indicator.y}px)` }} />}
       {items.map((item, i) =>
-        item.to ? (
+        item.to && item.menu ? (
+          <div key={item.id} className="g-tab-split" data-current={item.id === value || undefined} ref={(el) => void (boxes.current[i] = el)}>
+            <Link to={item.to} title={item.title} ref={(el) => void (refs.current[i] = el)} aria-current={item.id === value ? "page" : undefined} onKeyDown={(e) => onKey(e, i)}>
+              {item.label}
+            </Link>
+            <NavMenu label={item.menu.label} items={item.menu.items} />
+          </div>
+        ) : item.to ? (
           <Link key={item.id} to={item.to} title={item.title} ref={(el) => void (refs.current[i] = el)} aria-current={item.id === value ? "page" : undefined} onKeyDown={(e) => onKey(e, i)}>
             {item.label}
           </Link>
