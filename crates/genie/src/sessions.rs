@@ -410,11 +410,15 @@ pub fn resume_after_restart(app: &App, turns: &[Turn]) {
     }
 }
 
-/// Does the mailbox already hold an unread letter from a system (an earlier restart note)?
+/// Does the mailbox already hold an unread note from genie (an earlier restart note)? The note has
+/// the kind the mailbox takes, so a manual project's manager finds its own note among its chat only.
 fn note_pending(app: &App, key: &AgentKey) -> bool {
     let (team, recipient) = mailbox(key);
-    app.with_tracker(key.project(), |t| Ok(t.bus().pending(team.as_deref(), &recipient)?.iter().any(|m| m.kind == "system")))
-        .unwrap_or(false)
+    let Ok(kind) = runtime::note_kind(app, key) else { return false };
+    app.with_tracker(key.project(), |t| {
+        Ok(t.bus().pending_kind(team.as_deref(), &recipient, Some(kind))?.iter().any(|m| m.from == "genie"))
+    })
+    .unwrap_or(false)
 }
 
 /// Mail is waiting for `key`: wake its session, or start one. Returns when to look at it again if
@@ -970,6 +974,11 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
         let slug = p.slug.clone();
         let interrupted = app.blocking(move |app| app.with_tracker(&slug, |t| t.bus().interrupted_mailboxes())).await.unwrap_or_default();
         for b in interrupted {
+            // A manual project's manager takes chat alone, and chat is never an interrupt: its step is
+            // not stopped for mail it leaves queued.
+            if runtime::taken_kind(&p, b.team.as_deref(), &b.recipient).is_some() {
+                continue;
+            }
             let key = match b.team {
                 Some(team) => AgentKey::Member { project: p.slug.clone(), team, member: b.recipient },
                 None => AgentKey::mailbox(&p.slug, &b.recipient),

@@ -6,7 +6,7 @@ use genie::work_loop;
 use genie_core::management::manager_name;
 use genie_core::team::{NewMember, NewTeam, ORCHESTRATOR};
 use genie_core::{Actor, CreateInput, Role, Status, StatusOptions, TaskType, TeamState};
-use serde_json::json;
+use serde_json::{Value, json};
 
 fn harness() -> Harness {
     let h = Harness::new();
@@ -286,24 +286,27 @@ fn a_prompt_is_not_repeated_while_the_task_is_held_on_purpose() {
 #[test]
 fn retired_playbooks_are_disabled_once_and_own_rules_are_kept() {
     let h = harness();
-    let retired = [
-        "Разбор новой задачи",
-        "Задачу ничего не держит — в «Готово к работе»",
-        "«Готово к работе» — оркестратор запускает работу",
-        "Команда остановилась — следующая готовая задача",
-    ];
-    for name in retired {
-        let spec = json!({ "name": name, "on": { "event": "task.created" }, "steps": [{ "id": "w", "wait": { "for": "1h" } }] });
+    // The installed copies: the four playbooks as 4c612e0 created them, with limits the owner may have changed.
+    for p in genie::engine::RETIRED_PLAYBOOKS {
+        let mut spec = json!({ "name": p.name, "on": serde_json::from_str::<Value>(p.on).unwrap(), "steps": serde_json::from_str::<Value>(p.steps).unwrap() });
+        spec["limits"] = json!({ "concurrency": 9 });
         h.app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
     }
-    let own = json!({ "name": "Ping on tasks", "on": { "event": "task.created" }, "steps": [{ "id": "w", "wait": { "for": "1h" } }] });
-    h.app.with_server(|db| db.create_automation("shop", &own, "anna")).unwrap();
+    // Owner rules: one that shares a retired name but has other steps, one with the retired steps under another name.
+    let same_name = json!({ "name": genie::engine::RETIRED_PLAYBOOKS[1].name, "on": { "event": "task.*" }, "steps": [{ "id": "w", "wait": { "for": "1h" } }] });
+    let same_steps = json!({ "name": "Ping on tasks", "on": { "event": "task.*" }, "steps": [{ "id": "ready", "task.ready": {} }] });
+    let kept: Vec<i64> = [&same_name, &same_steps]
+        .into_iter()
+        .map(|spec| h.app.with_server(|db| db.create_automation("shop", spec, "anna")).unwrap().id)
+        .collect();
 
     assert_eq!(genie::engine::disable_retired_playbooks(&h.app).unwrap(), 4, "every installed copy is switched off");
     assert_eq!(genie::engine::disable_retired_playbooks(&h.app).unwrap(), 0, "a second start changes nothing");
     let rules = h.app.with_server(|db| db.automations(Some("shop"))).unwrap();
+    assert_eq!(rules.len(), 6);
     for rule in rules {
-        assert_eq!(rule.enabled, rule.name == "Ping on tasks", "{}", rule.name);
+        let owned = kept.contains(&rule.id);
+        assert_eq!(rule.enabled, owned, "{} ({})", rule.name, rule.id);
     }
 }
 

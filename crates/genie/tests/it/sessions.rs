@@ -1121,3 +1121,80 @@ async fn a_warm_up_never_takes_a_session_slot_from_another_agent() {
     assert_eq!(live_state(app, &orchestrator()).as_deref(), Some("idle"));
     assert!(session_state(app, "bender").is_none());
 }
+
+/// The manager of a manual project has finished a chat answer: one of its turns succeeded.
+fn answered(app: &App) -> bool {
+    app.with_server(|db| db.turns("shop", Some("orchestrator"), 10)).unwrap().iter().any(|t| t.status == "succeeded")
+}
+
+/// A manual project's manager takes the chat it is asked and nothing else: a system note waits, queued
+/// and untouched, while the model answers the chat (the live path: `deliver` and the session's lease).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_manual_managers_session_takes_chat_and_leaves_the_rest_queued() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
+        return;
+    };
+    let l = live(pi, |_| {}).await;
+    let app = &l.app;
+    app.with_tracker("shop", |t| {
+        t.bus().notify_manager(ORCHESTRATOR, "genie", "system", "system", "AUTOMATION-NOTE: a note nobody asked for", None)?;
+        t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "CHAT-QUESTION: is the export done?", None)
+    })
+    .unwrap();
+    app.wake_runtime.notify_one();
+
+    until("the manager to answer the chat", 60, || request_with(&l.log, "orchestrator", "CHAT-QUESTION")).await;
+    until("the manager's answer to be recorded", 60, || answered(app).then_some(())).await;
+    let requests = l.log.lock().unwrap().clone();
+    assert!(requests.iter().all(|r| r.count("AUTOMATION-NOTE") == 0), "the note never reached the model");
+    // The chat was taken; the note waits, undelivered (the harness's inbox notice waits too).
+    let queued = app.with_tracker("shop", |t| t.bus().pending(None, ORCHESTRATOR)).unwrap();
+    assert!(queued.iter().all(|m| m.kind != CHAT_MAIL), "every chat was taken: {queued:?}");
+    let note = queued.iter().find(|m| m.text.starts_with("AUTOMATION-NOTE")).expect("the note waits in the queue");
+    assert!(note.delivered_at.is_none(), "the note is still queued");
+}
+
+/// The manager of a manual project is interrupted by a server crash in the middle of its chat answer.
+/// Its continuation is chat from genie: the new session starts for it without anyone writing, and the
+/// question it had already been given is not injected again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_manual_manager_interrupted_by_a_restart_finishes_its_chat_answer() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
+        return;
+    };
+    let l = live(pi, |_| {}).await;
+    let app = &l.app;
+    app.with_tracker("shop", |t| {
+        t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "CHAT-QUESTION: is the export done?", None)
+    })
+    .unwrap();
+    app.wake_runtime.notify_one();
+    until("the manager to receive the question", 60, || request_with(&l.log, "orchestrator", "CHAT-QUESTION")).await;
+    until("the manager's answer to be recorded", 60, || answered(app).then_some(())).await;
+
+    // The server dies: the session goes with it, and the turn it ran stays `running` in the database.
+    genie::sessions::stop_all(app);
+    until("the manager's session to end", 30, || app.sessions.get(&orchestrator()).is_none().then_some(())).await;
+    let turn = app
+        .with_server(|db| {
+            let t = db.start_turn("shop", ORCHESTRATOR, None, None, None)?;
+            Ok::<_, genie_core::GenieError>(t)
+        })
+        .unwrap();
+
+    let restarted = Instant::now();
+    genie::runtime::recover(app).unwrap();
+    genie::sessions::recover(app);
+    assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "interrupted");
+
+    let req = until("the restart note in the manager's model request", 30, || {
+        request_with(&l.log, "orchestrator", "The genie server restarted after a crash")
+    })
+    .await;
+    eprintln!("latency: a manual manager resumed its chat answer {:?} after the restart", req.at - restarted);
+    assert_eq!(req.count("CHAT-QUESTION"), 1, "the question is in the resumed conversation once, not injected again");
+}

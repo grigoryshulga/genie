@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use super::ctx::{Access, Ctx};
 use super::{ApiError, ApiResult};
-use crate::runtime::AgentKey;
+use crate::runtime::{AgentKey, taken_kind};
 use crate::state::App;
 
 pub fn routes() -> Router<Arc<App>> {
@@ -62,15 +62,20 @@ struct LeaseBody {
 async fn lease(State(app): State<Arc<App>>, ctx: Ctx, headers: HeaderMap, Json(b): Json<LeaseBody>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     let (team, recipient) = own_mailbox(&access)?;
-    if team.is_none() && recipient == ORCHESTRATOR {
-        super::console::may_take_orchestrator_mail(&app, &access.project, &headers).await?;
-    }
+    // A person's console session takes the whole orchestrator mailbox; the server's manager of a
+    // `manual` project takes chat only, and the rest of its mailbox waits for a person.
+    let console =
+        team.is_none() && recipient == ORCHESTRATOR && super::console::may_take_orchestrator_mail(&app, &access.project, &headers).await?;
     let slug = access.project.clone();
     let budget = app.cfg.runtime.delivery_budget.max(500);
     let delivery = app
         .blocking(move |app| {
+            let kind = match console {
+                true => None,
+                false => taken_kind(&app.with_server(|db| db.project(&slug))?, team.as_deref(), &recipient),
+            };
             app.with_tracker(&slug, |t| {
-                t.bus().lease_delivery(team.as_deref(), &recipient, &b.seen[b.seen.len().saturating_sub(500)..], budget)
+                t.bus().lease_delivery_kind(team.as_deref(), &recipient, &b.seen[b.seen.len().saturating_sub(500)..], budget, kind)
             })
         })
         .await?;

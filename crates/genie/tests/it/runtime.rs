@@ -417,6 +417,68 @@ fn a_server_restart_tells_the_interrupted_agents_to_continue() {
     assert!(pending.iter().all(|m| m.kind != "system"), "turns mode needs no note");
 }
 
+#[test]
+fn a_manual_managers_restart_note_is_chat_that_wakes_it_and_nothing_else_does() {
+    // A manual project's manager takes chat alone, so the note that continues its interrupted turn is
+    // chat from genie: it is delivered to the manager and starts it, where a system note would wait.
+    let dir = tempfile::tempdir().unwrap();
+    let app = app_with_team("sessions", dir.path());
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    app.with_tracker("shop", |t| {
+        t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "@pm status?", None)?;
+        let d = t.bus().lease_delivery_kind(None, ORCHESTRATOR, &[], 10_000, Some(CHAT_MAIL))?.expect("the question is leased");
+        t.bus().ack_delivery(d.id, ORCHESTRATOR)?;
+        Ok(())
+    })
+    .unwrap();
+    let turn = app.with_server(|db| db.start_turn("shop", ORCHESTRATOR, None, None, None)).unwrap();
+    let project = app.with_server(|db| db.project("shop")).unwrap();
+    assert!(!genie::runtime::manager_starts(&app, &project), "the answered question does not wake it again");
+
+    genie::runtime::recover(&app).unwrap();
+
+    assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "interrupted");
+    let pending = || app.with_tracker("shop", |t| t.bus().pending(None, ORCHESTRATOR)).unwrap();
+    let notes: Vec<_> = pending().into_iter().filter(|m| m.from == "genie").collect();
+    assert_eq!(notes.len(), 1, "one note for the manager: {:?}", pending());
+    assert_eq!(notes[0].kind, CHAT_MAIL, "the manager takes chat only, so its note is chat");
+    assert!(notes[0].text.contains("server restarted"), "{}", notes[0].text);
+    assert!(genie::runtime::manager_starts(&app, &project), "the note wakes the manager");
+
+    // A restart in a loop adds no second note while the first one is unread.
+    app.with_server(|db| db.start_turn("shop", ORCHESTRATOR, None, None, None)).unwrap();
+    genie::runtime::recover(&app).unwrap();
+    assert_eq!(pending().iter().filter(|m| m.from == "genie").count(), 1, "an unread note is enough: {:?}", pending());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_manual_managers_turn_takes_chat_and_leaves_the_rest_queued() {
+    // The one-shot path: the manager's turn leases chat only; the system note waits untouched.
+    let l = live_cfg(&[], |cfg| cfg.runtime.mode = "turns".into()).await;
+    l.app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    l.app
+        .with_tracker("shop", |t| {
+            t.bus().notify_manager(ORCHESTRATOR, "genie", "system", "system", "AUTOMATION: a note nobody asked for", None)?;
+            t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "@pm status of the export?", None)?;
+            Ok(())
+        })
+        .unwrap();
+    l.app.wake_runtime.notify_one();
+    wait_for(&l.app, "the manager's turn to answer the chat", Duration::from_secs(60), |app| {
+        app.with_server(|db| db.turns("shop", Some("orchestrator"), 10)).unwrap().iter().any(|t| t.status == "succeeded")
+    })
+    .await;
+
+    let pending = l.app.with_tracker("shop", |t| t.bus().pending(None, ORCHESTRATOR)).unwrap();
+    assert_eq!(pending.len(), 1, "only the chat was taken: {pending:?}");
+    assert!(pending[0].text.starts_with("AUTOMATION"), "{pending:?}");
+    assert!(pending[0].delivered_at.is_none(), "the note is still queued");
+    let project = l.app.with_server(|db| db.project("shop")).unwrap();
+    assert!(!genie::runtime::manager_starts(&l.app, &project), "a note alone does not start a manual manager");
+    let turns = l.app.with_server(|db| db.turns("shop", Some("orchestrator"), 10)).unwrap();
+    assert_eq!(turns.len(), 1, "one turn, for the chat: {turns:?}");
+}
+
 /// An app in `mode` with project `shop`, task `G-1` and a one-member team (`bender`); the
 /// runtime is disabled so no scheduler runs while a test drives recovery by hand.
 fn app_with_team(mode: &str, dir: &std::path::Path) -> Arc<App> {

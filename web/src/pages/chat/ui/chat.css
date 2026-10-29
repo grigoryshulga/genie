@@ -28,9 +28,9 @@
 .chat-body > .chat-bubble { max-width: min(100%, var(--g-measure)); }
 
 /* The message a reply answers: its author and the start of its text, set off by the edge the bubble uses. */
-.chat-quote { display: flex; flex-wrap: wrap; gap: 0 var(--g-space-1); min-width: 0; padding-inline-start: var(--g-space-2); border-inline-start: 2px solid var(--g-border-strong); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); color: var(--g-text-muted); overflow-wrap: anywhere; }
+.chat-quote { display: flex; flex-wrap: wrap; gap: 0 var(--g-space-1); min-width: 0; padding-inline-start: var(--g-space-2); border-inline-start: 3px solid var(--g-border-strong); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); color: var(--g-text-muted); overflow-wrap: anywhere; }
 .chat-quote b { font-weight: var(--g-weight-bold); color: var(--g-text); }
-.chat-bubble.mine .chat-quote { border-inline-start-color: color-mix(in srgb, var(--g-on-accent) 50%, transparent); color: color-mix(in srgb, var(--g-on-accent) 72%, transparent); }
+.chat-bubble.mine .chat-quote { border-inline-start-color: color-mix(in srgb, var(--g-on-accent) 40%, transparent); color: color-mix(in srgb, var(--g-on-accent) 72%, transparent); }
 .chat-bubble.mine .chat-quote b { color: inherit; }
 
 /* Reply stays out of the way until a pointer is on the message or the button has focus; touch always shows it. */
@@ -45,7 +45,7 @@
 
 /* ---- the composer: the reply quote above the field, the field with its @ list and the send row ---- */
 .chat-composer { flex: none; display: flex; flex-direction: column; gap: var(--g-space-1); max-width: var(--g-content); width: calc(100% - 2 * var(--g-space-5)); margin: var(--g-space-2) auto var(--g-space-4); }
-.chat-reply-to { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; padding: var(--g-space-1) var(--g-space-3); border-inline-start: 2px solid var(--g-accent); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
+.chat-reply-to { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; padding: var(--g-space-1) var(--g-space-3); border-inline-start: 3px solid var(--g-accent); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
 .chat-reply-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-reply-line b { font-weight: var(--g-weight-bold); color: var(--g-text); }
 .chat-box { position: relative; display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2) var(--g-space-2) var(--g-space-2) var(--g-space-4); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-xl); background: var(--g-surface); }

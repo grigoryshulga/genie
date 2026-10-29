@@ -842,15 +842,15 @@ impl Bus<'_> {
         Ok(stmt.query_map(params![team, limit], Mail::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// Unread, unleased mail for one member (or, with `team == None`, the orchestrator).
+    /// Unread, unleased mail for one member (or, with `team == None`, the orchestrator), of `?3` when given.
     fn unclaimed_sql(team: Option<&str>) -> String {
         match team {
-            Some(_) => {
-                "SELECT * FROM mail WHERE team = ?1 AND recipient = ?2 AND delivered_at IS NULL AND lease IS NULL AND delivery IS NULL ORDER BY id"
-                    .into()
-            }
+            Some(_) => "SELECT * FROM mail WHERE team = ?1 AND recipient = ?2 AND delivered_at IS NULL AND lease IS NULL AND delivery IS NULL
+                 AND (?3 IS NULL OR kind = ?3) ORDER BY id"
+                .into(),
             None => format!(
                 "SELECT * FROM mail WHERE ?1 IS NULL AND recipient = ?2 AND delivered_at IS NULL AND lease IS NULL AND delivery IS NULL
+                 AND (?3 IS NULL OR kind = ?3)
                  AND (team IS NULL OR team NOT IN (SELECT id FROM teams WHERE state = 'stopped' AND COALESCE(stop_reason, 'orchestrator') IN {DELIBERATE_SQL}))
                  ORDER BY id"
             ),
@@ -858,8 +858,14 @@ impl Bus<'_> {
     }
 
     pub fn pending(&self, team: Option<&str>, recipient: &str) -> Result<Vec<Mail>> {
+        self.pending_kind(team, recipient, None)
+    }
+
+    /// [`pending`](Self::pending) restricted to one kind (`None`: every kind). A mailbox that takes
+    /// only some mail leaves the rest untouched, so it is never leased, delivered or acted on.
+    pub fn pending_kind(&self, team: Option<&str>, recipient: &str, kind: Option<&str>) -> Result<Vec<Mail>> {
         let mut stmt = self.conn().prepare(&Self::unclaimed_sql(team))?;
-        Ok(stmt.query_map(params![team, recipient], Mail::from_row)?.collect::<rusqlite::Result<_>>()?)
+        Ok(stmt.query_map(params![team, recipient, kind], Mail::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn pending_count(&self, team: &str, member: &str) -> Result<i64> {
@@ -891,8 +897,13 @@ impl Bus<'_> {
 
     /// Lease a mailbox's unread mail to a turn. Returns the leased messages.
     pub fn lease(&self, team: Option<&str>, recipient: &str, turn: i64) -> Result<Vec<Mail>> {
+        self.lease_kind(team, recipient, turn, None)
+    }
+
+    /// [`lease`](Self::lease) of one kind only (`None`: every kind).
+    pub fn lease_kind(&self, team: Option<&str>, recipient: &str, turn: i64, kind: Option<&str>) -> Result<Vec<Mail>> {
         self.t.tx(|| {
-            let rows = self.pending(team, recipient)?;
+            let rows = self.pending_kind(team, recipient, kind)?;
             for r in &rows {
                 self.conn().execute("UPDATE mail SET lease = ?1 WHERE id = ?2", params![turn, r.id])?;
             }
@@ -969,6 +980,19 @@ impl Bus<'_> {
     /// mail ids the session already holds (injected before a crash or a lost ack):
     /// they are settled as delivered instead of being offered again.
     pub fn lease_delivery(&self, team: Option<&str>, recipient: &str, seen: &[i64], budget: usize) -> Result<Option<Delivery>> {
+        self.lease_delivery_kind(team, recipient, seen, budget, None)
+    }
+
+    /// [`lease_delivery`](Self::lease_delivery) of one kind only (`None`: every kind). The other mail
+    /// stays pending for a session that takes it.
+    pub fn lease_delivery_kind(
+        &self,
+        team: Option<&str>,
+        recipient: &str,
+        seen: &[i64],
+        budget: usize,
+        kind: Option<&str>,
+    ) -> Result<Option<Delivery>> {
         self.t.tx(|| {
             let at = now();
             for id in seen {
@@ -977,7 +1001,7 @@ impl Bus<'_> {
                     params![at, id, recipient],
                 )?;
             }
-            let mut pending = self.pending(team, recipient)?;
+            let mut pending = self.pending_kind(team, recipient, kind)?;
             if pending.is_empty() {
                 return Ok(None);
             }
@@ -1448,6 +1472,28 @@ mod tests {
         assert!(render_one(&first.mails[0]).contains("read all with `genie mail read"), "long messages are clipped");
         let rest = bus.lease_delivery(Some("G-1"), "yoda", &[], DELIVERY_BUDGET).unwrap().unwrap();
         assert_eq!(rest.mails.len(), 2);
+    }
+
+    #[test]
+    fn a_kind_limited_lease_takes_only_that_kind_and_leaves_the_rest_queued() {
+        let (_d, t) = fresh();
+        let bus = t.bus();
+        bus.notify_manager(ORCHESTRATOR, "genie", "system", "system", "automation note", None).unwrap();
+        bus.notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "@pm status?", None).unwrap();
+        assert_eq!(bus.pending_kind(None, ORCHESTRATOR, Some(CHAT_MAIL)).unwrap().len(), 1);
+
+        let leased = bus.lease_kind(None, ORCHESTRATOR, 1, Some(CHAT_MAIL)).unwrap();
+        assert_eq!(leased.iter().map(|m| m.text.as_str()).collect::<Vec<_>>(), ["@pm status?"]);
+        assert!(bus.lease_kind(None, ORCHESTRATOR, 2, Some(CHAT_MAIL)).unwrap().is_empty(), "leased chat is not offered twice");
+        bus.complete_lease(1).unwrap();
+        let untouched = bus.pending(None, ORCHESTRATOR).unwrap();
+        assert_eq!(untouched.iter().map(|m| m.text.as_str()).collect::<Vec<_>>(), ["automation note"]);
+        assert!(untouched[0].delivered_at.is_none(), "the system note waits, untouched");
+
+        assert!(bus.lease_delivery_kind(None, ORCHESTRATOR, &[], DELIVERY_BUDGET, Some(CHAT_MAIL)).unwrap().is_none());
+        assert_eq!(bus.pending(None, ORCHESTRATOR).unwrap().len(), 1, "a session limited to chat leaves the note for later");
+        let all = bus.lease_delivery(None, ORCHESTRATOR, &[], DELIVERY_BUDGET).unwrap().unwrap();
+        assert_eq!(all.mails[0].text, "automation note", "a mailbox that takes every kind still gets it");
     }
 
     #[test]

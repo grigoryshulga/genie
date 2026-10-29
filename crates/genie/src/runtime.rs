@@ -506,7 +506,8 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
         }
         AgentKey::Orchestrator { project: slug } => {
             let turn = app.with_server(|db| db.start_turn(slug, &label, None, None, None))?;
-            let mail = app.with_tracker(slug, |t| t.bus().lease(None, ORCHESTRATOR, turn))?;
+            let mail =
+                app.with_tracker(slug, |t| t.bus().lease_kind(None, ORCHESTRATOR, turn, taken_kind(&project, None, ORCHESTRATOR)))?;
             if mail.is_empty() {
                 app.with_server(|db| db.finish_turn(turn, "skipped", None, None, None))?;
                 return Ok(None);
@@ -1337,6 +1338,24 @@ fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, l
         prompt,
         initiator: crate::llm_key::team_initiator(app, &project.slug, &t.id),
     })
+}
+
+/// The one kind of mail a mailbox takes, when it takes only one. In a `manual` project the project
+/// manager takes chat alone: a message that tags it is an explicit request, while every other mail
+/// (system notes, automation) stays queued until a person asks for it (owner decision). `None`
+/// means every kind. Used by the scheduler's leases and by the mailbox's notes.
+pub(crate) fn taken_kind(project: &Project, team: Option<&str>, recipient: &str) -> Option<&'static str> {
+    (project.autonomy == "manual" && team.is_none() && recipient == ORCHESTRATOR).then_some(CHAT_MAIL)
+}
+
+/// The kind of the note genie writes into an agent's own mailbox: `system`, except that the project
+/// manager of a `manual` project takes chat alone, so its note is chat from genie.
+pub(crate) fn note_kind(app: &App, key: &AgentKey) -> AppResult<&'static str> {
+    if !matches!(key, AgentKey::Orchestrator { .. }) {
+        return Ok("system");
+    }
+    let project = project_of(app, key.project())?;
+    Ok(taken_kind(&project, None, ORCHESTRATOR).unwrap_or("system"))
 }
 
 /// Whether the project's manager starts for the mail waiting in its mailbox. In a `manual` project
@@ -2838,7 +2857,9 @@ pub fn tell_orchestrator(app: &App, project: &str, task: Option<&str>, text: &st
 }
 
 /// A note in the agent's own mailbox (a member's, or the orchestrator's): it reads it on its next step.
+/// The note has the kind the mailbox takes (see [`note_kind`]), so a manual project's manager gets it.
 pub fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
+    let kind = note_kind(app, k)?;
     app.with_tracker(k.project(), |t| match k {
         AgentKey::Member { team, member, .. } => t
             .bus()
@@ -2853,7 +2874,7 @@ pub fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
                 ..Default::default()
             })
             .map(|_| ()),
-        _ => t.bus().notify_manager(&k.label(), "genie", "system", "system", text, None),
+        _ => t.bus().notify_manager(&k.label(), "genie", "system", kind, text, None),
     })?;
     app.wake_runtime.notify_one();
     Ok(())

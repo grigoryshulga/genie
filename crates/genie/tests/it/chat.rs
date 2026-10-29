@@ -450,3 +450,47 @@ async fn a_tagged_message_keeps_a_manual_manager_for_the_manager_idle_window() {
     tokio::time::sleep(Duration::from_millis(1200)).await;
     assert!(runtime::manager_wanted_in(&h.app, "shop").unwrap(), "the window is the manager's, an hour long, not the member's second");
 }
+
+#[tokio::test]
+async fn a_tagged_message_and_its_manager_mail_are_visible_together() {
+    // The client refetches the chat on `chat.posted`: by then the manager already counts the mail.
+    let h = Harness::new();
+    h.project("shop");
+    let (_, anna) = person(&h, "anna", ProjectRole::Member);
+    let (s, v) = post(&h, &anna, "@pm can you look at the export?").await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+
+    let (s, page, _) = call(&h.router, "GET", "/api/chat").bearer(&anna).send().await;
+    assert_eq!(s, StatusCode::OK, "{page}");
+    assert_eq!(page["messages"].as_array().map(Vec::len), Some(1), "{page}");
+    assert!(page["manager"]["pending"].as_i64().unwrap() >= 1, "the manager's mail is pending at once: {page}");
+    assert_eq!(manager_mail(&h).iter().filter(|(kind, _)| kind == CHAT_MAIL).count(), 1);
+}
+
+#[tokio::test]
+async fn a_message_whose_manager_mail_fails_is_not_posted_and_a_retry_posts_it_once() {
+    let h = Harness::new();
+    h.project("shop");
+    let (_, anna) = person(&h, "anna", ProjectRole::Member);
+    // Refuse the manager's mail: the post and its mail are one transaction, so the message goes too.
+    h.app
+        .with_tracker("shop", |t| {
+            Ok(t.conn().execute_batch(
+                "CREATE TRIGGER refuse_chat BEFORE INSERT ON mail WHEN NEW.kind = 'chat' BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+            )?)
+        })
+        .unwrap();
+
+    let (s, e) = post(&h, &anna, "@pm status?").await;
+    assert!(s.is_server_error(), "the refused mail fails the post: {s} {e}");
+    let (_, page, _) = call(&h.router, "GET", "/api/chat").bearer(&anna).send().await;
+    assert!(page["messages"].as_array().unwrap().is_empty(), "nothing is half posted: {page}");
+    assert_eq!(page["manager"]["pending"], 0);
+
+    h.app.with_tracker("shop", |t| Ok(t.conn().execute_batch("DROP TRIGGER refuse_chat;")?)).unwrap();
+    let (s, v) = post(&h, &anna, "@pm status?").await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    let (_, page, _) = call(&h.router, "GET", "/api/chat").bearer(&anna).send().await;
+    assert_eq!(page["messages"].as_array().map(Vec::len), Some(1), "the retry posts the message once: {page}");
+    assert_eq!(page["manager"]["pending"], 1);
+}

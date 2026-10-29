@@ -123,22 +123,34 @@ async fn warm(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<WarmReply
     Ok(Json(WarmReply { started }))
 }
 
-/// Posts a message and routes what it asks for.
+/// Posts a message and routes what it asks for. The message, its `chat.posted` event and the
+/// manager's mail commit in one tracker transaction: a failure leaves neither a message without its
+/// mail nor a retry that would post it twice. The web notices come after the commit; they are
+/// best effort and never fail a post that was stored.
 fn post(app: &App, slug: &str, actor: &Actor, text: &str, reply_to: Option<i64>) -> AppResult<ChatMessage> {
-    let message = app.with_tracker(slug, |t| t.chat().post(&actor.name, actor.role, text, reply_to))?;
-    route(app, slug, &message)?;
+    let (message, to_manager) = app.with_tracker(slug, |t| {
+        t.tx(|| {
+            let message = t.chat().post(&actor.name, actor.role, text, reply_to)?;
+            let to_manager = message.author_role == Role::Human && message.mentions.iter().any(|m| m == MANAGER);
+            if to_manager {
+                let context = t.chat().list(Some(message.id), Some(CONTEXT))?;
+                let mail = manager_mail(&message, &context);
+                t.bus().notify_manager(ORCHESTRATOR, &message.author, "human", CHAT_MAIL, &mail, None)?;
+            }
+            Ok((message, to_manager))
+        })
+    })?;
+    if to_manager {
+        app.wake_runtime.notify_one();
+    }
+    if let Err(e) = notify_members(app, slug, &message) {
+        eprintln!("genie chat: {slug}: notices for message #{}: {e}", message.id);
+    }
     Ok(message)
 }
 
-/// The mail and the notifications a message causes: a person's tag of the manager is its mail, and
-/// a project member named by login hears of it on the web (whoever wrote it).
-fn route(app: &App, slug: &str, m: &ChatMessage) -> AppResult<()> {
-    if m.author_role == Role::Human && m.mentions.iter().any(|t| t == MANAGER) {
-        let context = app.with_tracker(slug, |t| t.chat().list(Some(m.id), Some(CONTEXT)))?;
-        let text = manager_mail(m, &context);
-        app.with_tracker(slug, |t| t.bus().notify_manager(ORCHESTRATOR, &m.author, "human", CHAT_MAIL, &text, None))?;
-        app.wake_runtime.notify_one();
-    }
+/// A project member named by login hears of a message on the web (whoever wrote it).
+fn notify_members(app: &App, slug: &str, m: &ChatMessage) -> AppResult<()> {
     let users = app.with_server(|db| {
         let mut ids = Vec::new();
         for login in m.mentions.iter().filter(|t| *t != MANAGER && **t != m.author) {

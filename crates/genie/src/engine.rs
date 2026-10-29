@@ -922,21 +922,151 @@ fn notify_intake(app: &App, project: &str) -> AppResult<()> {
 
 // --- playbooks ------------------------------------------------------------------------------
 
-/// Spec names of the playbooks the work loop replaced (`work_loop`: triage, readiness, dispatch).
+/// A playbook the work loop replaced: its spec name and its `on` and `steps` (JSON), as
+/// `playbooks()` shipped them at 4c612e0. An installed copy is switched off only while all three
+/// still match, so a rule of the owner's that shares the name is kept. Limits may differ.
+pub struct RetiredPlaybook {
+    pub name: &'static str,
+    pub on: &'static str,
+    pub steps: &'static str,
+}
+
+/// The playbooks the work loop replaced (`work_loop`: triage, readiness, dispatch).
 /// Installed copies are switched off at start; rules a person wrote are not touched.
-const RETIRED_PLAYBOOKS: &[&str] = &[
-    "Разбор новой задачи",
-    "Задачу ничего не держит — в «Готово к работе»",
-    "«Готово к работе» — оркестратор запускает работу",
-    "Команда остановилась — следующая готовая задача",
+pub const RETIRED_PLAYBOOKS: &[RetiredPlaybook] = &[
+    RetiredPlaybook {
+        name: "Разбор новой задачи",
+        on: r#"{
+          "event": "task.created",
+          "where": {
+            "status": "inbox",
+            "actor.role": "human"
+          }
+        }"#,
+        steps: r#"[
+          {
+            "id": "take",
+            "task.status": {
+              "to": "refining",
+              "note": "Взята в разбор автоматически: аналитик готовит вопросы автору"
+            }
+          },
+          {
+            "id": "analyse",
+            "timeout": "45m",
+            "agent": {
+              "role": "analyst",
+              "workspace": "read-only",
+              "goal": "Analyse task {{ event.task.id }}: study the project (code if any, knowledge base with `genie docs search`), draft scope and verifiable acceptance criteria, and list only the questions that the task's author must answer (product decisions, missing facts). Do not guess product answers. Write the questions in the owner's language, offer options when the answer is a choice. Save your analysis as an `analysis` artifact on the task.",
+              "output": {
+                "questions": [
+                  {
+                    "text": "question",
+                    "why": "why it matters",
+                    "options": [
+                      "optional choices"
+                    ]
+                  }
+                ],
+                "draft_acceptance": [
+                  "criterion"
+                ]
+              }
+            }
+          },
+          {
+            "id": "criteria",
+            "if": "{{ steps.analyse.output.draft_acceptance | length }}",
+            "task.comment": {
+              "kind": "decision",
+              "text": "Черновик критериев приёмки от аналитика:\n{{ steps.analyse.output.draft_acceptance | lines }}"
+            }
+          },
+          {
+            "id": "ask",
+            "if": "{{ steps.analyse.output.questions | length }}",
+            "ask": {
+              "to": [
+                "event.actor"
+              ],
+              "from": "аналитика",
+              "questions": "{{ steps.analyse.output.questions }}",
+              "remindAfter": "24h",
+              "timeout": "72h",
+              "onTimeout": "needs_owner"
+            }
+          },
+          {
+            "id": "continue",
+            "wake_orchestrator": {
+              "text": "Triage of {{ event.task.id }} is complete: the analysis artifact and draft criteria are on the task, the author's answers are in its comments. Finish refinement (description, acceptance criteria), then move it to ready if the Definition of Ready is met."
+            }
+          }
+        ]"#,
+    },
+    RetiredPlaybook {
+        name: "Задачу ничего не держит — в «Готово к работе»",
+        on: r#"{
+          "event": "task.*",
+          "where": {
+            "task.status": [
+              "draft",
+              "refining",
+              "done"
+            ]
+          }
+        }"#,
+        steps: r#"[
+          {
+            "id": "ready",
+            "task.ready": {}
+          }
+        ]"#,
+    },
+    RetiredPlaybook {
+        name: "«Готово к работе» — оркестратор запускает работу",
+        on: r#"{
+          "event": "task.status_changed",
+          "where": {
+            "to": "ready",
+            "task.type": {
+              "not": "epic"
+            }
+          }
+        }"#,
+        steps: r#"[
+          {
+            "id": "start",
+            "wake_orchestrator": {
+              "text": "Task {{ event.task.id }} ({{ event.task.title }}) is now ready: start work on it. If a team already works on it, do nothing. Check the Definition of Ready first: if something only the owner can settle is missing (the integration, the repositories), ask the owner instead of dispatching. Otherwise compose its team and spawn it now. If the server refuses the spawn because a limit is reached (active teams per project or per epic), do not retry and do not force it: the task stays in ready and starts when a team stops."
+            }
+          }
+        ]"#,
+    },
+    RetiredPlaybook {
+        name: "Команда остановилась — следующая готовая задача",
+        on: r#"{
+          "event": "team.stopped"
+        }"#,
+        steps: r#"[
+          {
+            "id": "next",
+            "wake_orchestrator": {
+              "text": "A team stopped, so there may be room for work. List the tasks that wait in `ready` without a team (`genie task list --status ready`), take them in order of priority and start work on as many as the limits allow: spawn a team for each. If the server refuses a spawn because a limit is reached, stop there: the rest stay in ready. If nothing waits, do nothing."
+            }
+          }
+        ]"#,
+    },
 ];
 
 /// Switches off the installed copies of the retired playbooks. Idempotent: returns how many changed.
 pub fn disable_retired_playbooks(app: &App) -> AppResult<usize> {
     app.with_server(|db| {
         let mut n = 0;
-        for name in RETIRED_PLAYBOOKS {
-            n += db.disable_automations_named(name)?;
+        for p in RETIRED_PLAYBOOKS {
+            let on: Value = serde_json::from_str(p.on).expect("a retired playbook's `on` is valid JSON");
+            let steps: Value = serde_json::from_str(p.steps).expect("a retired playbook's `steps` is valid JSON");
+            n += db.disable_retired_automations(p.name, &on, &steps)?;
         }
         Ok(n)
     })
