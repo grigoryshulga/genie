@@ -57,7 +57,7 @@ genie team turns
 - Failed turns and crashed processes retry with backoff. After `maxAttempts` consecutive failures, the member stays in `error`, keeps its mail, and notifies the orchestrator.
 - A step with no activity beyond `turnTimeoutSecs` is interrupted. Five repeated identical tool calls trigger a possible-loop report.
 - An active team that is idle with no pending mail or human/CI wait triggers a stall report after `stallSecs`. The report is deduplicated across server restarts.
-- Idle sessions stop after `idleStopSecs` and restart on mail. At the session limit, the longest-idle session yields capacity.
+- Idle members and jobs stop after `idleStopSecs`, the project manager and task managers after `managerIdleStopSecs`; all restart on mail. At the session limit, a leaving session is waited for; otherwise the longest-idle member or job yields first, then a task manager, and the project manager last.
 - On server restart, orphan processes stop, outstanding leases recover, and interrupted agents receive a continuation message.
 
 Logs are under `<data>/runtime/<project>/<agent>/`. See [operations](operations.md#health-and-logs).
@@ -70,7 +70,8 @@ Configure `runtime` in `<data>/config.json`:
 | --- | --- | --- |
 | `mode` | `auto` | `sessions`, `turns`, or sessions with the standard command in `auto`. |
 | `maxSessions` | 12 | Concurrent live sessions. |
-| `idleStopSecs` | 300 | Idle time before a session stops. |
+| `idleStopSecs` | 300 | Idle time before a member or job session stops. |
+| `managerIdleStopSecs` | 3600 | Idle time before the project manager or a task manager session stops. |
 | `maxConcurrent` | 4 | Concurrent turns; capacity is reserved for the orchestrator. |
 | `maxAttempts` | 3 | Consecutive failed attempts before error. |
 | `turnTimeoutSecs` | 1800 | Step/turn watchdog timeout. |
@@ -79,6 +80,12 @@ Configure `runtime` in `<data>/config.json`:
 | `nodeHeapMb` | 2048 | V8 heap cap for npm pi; does not apply to Pi-Bolt. |
 
 Custom `command` and `sessionCommand` argument groups support role prompts, model, skills, and guard placeholders. Preserve the guard and `--no-approve` when replacing a pi command, so repository resources cannot bypass Genie configuration. Use `mode: turns` for a harness without the live-session protocol.
+
+## Reaction time
+
+A session becomes useful in two steps. `readyMs` is the time from the spawn to the process's first event. `firstReplyMs` is the time from the first wake-up that brings its mail to the first assistant message. The server logs one line per start (`genie runtime: <project>/<agent> session ready in Xms, first reply in Yms`), and `GET /api/agents` shows both as `session.startup` for each live session. A value is `null` until it is known.
+
+The project manager stays warm for `managerIdleStopSecs`. When a person opens the project chat, the web calls `POST /api/chat/warm`, which starts the manager without mail: it settles idle, makes no model call, and answers its first message without a cold start. The warm-up starts nothing when a session already runs, the manager is not wanted, the session limit is reached (a warm-up never evicts another session), or the last warm-up of the project was less than 30 s ago. Only people can warm. In a `manual` project a warm-up opens the manager's window for `managerIdleStopSecs`, as a message that tags the manager does.
 
 ## Interactive orchestrator
 

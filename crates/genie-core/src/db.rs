@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -333,6 +333,15 @@ CREATE TABLE IF NOT EXISTS observation_followups (
   actor TEXT NOT NULL,
   created TEXT NOT NULL,
   UNIQUE (case_id, task)
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY,
+  at TEXT NOT NULL,
+  author TEXT NOT NULL,
+  author_role TEXT NOT NULL,
+  text TEXT NOT NULL,
+  mentions TEXT NOT NULL DEFAULT '[]',
+  reply_to INTEGER
 );
 "#;
 

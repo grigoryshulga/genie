@@ -18,7 +18,7 @@ type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HT
 type Primary = "tasks" | "knowledge" | "manage";
 
 function activePrimary(pathname: string): Primary | undefined {
-  if (["/board", "/tasks", "/task/", "/epic"].some((p) => pathname.startsWith(p))) return "tasks";
+  if (["/board", "/tasks", "/task/", "/epic", "/chat"].some((p) => pathname.startsWith(p))) return "tasks";
   if (pathname.startsWith("/docs")) return "knowledge";
   if (pathname.startsWith("/manage")) return "manage";
   return undefined;
@@ -136,6 +136,7 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
           page("list", "Список", "/tasks", <Icon.list size={14} />, { current: pathname === "/tasks" || pathname.startsWith("/task/") }),
           page("board", "Доска", "/board", <Icon.board size={14} />),
           page("epics", "Эпики", "/epics", <EpicIcon size={14} />, { current: pathname.startsWith("/epic") }),
+          page("chat", "Чат", "/chat", <Icon.chat size={14} />),
         ],
       },
     },

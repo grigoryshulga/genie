@@ -21,7 +21,7 @@ export interface Lane {
 export const LANES: Lane[] = [
   { id: "maybe", name: "Может быть", hint: "Входящие: ничего не начнётся само", statuses: ["inbox"], target: "inbox", drops: ["inbox"] },
   { id: "decision", name: "Нужно решение", hint: "Ваш ход", statuses: ["needs_owner"], target: "needs_owner", drops: ["needs_owner"] },
-  { id: "prep", name: "Подготовка", hint: "Черновик · уточнение", statuses: ["draft", "refining"], target: "refining", drops: ["draft", "refining"] },
+  { id: "prep", name: "Подготовка", hint: "Менеджер проекта готовит задачу", statuses: ["draft", "refining"], target: "refining", drops: ["draft", "refining"] },
   { id: "queue", name: "Очередь", hint: "Готово к работе", statuses: ["ready"], target: "ready", drops: ["ready"] },
   { id: "work", name: "В работе", hint: "Работа · ревью · доработка", statuses: ["in_progress", "review", "changes_requested"], target: "in_progress", drops: ["in_progress", "review"] },
   { id: "done", name: "Готово", hint: "Одобрено · принято", statuses: ["approved", "done"], target: "done", drops: ["approved", "done"] },

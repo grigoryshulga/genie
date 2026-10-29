@@ -44,6 +44,9 @@ const DOCS: KeyPrefix[] = [["docs"], ["proposals"], ["proposal"], ["task"] /* th
 /** Observation queries: every key of `entities/observation` starts with `observations` (a test pins it). */
 const OBSERVATIONS: KeyPrefix[] = [["observations"]];
 
+/** The project chat's queries (`pages/chat/api.ts`): a posted message changes the newest page and the manager's pending count. */
+const CHAT: KeyPrefix[] = [["chat"]];
+
 /**
  * The queries one journal event can have made stale, by event type. `null`: the
  * type is unknown (a new one on the server), so anything may be stale.
@@ -119,6 +122,8 @@ export function keysFor(e: JournalEvent): KeyPrefix[] | null {
     case "followup_task.created":
       // The follow-up is a new task: its lists and the task pages change as well.
       return [...OBSERVATIONS, ...TASK_LISTS, ["task"]];
+    case "chat.posted":
+      return CHAT;
     default:
       return null;
   }

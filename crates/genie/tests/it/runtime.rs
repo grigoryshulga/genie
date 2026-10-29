@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use genie::config::Config;
 use genie::state::App;
-use genie_core::team::{NewMember, NewTeam, SendMail};
+use genie_core::team::{CHAT_MAIL, NewMember, NewTeam, ORCHESTRATOR, SendMail};
 use genie_core::work::NewJob;
 use genie_core::{Activity, Actor, CreateInput, Role, Status, TeamState};
 use serde_json::json;
@@ -476,4 +476,28 @@ fn recovery_stops_only_verified_stray_agent_processes() {
     assert!(stray.try_wait().unwrap().is_some(), "the stray agent was stopped");
     assert!(other.try_wait().unwrap().is_none(), "a process that is not that agent is left alone");
     other.kill().unwrap();
+}
+
+/// The turns the project's manager has run (or is running), as their statuses.
+fn manager_turns(app: &App) -> Vec<String> {
+    app.with_server(|db| db.turns("shop", None, 50)).unwrap().into_iter().filter(|t| t.agent == ORCHESTRATOR).map(|t| t.status).collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_manual_projects_manager_runs_for_chat_mail_and_not_for_the_owners() {
+    // Owner mail waits for the person in a manual project; chat mail, a tag of the manager, starts it.
+    let l = live(&[]).await;
+    l.app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    l.app.with_tracker("shop", |t| t.bus().notify_orchestrator("anna", "human", "owner", "decide something", None)).unwrap();
+    l.app.wake_runtime.notify_one();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert!(manager_turns(&l.app).is_empty(), "owner mail does not start a manual project's manager");
+
+    l.app
+        .with_tracker("shop", |t| {
+            t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "Project chat message #1 from @anna:\n\n@pm status?", None)
+        })
+        .unwrap();
+    l.app.wake_runtime.notify_one();
+    wait_for(&l.app, "the manager's turn for chat mail", Duration::from_secs(30), |app| !manager_turns(app).is_empty()).await;
 }

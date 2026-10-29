@@ -14,6 +14,8 @@
 //! 4. **Notify**: tell people about decisions they owe, closed tasks, proposals.
 //! 5. **Team flow**: handoffs bound to a status in a team's relations (`on`) are
 //!    delivered by genie itself when the task enters that status.
+//! 6. **Work loop** (`work_loop`): preparation prompts, readiness and dispatch of
+//!    tasks, for every project but the manual ones.
 //!
 //! Protections: no rule triggers itself, cascades stop at depth 3, per-rule
 //! concurrency and hourly limits, dry-run mode.
@@ -33,6 +35,7 @@ use crate::notify::{self, Message};
 use crate::runtime::{self, SpawnRequest};
 use crate::state::{App, AppError, AppResult, SAFETY_NET, sleep_until};
 use crate::tasks::{self, Caller, StatusBody};
+use crate::work_loop;
 
 const CURSOR: &str = "automations";
 const NOTIFY_CURSOR: &str = "notifier";
@@ -59,7 +62,7 @@ impl Plan {
         self.at
     }
 
-    fn due(&mut self, at: DateTime<Utc>) {
+    pub(crate) fn due(&mut self, at: DateTime<Utc>) {
         self.at = Some(self.at.map_or(at, |t| t.min(at)));
     }
 
@@ -74,6 +77,11 @@ impl Plan {
 }
 
 pub fn start(app: &Arc<App>) {
+    match disable_retired_playbooks(app) {
+        Ok(0) => {}
+        Ok(n) => println!("genie engine: {n} retired playbook automation(s) disabled; the work loop does their job"),
+        Err(e) => eprintln!("genie engine: retired playbooks not disabled: {e}"),
+    }
     let app = app.clone();
     tokio::spawn(async move {
         let mut streak = 0;
@@ -113,6 +121,11 @@ pub fn pass(app: &App) -> AppResult<Plan> {
         }
         if let Err(e) = flow_intake(app, &p.slug) {
             eprintln!("genie team flow: {}: {e}", p.slug);
+        }
+        match work_loop::tick(app, &p.slug) {
+            Ok(Some(at)) => plan.due(at),
+            Ok(None) => {}
+            Err(e) => eprintln!("genie work loop: {}: {e}", p.slug),
         }
     }
     schedules(app, &mut plan)?;
@@ -457,26 +470,8 @@ fn step_task_get(app: &App, project: &str, run: &Run, input: &Value) -> AppResul
 
 /// Move the task to ready, and with it every task waiting on it, unless something still holds each one.
 fn step_task_ready(app: &App, project: &str, run: &Run, caller: &Caller, input: &Value) -> AppResult<Outcome> {
-    // The task itself, and the tasks that wait for it: closing a dependency frees them.
     let task = need_task(input, run)?;
-    let mut candidates = vec![task.clone()];
-    candidates.extend(app.with_tracker(project, |t| t.dependents(&task))?);
-    let (mut moved, mut held) = (Vec::new(), Vec::new());
-    for id in candidates {
-        let t = app.with_tracker(project, |t| t.get(&id))?;
-        if !READY_FROM.contains(&t.status) {
-            continue;
-        }
-        let holds = holds(app, project, &t)?;
-        if !holds.is_empty() {
-            held.push(json!({ "task": t.id, "holds": holds }));
-            continue;
-        }
-        let note = "Nothing holds it: no block, dependencies done, no open questions or jobs; moved to ready automatically".to_string();
-        tasks::set_status(app, caller, &t.id, StatusBody::to(Status::Ready, Some(note)))?;
-        moved.push(t.id);
-    }
-    Ok(Outcome::Done(json!({ "moved": moved, "held": held })))
+    Ok(Outcome::Done(work_loop::make_ready(app, project, caller, &task)?))
 }
 
 /// Queue a message for the resolved recipients; the default title names the rule that fired.
@@ -654,37 +649,6 @@ fn step_http(input: &Value) -> AppResult<Outcome> {
 fn step_wait(input: &Value) -> AppResult<Outcome> {
     let d = input["for"].as_str().and_then(automation::parse_duration).ok_or_else(|| invalid("wait: `for` duration such as 24h"))?;
     Ok(Outcome::Wait(json!({ "until": (Utc::now() + d).to_rfc3339() })))
-}
-
-/// Statuses `task.ready` moves a task from: refinement that nothing else waits for.
-const READY_FROM: &[Status] = &[Status::Draft, Status::Refining];
-
-/// What keeps a task from being ready: a block, open dependencies, a decision or
-/// answers it waits for, work still going on it, the Definition of Ready.
-fn holds(app: &App, project: &str, task: &genie_core::Task) -> AppResult<Vec<String>> {
-    let mut out = Vec::new();
-    if let Some(b) = &task.blocked {
-        out.push(format!("blocked: {}", b.reason));
-    }
-    let open = app.with_tracker(project, |t| t.open_deps(&task.id))?;
-    if !open.is_empty() {
-        out.push(format!("waits for dependencies: {}", open.join(", ")));
-    }
-    if task.needs_owner.is_some() {
-        out.push("waits for the owner's decision".into());
-    }
-    if app.with_server(|db| db.open_questionnaires_for_task(project, &task.id))? > 0 {
-        out.push("waits for answers to questions".into());
-    }
-    if app.with_server(|db| db.open_jobs_for_task(project, &task.id))? > 0 {
-        out.push("an agent job on it is still going".into());
-    }
-    if let Some(team) = app.with_tracker(project, |t| t.bus().active_team_of(&task.id))? {
-        out.push(format!("team {team} is working on it"));
-    }
-    let known = task.deps.iter().filter(|d| app.with_tracker(project, |t| t.exists(d)).unwrap_or(false)).cloned().collect();
-    out.extend(genie_core::readiness_problems(task, &known));
-    Ok(out)
 }
 
 fn past(ts: &Value) -> bool {
@@ -958,6 +922,26 @@ fn notify_intake(app: &App, project: &str) -> AppResult<()> {
 
 // --- playbooks ------------------------------------------------------------------------------
 
+/// Spec names of the playbooks the work loop replaced (`work_loop`: triage, readiness, dispatch).
+/// Installed copies are switched off at start; rules a person wrote are not touched.
+const RETIRED_PLAYBOOKS: &[&str] = &[
+    "Разбор новой задачи",
+    "Задачу ничего не держит — в «Готово к работе»",
+    "«Готово к работе» — оркестратор запускает работу",
+    "Команда остановилась — следующая готовая задача",
+];
+
+/// Switches off the installed copies of the retired playbooks. Idempotent: returns how many changed.
+pub fn disable_retired_playbooks(app: &App) -> AppResult<usize> {
+    app.with_server(|db| {
+        let mut n = 0;
+        for name in RETIRED_PLAYBOOKS {
+            n += db.disable_automations_named(name)?;
+        }
+        Ok(n)
+    })
+}
+
 /// Ready-made rules. `{{ … }}` inside are evaluated at run time.
 pub fn playbooks() -> Vec<(&'static str, &'static str, Value)> {
     vec![
@@ -981,70 +965,6 @@ pub fn playbooks() -> Vec<(&'static str, &'static str, Value)> {
                         "title": "{{ event.task.id }} готова: знания обновлены",
                         "text": "{{ steps.docs.output.summary }}\n\nСтраницы:\n{{ steps.docs.output.pages_changed | lines }}\n\nЧейнджлог: {{ steps.docs.output.changelog.text }}"
                     } }
-                ]
-            }),
-        ),
-        (
-            "new-task-triage",
-            "Новая задача от человека → аналитик → вопросы автору",
-            json!({
-                "name": "Разбор новой задачи",
-                "on": { "event": "task.created", "where": { "status": "inbox", "actor.role": "human" } },
-                "limits": { "concurrency": 3, "maxRunsPerHour": 30 },
-                "steps": [
-                    { "id": "take", "task.status": { "to": "refining", "note": "Взята в разбор автоматически: аналитик готовит вопросы автору" } },
-                    { "id": "analyse", "timeout": "45m", "agent": {
-                        "role": "analyst",
-                        "workspace": "read-only",
-                        "goal": "Analyse task {{ event.task.id }}: study the project (code if any, knowledge base with `genie docs search`), draft scope and verifiable acceptance criteria, and list only the questions that the task's author must answer (product decisions, missing facts). Do not guess product answers. Write the questions in the owner's language, offer options when the answer is a choice. Save your analysis as an `analysis` artifact on the task.",
-                        "output": { "questions": [{ "text": "question", "why": "why it matters", "options": ["optional choices"] }], "draft_acceptance": ["criterion"] }
-                    } },
-                    { "id": "criteria", "if": "{{ steps.analyse.output.draft_acceptance | length }}", "task.comment": { "kind": "decision", "text": "Черновик критериев приёмки от аналитика:\n{{ steps.analyse.output.draft_acceptance | lines }}" } },
-                    { "id": "ask", "if": "{{ steps.analyse.output.questions | length }}", "ask": {
-                        "to": ["event.actor"],
-                        "from": "аналитика",
-                        "questions": "{{ steps.analyse.output.questions }}",
-                        "remindAfter": "24h",
-                        "timeout": "72h",
-                        "onTimeout": "needs_owner"
-                    } },
-                    { "id": "continue", "wake_orchestrator": { "text": "Triage of {{ event.task.id }} is complete: the analysis artifact and draft criteria are on the task, the author's answers are in its comments. Finish refinement (description, acceptance criteria), then move it to ready if the Definition of Ready is met." } }
-                ]
-            }),
-        ),
-        (
-            "auto-ready",
-            "Задачу ничего не держит → «Готово к работе»",
-            json!({
-                "name": "Задачу ничего не держит — в «Готово к работе»",
-                "on": { "event": "task.*", "where": { "task.status": ["draft", "refining", "done"] } },
-                "limits": { "concurrency": 1, "maxRunsPerHour": 200 },
-                "steps": [
-                    { "id": "ready", "task.ready": {} }
-                ]
-            }),
-        ),
-        (
-            "ready-start",
-            "«Готово к работе» → оркестратор запускает работу",
-            json!({
-                "name": "«Готово к работе» — оркестратор запускает работу",
-                "on": { "event": "task.status_changed", "where": { "to": "ready", "task.type": { "not": "epic" } } },
-                "limits": { "concurrency": 3, "maxRunsPerHour": 60 },
-                "steps": [
-                    { "id": "start", "wake_orchestrator": { "text": "Task {{ event.task.id }} ({{ event.task.title }}) is now ready: start work on it. If a team already works on it, do nothing. Check the Definition of Ready first: if something only the owner can settle is missing (the integration, the repositories), ask the owner instead of dispatching. Otherwise compose its team and spawn it now. If the server refuses the spawn because a limit is reached (active teams per project or per epic), do not retry and do not force it: the task stays in ready and starts when a team stops." } }
-                ]
-            }),
-        ),
-        (
-            "ready-next",
-            "Команда остановилась → оркестратор берёт следующую готовую задачу",
-            json!({
-                "name": "Команда остановилась — следующая готовая задача",
-                "on": { "event": "team.stopped" },
-                "limits": { "concurrency": 1, "maxRunsPerHour": 60 },
-                "steps": [
-                    { "id": "next", "wake_orchestrator": { "text": "A team stopped, so there may be room for work. List the tasks that wait in `ready` without a team (`genie task list --status ready`), take them in order of priority and start work on as many as the limits allow: spawn a team for each. If the server refuses a spawn because a limit is reached, stop there: the rest stay in ready. If nothing waits, do nothing." } }
                 ]
             }),
         ),

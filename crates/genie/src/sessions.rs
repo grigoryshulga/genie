@@ -22,6 +22,7 @@
 //! - **Runs** (agent start → settled) are recorded as turns, so history and logs
 //!   look the same as for turn-based harnesses.
 
+use std::cmp::Reverse;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -59,6 +60,8 @@ const LOOP_REPEATS: u32 = 5;
 #[derive(Default)]
 pub struct Registry {
     sessions: Mutex<HashMap<AgentKey, Arc<Session>>>,
+    /// When a person last warmed each project's manager (`POST /api/chat/warm`).
+    warmed: Mutex<HashMap<String, Instant>>,
 }
 
 impl Registry {
@@ -67,6 +70,20 @@ impl Registry {
     }
     pub fn all(&self) -> Vec<Arc<Session>> {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).values().cloned().collect()
+    }
+    /// Record a warm-up of `project` at `now`, unless one was recorded less than `every` ago.
+    /// Whether it was recorded: a refused one changes nothing.
+    pub fn warm(&self, project: &str, now: Instant, every: Duration) -> bool {
+        let mut m = self.warmed.lock().unwrap_or_else(|e| e.into_inner());
+        if m.get(project).is_some_and(|at| now.saturating_duration_since(*at) < every) {
+            return false;
+        }
+        m.insert(project.to_string(), now);
+        true
+    }
+    /// Whether `project` was warmed less than `window` before `now`.
+    pub fn warmed_within(&self, project: &str, now: Instant, window: Duration) -> bool {
+        self.warmed.lock().unwrap_or_else(|e| e.into_inner()).get(project).is_some_and(|at| now.saturating_duration_since(*at) < window)
     }
     fn insert(&self, s: Arc<Session>) {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(s.key.clone(), s);
@@ -78,6 +95,16 @@ impl Registry {
             m.remove(key);
         }
     }
+}
+
+/// How fast a session became usable, in milliseconds (`startup` on the board). `ready_ms` counts
+/// from the spawn to the process's first stdout event; `first_reply_ms` from the first delivery
+/// (the wake-up that brings its mail) to the first assistant message it settles.
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Startup {
+    pub ready_ms: Option<u64>,
+    pub first_reply_ms: Option<u64>,
 }
 
 /// What a session is doing, as seen from its event stream.
@@ -108,8 +135,17 @@ pub struct Live {
     /// Input tokens of the latest model request (the size of the context).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_tokens: Option<u64>,
+    pub startup: Startup,
     #[serde(skip)]
     clock: Arc<dyn crate::clock::Clock>,
+    #[serde(skip)]
+    spawned: Instant,
+    /// When the first delivery woke the session (the start of its first reply).
+    #[serde(skip)]
+    first_nudge: Option<Instant>,
+    /// Whether the startup line is written: once per start.
+    #[serde(skip)]
+    startup_logged: bool,
     #[serde(skip)]
     last_event: Instant,
     #[serde(skip)]
@@ -149,6 +185,10 @@ impl Live {
             failures: 0,
             last_error: None,
             context_tokens: None,
+            startup: Startup::default(),
+            spawned: clock.now(),
+            first_nudge: None,
+            startup_logged: false,
             last_event: clock.now(),
             state_at: clock.now(),
             clock,
@@ -228,7 +268,11 @@ impl Session {
     fn nudge(&self) {
         let again = self.with_live(|l| l.nudged.is_none_or(|t| l.clock.now().saturating_duration_since(t) >= NUDGE_AGAIN));
         if again && self.send(json!({ "type": "prompt", "message": "/genie-mail" })) {
-            self.with_live(|l| l.nudged = Some(l.clock.now()));
+            self.with_live(|l| {
+                let now = l.clock.now();
+                l.nudged = Some(now);
+                l.first_nudge.get_or_insert(now);
+            });
         }
     }
     /// Stop the running step (and a running shell command).
@@ -398,11 +442,15 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) -> Option<Duration> {
     }
     let live = app.sessions.all();
     if live.len() >= app.cfg.runtime.max_sessions.max(1) {
-        // Make room: stop the session idle the longest; this agent starts on a later pass.
-        if let Some(oldest) =
-            live.iter().filter(|s| s.is("idle")).max_by_key(|s| s.with_live(|l| l.clock.now().saturating_duration_since(l.state_at)))
-        {
-            oldest.stop("making room for another agent");
+        // Make room: stop the idle session that goes first; this agent starts on a later pass. A
+        // session already leaving frees its slot first: no second one is stopped for the same agent.
+        let leaving = live.iter().any(|s| s.is("stopping"));
+        let spare = live
+            .iter()
+            .filter(|s| s.is("idle"))
+            .min_by_key(|s| eviction_order(&s.key, s.with_live(|l| l.clock.now().saturating_duration_since(l.state_at))));
+        if let Some(spare) = spare.filter(|_| !leaving) {
+            spare.stop("making room for another agent");
         }
         return None;
     }
@@ -416,6 +464,29 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) -> Option<Duration> {
         }
     }
     None
+}
+
+/// Start the session of `key` before its mail arrives (a person opened the project chat): it is
+/// up and idle, so the first delivery is answered without a cold start. Nothing is delivered, and
+/// nothing is evicted: `false` when a session already runs, the agent waits out a backoff, the
+/// session limit is reached, or the agent is not wanted now (`session_spec`).
+pub async fn prewarm(app: &Arc<App>, key: &AgentKey) -> AppResult<bool> {
+    // The scheduler's pass is serialized with this, so a pass cannot start the same agent twice.
+    let _tick = app.sched.tick.lock().await;
+    if !app.cfg.runtime.live_sessions() || app.sessions.get(key).is_some() || !app.attempts.may_start(key) {
+        return Ok(false);
+    }
+    if app.sessions.all().len() >= app.cfg.runtime.max_sessions.max(1) {
+        return Ok(false);
+    }
+    match start(app, key).await {
+        Ok(started) => Ok(started.is_some()),
+        Err(e) => {
+            let n = app.attempts.failed_to_start(key);
+            eprintln!("genie runtime: {}: cannot warm a session for {} (attempt {n}): {e}", key.project(), key.label());
+            Err(e)
+        }
+    }
 }
 
 /// Launch the session process for `key` (`None`: nothing to run).
@@ -471,6 +542,9 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
     });
     s.with_live(|l| l.note(format!("▶ session started (pid {pid})")));
     app.sessions.insert(s.clone());
+    // pi prints nothing until it is asked something: a state query gets an answer without a model
+    // call, and that answer is the session's first event (its readiness, see `on_event`).
+    s.send(json!({ "type": "get_state" }));
 
     let mut stdin = child.stdin.take().expect("piped stdin");
     tokio::spawn(async move {
@@ -521,6 +595,47 @@ fn clip(text: &str, n: usize) -> String {
     if flat.chars().count() > n { format!("{}…", flat.chars().take(n).collect::<String>()) } else { flat }
 }
 
+/// How long an idle session of `key` is kept before it stops: the project manager and task
+/// managers stay warm for `managerIdleStopSecs`, members and jobs for `idleStopSecs`.
+pub(crate) fn idle_window(app: &App, key: &AgentKey) -> Duration {
+    let secs = match key {
+        AgentKey::Orchestrator { .. } | AgentKey::TaskManager { .. } => app.cfg.runtime.manager_idle_stop_secs,
+        AgentKey::Member { .. } | AgentKey::Job { .. } => app.cfg.runtime.idle_stop_secs,
+    };
+    Duration::from_secs(secs.max(1))
+}
+
+/// Who goes first when a session must make room, as a sort key (smallest first): members and jobs,
+/// then task managers, the project manager last; within a rank, the one idle the longest.
+fn eviction_order(key: &AgentKey, idle_for: Duration) -> (u8, Reverse<Duration>) {
+    let rank = match key {
+        AgentKey::Member { .. } | AgentKey::Job { .. } => 0,
+        AgentKey::TaskManager { .. } => 1,
+        AgentKey::Orchestrator { .. } => 2,
+    };
+    (rank, Reverse(idle_for))
+}
+
+/// Milliseconds from `from` to `to`, saturating.
+fn millis(from: Instant, to: Instant) -> u64 {
+    u64::try_from(to.saturating_duration_since(from).as_millis()).unwrap_or(u64::MAX)
+}
+
+/// The startup line of a session, written once: when its first reply is known, or when the session
+/// ends (a start that never replied, or never got ready, is still logged). `None` while waiting.
+fn startup_line(key: &AgentKey, l: &mut Live, ended: bool) -> Option<String> {
+    if l.startup_logged || (!ended && l.startup.first_reply_ms.is_none()) {
+        return None;
+    }
+    l.startup_logged = true;
+    let who = format!("{}/{}", key.project(), key.label());
+    Some(match (l.startup.ready_ms, l.startup.first_reply_ms) {
+        (Some(ready), Some(reply)) => format!("genie runtime: {who} session ready in {ready}ms, first reply in {reply}ms"),
+        (Some(ready), None) => format!("genie runtime: {who} session ready in {ready}ms, no reply before it ended"),
+        (None, _) => format!("genie runtime: {who} session ended before it was ready"),
+    })
+}
+
 fn args_summary(args: &Value) -> String {
     for key in ["command", "path", "file_path", "pattern", "query"] {
         if let Some(v) = args.get(key).and_then(Value::as_str) {
@@ -532,7 +647,23 @@ fn args_summary(args: &Value) -> String {
 
 async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
     let kind = e["type"].as_str().unwrap_or_default();
-    s.with_live(|l| l.last_event = l.clock.now());
+    let ready = s.with_live(|l| {
+        let now = l.clock.now();
+        l.last_event = now;
+        if l.startup.ready_ms.is_some() {
+            return false;
+        }
+        l.startup.ready_ms = Some(millis(l.spawned, now));
+        // A session nobody has woken yet is idle: the idle window applies, and mail wakes it.
+        if l.state == "starting" {
+            l.set_state("idle");
+        }
+        true
+    });
+    if ready {
+        // Mail that arrived before the process was up waits for this wake-up.
+        app.wake_runtime.notify_one();
+    }
     // Full settled messages and tool results, independent of the bounded live
     // preview and of the team's disposable workspace. Never archive token deltas.
     if matches!(kind, "message_end" | "tool_execution_end" | "agent_end")
@@ -597,7 +728,7 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
             let blocks = m["content"].as_array().cloned().unwrap_or_default();
             let text: Vec<&str> = blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect();
             let thinking: Vec<&str> = blocks.iter().filter(|b| b["type"] == "thinking").filter_map(|b| b["thinking"].as_str()).collect();
-            s.with_live(|l| {
+            let line = s.with_live(|l| {
                 if !text.is_empty() {
                     let t = clip(&text.join(" "), 600);
                     l.note(format!("💬 {}", clip(&t, 160)));
@@ -610,7 +741,16 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
                 if m["stopReason"] == "error" {
                     l.last_error = m["errorMessage"].as_str().map(|x| clip(x, 300));
                 }
+                if l.startup.first_reply_ms.is_none()
+                    && let Some(woken) = l.first_nudge
+                {
+                    l.startup.first_reply_ms = Some(millis(woken, l.clock.now()));
+                }
+                startup_line(&s.key, l, false)
             });
+            if let Some(line) = line {
+                println!("{line}");
+            }
         }
         "tool_execution_start" => {
             let name = e["toolName"].as_str().unwrap_or("tool").to_string();
@@ -740,6 +880,9 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
 }
 
 async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
+    if let Some(line) = s.with_live(|l| startup_line(&s.key, l, true)) {
+        println!("{line}");
+    }
     let (state, turn, log) = s.with_live(|l| (l.state.clone(), l.turn.take(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n")));
     let expected = state == "stopping";
     app.sessions.remove(&s.key, s.pid);
@@ -853,7 +996,6 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
             })
             .await;
     }
-    let idle_stop = Duration::from_secs(app.cfg.runtime.idle_stop_secs.max(1));
     let stall = Duration::from_secs(app.cfg.runtime.turn_timeout_secs.max(1));
     for s in app.sessions.all() {
         let (state, idle_for, silent_for, stall_abort) = s.with_live(|l| {
@@ -864,6 +1006,7 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
                 l.stall_abort,
             )
         });
+        let idle_stop = idle_window(app, &s.key);
         if state == "idle" && idle_for >= idle_stop {
             s.stop("idle");
             continue;
@@ -1096,5 +1239,44 @@ mod tests {
         let messages = saved_messages(dir.path(), "t-1-ada").unwrap();
         assert_eq!(messages[0]["content"], "new");
         assert!(saved_messages(dir.path(), "t-1-eve").is_none());
+    }
+
+    #[test]
+    fn making_room_takes_a_member_then_a_task_manager_and_the_project_manager_last() {
+        let project = "shop".to_string();
+        let member = AgentKey::Member { project: project.clone(), team: "T".into(), member: "a".into() };
+        let job = AgentKey::Job { project: project.clone(), job: 7 };
+        let task = AgentKey::TaskManager { project: project.clone(), task: "SHOP-1".into() };
+        let manager = AgentKey::Orchestrator { project };
+        let mut idle = [
+            (manager.clone(), Duration::from_secs(900)),
+            (task.clone(), Duration::from_secs(800)),
+            (member.clone(), Duration::from_secs(10)),
+            (job.clone(), Duration::from_secs(50)),
+        ];
+        idle.sort_by_key(|(k, d)| eviction_order(k, *d));
+        let order: Vec<String> = idle.iter().map(|(k, _)| k.label()).collect();
+        assert_eq!(order, [job.label(), member.label(), task.label(), manager.label()], "longest idle first within a rank");
+    }
+
+    #[test]
+    fn the_startup_line_is_written_once_when_the_first_reply_is_known_or_the_session_ends() {
+        let key = AgentKey::Orchestrator { project: "shop".into() };
+        let who = format!("shop/{}", key.label());
+        let mut l = Live::new(1, Arc::new(crate::clock::SystemClock));
+        l.startup.ready_ms = Some(120);
+        assert_eq!(startup_line(&key, &mut l, false), None, "waits for the first reply");
+        l.startup.first_reply_ms = Some(950);
+        assert_eq!(startup_line(&key, &mut l, false), Some(format!("genie runtime: {who} session ready in 120ms, first reply in 950ms")));
+        assert_eq!(startup_line(&key, &mut l, true), None, "one line per start");
+
+        let mut silent = Live::new(2, Arc::new(crate::clock::SystemClock));
+        silent.startup.ready_ms = Some(40);
+        assert_eq!(
+            startup_line(&key, &mut silent, true),
+            Some(format!("genie runtime: {who} session ready in 40ms, no reply before it ended"))
+        );
+        let mut never = Live::new(3, Arc::new(crate::clock::SystemClock));
+        assert_eq!(startup_line(&key, &mut never, true), Some(format!("genie runtime: {who} session ended before it was ready")));
     }
 }

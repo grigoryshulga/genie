@@ -36,6 +36,17 @@ Project autonomy governs dispatch. In `manual`, the project manager does not run
 
 Task managers cannot create unrelated tasks or rewrite requirements, priorities, assignees, dependencies, acceptance criteria, or integration policy. Their team, repository, job, mail, pause, and inspection operations are scoped to their own task. Changes outside that scope go to the project manager.
 
+## Work loop
+
+The server keeps the queue moving without a playbook to install. In every project except `manual` (where people dispatch) the engine runs the work loop on each pass:
+
+- A task that enters preparation (`draft` or `refining`) prompts the project manager once to prepare it: complete its description, scope and acceptance criteria, link its dependencies, and ask the author only what only they can answer. A prompt that is still unread is not repeated. Inbox tasks are never prepared automatically, and epics are not prepared at all.
+- A task that nothing holds moves to `ready` by itself: no block, no open dependency, no owner decision, no open question, no running job or team, and the Definition of Ready is met. A task closed by a person or the manager also frees the tasks that wait on it.
+- Ready tasks are dispatched by priority (P0 first, then creation order). A dispatch pass runs when a task becomes ready or closes, when a team stops, and when a task manager publishes its retrospective. An active task manager takes one slot of `limits.maxActiveTeams`, and one of `limits.maxActiveTeamsPerEpic` for its epic; a manager in its retrospective frees both. A task that cannot be dispatched (open dependencies, budget) is skipped and tried at the next pass.
+- About once a minute per project, the loop repeats the checks over every task in preparation. A task whose prompts and journal have been quiet for `runtime.prepRetrySecs` (default 1800) is prompted again; a task that was never prompted is prompted after two minutes of quiet. After three prompts the loop stops and tells the project admins once.
+
+A `manual` project keeps its behaviour: no prompts, no automatic moves, no dispatch. The loop still advances its journal cursor there, so enabling autonomy later does not replay old history. The loop replaces the playbooks `new-task-triage`, `auto-ready`, `ready-start` and `ready-next`; see [automations](automations.md#playbooks).
+
 ## Clarifications
 
 The route is **team member → task manager → project manager → person**. A durable question records its task, brief version, blocking flag, recipient state, answer, and source. The project manager answers only with an applicable confirmed decision, current documentation, or delegated authority. Model confidence alone is insufficient. Conflicting sources, missing requirements, and decisions outside authority go to a person.

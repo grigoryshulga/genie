@@ -449,6 +449,12 @@ impl ServerDb {
         self.automation(id)
     }
 
+    /// Disable the enabled rules called `name` (built-in rules the server retired). Returns how many
+    /// changed, so a second start changes nothing.
+    pub fn disable_automations_named(&self, name: &str) -> Result<usize> {
+        Ok(self.conn().execute("UPDATE automations SET enabled = 0, updated = ?1 WHERE name = ?2 AND enabled = 1", params![now(), name])?)
+    }
+
     pub fn set_automation_enabled(&self, id: i64, enabled: bool) -> Result<Automation> {
         self.conn().execute("UPDATE automations SET enabled = ?1, updated = ?2 WHERE id = ?3", params![enabled as i64, now(), id])?;
         self.automation(id)

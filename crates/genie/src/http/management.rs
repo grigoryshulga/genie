@@ -80,6 +80,8 @@ pub struct ManagerAction {
     accept_missing: bool,
     #[serde(default)]
     reviewed: Vec<String>,
+    /// Dispatch: the chat message in which a person asked for it (the project manager in a manual project needs one).
+    on_behalf: Option<i64>,
 }
 
 async fn act(
@@ -100,7 +102,10 @@ async fn act(
                 s.filter(|s| !s.trim().is_empty()).ok_or_else(|| crate::state::AppError::Bad(format!("{key} is required")))
             };
             let v = match action.as_str() {
-                "dispatch" => json!(management::dispatch(app, &a.project, &a.actor, &task)?),
+                "dispatch" => json!(match b.on_behalf {
+                    Some(chat) => management::dispatch_on_behalf(app, &a.project, &a.actor, &task, chat)?,
+                    None => management::dispatch(app, &a.project, &a.actor, &task)?,
+                }),
                 "clarify" => json!(app.with_tracker(&a.project, |t| t.management().ask(
                     &a.actor,
                     &task,

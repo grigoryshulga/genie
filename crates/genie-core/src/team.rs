@@ -30,6 +30,8 @@ use crate::tracker::Tracker;
 
 pub const ORCHESTRATOR: &str = "orchestrator";
 pub const BROADCAST: &str = "all";
+/// The kind of a project-chat message delivered to the project manager.
+pub const CHAT_MAIL: &str = "chat";
 
 /// Stops made on purpose: such teams are not revived and their late mail is dropped.
 pub const DELIBERATE_STOPS: &[&str] = &["orchestrator", "owner", "task_closed", "budget"];
@@ -97,6 +99,15 @@ pub struct Team {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional, type = "unknown")]
     pub spec: Option<Value>,
+}
+
+/// The messages one sender wrote about one task (see [`Bus::sent_about`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SentAbout {
+    pub sent: i64,
+    pub undelivered: i64,
+    /// When the newest message was written (RFC 3339).
+    pub last: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, ts_rs::TS)]
@@ -859,6 +870,25 @@ impl Bus<'_> {
         )?)
     }
 
+    /// Undelivered mail of one kind in a mailbox outside any team (the orchestrator's global one).
+    pub fn undelivered_of_kind(&self, recipient: &str, kind: &str) -> Result<i64> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*) FROM mail WHERE team IS NULL AND recipient = ?1 AND kind = ?2 AND delivered_at IS NULL",
+            params![recipient, kind],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// What `sender` has written about a task: how many messages, how many not delivered yet, and when
+    /// the last one was written. Lets the work loop see its own prompts without a second table.
+    pub fn sent_about(&self, sender: &str, task: &str) -> Result<SentAbout> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*), COALESCE(SUM(delivered_at IS NULL), 0), MAX(at) FROM mail WHERE sender = ?1 AND task = ?2",
+            params![sender, task],
+            |r| Ok(SentAbout { sent: r.get(0)?, undelivered: r.get(1)?, last: r.get(2)? }),
+        )?)
+    }
+
     /// Lease a mailbox's unread mail to a turn. Returns the leased messages.
     pub fn lease(&self, team: Option<&str>, recipient: &str, turn: i64) -> Result<Vec<Mail>> {
         self.t.tx(|| {
@@ -1231,7 +1261,8 @@ fn rank_mail(m: &Mail) -> (u8, u8) {
     let level = match (m.kind.as_str(), m.level.as_str()) {
         ("kickoff", _) => 0,
         (_, "interrupt") => 1,
-        ("owner" | "system", _) | (_, "high") => 2,
+        // Chat is people talking to the project manager: as urgent as the owner's own mail.
+        ("owner" | "system", _) | (CHAT_MAIL, _) | (_, "high") => 2,
         (_, "low") => 4,
         _ => 3,
     };
@@ -1417,6 +1448,17 @@ mod tests {
         assert!(render_one(&first.mails[0]).contains("read all with `genie mail read"), "long messages are clipped");
         let rest = bus.lease_delivery(Some("G-1"), "yoda", &[], DELIVERY_BUDGET).unwrap().unwrap();
         assert_eq!(rest.mails.len(), 2);
+    }
+
+    #[test]
+    fn chat_mail_is_delivered_as_urgently_as_the_owners_mail() {
+        let (_d, t) = fresh();
+        let bus = t.bus();
+        bus.notify_manager(ORCHESTRATOR, "genie", "system", "management", "the retrospective is due", None).unwrap();
+        bus.notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "@pm status?", None).unwrap();
+        let d = bus.lease_delivery(None, ORCHESTRATOR, &[], DELIVERY_BUDGET).unwrap().unwrap();
+        let order: Vec<&str> = d.mails.iter().map(|m| m.text.as_str()).collect();
+        assert_eq!(order, vec!["@pm status?", "the retrospective is due"]);
     }
 
     #[test]
