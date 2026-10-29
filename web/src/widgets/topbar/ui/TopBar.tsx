@@ -15,10 +15,11 @@ import "./shell.css";
 
 type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; searchOpen: boolean; onOpenSearch: () => void; onCloseSearch: () => void; onOpenPalette: () => void };
 
-type Primary = "tasks" | "knowledge" | "manage";
+type Primary = "tasks" | "chat" | "knowledge" | "manage";
 
 function activePrimary(pathname: string): Primary | undefined {
-  if (["/board", "/tasks", "/task/", "/epic", "/chat"].some((p) => pathname.startsWith(p))) return "tasks";
+  if (["/board", "/tasks", "/task/", "/epic"].some((p) => pathname.startsWith(p))) return "tasks";
+  if (pathname.startsWith("/chat")) return "chat";
   if (pathname.startsWith("/docs")) return "knowledge";
   if (pathname.startsWith("/manage")) return "manage";
   return undefined;
@@ -113,7 +114,7 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
     ...extra,
   });
   const hub = visibleHub(viewer);
-  const primary: { id: Primary; label: React.ReactNode; to: string; title: string; menu: { label: string; items: NavMenuEntry[] } }[] = [
+  const primary: { id: Primary; label: React.ReactNode; to: string; title: string; menu?: { label: string; items: NavMenuEntry[] } }[] = [
     {
       id: "tasks",
       label: (
@@ -136,9 +137,20 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
           page("list", "Список", "/tasks", <Icon.list size={14} />, { current: pathname === "/tasks" || pathname.startsWith("/task/") }),
           page("board", "Доска", "/board", <Icon.board size={14} />),
           page("epics", "Эпики", "/epics", <EpicIcon size={14} />, { current: pathname.startsWith("/epic") }),
-          page("chat", "Чат", "/chat", <Icon.chat size={14} />),
         ],
       },
+    },
+    // A plain link: the project chat has no sibling pages, so its tab carries no menu chevron.
+    {
+      id: "chat",
+      label: (
+        <>
+          <Icon.chat size={16} />
+          {label("Чат")}
+        </>
+      ),
+      to: "/chat",
+      title: "Чат",
     },
     {
       id: "knowledge",

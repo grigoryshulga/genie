@@ -157,10 +157,15 @@ test("a reply is sent with the id of the message it answers", async ({ page }) =
   await expect(page.locator(".chat-reply-to")).toBeHidden();
 });
 
-test("Чат is in the Tasks menu and opens the chat", async ({ page }) => {
+test("Чат is a top-bar tab of its own and opens the chat", async ({ page }) => {
   await page.goto("/tasks");
   await page.getByRole("button", { name: "Виды задач" }).click();
-  await page.getByRole("menu", { name: "Виды задач" }).getByRole("menuitem", { name: "Чат" }).click();
+  await expect(page.getByRole("menu", { name: "Виды задач" }).getByRole("menuitem", { name: "Чат" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  const tab = page.getByRole("navigation", { name: "Навигация", exact: true }).getByRole("link", { name: "Чат", exact: true });
+  await expect(tab).toHaveAttribute("href", "/chat");
+  await tab.click();
   await expect(page).toHaveURL(/\/chat$/);
+  await expect(tab).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { level: 1, name: "Чат" })).toBeVisible();
 });
