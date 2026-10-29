@@ -3,7 +3,7 @@
 
 import type { Status, TaskSummary } from "./model.ts";
 
-export type LaneId = "maybe" | "decision" | "prep" | "queue" | "work" | "done";
+export type LaneId = "maybe" | "decision" | "prep" | "work" | "done";
 
 export interface Lane {
   id: LaneId;
@@ -22,8 +22,7 @@ export const LANES: Lane[] = [
   { id: "maybe", name: "Может быть", hint: "Входящие: ничего не начнётся само", statuses: ["inbox"], target: "inbox", drops: ["inbox"] },
   { id: "decision", name: "Нужно решение", hint: "Ваш ход", statuses: ["needs_owner"], target: "needs_owner", drops: ["needs_owner"] },
   { id: "prep", name: "Подготовка", hint: "Менеджер проекта готовит задачу", statuses: ["draft", "refining"], target: "refining", drops: ["draft", "refining"] },
-  { id: "queue", name: "Очередь", hint: "Готово к работе", statuses: ["ready"], target: "ready", drops: ["ready"] },
-  { id: "work", name: "В работе", hint: "Работа · ревью · доработка", statuses: ["in_progress", "review", "changes_requested"], target: "in_progress", drops: ["in_progress", "review"] },
+  { id: "work", name: "В работе", hint: "Запуск · работа · ревью · доработка", statuses: ["ready", "in_progress", "review", "changes_requested"], target: "ready", drops: ["ready", "in_progress", "review"] },
   { id: "done", name: "Готово", hint: "Одобрено · принято", statuses: ["approved", "done"], target: "done", drops: ["approved", "done"] },
 ];
 
@@ -31,7 +30,7 @@ export const laneOf = (status: Status): Lane | undefined => LANES.find((l) => l.
 
 /** The tasks of every lane, in the given order, plus the cancelled ones that sit outside the lanes. */
 export function groupByLane(tasks: TaskSummary[]): { lanes: Record<LaneId, TaskSummary[]>; cancelled: TaskSummary[] } {
-  const lanes: Record<LaneId, TaskSummary[]> = { maybe: [], decision: [], prep: [], queue: [], work: [], done: [] };
+  const lanes: Record<LaneId, TaskSummary[]> = { maybe: [], decision: [], prep: [], work: [], done: [] };
   const cancelled: TaskSummary[] = [];
   for (const t of tasks) {
     const lane = laneOf(t.status);

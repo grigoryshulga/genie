@@ -2,11 +2,14 @@
 //! It runs in every engine pass for each project except `manual` ones, where people dispatch.
 //!
 //! - **Intake** (journal cursor `work-loop`): a task entering preparation (`draft`, `refining`)
-//!   prompts the project manager to prepare it; a task that nothing holds becomes `ready`; a
-//!   finished team, a closed task or a new ready task runs a dispatch pass.
-//! - **Reconciliation** (at most once a minute per project): the same checks over every task, and a
-//!   new prompt for preparation that looks lost, so a missed wake-up does not strand a task.
-//! - **Dispatch**: ready tasks get their task manager by priority, within the team limits.
+//!   prompts the project manager to prepare it; a finished team, a ready or closed task, an unblocked
+//!   task or a deleted one runs a dispatch pass.
+//! - **Reconciliation** (at most once a minute per project): a new prompt for preparation that looks
+//!   lost, so a missed wake-up does not strand a task, and a dispatch pass.
+//! - **Dispatch**: ready tasks get their task manager by priority, within the team limits. The
+//!   project manager moves a prepared task to `ready` (also while its dependencies are open); the
+//!   loop never does it. A ready task held by an open dependency, a block or an owner decision waits
+//!   quietly until the hold clears.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -79,27 +82,17 @@ fn intake(app: &App, project: &str, act: bool) -> AppResult<(bool, bool)> {
 /// What one journal event asks of the loop, and whether it frees room for a dispatch.
 fn handle(app: &App, project: &str, e: &Event) -> AppResult<bool> {
     let to = e.payload["to"].as_str().and_then(|s| s.parse::<Status>().ok());
-    if let Some(id) = e.subject.as_deref().filter(|_| e.kind.starts_with("task.")) {
-        ready_check(app, project, id)?;
-    }
-    // After the ready check: a task that nothing holds goes straight to `ready`, without a prompt.
     if let (events::TASK_STATUS_CHANGED, Some(Status::Draft | Status::Refining), Some(id)) = (e.kind.as_str(), to, &e.subject) {
         prompt_if_preparing(app, project, id)?;
     }
+    // A done or deleted dependency frees the tasks that wait on it (`open_deps` counts a cancelled one as
+    // open); an unblocked task, or a decision that moves a task to `ready`, frees the task itself. Each of
+    // them may start a task manager now.
     Ok(match e.kind.as_str() {
-        "team.stopped" | "manager.retrospective_published" => true,
+        "team.stopped" | "manager.retrospective_published" | events::TASK_UNBLOCKED | events::TASK_DELETED => true,
         events::TASK_STATUS_CHANGED => matches!(to, Some(Status::Ready | Status::Done | Status::Cancelled)),
         _ => false,
     })
-}
-
-/// Moves a task in preparation, or a closed one (which frees the tasks waiting on it), that nothing holds.
-fn ready_check(app: &App, project: &str, task: &str) -> AppResult<()> {
-    let status = app.with_tracker(project, |t| Ok(if t.exists(task)? { Some(t.get(task)?.status) } else { None }))?;
-    if matches!(status, Some(s) if PREPARATION.contains(&s) || s == Status::Done) {
-        make_ready(app, project, &caller(project), task)?;
-    }
-    Ok(())
 }
 
 /// Prompts the project manager about a task that entered preparation, unless it has left it already
@@ -117,7 +110,7 @@ fn prompt_if_preparing(app: &App, project: &str, task: &str) -> AppResult<()> {
 
 fn prompt(app: &App, project: &str, id: &str, title: &str) -> AppResult<()> {
     let text = format!(
-        "Task {id} ({title}) is in preparation. Prepare it: read it, check project memory and documentation, complete its description, scope and acceptance criteria, and link its dependencies. Ask the author only what only they can answer (owner questions). When the Definition of Ready is met, move the task to `ready`: the server dispatches ready tasks itself. If it is not worth doing, say so to the author instead of guessing."
+        "Task {id} ({title}) is in preparation. Prepare it: read it, check project memory and documentation, complete its description, scope and acceptance criteria, and link its dependencies. Ask the author only what only they can answer (owner questions). When the Definition of Ready is met, move the task to `ready` yourself, even while its dependencies are still open: the server starts it once they are done and the team limits allow. Do not wait for automation to do it. If it is not worth doing, say so to the author instead of guessing."
     );
     app.with_tracker(project, |t| t.bus().notify_manager(ORCHESTRATOR, SENDER, "orchestrator", "system", &text, Some(id)))?;
     app.wake_runtime.notify_one();
@@ -136,16 +129,10 @@ fn reconcile_if_due(app: &App, project: &str, now: DateTime<Utc>) -> AppResult<O
     Ok(Some(now + RECONCILE_EVERY))
 }
 
-/// Reconciliation: the ready check over every task in preparation, a new prompt for preparation that
-/// looks lost, and a dispatch pass. `now` is the time the checks judge by.
+/// Reconciliation: a new prompt for preparation that looks lost, and a dispatch pass. `now` is the
+/// time the checks judge by.
 pub fn reconcile(app: &App, project: &str, now: DateTime<Utc>) -> AppResult<()> {
     RECONCILED.lock().unwrap_or_else(PoisonError::into_inner).insert((app.data.clone(), project.to_string()), now);
-    let caller = caller(project);
-    for task in preparing(app, project)? {
-        if let Err(e) = make_ready(app, project, &caller, &task.id) {
-            eprintln!("genie work loop: {project}: {}: ready check: {e}", task.id);
-        }
-    }
     for task in preparing(app, project)? {
         if let Err(e) = reprompt(app, project, &task, now) {
             eprintln!("genie work loop: {project}: {}: prompt: {e}", task.id);
@@ -155,7 +142,7 @@ pub fn reconcile(app: &App, project: &str, now: DateTime<Utc>) -> AppResult<()> 
     Ok(())
 }
 
-/// Tasks in preparation, epics left out: they never become ready (see `readiness_problems`).
+/// Tasks in preparation, epics left out: nothing prepares an epic.
 fn preparing(app: &App, project: &str) -> AppResult<Vec<TaskSummary>> {
     let tasks = app.with_tracker(project, |t| t.list(&ListFilter { status: PREPARATION.to_vec(), ..Default::default() }))?;
     Ok(tasks.into_iter().filter(|t| t.task_type != TaskType::Epic).collect())
@@ -209,8 +196,9 @@ fn stuck(app: &App, project: &str, task: &TaskSummary) -> AppResult<()> {
 
 /// Dispatches ready tasks by priority (0 first), then by creation, while the team limits allow. An
 /// active task manager takes one of `limits.maxActiveTeams` (and one of its epic's
-/// `maxActiveTeamsPerEpic`) until its task closes. A task that cannot be dispatched (not ready,
-/// dependencies open, budget) is skipped and tried again at the next pass.
+/// `maxActiveTeamsPerEpic`) until its task closes. A ready task held on purpose (a block, an owner
+/// decision, open dependencies) is left out without a log line: the event that frees it runs a pass
+/// too. Any other refusal is logged and tried again at the next pass.
 pub fn dispatch_ready(app: &App, project: &str) -> AppResult<Vec<String>> {
     let (mut active, mut per_epic, ready) = app.with_tracker(project, |t| {
         let mut active = 0usize;
@@ -228,8 +216,13 @@ pub fn dispatch_ready(app: &App, project: &str) -> AppResult<Vec<String>> {
                 }
             }
         }
-        let mut ready = t.list(&ListFilter { status: vec![Status::Ready], exclude_epics: true, ..Default::default() })?;
-        ready.retain(|s| !open.contains(&s.id));
+        let mut ready = Vec::new();
+        for s in t.list(&ListFilter { status: vec![Status::Ready], exclude_epics: true, ..Default::default() })? {
+            let held = open.contains(&s.id) || s.blocked.is_some() || s.needs_owner.is_some() || !t.open_deps(&s.id)?.is_empty();
+            if !held {
+                ready.push(s);
+            }
+        }
         ready.sort_by(|a, b| a.priority.cmp(&b.priority).then_with(|| a.created.cmp(&b.created)));
         Ok((active, per_epic, ready))
     })?;
@@ -259,7 +252,8 @@ pub fn dispatch_ready(app: &App, project: &str) -> AppResult<Vec<String>> {
     Ok(dispatched)
 }
 
-/// Moves the task to `ready`, and the tasks waiting on it, unless something still holds each one.
+/// Moves the task to `ready`, and the tasks waiting on it, unless something still holds each one. The
+/// loop does not call this itself: the `task.ready` step of a custom rule does.
 pub fn make_ready(app: &App, project: &str, caller: &Caller, task: &str) -> AppResult<Value> {
     // The task itself, and the tasks that wait for it: closing a dependency frees them.
     let mut candidates = vec![task.to_string()];
@@ -308,11 +302,6 @@ fn holds(app: &App, project: &str, task: &Task) -> AppResult<Vec<String>> {
     let known = task.deps.iter().filter(|d| app.with_tracker(project, |t| t.exists(d)).unwrap_or(false)).cloned().collect();
     out.extend(genie_core::readiness_problems(task, &known));
     Ok(out)
-}
-
-/// The loop acts as the orchestrator, like the management's reconciliation.
-fn caller(project: &str) -> Caller {
-    Caller::automation(project, Actor::new("genie", Role::Orchestrator))
 }
 
 fn find_task(app: &App, project: &str, id: &str) -> AppResult<Option<Task>> {

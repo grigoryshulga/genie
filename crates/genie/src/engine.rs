@@ -14,7 +14,7 @@
 //! 4. **Notify**: tell people about decisions they owe, closed tasks, proposals.
 //! 5. **Team flow**: handoffs bound to a status in a team's relations (`on`) are
 //!    delivered by genie itself when the task enters that status.
-//! 6. **Work loop** (`work_loop`): preparation prompts, readiness and dispatch of
+//! 6. **Work loop** (`work_loop`): preparation prompts and dispatch of ready
 //!    tasks, for every project but the manual ones.
 //!
 //! Protections: no rule triggers itself, cascades stop at depth 3, per-rule

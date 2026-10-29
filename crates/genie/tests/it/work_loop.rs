@@ -1,5 +1,5 @@
-//! The built-in work loop: preparation prompts, readiness, dispatch by priority, reconciliation and
-//! the retirement of the playbooks it replaced.
+//! The built-in work loop: preparation prompts, dispatch of ready tasks by priority, reconciliation and
+//! the retirement of the playbooks it replaced. The project manager, not the loop, moves a task to ready.
 
 use crate::common::Harness;
 use genie::work_loop;
@@ -118,25 +118,76 @@ fn no_prompt_for_an_inbox_task_or_an_epic_and_a_manual_project_is_left_to_people
 }
 
 #[test]
-fn a_held_task_moves_to_ready_once_nothing_holds_it() {
+fn the_loop_never_moves_a_prepared_task_to_ready() {
     let h = harness();
-    let dep = create(&h, CreateInput { title: "API of the warehouse".into(), ..Default::default() });
-    let waiting = create(&h, CreateInput { deps: vec![dep.clone()], ..complete("Export orders", 2) });
-    let blocked = create(&h, complete("Export returns", 2));
-    h.app.with_tracker("shop", |t| t.block(&anna(), &blocked, "no access to the warehouse API")).unwrap();
+    // Meets the Definition of Ready: only the project manager's move to `ready` makes it ready.
+    let id = create(&h, complete("Export orders", 1));
+    set(&h, &id, Status::Refining);
     tick(&h);
-    // The dependency has no description or criteria; the others wait for it or are blocked.
-    assert_eq!(status(&h, &dep), Status::Draft);
-    assert_eq!(status(&h, &waiting), Status::Draft, "an open dependency holds it");
-    assert_eq!(status(&h, &blocked), Status::Draft, "a block holds it");
+    work_loop::reconcile(&h.app, "shop", chrono::Utc::now() + chrono::Duration::hours(2)).unwrap();
+    assert_eq!(status(&h, &id), Status::Refining, "the loop leaves the move to the manager");
+    assert_eq!(sent(&h, &id), 1, "the manager is prompted to prepare it, and that is all");
+}
 
-    h.app.with_tracker("shop", |t| t.unblock(&anna(), &blocked)).unwrap();
+#[test]
+fn a_ready_task_waits_quietly_for_its_open_dependency() {
+    let h = harness();
+    let dep = create(&h, complete("Warehouse API", 1));
+    let waiting = create(&h, CreateInput { deps: vec![dep.clone()], ..complete("Export orders", 0) });
+    // The project manager moved it to ready while the dependency is still open.
+    set(&h, &waiting, Status::Ready);
     tick(&h);
-    assert_eq!(status(&h, &blocked), Status::Ready, "unblocked, nothing else holds it");
+    assert_eq!(status(&h, &waiting), Status::Ready, "the loop does not change its status");
+    assert!(!manager_active(&h, &waiting), "an open dependency holds the dispatch");
+    assert!(
+        work_loop::dispatch_ready(&h.app, "shop").unwrap().is_empty(),
+        "a held task is skipped without a dispatch error: nothing is dispatched, and nothing is logged"
+    );
 
     set(&h, &dep, Status::Done);
     tick(&h);
-    assert_eq!(status(&h, &waiting), Status::Ready, "its dependency is done");
+    assert!(manager_active(&h, &waiting), "the dependency closing starts the waiting task");
+}
+
+#[test]
+fn a_blocked_ready_task_is_dispatched_once_unblocked() {
+    let h = harness();
+    let blocked = create(&h, complete("Export returns", 0));
+    set(&h, &blocked, Status::Ready);
+    h.app.with_tracker("shop", |t| t.block(&anna(), &blocked, "no access to the warehouse API")).unwrap();
+    tick(&h);
+    assert!(!manager_active(&h, &blocked), "a block holds it");
+    assert_eq!(status(&h, &blocked), Status::Ready);
+
+    h.app.with_tracker("shop", |t| t.unblock(&anna(), &blocked)).unwrap();
+    tick(&h);
+    assert!(manager_active(&h, &blocked), "the unblock event runs a dispatch pass");
+
+    // Reconciliation alone also starts a task that was unblocked, whatever the journal says.
+    let again = create(&h, complete("Export returns again", 0));
+    set(&h, &again, Status::Ready);
+    h.app.with_tracker("shop", |t| t.block(&anna(), &again, "waiting for the warehouse")).unwrap();
+    tick(&h);
+    h.app.with_tracker("shop", |t| t.unblock(&anna(), &again)).unwrap();
+    work_loop::reconcile(&h.app, "shop", chrono::Utc::now()).unwrap();
+    assert!(manager_active(&h, &again), "the reconciliation pass starts it");
+}
+
+#[test]
+fn an_owner_decision_that_readies_a_task_starts_it() {
+    let h = harness();
+    let id = create(&h, complete("Export in CSV or XLSX", 0));
+    h.app
+        .with_tracker("shop", |t| {
+            t.set_status(&anna(), &id, Status::NeedsOwner, StatusOptions { note: Some("CSV or XLSX?".into()), ..Default::default() })
+        })
+        .unwrap();
+    tick(&h);
+    assert!(!manager_active(&h, &id), "a task waiting for the owner is not dispatched");
+
+    set(&h, &id, Status::Ready);
+    tick(&h);
+    assert!(manager_active(&h, &id), "the decision that moves it to ready starts it");
 }
 
 #[test]
@@ -183,7 +234,7 @@ fn the_next_ready_task_is_dispatched_when_a_manager_completes() {
 fn a_task_that_cannot_be_dispatched_is_skipped_and_the_rest_go_on() {
     let h = harness();
     let dep = create(&h, CreateInput { title: "Warehouse API".into(), ..Default::default() });
-    // Forced ready with a dependency still open: the manager refuses it, the next task starts.
+    // Forced ready with a dependency still open: held on purpose, left out, the next task starts.
     let blocked_by_dep = create(&h, CreateInput { deps: vec![dep.clone()], ..complete("Waits for the API", 0) });
     let ready = create(&h, complete("Starts now", 1));
     set(&h, &blocked_by_dep, Status::Ready);
@@ -194,34 +245,35 @@ fn a_task_that_cannot_be_dispatched_is_skipped_and_the_rest_go_on() {
 }
 
 #[test]
-fn a_stopped_team_runs_a_dispatch_pass() {
-    let h = harness();
-    // The first pass of a project reconciles it (a dispatch pass too); later passes within a minute do not.
+fn a_stopped_team_runs_a_dispatch_pass_but_frees_no_manager_slot() {
+    let h = Harness::with_config(|c| c.limits.max_active_teams = 1);
+    h.project("shop");
+    let busy = create(&h, complete("Running", 0));
+    let waiting = create(&h, complete("Waiting for room", 1));
+    set(&h, &busy, Status::Ready);
+    set(&h, &waiting, Status::Ready);
     tick(&h);
-    // Created ready: creating a task is no status change, so no dispatch pass is due for it.
-    let waiting = create(&h, CreateInput { status: Some(Status::Ready), ..complete("Waiting for room", 0) });
-    tick(&h);
-    assert!(!manager_active(&h, &waiting), "nothing ran a dispatch pass");
+    assert!(manager_active(&h, &busy) && !manager_active(&h, &waiting), "the one slot goes to the first task");
 
-    let team_task = create(&h, complete("Team", 1));
+    // A team of the running task stops. Capacity counts task managers, not teams: the slot stays taken.
     h.app
         .with_tracker("shop", |t| {
             t.bus().create(
                 "anna",
                 "human",
                 NewTeam {
-                    id: team_task.clone(),
-                    task: team_task.clone(),
+                    id: busy.clone(),
+                    task: busy.clone(),
                     cwd: h.dir.path().to_string_lossy().into_owned(),
                     members: vec![NewMember { name: "bender".into(), role: "executor".into(), ..Default::default() }],
                     ..Default::default()
                 },
             )?;
-            t.bus().set_state(&team_task, TeamState::Stopped, Some("done"), "anna")
+            t.bus().set_state(&busy, TeamState::Stopped, Some("done"), "anna")
         })
         .unwrap();
     tick(&h);
-    assert!(manager_active(&h, &waiting), "a team that stops frees room for the next ready task");
+    assert!(!manager_active(&h, &waiting), "a stopped team does not free the slot of its task manager");
 }
 
 #[test]
