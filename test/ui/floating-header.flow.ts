@@ -169,6 +169,8 @@ for (const width of [1440, 390]) {
     await expect.poll(aligned).toBeLessThan(0.5);
     await nav.getByRole("link", { name: /Задачи/ }).focus();
     await page.keyboard.press("ArrowRight");
+    await expect(nav.getByRole("link", { name: "Чат", exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowRight");
     await expect(nav.getByRole("link", { name: /Знания/ })).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/docs$/);

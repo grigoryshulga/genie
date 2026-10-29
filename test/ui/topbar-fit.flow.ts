@@ -12,8 +12,6 @@ const measure = () => {
   const bar = document.querySelector<HTMLElement>(".g-topbar")!;
   const project = box(".g-topbar-project");
   const pill = box(window.innerWidth > 900 ? ".g-topbar-pill" : ".g-topbar-nav");
-  // «Знания» is the middle of the three destinations: its pill (label and chevron) centres the dock.
-  const board = box('.g-topbar-nav .g-tab-split:has(a[href="/docs"])');
   const create = box(".g-topbar-create");
   return {
     inner: window.innerWidth,
@@ -25,7 +23,8 @@ const measure = () => {
     projectBottom: project.bottom,
     dockTop: pill.top,
     dockBottom: pill.bottom,
-    boardMiddle: (board.left + board.right) / 2,
+    // Four destinations share the dock, so no single one sits in its middle: the dock itself is centred.
+    dockMiddle: (pill.left + pill.right) / 2,
     createTop: create.top,
     createBottom: create.bottom,
     links: [...bar.querySelectorAll(".g-topbar-nav a")].map((node) => node.getAttribute("href")),
@@ -53,7 +52,7 @@ for (const width of [1440, 1280, 1181, 1000, 901, 900, 768, 430, 390, 360]) {
     await page.locator("main.g-tasks-page").waitFor();
     await page.locator(".g-topbar-project").waitFor({ state: "visible" });
 
-    await expect(page.locator(".g-topbar-nav a")).toHaveCount(3);
+    await expect(page.locator(".g-topbar-nav a")).toHaveCount(4);
     await page.evaluate(() => document.fonts.ready);
     const geometry = await page.evaluate(measure);
     expect(geometry.docScroll).toBeLessThanOrEqual(geometry.inner);
@@ -68,8 +67,8 @@ for (const width of [1440, 1280, 1181, 1000, 901, 900, 768, 430, 390, 360]) {
       expect(Math.abs((geometry.projectLeft + geometry.pillRight) / 2 - width / 2)).toBeLessThan(2);
       expect(geometry.pillLeft - geometry.projectRight).toBeLessThanOrEqual(12);
     } else {
-      expect(geometry.links).toEqual(["/tasks", "/docs", "/manage/project/general"]);
-      expect(geometry.boardMiddle).toBeCloseTo(width / 2, 0);
+      expect(geometry.links).toEqual(["/tasks", "/chat", "/docs", "/manage/project/general"]);
+      expect(geometry.dockMiddle).toBeCloseTo(width / 2, 0);
       expect(geometry.projectTop).toBeLessThan(64);
       expect(geometry.projectBottom).toBeLessThan(geometry.dockTop);
       expect(geometry.createBottom).toBeLessThan(geometry.dockTop);

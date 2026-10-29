@@ -34,7 +34,7 @@ const KNOWN = [
   "task.created", "task.updated", "task.status_changed", "task.commented", "task.criterion_checked", "task.artifact_added",
   "task.blocked", "task.unblocked", "task.team_assigned", "task.deleted", "mail.sent", "mcp.called", "git.pushed", "git.denied",
   "cr.opened", "cr.merged", "cr.closed", "ci.failed", "ci.passed", "ci.stalled", "team.spawned", "team.started", "team.stopped",
-  "doc.changed", "doc.proposal", "doc.proposal_decided", "release.published",
+  "doc.changed", "doc.proposal", "doc.proposal_decided", "release.published", "chat.posted",
   ...OBSERVATION_EVENTS,
 ];
 

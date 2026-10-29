@@ -11,7 +11,7 @@ An automation is a JSON rule with a trigger, limits, and ordered steps. Edit rul
 
 ```bash
 genie automation create --file rule.json
-genie automation install auto-ready
+genie automation install task-done-knowledge
 genie automation runs
 genie automation run-show <run>
 ```
@@ -61,7 +61,7 @@ Common step fields are `id`, `if`, `retry`, `timeout` (such as `30s` or `45m`), 
 | --- | --- |
 | `task.get`, `task.create`, `task.update` | Read or change a task. Unknown update fields fail. |
 | `task.status`, `task.comment` | Change status or add a comment, respecting workflow rules. |
-| `task.ready` | Move eligible tasks and newly unblocked dependents to ready. |
+| `task.ready` | Move a task and the tasks waiting on it to ready, unless a block, open dependencies, an owner decision, open questions or a running job or team hold them. Only custom rules use it: the work loop never moves tasks to ready. |
 | `notify` | Deliver web, Telegram, or email notifications. |
 | `agent` | Run a one-shot role with a goal, inputs, output contract, workspace, and optional model. |
 | `team` | Spawn a team and optionally wait for task status. |
@@ -91,11 +91,11 @@ Task status steps use orchestrator permissions, including assisted-mode restrict
 
 | Playbook | Behavior |
 | --- | --- |
-| Task completion | Documenter → changelog entry → author/admin notification. |
-| Human intake | Analyst → questions to the author → orchestrator wake-up. |
-| Owner reminder | Remind after 24 hours if the task still needs a decision. |
-| `auto-ready` | Recheck readiness after task changes and dependency completion. |
-| `ready-start` | Wake the orchestrator for a newly ready task. |
-| `ready-next` | Wake the orchestrator when a team stops, within project/epic limits. |
+| `task-done-knowledge` | Task completion → documenter → changelog entry → author/admin notification. |
+| `needs-owner-escalation` | Remind the author and owners after 24 hours if a task still needs a decision. |
+
+The project manager's preparation prompts and the dispatch of ready tasks are not playbooks: the server does them itself, in every project except a `manual` one. Moving a task to `ready` is the project manager's decision, also while its dependencies are open; the server starts it once they are done. See [project and task managers](project-and-task-managers.md#work-loop).
+
+The former playbooks `new-task-triage`, `auto-ready`, `ready-start` and `ready-next` were replaced by that work loop and the manager's decision. The server switches off installed copies of these playbooks when it starts; later starts change nothing. Rules you wrote keep working, including their `task.ready` and `wake_orchestrator` steps.
 
 Built-in assignment, mention, owner-question, and proposal notifications work without custom rules.

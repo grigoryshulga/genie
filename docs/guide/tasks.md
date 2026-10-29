@@ -71,6 +71,6 @@ genie task create "Export orders to CSV" --epic G-3 --project shop
 
 For [hosted repositories](../platform/git-repositories.md), agents push a task branch and open a PR/MR. Failed checks block submission to review; an open, unmerged request blocks completion. Human merge and assisted-mode closure are separate decisions.
 
-`limits.maxActiveTeams` bounds concurrent teams per project; `maxActiveTeamsPerEpic` can bound one epic. Ready tasks wait when capacity is full. The `ready-next` playbook wakes the orchestrator when a team stops.
+`limits.maxActiveTeams` bounds concurrent teams per project; `maxActiveTeamsPerEpic` can bound one epic. Ready tasks wait when capacity is full, and the work loop dispatches them as room frees up, when a task closes or a team stops (see [the work loop](../platform/project-and-task-managers.md#work-loop)).
 
 [Budgets](../platform/settings.md#usage-and-budgets) can stop teams at a task, epic, or daily limit.

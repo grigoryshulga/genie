@@ -130,6 +130,9 @@ pub struct RuntimeConfig {
     pub max_sessions: usize,
     /// A session idle this long is stopped (its conversation is kept and resumed).
     pub idle_stop_secs: u64,
+    /// The same for the project manager and task managers, which stay warm longer: a chat message
+    /// or a warm-up from a person should not wait for a cold start.
+    pub manager_idle_stop_secs: u64,
     /// The V8 heap limit of a pi process, MB (`NODE_OPTIONS=--max-old-space-size`; 0: Node's own
     /// default, up to 4 GB). Keeps a runaway session from eating the machine; the cap is dropped
     /// again for the commands pi runs. Left alone when `NODE_OPTIONS` already sets one.
@@ -151,6 +154,9 @@ pub struct RuntimeConfig {
     /// How many reruns a whole task may spend over all its repositories; 0 switches reruns off.
     pub ci_reruns_per_task: u32,
     pub max_attempts: u32,
+    /// A task in preparation whose prompts and journal events stayed quiet for this long gets its
+    /// project manager prompted again (the work loop's reconciliation, `engine::work_loop`).
+    pub prep_retry_secs: u64,
     /// How long `genie mail ask` waits for the answer by default.
     pub ask_timeout_secs: u64,
     /// Characters of mail put into a session at one step boundary.
@@ -272,6 +278,7 @@ impl Default for RuntimeConfig {
             max_concurrent: 4,
             max_sessions: 12,
             idle_stop_secs: 300,
+            manager_idle_stop_secs: 3600,
             node_heap_mb: 2048,
             turn_timeout_secs: 1800,
             stall_secs: 900,
@@ -280,6 +287,7 @@ impl Default for RuntimeConfig {
             ci_reruns_per_request: 2,
             ci_reruns_per_task: 3,
             max_attempts: 3,
+            prep_retry_secs: 1800,
             ask_timeout_secs: 180,
             delivery_budget: genie_core::team::DELIVERY_BUDGET,
             env: BTreeMap::new(),
@@ -647,6 +655,7 @@ mod tests {
         assert_eq!((cfg.runtime.ci_reruns_per_request, cfg.runtime.ci_reruns_per_task), (2, 3));
         assert_eq!(cfg.limits.max_members_per_team, 6);
         assert_eq!((cfg.runtime.idle_stop_secs, cfg.runtime.node_heap_mb), (300, 2048), "unset runtime fields keep defaults");
+        assert_eq!(cfg.runtime.manager_idle_stop_secs, 3600, "unset runtime fields keep defaults");
     }
 
     #[test]
@@ -664,6 +673,14 @@ mod tests {
         assert_eq!(Config::load(dir.path()).unwrap().runtime.stall_secs, 30);
         std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"stallSecs": 0}}"#).unwrap();
         assert_eq!(Config::load(dir.path()).unwrap().runtime.stall_secs, 0, "0 switches it off");
+    }
+
+    #[test]
+    fn the_preparation_retry_is_configurable() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().runtime.prep_retry_secs, 1800);
+        std::fs::write(dir.path().join("config.json"), r#"{"runtime": {"prepRetrySecs": 60}}"#).unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().runtime.prep_retry_secs, 60);
     }
 
     #[test]

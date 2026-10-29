@@ -59,6 +59,8 @@ function seed() {
   for (const p of PEOPLE) run(["user", "add", p.login, "--name", p.name, ...(p.admin ? ["--admin"] : []), "--password-stdin"], `${p.password}\n`);
   for (const project of STAND_PROJECTS) {
     run(["project", "add", project.id, "--name", project.name, "--prefix", project.prefix]);
+    // Seeded statuses are the point of the stand: in `manual` the work loop leaves them where they are.
+    run(["project", "update", project.id, "--autonomy", "manual"]);
     for (const [login, role] of project.members) run(["member", project.id, login, role]);
     seedDocs(bin, dataDir, project.id, project.docs);
     const ids: string[] = [];

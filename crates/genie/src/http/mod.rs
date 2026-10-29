@@ -8,6 +8,7 @@ pub mod account;
 pub mod agent_config;
 pub mod agents;
 pub mod automations;
+pub mod chat;
 pub mod connections;
 pub mod console;
 pub mod ctx;
@@ -138,6 +139,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(social_auth::routes())
         .merge(tasks::routes())
         .merge(ideas::routes())
+        .merge(chat::routes())
         .merge(management::routes())
         .merge(teams::routes())
         .merge(decisions::routes())

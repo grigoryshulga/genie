@@ -44,7 +44,26 @@ macro_rules! task_action {
         }
     };
 }
-task_action!(Dispatch, "dispatch", "Release a ready unblocked task to its own manager; repeated calls reuse the manager.");
+/// Release a ready unblocked task to its own manager; repeated calls reuse the manager. In a manual
+/// project the project manager dispatches only on behalf of the chat message that asked for it.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Dispatch {
+    pub task: Option<String>,
+    /// The chat message (`genie chat read`) in which a person asked for this dispatch.
+    #[arg(long)]
+    pub on_behalf: Option<i64>,
+}
+impl Op for Dispatch {
+    const GROUP: &'static str = "manager";
+    const NAME: &'static str = "dispatch";
+    const NEED: Need = Need::Orchestrator;
+    const LISTED: Listed = Listed::Orchestrator;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let body = json!({ "onBehalf": self.on_behalf });
+        Ok(out(cx.call("POST", &format!("/management/tasks/{}/dispatch", enc(&cx.task(self.task)?)), Some(body)).await?))
+    }
+}
 task_action!(Retry, "retry", "Wake a task manager to resume execution or its mandatory retrospective.");
 
 /// Ask the project manager; it answers with evidence or escalates to a person.

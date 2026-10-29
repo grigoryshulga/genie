@@ -3,9 +3,11 @@
 
 use std::collections::HashSet;
 
+use genie_core::chat::{ChatMessage, MANAGER};
 use genie_core::management::{TaskManager, managed_task, manager_name};
+use genie_core::server_db::ProjectRole;
 use genie_core::team::ORCHESTRATOR;
-use genie_core::{Actor, Role};
+use genie_core::{Actor, CommentKind, GenieError, Role};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -39,18 +41,98 @@ pub fn project_manager(actor: &Actor) -> AppResult<()> {
 }
 
 pub fn dispatch(app: &App, project: &str, actor: &Actor, task: &str) -> AppResult<TaskManager> {
+    dispatch_with(app, project, actor, task, None)
+}
+
+/// The project manager's dispatch on behalf of the person whose chat message `chat` asked for it
+/// (`genie manager dispatch --on-behalf`). In a `manual` project this is the only way it dispatches.
+pub fn dispatch_on_behalf(app: &App, project: &str, actor: &Actor, task: &str, chat: i64) -> AppResult<TaskManager> {
+    dispatch_with(app, project, actor, task, Some(chat))
+}
+
+fn dispatch_with(app: &App, project: &str, actor: &Actor, task: &str, chat: Option<i64>) -> AppResult<TaskManager> {
     project_manager(actor)?;
-    if actor.role != Role::Human && app.with_server(|db| db.project(project))?.autonomy == "manual" {
-        return Err(AppError::Forbidden("manual projects are dispatched by people".into()));
+    let manual = app.with_server(|db| db.project(project))?.autonomy == "manual";
+    let by_agent = actor.role != Role::Human;
+    if manual && by_agent && chat.is_none() {
+        return Err(AppError::Forbidden(
+            "manual projects are dispatched by people; the project manager dispatches a task only on behalf of the chat message that asked for it (--on-behalf <chat-id>)".into(),
+        ));
     }
+    let note = match chat {
+        Some(id) => Some(format!("Dispatched on behalf of @{} (chat #{id}).", on_behalf(app, project, task, id, manual && by_agent)?)),
+        None => None,
+    };
     // Check configuration and budget before committing the release.
     let _ = app.agents().orchestrator().ok_or_else(|| AppError::Bad("task-manager role is missing".into()))?;
     if let Some(exceeded) = crate::budget::check(app, project, Some(task))? {
         return Err(AppError::Conflict(exceeded.explain()));
     }
-    let manager = app.with_tracker(project, |t| t.management().dispatch(actor, task))?;
+    let manager = app.with_tracker(project, |t| {
+        t.tx(|| {
+            let fresh = t.management().manager(&t.normalize_id(task)?)?.is_none_or(|m| m.state == "completed");
+            let manager = t.management().dispatch(actor, task)?;
+            // The note records who asked, next to the task; a repeated call that finds a manager running adds nothing.
+            if let Some(note) = note.as_deref().filter(|_| fresh) {
+                t.comment(actor, &manager.task, note, CommentKind::Note)?;
+            }
+            Ok(manager)
+        })
+    })?;
     crate::tasks::changed(app);
     Ok(manager)
+}
+
+/// The login of the person whose chat message `id` asked for a dispatch of `task`. With `strict`
+/// (a manual project, a dispatch by the project manager) the message must be a person's own, with
+/// write access to the project, written within a day, tagging the manager and naming the task;
+/// otherwise it only has to exist, and the dispatch records whoever wrote it.
+fn on_behalf(app: &App, project: &str, task: &str, id: i64, strict: bool) -> AppResult<String> {
+    let found = app.with_tracker(project, |t| Ok((t.chat().get(id)?, t.normalize_id(task)?)));
+    let (message, task_id) = match found {
+        Ok(found) => found,
+        Err(AppError::Genie(GenieError::NotFound(_))) if strict => {
+            return Err(AppError::Forbidden(format!("chat message #{id} does not exist, so it cannot release a dispatch")));
+        }
+        Err(e) => return Err(e),
+    };
+    if strict {
+        let refuse = |why: String| Err(AppError::Forbidden(format!("chat message #{id} does not release a dispatch: {why}")));
+        if message.author_role != Role::Human {
+            return refuse(format!("it was written by {} ({}), not by a person", message.author, message.author_role));
+        }
+        let writes = app.with_server(|db| match db.user_by_login(&message.author)? {
+            Some(u) if !u.disabled => Ok(db.project_role(project, &u)?.is_some_and(ProjectRole::can_write)),
+            _ => Ok(false),
+        })?;
+        if !writes {
+            return refuse(format!("@{} has no write access to {project}", message.author));
+        }
+        if !message.mentions.iter().any(|m| m == MANAGER) {
+            return refuse("it does not tag the project manager (@pm)".into());
+        }
+        if !written_within_a_day(&message) {
+            return refuse("it is older than 24 hours".into());
+        }
+        if !names_task(&message.text, &task_id) {
+            return refuse(format!("its text does not name the task {task_id}"));
+        }
+    }
+    Ok(message.author)
+}
+
+fn written_within_a_day(m: &ChatMessage) -> bool {
+    chrono::DateTime::parse_from_rfc3339(&m.at).is_ok_and(|at| chrono::Utc::now() - at.to_utc() < chrono::Duration::hours(24))
+}
+
+/// Whether `text` names the task `id` as a word of its own (case-insensitive): `G-7` is not in `G-70`.
+fn names_task(text: &str, id: &str) -> bool {
+    let (text, id) = (text.to_lowercase(), id.to_lowercase());
+    text.match_indices(&id).any(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + id.len()..].chars().next();
+        !before.is_some_and(char::is_alphanumeric) && !after.is_some_and(char::is_alphanumeric)
+    })
 }
 
 /// Existing running teams are adopted without replaying their execution. Called

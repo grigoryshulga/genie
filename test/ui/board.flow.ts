@@ -12,13 +12,13 @@ for (const theme of ["ink", "paper"]) {
     expect(tone).toMatch(/^[1-4]$/);
     await expect(sibling).toHaveAttribute("data-epic-tone", tone!);
     const marker = await card.evaluate((node) => {
-      return { color: getComputedStyle(node.querySelector(".epic-icon")!).color, stripe: getComputedStyle(node, "::before").content, shadow: getComputedStyle(node).boxShadow, background: getComputedStyle(node).backgroundColor };
+      return { color: getComputedStyle(node.querySelector(".epic-icon")!).color, stripe: getComputedStyle(node, "::before").content, shadow: getComputedStyle(node).boxShadow };
     });
     expect(marker.stripe).toBe("none");
     expect(marker.shadow).toContain("0px 1px 0px");
+    // Both tasks are in work (one in progress, one ready); the lane tint itself is covered by the next test.
     await expect(card).toHaveAttribute("data-lane-tone", "work");
-    await expect(sibling).toHaveAttribute("data-lane-tone", "queue");
-    expect(await sibling.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(marker.background);
+    await expect(sibling).toHaveAttribute("data-lane-tone", "work");
     await expect(sibling.locator(".epic-icon")).toHaveCSS("color", marker.color);
     await expect(card.locator(".bd-main a")).toHaveCount(0);
     const link = card.getByRole("link", { name: SEED_TASKS[0].title });
@@ -78,7 +78,7 @@ for (const theme of ["ink", "paper"]) {
       await page.goto(`/board?q=${encodeURIComponent(`Проверка цвета дорожки ${theme}`)}`);
       await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
       const laneBackgrounds = await page.locator('.g-lane[data-lane]:not([data-lane="cancelled"])').evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).backgroundColor));
-      expect(new Set(laneBackgrounds).size).toBe(6);
+      expect(new Set(laneBackgrounds).size).toBe(5);
       const card = page.locator(`[data-task-id="${id}"]`);
       await expect(card).toHaveAttribute("data-lane-tone", "prep");
       const before = await card.evaluate((node) => ({ background: getComputedStyle(node).backgroundColor, epic: getComputedStyle(node.querySelector(".epic-icon")!).color }));
@@ -94,13 +94,13 @@ for (const theme of ["ink", "paper"]) {
 
       await card.getByRole("button", { name: `Переместить ${id}` }).click();
       await page.getByRole("menuitem", { name: /^Готово к работе/ }).click();
-      await expect(card).toHaveAttribute("data-lane-tone", "queue");
+      await expect(card).toHaveAttribute("data-lane-tone", "work");
       await expect.poll(async () => (await storedTask(request, id)).status).toBe("ready");
       await expect.poll(() => card.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(before.background);
       await expect(card.locator(".epic-icon")).toHaveCSS("color", before.epic);
       await page.reload();
       await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
-      await expect(card).toHaveAttribute("data-lane-tone", "queue");
+      await expect(card).toHaveAttribute("data-lane-tone", "work");
 
       // The browser resolves color-mix; a one-pixel canvas reads the resulting sRGB values.
       const contrasts = await page.evaluate(() => {
@@ -244,4 +244,34 @@ for (const theme of ["ink", "paper"]) {
       expect((await lane.boundingBox())!.width).toBeLessThanOrEqual(72);
     });
   }
+}
+
+const AWAITING_TEAM = "Ждёт запуска: команда соберётся, когда освободится место и будут готовы зависимости";
+
+for (const theme of ["ink", "paper"]) {
+  test(`a ready card in work shows a team placeholder and its hint, a running card does not (${theme})`, async ({ page }) => {
+    await page.goto("/board");
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    // DM-3 is seeded as ready (no team yet); DM-2 is in progress.
+    const waiting = page.locator('[data-task-id="DM-3"]');
+    const running = page.locator('[data-task-id="DM-2"]');
+    await expect(waiting).toHaveAttribute("data-status", "ready");
+    await expect(running).toHaveAttribute("data-status", "in_progress");
+
+    const placeholder = waiting.locator(".bd-team-dot");
+    await expect(placeholder).toHaveCount(3);
+    await expect(waiting.locator(".bd-team-wait")).toHaveAttribute("aria-hidden", "true");
+    await expect(placeholder.first()).toHaveClass(/g-skeleton/);
+    await expect(placeholder.first()).toHaveCSS("animation-name", "g-shimmer");
+    // The tiles keep the small avatar size, so the card does not grow.
+    expect((await placeholder.first().boundingBox())!.width).toBeCloseTo(24, 0);
+    await expect(waiting.getByRole("button", { name: /^DM-3:/ })).toHaveAccessibleDescription(new RegExp(AWAITING_TEAM));
+    expect((await waiting.boundingBox())!.height).toBeCloseTo(144, 2);
+
+    await expect(running.locator(".bd-team-dot")).toHaveCount(0);
+    await expect(running.getByRole("button", { name: /^DM-2:/ })).not.toHaveAccessibleDescription(/Ждёт запуска/);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(placeholder.first()).toHaveCSS("animation-name", "none");
+  });
 }

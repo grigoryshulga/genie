@@ -36,6 +36,17 @@ Project autonomy governs dispatch. In `manual`, the project manager does not run
 
 Task managers cannot create unrelated tasks or rewrite requirements, priorities, assignees, dependencies, acceptance criteria, or integration policy. Their team, repository, job, mail, pause, and inspection operations are scoped to their own task. Changes outside that scope go to the project manager.
 
+## Work loop
+
+The server keeps the queue moving without a playbook to install. In every project except `manual` (where people dispatch) the engine runs the work loop on each pass:
+
+- A task that enters preparation (`draft` or `refining`) prompts the project manager once to prepare it: complete its description, scope and acceptance criteria, link its dependencies, and ask the author only what only they can answer. A prompt that is still unread is not repeated. Inbox tasks are never prepared automatically, and epics are not prepared at all.
+- The project manager decides when a task is ready. Once the Definition of Ready is met, the manager moves the task to `ready`, even while its dependencies are still open. The loop never moves a task to `ready` by itself, so a task in preparation stays there until the manager acts.
+- Ready tasks are dispatched by priority (P0 first, then creation order). A ready task held by an open dependency, a block or an owner decision waits quietly and is not logged; it is dispatched once the hold clears. A dispatch pass runs when a task becomes ready, closes or is deleted, when a block is removed, when a decision moves a task to `ready`, when a team stops, and when a task manager publishes its retrospective. A dependency that is done or deleted frees the tasks that wait on it; a cancelled one still holds them. An active task manager takes one slot of `limits.maxActiveTeams`, and one of `limits.maxActiveTeamsPerEpic` for its epic; a manager in its retrospective frees both. A ready task that still cannot be dispatched for another reason (for example the budget) is logged and tried at the next pass.
+- About once a minute per project, the loop checks the tasks in preparation again. A task whose prompts and journal have been quiet for `runtime.prepRetrySecs` (default 1800) is prompted again; a task that was never prompted is prompted after two minutes of quiet. After three prompts the loop stops and tells the project admins once. Each minute's check also runs a dispatch pass, so a missed event does not strand a ready task.
+
+A `manual` project keeps its behaviour: no prompts, no dispatch. The loop still advances its journal cursor there, so enabling autonomy later does not replay old history. A manual project's ready tasks wait for a person's dispatch. The loop replaces the playbooks `new-task-triage`, `auto-ready`, `ready-start` and `ready-next`; moving a task to `ready` is the project manager's decision, not a playbook's. See [automations](automations.md#playbooks).
+
 ## Clarifications
 
 The route is **team member → task manager → project manager → person**. A durable question records its task, brief version, blocking flag, recipient state, answer, and source. The project manager answers only with an applicable confirmed decision, current documentation, or delegated authority. Model confidence alone is insufficient. Conflicting sources, missing requirements, and decisions outside authority go to a person.

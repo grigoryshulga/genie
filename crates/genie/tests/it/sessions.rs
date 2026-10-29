@@ -19,7 +19,8 @@ use axum::routing::post;
 use genie::config::Config;
 use genie::runtime::AgentKey;
 use genie::state::App;
-use genie_core::team::{NewMember, NewTeam, SendMail};
+use genie_core::server_db::ProjectRole;
+use genie_core::team::{CHAT_MAIL, NewMember, NewTeam, ORCHESTRATOR, SendMail};
 use genie_core::{Activity, Actor, CreateInput, MemberState, Role};
 use serde_json::{Value, json};
 
@@ -270,6 +271,14 @@ fn mail(app: &App, from: &str, from_role: &str, to: &str, text: &str, level: Opt
     app.with_tracker("shop", |t| t.bus().send(SendMail { team: "SHOP-1", from, from_role, to, text, level, kind, ..Default::default() }))
         .unwrap();
     app.wake_runtime.notify_one();
+}
+
+/// A member that has finished a run and is idle again. A fresh session is idle too, before its first wake-up.
+async fn settled_run(app: &App, name: &str) {
+    until(&format!("{name} to settle idle after a run"), 60, || {
+        app.sessions.get(&member(name)).filter(|s| s.live().runs >= 1 && s.live().state == "idle").map(|_| ())
+    })
+    .await;
 }
 
 fn member(name: &str) -> AgentKey {
@@ -913,10 +922,11 @@ async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
 
     // A first step runs and its letter is acknowledged while the turn runs.
     mail(app, "anna", "human", "bender", "RUN: echo first > a1", None);
+    // Idle with its letter taken is not enough: a fresh session is idle before its first wake-up.
     until("the step and its letter to settle", 60, || {
         let idle = session_state(app, "bender").is_some_and(|s| s.0 == "idle");
         let empty = app.with_tracker("shop", |t| t.bus().pending(Some("SHOP-1"), "bender")).unwrap().is_empty();
-        (idle && empty).then_some(())
+        (idle && empty && work.join("a1").exists()).then_some(())
     })
     .await;
     assert!(work.join("a1").exists(), "the first step ran");
@@ -967,4 +977,224 @@ async fn a_server_crash_mid_turn_does_not_leave_the_agent_stuck() {
     assert_eq!(req.count("RUN: echo first"), 1, "the acknowledged letter is not injected twice");
     until("the agent to continue its own work", 60, || work.join("a2").exists().then_some(())).await;
     eprintln!("a server crash mid-turn: the agent resumed by itself and wrote a2");
+}
+
+/// A person of the project with a personal token: how people call the API.
+fn person_token(app: &App) -> String {
+    let u = app.with_server(|db| db.create_user("ines", "ines", None, None, false)).unwrap();
+    app.with_server(|db| db.set_membership("shop", u.id, ProjectRole::Member)).unwrap();
+    app.with_server(|db| db.create_user_token(u.id, "test")).unwrap()
+}
+
+fn orchestrator() -> AgentKey {
+    AgentKey::Orchestrator { project: "shop".into() }
+}
+
+/// The state of the live session of `key`, if one runs.
+fn live_state(app: &App, key: &AgentKey) -> Option<String> {
+    app.sessions.get(key).map(|s| s.live().state)
+}
+
+/// A project whose manager runs without chat: not `manual`, so it is wanted all the time.
+fn automatic(app: &App) {
+    app.with_server(|db| db.set_autonomy("shop", "assisted")).unwrap();
+}
+
+/// A person warmed the manual project's manager just now: that keeps it wanted (`POST /api/chat/warm`).
+/// Unlike `automatic`, the team's task is not adopted, so no task manager takes a session slot.
+fn warmed_chat(app: &App) {
+    assert!(app.sessions.warm("shop", app.clock.now(), Duration::from_secs(30)));
+}
+
+/// `POST /api/chat/warm` as a person: the status and the body.
+async fn warm(app: &App, token: &str) -> (reqwest::StatusCode, Value) {
+    let res =
+        reqwest::Client::new().post(format!("http://127.0.0.1:{}/api/chat/warm", app.cfg.port)).bearer_auth(token).send().await.unwrap();
+    let status = res.status();
+    (status, res.json().await.unwrap())
+}
+
+/// The row of `agent` on the board (`GET /api/agents`), as a person sees it.
+async fn board_row(app: &App, token: &str, agent: &str) -> Value {
+    let board: Value = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{}/api/agents", app.cfg.port))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    board["agents"].as_array().unwrap().iter().find(|a| a["agent"] == agent).cloned().unwrap_or_else(|| panic!("no {agent}: {board}"))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_warmed_manager_settles_idle_without_a_model_call_and_answers_its_first_mail_at_once() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        return;
+    };
+    let l = live(pi, |_| {}).await;
+    let app = &l.app;
+    let token = person_token(app);
+
+    // Opening the chat warms the manual project's manager: it starts, and waits for its first mail.
+    let (status, body) = warm(app, &token).await;
+    assert_eq!((status, body["started"].as_bool()), (reqwest::StatusCode::OK, Some(true)), "{body}");
+    until("the warmed manager to be idle", 30, || (live_state(app, &orchestrator()).as_deref() == Some("idle")).then_some(())).await;
+    assert!(l.log.lock().unwrap().is_empty(), "a warm-up asks the model nothing");
+    let row = board_row(app, &token, ORCHESTRATOR).await;
+    assert!(row["session"]["startup"]["readyMs"].is_u64(), "{row}");
+    assert!(row["session"]["startup"]["firstReplyMs"].is_null(), "no reply yet: {row}");
+
+    app.with_tracker("shop", |t| {
+        t.bus().notify_manager(ORCHESTRATOR, "ines", "human", CHAT_MAIL, "Project chat message #1 from @ines:\n\n@pm status?", None)
+    })
+    .unwrap();
+    app.wake_runtime.notify_one();
+    until("the manager's first reply", 60, || app.sessions.get(&orchestrator()).and_then(|s| s.live().startup.first_reply_ms)).await;
+    let row = board_row(app, &token, ORCHESTRATOR).await;
+    assert!(row["session"]["startup"]["firstReplyMs"].is_u64(), "{row}");
+    assert!(!l.log.lock().unwrap().is_empty(), "the mail was answered by the model");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_managers_idle_window_is_longer_than_a_members() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        return;
+    };
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(pi, |_| {}, clock.clone()).await;
+    let app = &l.app;
+    automatic(app);
+    assert!(genie::sessions::prewarm(app, &orchestrator()).await.unwrap());
+    mail(app, "anna", "human", "bender", "hello", None);
+    settled_run(app, "bender").await;
+    until("the manager to settle idle", 30, || (live_state(app, &orchestrator()).as_deref() == Some("idle")).then_some(())).await;
+
+    // Past idleStopSecs (300 s) and inside managerIdleStopSecs (3600 s).
+    clock.advance(Duration::from_secs(301));
+    genie::runtime::tick(app).await.unwrap();
+    assert!(session_state(app, "bender").is_none_or(|s| s.0 == "stopping"), "the member stops after idleStopSecs");
+    assert_eq!(live_state(app, &orchestrator()).as_deref(), Some("idle"), "the manager stays for managerIdleStopSecs");
+
+    clock.advance(Duration::from_secs(3300));
+    genie::runtime::tick(app).await.unwrap();
+    assert!(live_state(app, &orchestrator()).is_none_or(|s| s == "stopping"), "the manager stops after managerIdleStopSecs");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn making_room_stops_a_member_before_the_warm_manager() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        return;
+    };
+    let l = live(pi, |cfg| cfg.runtime.max_sessions = 2).await;
+    let app = &l.app;
+    warmed_chat(app);
+    // The manager has been idle the longest of the two: the old rule would have stopped it.
+    assert!(genie::sessions::prewarm(app, &orchestrator()).await.unwrap());
+    until("the manager to settle idle", 30, || (live_state(app, &orchestrator()).as_deref() == Some("idle")).then_some(())).await;
+    mail(app, "anna", "human", "bender", "hello", None);
+    settled_run(app, "bender").await;
+
+    mail(app, "anna", "human", "yoda", "EVICT-ME hello", None);
+    until("bender to make room", 30, || session_state(app, "bender").is_none_or(|s| s.0 == "stopping").then_some(())).await;
+    assert_eq!(live_state(app, &orchestrator()).as_deref(), Some("idle"), "the manager keeps its session");
+    until("yoda to answer once it has its slot", 60, || request_with(&l.log, "reviewer", "EVICT-ME").map(|_| ())).await;
+    assert_eq!(live_state(app, &orchestrator()).as_deref(), Some("idle"), "the manager was never the one evicted");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_warm_up_never_takes_a_session_slot_from_another_agent() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        return;
+    };
+    let l = live(pi, |cfg| cfg.runtime.max_sessions = 1).await;
+    let app = &l.app;
+    warmed_chat(app);
+    assert!(genie::sessions::prewarm(app, &orchestrator()).await.unwrap());
+    until("the manager to settle idle", 30, || (live_state(app, &orchestrator()).as_deref() == Some("idle")).then_some(())).await;
+    assert!(!genie::sessions::prewarm(app, &member("bender")).await.unwrap(), "the only slot is taken, and a warm-up does not evict");
+    assert_eq!(live_state(app, &orchestrator()).as_deref(), Some("idle"));
+    assert!(session_state(app, "bender").is_none());
+}
+
+/// The manager of a manual project has finished a chat answer: one of its turns succeeded.
+fn answered(app: &App) -> bool {
+    app.with_server(|db| db.turns("shop", Some("orchestrator"), 10)).unwrap().iter().any(|t| t.status == "succeeded")
+}
+
+/// A manual project's manager takes the chat it is asked and nothing else: a system note waits, queued
+/// and untouched, while the model answers the chat (the live path: `deliver` and the session's lease).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_manual_managers_session_takes_chat_and_leaves_the_rest_queued() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
+        return;
+    };
+    let l = live(pi, |_| {}).await;
+    let app = &l.app;
+    app.with_tracker("shop", |t| {
+        t.bus().notify_manager(ORCHESTRATOR, "genie", "system", "system", "AUTOMATION-NOTE: a note nobody asked for", None)?;
+        t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "CHAT-QUESTION: is the export done?", None)
+    })
+    .unwrap();
+    app.wake_runtime.notify_one();
+
+    until("the manager to answer the chat", 60, || request_with(&l.log, "orchestrator", "CHAT-QUESTION")).await;
+    until("the manager's answer to be recorded", 60, || answered(app).then_some(())).await;
+    let requests = l.log.lock().unwrap().clone();
+    assert!(requests.iter().all(|r| r.count("AUTOMATION-NOTE") == 0), "the note never reached the model");
+    // The chat was taken; the note waits, undelivered (the harness's inbox notice waits too).
+    let queued = app.with_tracker("shop", |t| t.bus().pending(None, ORCHESTRATOR)).unwrap();
+    assert!(queued.iter().all(|m| m.kind != CHAT_MAIL), "every chat was taken: {queued:?}");
+    let note = queued.iter().find(|m| m.text.starts_with("AUTOMATION-NOTE")).expect("the note waits in the queue");
+    assert!(note.delivered_at.is_none(), "the note is still queued");
+}
+
+/// The manager of a manual project is interrupted by a server crash in the middle of its chat answer.
+/// Its continuation is chat from genie: the new session starts for it without anyone writing, and the
+/// question it had already been given is not injected again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_manual_manager_interrupted_by_a_restart_finishes_its_chat_answer() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is not on PATH: install Pi-Bolt before `cargo test`");
+        eprintln!("skipped: pi is not on PATH (install Pi-Bolt)");
+        return;
+    };
+    let l = live(pi, |_| {}).await;
+    let app = &l.app;
+    app.with_tracker("shop", |t| {
+        t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "CHAT-QUESTION: is the export done?", None)
+    })
+    .unwrap();
+    app.wake_runtime.notify_one();
+    until("the manager to receive the question", 60, || request_with(&l.log, "orchestrator", "CHAT-QUESTION")).await;
+    until("the manager's answer to be recorded", 60, || answered(app).then_some(())).await;
+
+    // The server dies: the session goes with it, and the turn it ran stays `running` in the database.
+    genie::sessions::stop_all(app);
+    until("the manager's session to end", 30, || app.sessions.get(&orchestrator()).is_none().then_some(())).await;
+    let turn = app
+        .with_server(|db| {
+            let t = db.start_turn("shop", ORCHESTRATOR, None, None, None)?;
+            Ok::<_, genie_core::GenieError>(t)
+        })
+        .unwrap();
+
+    let restarted = Instant::now();
+    genie::runtime::recover(app).unwrap();
+    genie::sessions::recover(app);
+    assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "interrupted");
+
+    let req = until("the restart note in the manager's model request", 30, || {
+        request_with(&l.log, "orchestrator", "The genie server restarted after a crash")
+    })
+    .await;
+    eprintln!("latency: a manual manager resumed its chat answer {:?} after the restart", req.at - restarted);
+    assert_eq!(req.count("CHAT-QUESTION"), 1, "the question is in the resumed conversation once, not injected again");
 }

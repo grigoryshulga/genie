@@ -39,6 +39,7 @@ pub mod stats;
 pub mod tasks;
 pub mod telegram;
 pub mod vault_sync;
+pub mod work_loop;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

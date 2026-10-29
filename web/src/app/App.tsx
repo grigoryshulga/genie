@@ -36,6 +36,7 @@ const TasksPage = lazyPage(() => import("@/pages/tasks").then((m) => m.TasksPage
 const TaskPage = lazyPage(() => import("@/pages/task").then((m) => m.TaskPage));
 const TeamView = lazyPage(() => import("@/pages/team").then((m) => m.TeamView));
 const AgentChat = lazyPage(() => import("@/pages/agent").then((m) => m.AgentChat));
+const ProjectChat = lazyPage(() => import("@/pages/chat").then((m) => m.ProjectChat));
 const EpicsPage = lazyPage(() => import("@/pages/epics").then((m) => m.EpicsPage));
 const EpicPage = lazyPage(() => import("@/pages/epic").then((m) => m.EpicPage));
 const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
@@ -92,8 +93,9 @@ function Shell() {
   const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
   const platformRoute = ["/manage", "/notifications"].some((p) => location.pathname.startsWith(p));
+  const chatRoute = location.pathname.startsWith("/chat");
   // Pages without the task list or board: opening a task from the palette goes to the list.
-  const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
+  const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute || chatRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
   const openTask = tasks?.find((t) => t.id === openTaskId);
   const taskModalOpen = !!openTaskId;
@@ -383,6 +385,7 @@ export const router = createBrowserRouter([
           { path: "team/:teamId/:member", element: <AgentChat /> },
           { path: "epics", element: <EpicsRoute /> },
           { path: "epic/:epicId", element: <EpicRoute /> },
+          { path: "chat", element: <ProjectChat /> },
           { path: "docs", element: <DocsPage /> },
           { path: "docs/edit", element: <DocsPage /> },
           { path: "docs/proposals", element: <ProposalsPage /> },

@@ -1,4 +1,4 @@
-import { cloneElement, type InputHTMLAttributes, isValidElement, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId, useRef, useState } from "react";
+import { cloneElement, type InputHTMLAttributes, isValidElement, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId, useRef, useState } from "react";
 import { cx } from "./cx.ts";
 import "./select.css";
 import "./resize.css";
@@ -40,8 +40,8 @@ export function Select({ sm, className, children, ...rest }: SelectHTMLAttribute
   );
 }
 
-export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...rest} className={cx("g-textarea", className)} />;
+export function Textarea({ className, ref, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: Ref<HTMLTextAreaElement> }) {
+  return <textarea {...rest} ref={ref} className={cx("g-textarea", className)} />;
 }
 
 const RESIZE_MIN = 72;
