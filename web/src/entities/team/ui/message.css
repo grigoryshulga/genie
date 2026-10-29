@@ -27,7 +27,8 @@
 /* An interrupt is the loudest mail there is: a signal edge on whichever side it comes from. */
 .chat-bubble.urgent { box-shadow: inset 3px 0 0 var(--g-signal); }
 .chat-bubble-foot { align-self: flex-end; display: inline-flex; align-items: center; gap: var(--g-space-2); margin-bottom: -2px; font-size: var(--g-text-eyebrow); font-variant-numeric: tabular-nums; line-height: var(--g-leading-ui); color: var(--g-text-muted); white-space: nowrap; }
-.chat-bubble.mine .chat-bubble-foot { color: color-mix(in srgb, var(--g-on-accent) 72%, transparent); }
+/* The time is small text on the accent: it takes the full ink, a faded mix fell below 4.5:1. */
+.chat-bubble.mine .chat-bubble-foot { color: var(--g-on-accent); }
 
 /* Markdown on the accent takes the bubble's ink: code, quotes, rules and tables included. */
 .chat-bubble.mine .md :is(code, pre) { border-color: color-mix(in srgb, var(--g-on-accent) 24%, transparent); background: color-mix(in srgb, var(--g-on-accent) 10%, transparent); color: inherit; }

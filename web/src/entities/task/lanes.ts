@@ -28,6 +28,12 @@ export const LANES: Lane[] = [
 
 export const laneOf = (status: Status): Lane | undefined => LANES.find((l) => l.statuses.includes(status));
 
+/**
+ * A ready task sits in work before the server has started its task manager and team (dependencies,
+ * capacity). Until members exist, its card shows the team as a placeholder instead of avatars.
+ */
+export const awaitsTeam = (status: Status, members: number): boolean => status === "ready" && members === 0;
+
 /** The tasks of every lane, in the given order, plus the cancelled ones that sit outside the lanes. */
 export function groupByLane(tasks: TaskSummary[]): { lanes: Record<LaneId, TaskSummary[]>; cancelled: TaskSummary[] } {
   const lanes: Record<LaneId, TaskSummary[]> = { maybe: [], decision: [], prep: [], work: [], done: [] };

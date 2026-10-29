@@ -245,3 +245,33 @@ for (const theme of ["ink", "paper"]) {
     });
   }
 }
+
+const AWAITING_TEAM = "Ждёт запуска: команда соберётся, когда освободится место и будут готовы зависимости";
+
+for (const theme of ["ink", "paper"]) {
+  test(`a ready card in work shows a team placeholder and its hint, a running card does not (${theme})`, async ({ page }) => {
+    await page.goto("/board");
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    // DM-3 is seeded as ready (no team yet); DM-2 is in progress.
+    const waiting = page.locator('[data-task-id="DM-3"]');
+    const running = page.locator('[data-task-id="DM-2"]');
+    await expect(waiting).toHaveAttribute("data-status", "ready");
+    await expect(running).toHaveAttribute("data-status", "in_progress");
+
+    const placeholder = waiting.locator(".bd-team-dot");
+    await expect(placeholder).toHaveCount(3);
+    await expect(waiting.locator(".bd-team-wait")).toHaveAttribute("aria-hidden", "true");
+    await expect(placeholder.first()).toHaveClass(/g-skeleton/);
+    await expect(placeholder.first()).toHaveCSS("animation-name", "g-shimmer");
+    // The tiles keep the small avatar size, so the card does not grow.
+    expect((await placeholder.first().boundingBox())!.width).toBeCloseTo(24, 0);
+    await expect(waiting.getByRole("button", { name: /^DM-3:/ })).toHaveAccessibleDescription(new RegExp(AWAITING_TEAM));
+    expect((await waiting.boundingBox())!.height).toBeCloseTo(144, 2);
+
+    await expect(running.locator(".bd-team-dot")).toHaveCount(0);
+    await expect(running.getByRole("button", { name: /^DM-2:/ })).not.toHaveAccessibleDescription(/Ждёт запуска/);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(placeholder.first()).toHaveCSS("animation-name", "none");
+  });
+}

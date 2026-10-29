@@ -37,7 +37,9 @@
 .g-lane-prep, .bd-card[data-lane-tone="prep"] { --bd-lane-accent: var(--g-board-lane-prep); }
 .g-lane-work, .bd-card[data-lane-tone="work"] { --bd-lane-accent: var(--g-board-lane-work); }
 .g-lane-done, .bd-card[data-lane-tone="done"] { --bd-lane-accent: var(--g-board-lane-done); }
-.g-lane { flex: 0 0 var(--g-board-lane-width); min-width: var(--g-board-lane-width); display: flex; flex-direction: column; min-height: 0; padding: var(--g-space-3); border: 1px solid color-mix(in srgb, var(--bd-lane-accent) 22%, var(--g-border)); border-radius: var(--g-radius-xl); background: color-mix(in srgb, var(--bd-lane-accent) 6%, var(--g-surface)); transition: border-color var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease); }
+.g-lane { flex: 0 0 var(--g-board-lane-width); min-width: var(--g-board-lane-width); display: flex; flex-direction: column; min-height: 0; padding: var(--g-space-3); border: 1px solid color-mix(in srgb, var(--bd-lane-accent) 22%, var(--g-border)); border-radius: var(--g-radius-xl); background: color-mix(in srgb, var(--bd-lane-accent) 6%, var(--g-surface)); transition: border-color var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease), margin-inline-start var(--g-duration) var(--g-ease); }
+/* The row is centred on its open lanes: Board measures the offset and sets it on the scroller; the first lane carries it and the rest follow. */
+.g-board > .g-lane:first-child { margin-inline-start: var(--bd-lead, 0px); }
 .g-lane-cancelled { border-style: dashed; background: transparent; }
 .g-lane.over { border-color: var(--bd-lane-accent); background: color-mix(in srgb, var(--bd-lane-accent) 12%, var(--g-surface)); }
 .g-lane.shut { flex: 0 0 var(--g-space-8); min-width: var(--g-space-8); padding: var(--g-space-1); }
@@ -127,6 +129,8 @@
   .g-toolbar { padding: var(--g-space-2) var(--g-space-4); overflow-x: auto; scrollbar-width: none; }
   .g-board { gap: var(--g-space-3); padding: var(--g-space-3) var(--g-space-4) calc(var(--g-space-4) + env(safe-area-inset-bottom)); scroll-snap-type: x mandatory; }
   .g-board > .g-lane { scroll-snap-align: start; }
+  /* Phones keep the lane switch and its scroll sync: the row starts at its first lane. */
+  .g-board > .g-lane:first-child { margin-inline-start: 0; }
   /* The lane header and the answer affordance are the two things every phone tap lands on. */
   .g-lane-toggle { min-height: var(--g-row); }
   .bd-answer { min-height: var(--g-control); }
@@ -136,5 +140,15 @@
   .g-hints { gap: var(--g-space-4); padding: 0 var(--g-space-4); }
   .g-hints > span:nth-child(2) { display: none; }
 }
+
+/* ---- a ready card waiting for its team: skeleton tiles where the team's avatars will be ---- */
+/* The tiles are the kit's skeleton (.g-skeleton) at the small avatar size, so the card height does not change. */
+.bd-team-wait { display: inline-flex; align-items: center; }
+/* The kit's avatar groups overlap by 3px; the card ring (.bd-card .g-avatar) separates the tiles. */
+.bd-team-wait .bd-team-dot + .bd-team-dot { margin-left: -3px; }
+/* The kit's surfaces sit at the card's own tone and vanish on it: the shimmer runs between the card's hairline and muted text. */
+.bd-team-wait .bd-team-dot { background-image: linear-gradient(90deg, var(--sh-line) 0%, var(--sh-m) 50%, var(--sh-line) 100%); }
+/* A card's note for screen readers: referenced by the button's description, never shown. */
+.bd-hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Form fields are still styled by the legacy shell for the dialogs that have not migrated yet; nothing below belongs to the board. */

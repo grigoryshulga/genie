@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { LANES, groupByLane, laneDropId, laneOf, moveTargets, needsQuestion, resolveDrop, statusDropId } from "../web/src/entities/task/lanes.ts";
+import { awaitsTeam, LANES, groupByLane, laneDropId, laneOf, moveTargets, needsQuestion, resolveDrop, statusDropId } from "../web/src/entities/task/lanes.ts";
 import { PRESETS, STATUS_ORDER } from "../web/src/entities/task/model.ts";
 
 const task = (id: string, status: string) => ({ id, status }) as never;
@@ -84,4 +84,12 @@ test("grouping keeps lane order and knows the cancelled ones", () => {
   assert.deepEqual(lanes.prep.map((t) => t.id), ["T-4"]);
   assert.deepEqual(cancelled.map((t) => t.id), ["T-2"]);
   assert.equal(Object.keys(lanes).length, LANES.length, "no lane outside the five");
+});
+
+test("a ready card shows a team placeholder only while no team member exists", () => {
+  assert.equal(awaitsTeam("ready", 0), true, "ready without members waits for its team");
+  assert.equal(awaitsTeam("ready", 2), false, "a staffed team is shown as avatars");
+  for (const status of ["in_progress", "review", "changes_requested", "draft", "approved"] as const) {
+    assert.equal(awaitsTeam(status, 0), false, `${status} is not waiting for a team`);
+  }
 });
