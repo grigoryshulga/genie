@@ -48,6 +48,8 @@ for (const theme of ["ink", "paper"]) {
       await page.goto(`/task/${task.id}`);
       await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
       const taskPage = page.getByRole("main", { name: `Задача ${task.id}`, exact: true });
+      // Attachments live in their own tab; the description tab is open by default.
+      await taskPage.getByRole("tab", { name: /Вложения/ }).click();
       await taskPage.locator("button.artifact").filter({ hasText: "audit.png" }).click();
       const artifact = page.getByRole("dialog", { name: "audit.png", exact: true });
       const opener = artifact.getByRole("button", { name: "audit.png", exact: true });
