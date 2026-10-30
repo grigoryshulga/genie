@@ -1,15 +1,13 @@
 // Pages for the platform features of the server: answering questions (public
-// link), notifications, using the automations (the rules themselves are defined
-// in the settings mode), and the review of knowledge proposals.
+// link), notifications and using the automations (the rules themselves are
+// defined in the settings mode). Documentation changesets live in the docs routes.
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAutomations, useNotifications, useProposal, useProposals } from "@/entities/platform";
+import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAutomations, useNotifications } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { matchesSearch, timeAgo, useTick } from "@/shared/lib";
-import { Banner, Button, Card, Character, EmptyState, GroupHead, Icon, Markdown, PageHeader, Prose, Radio, Sheet, Skeleton, Tag, Textarea, useRefreshingAct, useToast, WorkingArcs } from "@/shared/ui";
-import { DocViewSwitch } from "@/widgets/docs-view-switch";
+import { Banner, Button, Card, Character, EmptyState, GroupHead, Icon, PageHeader, Radio, Sheet, Skeleton, Textarea, useRefreshingAct, WorkingArcs } from "@/shared/ui";
 import { Runs } from "@/widgets/runs";
 import { HubActions } from "@/widgets/settings-shell";
 // The platform pages carry their own sheets: the answer page (`public.css`), the split-pane and
@@ -158,7 +156,6 @@ function notificationIcon(kind: string) {
   if (kind.startsWith("task.comment")) return <Icon.send size={14} />;
   if (kind.startsWith("task.merge") || kind.startsWith("task.pr")) return <Icon.merge size={14} />;
   if (kind.startsWith("task.status")) return <Icon.bolt size={14} />;
-  if (kind.startsWith("proposal")) return <Icon.proposal size={14} />;
   if (kind.startsWith("doc")) return <Icon.file size={14} />;
   if (kind.startsWith("agent") || kind.startsWith("team")) return <Icon.user size={14} />;
   if (kind.startsWith("observation")) return <Icon.info size={14} />;
@@ -341,129 +338,4 @@ export function AutomationsPage() {
       </div>
     </main>
   );
-}
-
-// ------------------------------------------------------------------ knowledge proposals
-
-/** Page body with the frontmatter shown apart, so the comparison reads like the page. */
-function PageBody({ text }: { text: string }) {
-  const m = /^---\n([\s\S]*?)\n---\n?/.exec(text);
-  return (
-    <>
-      {m && <pre className="frontmatter">{m[1]}</pre>}
-      <Prose>
-        <Markdown text={m ? text.slice(m[0].length) : text} />
-      </Prose>
-    </>
-  );
-}
-
-export function ProposalsPage() {
-  useTick();
-  const [sp, setSp] = useSearchParams();
-  const list = useProposals();
-  const filtered = list.data?.filter((p) => matchesSearch(sp.get("q") ?? "", p.path, p.author, p.task));
-  const selected = Number(sp.get("proposal") ?? "") || filtered?.[0]?.id;
-  const one = useProposal(selected);
-  const act = useRefreshingAct();
-  const decide = (verb: "approve" | "reject", force = false) =>
-    act(async () => {
-      await request("POST", `/api/docs/proposals/${selected}/${verb}`, { force });
-      setSp({});
-    }, verb === "approve" ? "Правка опубликована" : "Предложение отклонено");
-  const p = one.data?.proposal;
-  return (
-    <main className="main">
-      <PageHeader title="Предложения" toolbar={<DocViewSwitch />} />
-
-      <div className="split narrow">
-        <section className="split-list" aria-label="Открытые предложения">
-          {list.isPending && (
-            <div className="split-skeletons" aria-hidden="true">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} height={44} />
-              ))}
-            </div>
-          )}
-          {list.isError && <Banner tone="danger" title="Не получилось прочитать предложения">{list.error.message}</Banner>}
-          {list.isSuccess && !list.data.length && <p className="split-hint">Открытых предложений нет.</p>}
-          {list.isSuccess && list.data.length > 0 && !filtered?.length && <p className="split-hint">Ничего не найдено</p>}
-          {filtered?.map((x) => (
-            <button
-              type="button"
-              key={x.id}
-              className="g-row split-row"
-              aria-selected={selected === x.id}
-              onClick={() => setSp((previous) => { const next = new URLSearchParams(previous); next.set("proposal", String(x.id)); return next; })}
-            >
-              <Icon.proposal size={13} />
-              <span className="split-row-text">
-                <span className="split-row-title">{pageTitle(x.path)}</span>
-                <span className="split-row-sub">
-                  {x.author}
-                  {x.authorKind === "agent" ? " (агент)" : ""}
-                  {x.task ? ` · по задаче ${x.task}` : ""} · {timeAgo(x.created)}
-                </span>
-              </span>
-            </button>
-          ))}
-        </section>
-        <section className="split-main" aria-label="Предложение">
-          {!p ? (
-            <div className="pane-empty">
-              <Icon.proposal size={22} />
-              {list.isPending || (selected && one.isPending) ? (
-                <>
-                  <WorkingArcs size={22} label="Загружаем предложение" />
-                  <span>Загружаем предложение…</span>
-                </>
-              ) : (
-                <span>Здесь появятся правки, которые ждут вашего решения</span>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="pane-head">
-                <div className="ttl">
-                  <h2>{pageTitle(p.path)}</h2>
-                  <span className="sub">
-                    <span className="g-mono">{p.path}</span>
-                    {one.data!.owners.length > 0 ? ` · владельцы раздела: ${one.data!.owners.join(", ")}` : ""}
-                  </span>
-                </div>
-                <Button onClick={() => void decide("reject")}>Отклонить</Button>
-                <Button onClick={() => void decide("approve", true)} title="Если страница изменилась после предложения">
-                  Опубликовать поверх
-                </Button>
-                <Button variant="primary" onClick={() => void decide("approve")}>
-                  Опубликовать
-                </Button>
-              </div>
-              <div className="proposal-state">
-                <Tag tone={one.data!.current == null ? "accent" : "neutral"}>{one.data!.current == null ? "Новая страница" : "Правка страницы"}</Tag>
-                <span>{one.data!.current == null ? "страницы ещё нет — предложение создаст её" : "при конфликте сервер попросит опубликовать поверх"}</span>
-              </div>
-              {p.note && <p className="proposal-note">{p.note}</p>}
-              <div className="compare">
-                <div>
-                  <span className="hd">Сейчас</span>
-                  <div className="bd">{one.data!.current ? <PageBody text={one.data!.current} /> : <p className="muted">Страницы ещё нет</p>}</div>
-                </div>
-                <div>
-                  <span className="hd">Предложение</span>
-                  <div className="bd">
-                    <PageBody text={p.content ?? ""} />
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function pageTitle(path: string): string {
-  return path.replace(/\.md$/, "").split("/").join(" / ");
 }

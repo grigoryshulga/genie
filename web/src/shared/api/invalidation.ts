@@ -39,7 +39,8 @@ export const teamState = (): KeyPrefix[] => [...teamKeys(), ...TASK_LISTS, ["tas
 /** Delivery of a task's branch; `task-repos` is also polled, the host's checks have no event while they run. */
 const delivery = (e: JournalEvent): KeyPrefix[] => [["task-repos"], e.subject ? ["task", e.subject] : ["task"]];
 
-const DOCS: KeyPrefix[] = [["docs"], ["proposals"], ["proposal"], ["task"] /* the docs-impact hint of a task */];
+/** Documentation queries: tree, pages, the Changes feed, history and merges; plus a task's docs-impact hint. */
+const DOCS: KeyPrefix[] = [["docs"], ["task"]];
 
 /** Observation queries: every key of `entities/observation` starts with `observations` (a test pins it). */
 const OBSERVATIONS: KeyPrefix[] = [["observations"]];

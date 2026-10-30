@@ -87,6 +87,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | Dialog | standard/wide, busy | `Dialog`; focus trap, `Escape`, backdrop click, restored focus. |
 | Confirmation | normal/destructive/busy | `ConfirmDialog`; composes Dialog and Button. |
 | Menu | closed/open, item resting/hover/disabled/checked | `ActionMenu`; roving focus, `Escape`, outside click, `separator` entries. |
+| Menu button | closed/open, resting/hover/focus/disabled | `MenuButton`; an icon trigger with the menu placed under it, arrow keys, `Escape` and focus return. |
 | Navigation | resting/hover/selected, full/compact | `g-nav-*` and `g-tabs`; counts and status are optional slots. |
 | Breadcrumbs, key caps, tooltip | — | `Breadcrumbs`, `Kbd`, `Tooltip`. |
 | Task status and priority | 11 statuses, priorities P0-P4 | `StatusIcon`, `PriorityIcon`; shape carries the state too. |

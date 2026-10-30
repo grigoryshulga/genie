@@ -28,8 +28,9 @@ import { DocSearchList } from "./DocSearchList.tsx";
 import { DocView } from "./DocView.tsx";
 import { NewDocDialog } from "./NewDocDialog.tsx";
 // The docs workspace: the reader/editor layout, the overview cards and the mobile drawer, then the
-// responsive and centring layers.
+// responsive and centring layers. The changes bar and history share `changes.css`.
 import "./docs-sheets.css";
+import "./changes.css";
 
 const DocEditor = lazy(() => import("./DocEditor.tsx").then((module) => ({ default: module.DocEditor })));
 
@@ -103,8 +104,8 @@ export function DocsPage() {
         <DocEditor
           path={pagePath}
           pages={pages}
-          onSaved={(path) => {
-            toast("Страница сохранена");
+          onSaved={(path, changeset) => {
+            toast(changeset ? `Сохранено в черновике изменений #${changeset}` : "Страница сохранена");
             closeEditor(path);
           }}
         />
@@ -119,7 +120,7 @@ export function DocsPage() {
   const results = (search.data?.results ?? []).filter((result) => !landings.has(result.path));
   const grid = searchMode ? "docs-search-mode" : pagePath ? "view" : "overview";
   const showPage = !!pageQ.data;
-  // The Страницы/Предложения switch lives in the top row of the page views, not in the navigation column.
+  // The Страницы/Изменения switch lives in the top row of the page views, not in the navigation column.
   const overview = !tree.isError && !loading && !pagePath && !searchMode && roots.length > 0 && !!section;
 
   return (

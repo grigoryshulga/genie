@@ -166,7 +166,6 @@ function kindIcon(kind: string) {
   if (kind.startsWith("task.comment")) return <Icon.send size={14} />;
   if (kind.startsWith("task.merge") || kind.startsWith("task.pr")) return <Icon.merge size={14} />;
   if (kind.startsWith("task.status")) return <Icon.bolt size={14} />;
-  if (kind.startsWith("proposal")) return <Icon.proposal size={14} />;
   if (kind.startsWith("doc")) return <Icon.file size={14} />;
   if (kind.startsWith("agent") || kind.startsWith("team")) return <Icon.user size={14} />;
   if (kind.startsWith("observation")) return <Icon.info size={14} />;

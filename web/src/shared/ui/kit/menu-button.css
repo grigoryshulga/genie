@@ -1,0 +1,3 @@
+/* MenuButton: an icon button whose actions open as a menu under it. Ink and paper: g-tokens only. */
+.menu-button { display: inline-flex; }
+.menu-button-panel { position: fixed; z-index: var(--g-z-dropdown); min-width: 200px; max-height: var(--menu-button-max); overflow-y: auto; }

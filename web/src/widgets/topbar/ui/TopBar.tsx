@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { initials, ProjectIcon, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
-import { useProposals } from "@/entities/platform";
+import { attentionChangesets, useChangesets } from "@/entities/doc";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
 import { canManageProject, hubHome, saveAppearancePreferences, useTick, visibleHub } from "@/shared/lib";
 import { ActionMenu, Banner, Icon, IconButton, type MenuEntry, type NavMenuEntry, Tabs, Tag, useToast } from "@/shared/ui";
@@ -46,7 +46,7 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
   const session = useSession().data;
   const switchProject = useSwitchProject();
   const logout = useLogout();
-  const proposals = useProposals().data?.length ?? 0;
+  const attention = attentionChangesets(useChangesets({ view: "all" }).data ?? []).length;
   const tasks = useTasks().data;
   const listed = tasks?.filter(inTaskViews);
   const open = listed ? listed.filter((t) => OPEN.includes(t.status)).length : OPEN.reduce((n, st) => n + (meta?.counts[st] ?? 0), 0);
@@ -154,12 +154,13 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
     },
     {
       id: "knowledge",
-      // Pending proposals belong to the documentation: the count rides on its entry and on the proposals page.
+      // Open drafts and unreviewed publications belong to the documentation: the count rides on its
+      // entry and on the Changes feed.
       label: (
         <>
           <Icon.file size={16} />
           {label("Знания")}
-          {count(proposals, "предложений к документации")}
+          {count(attention, "изменений к документации")}
         </>
       ),
       to: "/docs",
@@ -167,8 +168,8 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
       menu: {
         label: "Разделы знаний",
         items: [
-          page("docs", "Документация", "/docs", <Icon.file size={14} />, { current: pathname.startsWith("/docs") && !pathname.startsWith("/docs/proposals") }),
-          page("proposals", "Предложения", "/docs/proposals", <Icon.proposal size={14} />, { count: proposals > 0 && <Tag tone="solid-signal">{proposals}</Tag> }),
+          page("docs", "Документация", "/docs", <Icon.file size={14} />, { current: pathname.startsWith("/docs") && !pathname.startsWith("/docs/changes") }),
+          page("changes", "Изменения", "/docs/changes", <Icon.branch size={14} />, { count: attention > 0 && <Tag tone="solid-signal">{attention}</Tag> }),
         ],
       },
     },

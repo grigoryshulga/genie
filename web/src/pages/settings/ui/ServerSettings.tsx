@@ -314,7 +314,7 @@ function ProjectTable({ list }: { list: ProjectStats[] }) {
               <dt>{p.name}</dt>
               <dd>
                 Комментарии: людей {p.commentsByPeople}, агентов {p.commentsByAgents}. Вызовов MCP {p.mcpCalls}. Заданий {p.jobs}
-                {p.jobsFailed ? `, со сбоем ${p.jobsFailed}` : ""}. Предложений в базу знаний {p.proposals}: принято {p.proposalsApproved}, отклонено {p.proposalsRejected}. 90% задач готовы за{" "}
+                {p.jobsFailed ? `, со сбоем ${p.jobsFailed}` : ""}. 90% задач готовы за{" "}
                 {hoursText(p.cycleHoursP90)}.
               </dd>
             </div>
