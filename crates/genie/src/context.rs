@@ -220,6 +220,59 @@ pub fn required(app: &App, project: &str, role: &str) -> Option<String> {
     required_section(&reading.pages, &reading.missing)
 }
 
+/// Roles that must read `path` in a project (`all` stays as it is).
+pub fn roles_requiring(app: &App, project: &str, path: &str) -> Vec<String> {
+    app.with_vault(|v| {
+        Ok(v.config
+            .spaces
+            .values()
+            .filter(|s| s.project.as_deref() == Some(project))
+            .flat_map(|s| s.required.iter())
+            .filter(|r| r.page == path)
+            .flat_map(|r| r.roles.iter().map(|role| role.to_lowercase()))
+            .collect())
+    })
+    .unwrap_or_default()
+}
+
+/// The notice a member gets when one of its required pages changed on main.
+pub fn required_change_notice(path: &str, changeset: i64, diff: &str) -> String {
+    const MAX: usize = 6000;
+    let shown: String = diff.chars().take(MAX).collect();
+    let cut = if diff.chars().count() > MAX { "\n… (diff cut; read the page with `genie docs read`)" } else { "" };
+    format!(
+        "Required page `{path}` changed (changeset #{changeset}). Follow the new version from now on; the change:\n\n```diff\n{shown}{cut}\n```"
+    )
+}
+
+/// Tell the members of running teams whose role must read `path` that it changed on main.
+pub fn notify_required_changed(app: &App, project: &str, path: &str, changeset: i64, diff: &str) {
+    let roles = roles_requiring(app, project, path);
+    if roles.is_empty() {
+        return;
+    }
+    let text = required_change_notice(path, changeset, diff);
+    let topic = format!("required:{path}");
+    let _ = app.with_tracker(project, |t| {
+        for team in t.bus().list(false)? {
+            for m in team.members.iter().filter(|m| roles.iter().any(|r| r == "all" || *r == m.role.to_lowercase())) {
+                let _ = t.bus().send(genie_core::team::SendMail {
+                    team: &team.id,
+                    from: "genie",
+                    from_role: "system",
+                    to: &m.name,
+                    text: &text,
+                    level: Some("normal"),
+                    kind: "message",
+                    topic: Some(&topic),
+                    ..Default::default()
+                });
+            }
+        }
+        Ok(())
+    });
+}
+
 // --- L1 --------------------------------------------------------------------------
 
 const L1_HEADER: &str = "## Project knowledge (L1 context)";
@@ -827,6 +880,15 @@ mod tests {
         assert!(required_section(&[], &[]).is_none(), "no required pages means no section");
         let only_missing = required_section(&[], &["shop/gone.md".into()]).unwrap();
         assert!(only_missing.contains("- shop/gone.md: missing") && !only_missing.contains("###"), "{only_missing}");
+    }
+
+    #[test]
+    fn a_required_change_notice_names_the_page_and_carries_a_bounded_diff() {
+        let small = required_change_notice("shop/guide.md", 7, "-old\n+new");
+        assert!(small.starts_with("Required page `shop/guide.md` changed (changeset #7)"), "{small}");
+        assert!(small.contains("```diff\n-old\n+new\n```") && !small.contains("diff cut"), "{small}");
+        let big = required_change_notice("shop/guide.md", 7, &"+line\n".repeat(5000));
+        assert!(big.contains("diff cut") && big.chars().count() < 6300, "the diff is bounded");
     }
 
     #[test]
