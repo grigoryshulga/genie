@@ -9,6 +9,7 @@ The application is the reference. This package extracts its foundations and spec
 - `tokens.json` is a generated [DTCG 2025.10](https://www.designtokens.org/tr/2025.10/format/) document with one group per theme (`ink`, `paper`), each fully resolved. Colors use explicit sRGB components and alpha; dimensions use CSS pixels; shadow is a composite token. CSS names and original expressions live under `$extensions.com.genie`.
 - `web/design-system.html` is a live specimen of the real kit. Run `npm run dev:web` and open `http://localhost:5173/design-system.html`; it requires no tracker login. Switch the theme select to compare both sheets.
 - Browser capture, the offline Figma plugin, plugin build/test code and agent instructions live in the separate private [genie-figma-tools repository](https://github.com/grigoryshulga/genie-figma-tools).
+- The brand sources live in `brand/`: logo vectors, the animated character, the component and board specimens, the principles, the handoff briefs and the design-system specification. They stay in this repository because the application and its README use them; the documentation site copies them to `assets/brand/` at build time (`site/scripts/assemble.mjs`), and they are not site pages.
 
 After editing tokens, run:
 

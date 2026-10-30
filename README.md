@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="genie: tasks, knowledge and teams of AI agents on one self-hosted server" width="100%">
+  <img src="design-system/brand/hero.svg" alt="genie: tasks, knowledge and teams of AI agents on one self-hosted server" width="100%">
 </p>
 
 **Genie** is a self-hosted workspace where people and AI agent teams share tasks and knowledge. A project manager shapes requirements and dispatches ready work within project autonomy. Each task has a manager (orchestrator) that delegates execution, routes clarifications, and publishes a mandatory retrospective after result acceptance. Each role has its own model, skills, and tool access.
 
-[Documentation](https://grigoryshulga.github.io/genie/) · [Quick start](docs/platform/getting-started.md) · [Changelog](CHANGELOG.md)
+[Documentation](https://grigoryshulga.github.io/genie/) · [Quick start](https://grigoryshulga.github.io/genie/platform/getting-started) · [Changelog](CHANGELOG.md)
 
 ## What it does
 
@@ -23,7 +23,7 @@ docker compose -f docker/docker-compose.yml up -d --build
 printf '%s\n' 'replace-with-a-strong-password' | docker compose -f docker/docker-compose.yml exec -T genie genie user add admin --admin --password-stdin
 ```
 
-Open [localhost:7420](http://127.0.0.1:7420). Configure role models and provider keys in Settings before starting agents. See [Docker deployment](docs/platform/docker.md) for storage, network access, sandboxing, and updates.
+Open [localhost:7420](http://127.0.0.1:7420). Configure role models and provider keys in Settings before starting agents. See [Docker deployment](https://grigoryshulga.github.io/genie/platform/docker) for storage, network access, sandboxing, and updates.
 
 ## Build from source
 
@@ -38,21 +38,22 @@ pi  # /login to your model providers, then exit
 ./target/release/genie serve
 ```
 
-The web build is embedded in the binary. Follow the [quick start](docs/platform/getting-started.md) to create an admin account, a project, and the first task.
+The web build is embedded in the binary. Follow the [quick start](https://grigoryshulga.github.io/genie/platform/getting-started) to create an admin account, a project, and the first task.
 
 ## Documentation
 
 | Need | Read |
 | --- | --- |
-| Understand the workflow | [Tasks and epics](docs/guide/tasks.md) |
-| Understand project and task managers | [Management lifecycle](docs/platform/project-and-task-managers.md) |
-| Configure agents | [Roles and teams](docs/platform/agent-roles-and-teams.md) |
-| Connect a coding agent or terminal | [CLI and MCP](docs/reference/cli.md) |
-| Operate the server | [Operations](docs/platform/operations.md) |
-| Understand the implementation | [Architecture](docs/platform/backend.md) |
-| Contribute or edit these docs | [Development](docs/development.md) |
+| Understand the workflow | [Tasks and epics](https://grigoryshulga.github.io/genie/guide/tasks) |
+| Understand project and task managers | [Management lifecycle](https://grigoryshulga.github.io/genie/platform/project-and-task-managers) |
+| Configure agents | [Roles and teams](https://grigoryshulga.github.io/genie/platform/agent-roles-and-teams) |
+| Connect a coding agent or terminal | [CLI and MCP](https://grigoryshulga.github.io/genie/reference/cli) |
+| Operate the server | [Operations](https://grigoryshulga.github.io/genie/platform/operations) |
+| Understand the implementation | [Architecture](https://grigoryshulga.github.io/genie/platform/backend) |
+| Understand the domain language | [Glossary](https://grigoryshulga.github.io/genie/glossary) |
+| Contribute or edit these docs | [Development](https://grigoryshulga.github.io/genie/development) |
 
-All project documentation is in English. The site and repository use the same Markdown sources.
+All project documentation lives in the project's private knowledge vault and is published in English at the documentation site. Agents read their required pages from the vault; `AGENTS.md` points to them.
 
 ## Development
 
@@ -68,11 +69,12 @@ npm run build:web
 
 Run `npm run dev:web` for the web client; it proxies `/api` to port 7420. Rust tests generate API types in `web/src/shared/api/generated/`; commit updated types with their Rust changes.
 
-For the documentation site:
+For the documentation site, which is built from the vault:
 
 ```bash
-npm ci --prefix docs
+npm ci --prefix site
+npm run docs:vault   # clone or update the knowledge vault at site/.vault
 npm run docs:dev
 ```
 
-The [development guide](docs/development.md) covers documentation checks and GitHub Pages deployment. Users of the removed pi extension can [migrate existing trackers in place](docs/platform/getting-started.md#migrate-from-the-pi-extension).
+The [development guide](https://grigoryshulga.github.io/genie/development) covers documentation checks and GitHub Pages deployment. Users of the removed pi extension can [migrate existing trackers in place](https://grigoryshulga.github.io/genie/platform/getting-started#migrate-from-the-pi-extension).

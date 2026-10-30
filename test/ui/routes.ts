@@ -1,6 +1,6 @@
 // Every screen the capture harness photographs, keyed by a stable file name. The list follows
 // the routes in web/src/app/App.tsx. Team and agent chat screens need a running team, which the
-// seed cannot create without live agents, so they are the known gap (docs/development.md).
+// seed cannot create without live agents, so they are the known gap (development guide).
 
 export interface CaptureRoute {
   name: string;

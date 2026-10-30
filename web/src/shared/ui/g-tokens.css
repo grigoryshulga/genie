@@ -1,6 +1,6 @@
 /*
  * Genie design tokens ("ink and paper" visual language).
- * Specification: docs/assets/brand/design-system.md. Contrast pairs are enforced by test/design-tokens.test.ts.
+ * Specification: design-system/brand/design-system.md. Contrast pairs are enforced by test/design-tokens.test.ts.
  *
  * Layer 1 holds raw brand values and never changes between themes. Layer 2 is semantic; components consume
  * only layer 2. `:root` is the ink (dark) theme to match the current app; `[data-theme="paper"]` is light.
