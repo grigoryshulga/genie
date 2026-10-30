@@ -63,6 +63,10 @@ export default defineConfig({
         { text: 'Workspace environments design', link: '/platform/environment-design' },
         { text: 'Changelog', link: '/changelog' },
       ] },
+      { text: 'Agents', items: [
+        { text: 'Agent guide', link: '/agents/guide' },
+        { text: 'Coding standards', link: '/agents/coding-standards' },
+      ] },
     ],
     outline: { level: [2, 3], label: 'On this page' },
     editLink: {
