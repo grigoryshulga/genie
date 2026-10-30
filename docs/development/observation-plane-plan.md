@@ -401,7 +401,7 @@ The implementer then fixes every blocker and major finding (minor findings at it
 - **Spec:** §18
 - **Read:** `docs/platform/automations.md`, `docs/platform/project-and-task-managers.md`, `docs/reference/cli.md`, `docs/platform/decisions.md`, `docs/platform/backend.md`, `GLOSSARY.md`, `CHANGELOG.md`, `docs/.vitepress/config.mts`, `agents/project-manager.md`.
 - **Files:** `docs/platform/observation.md` (new user reference: concepts, contract format with the change grammar and `pp` note, sources setup, lifecycle, evaluation rules, incidents and follow-ups, CLI examples, automation events, limits); `docs/platform/automations.md` (event list); `docs/reference/cli.md` (`observe` group); `docs/platform/decisions.md` (PD26); `docs/platform/backend.md` (code map row); `docs/platform/roadmap.md`; `docs/platform/proposals.md` (link); `docs/.vitepress/config.mts` (sidebar under "Work with Genie"); `GLOSSARY.md` (only if labels changed during implementation; the observation section exists already); `CHANGELOG.md` (Unreleased: Added); `agents/project-manager.md` (Observation section, §18); this plan and the specification (`status: current` for the specification).
-- **Commands:** `npm ci --prefix docs`; `npm run docs:check`; `npm run docs:build`; `cargo test -p genie --test it` (prompt tests, if any, still pass).
+- **Commands:** `npm --prefix site ci`; `npm run docs:check`; `npm run docs:build`; `cargo test -p genie --test it` (prompt tests, if any, still pass).
 - **Acceptance criteria:** documentation is English, links resolve, and every user-visible behavior of Phase 1 is described once.
 
 ## 4. Review checklists

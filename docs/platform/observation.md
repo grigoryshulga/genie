@@ -9,7 +9,7 @@ status: current
 
 Observation looks at delivered work after it ships. An **outcome case** links one or more done tasks to a contract. Genie reads measurements from the project's metrics or error sources, opens an **incident** when a guardrail is crossed, and concludes the case as `confirmed`, `negative`, or `inconclusive`.
 
-Observation is separate from the task lifecycle. It never moves a task, blocks delivery, or changes project memory. The server runs it on a schedule, so no agent stays alive while a case waits. Follow-up work goes through the normal task services; see [follow-up tasks](#follow-up-tasks). The design is in the [Phase 1 specification](observation-plane.md); Russian UI labels are in [the glossary](https://github.com/grigoryshulga/genie/blob/main/GLOSSARY.md#observation-plane).
+Observation is separate from the task lifecycle. It never moves a task, blocks delivery, or changes project memory. The server runs it on a schedule, so no agent stays alive while a case waits. Follow-up work goes through the normal task services; see [follow-up tasks](#follow-up-tasks). The design is in the [Phase 1 specification](observation-plane.md); Russian UI labels are in [the glossary](../glossary.md#observation-plane).
 
 ## Concepts
 

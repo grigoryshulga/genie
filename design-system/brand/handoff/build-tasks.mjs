@@ -1,11 +1,11 @@
 // Generates tasks.md from tasks.json, and creates the matching tracker tasks on request.
 //
-//   node docs/assets/brand/handoff/build-tasks.mjs            write tasks.md
-//   node docs/assets/brand/handoff/build-tasks.mjs --genie    print the genie commands (dry run)
-//   node docs/assets/brand/handoff/build-tasks.mjs --create   run them against the confirmed project
+//   node design-system/brand/handoff/build-tasks.mjs            write tasks.md
+//   node design-system/brand/handoff/build-tasks.mjs --genie    print the genie commands (dry run)
+//   node design-system/brand/handoff/build-tasks.mjs --create   run them against the confirmed project
 //
 // tasks.json is the source of truth. --create needs the native `genie` CLI connected to the repository's
-// tracker (see docs/development/genie-cli.md); it creates the epic first, then every task in dependency order,
+// tracker (see https://grigoryshulga.github.io/genie/development/genie-cli); it creates the epic first, then every task in dependency order,
 // resolving keys (H06) to the tracker IDs it was given.
 
 import { spawnSync } from "node:child_process";
@@ -70,7 +70,7 @@ if (process.argv.includes("--genie") || process.argv.includes("--create")) {
   const epicId = run(["task", "create", data.epic.title, "--type", "epic", "--description", data.epic.description, ...withAc(data.epic.ac), "--plan", data.epic.plan], "epic");
   const order = [...data.tasks].sort((a, b) => waveOf(a.key) - waveOf(b.key));
   for (const t of order) {
-    const description = `${t.description}\n\nScope: ${t.scope.join("; ")}.\nBrief: docs/assets/brand/handoff/README.md and screens.md. Task key ${t.key}; about ${fmt(t.hours)} agent hours.`;
+    const description = `${t.description}\n\nScope: ${t.scope.join("; ")}.\nBrief: design-system/brand/handoff/README.md and screens.md. Task key ${t.key}; about ${fmt(t.hours)} agent hours.`;
     const args = ["task", "create", `${t.key}: ${t.title}`, "--description", description, ...withAc(criteria(t)), "--plan", t.plan, "--priority", String(t.priority), "--epic", epicId];
     for (const d of t.deps) args.push("--dep", ids.get(d) ?? `<${d}>`);
     ids.set(t.key, run(args, t.key));
@@ -82,17 +82,17 @@ const lines = [];
 const out = (s = "") => lines.push(s);
 out("# Redesign task breakdown");
 out();
-out("Generated from [tasks.json](tasks.json) by [build-tasks.mjs](build-tasks.mjs); edit the JSON, then run `node docs/assets/brand/handoff/build-tasks.mjs`. Read the [handoff README](README.md) first. Briefs for each screen are in [screens.md](screens.md).");
+out("Generated from [tasks.json](tasks.json) by [build-tasks.mjs](build-tasks.mjs); edit the JSON, then run `node design-system/brand/handoff/build-tasks.mjs`. Read the [handoff README](README.md) first. Briefs for each screen are in [screens.md](screens.md).");
 out();
 out(`${data.tasks.length} tasks in one epic, about ${fmt(total)} agent hours of work. With independent lanes running in parallel the longest dependency chain is about ${fmt(critical.hours)} hours (${critical.keys.join(" > ")}). Estimates are rough (plus or minus 50 percent) and measure agent working time, not elapsed days; review, decisions, and CI waits come on top.`);
 out();
 out("## Creating the tracker tasks");
 out();
-out("The tracker is the unit of record (see [the CLI guide](../../../development/genie-cli.md)). Preview the commands, then create the epic and tasks against the confirmed project:");
+out("The tracker is the unit of record (see [the CLI guide](https://grigoryshulga.github.io/genie/development/genie-cli)). Preview the commands, then create the epic and tasks against the confirmed project:");
 out();
 out("```bash");
-out("node docs/assets/brand/handoff/build-tasks.mjs --genie     # dry run: prints genie commands");
-out("GENIE_PROJECT=genie node docs/assets/brand/handoff/build-tasks.mjs --create");
+out("node design-system/brand/handoff/build-tasks.mjs --genie     # dry run: prints genie commands");
+out("GENIE_PROJECT=genie node design-system/brand/handoff/build-tasks.mjs --create");
 out("```");
 out();
 out("Creation uses the caller's rights: people create inbox tasks, agents create drafts. Dependencies are passed with `--dep`, so tasks start only when their predecessors close.");
@@ -117,7 +117,7 @@ for (const w of waves) out(`- **Wave ${w + 1}:** ${data.tasks.filter((t) => wave
 out();
 out("## Rules for the whole team");
 out();
-out("- One task, one worktree, one branch from `origin/main` (see [AGENTS.md](../../../../AGENTS.md)); small PRs, English titles and descriptions.");
+out("- One task, one worktree, one branch from `origin/main` (see [agent guide](https://grigoryshulga.github.io/genie/agents/guide)); small PRs, English titles and descriptions.");
 out("- Do not edit the same file as another task in flight. Shared files (`g-tokens.css`, `components.css`, `app/styles.css` after the split) change only in the foundation tasks; a screen task that needs a new token or component variant opens a small PR against the foundation first.");
 out("- Capture screenshots with the harness (`H00`) before and after every UI change, in both themes and both widths, and attach them to the task.");
 out("- The orange rule, the Unbounded size floor, and the no-hard-coded-colours rule are checked in review; see the checklist in [principles.md](../principles.md).");

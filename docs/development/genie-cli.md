@@ -89,7 +89,7 @@ The status command is an example for a task ready to start, not a shortcut past 
 
 ## Review and completion
 
-Before publishing a UI change (defined in [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md)), follow [visual review of UI changes](visual-preview.md); any other change is published once its checks pass. For a UI change, record `awaiting_visual_review`, the exact commit, validation and the review scenario (and, for a candidate, its ID, base and task SHAs); keep private access URLs in genie and the conversation, out of GitHub in a progress comment. Keep the task unfinished while awaiting the owner's explicit approval and publication authorization. This milestone is not a new tracker status and does not replace owner acceptance. Record the approval reference before continuing; changes to the commit or candidate composition require renewed approval.
+Before publishing a UI change (defined in the [agent guide](../agents/guide.md)), follow [visual review of UI changes](visual-preview.md); any other change is published once its checks pass. For a UI change, record `awaiting_visual_review`, the exact commit, validation and the review scenario (and, for a candidate, its ID, base and task SHAs); keep private access URLs in genie and the conversation, out of GitHub in a progress comment. Keep the task unfinished while awaiting the owner's explicit approval and publication authorization. This milestone is not a new tracker status and does not replace owner acceptance. Record the approval reference before continuing; changes to the commit or candidate composition require renewed approval.
 
 After approval (or, for a change that is not a UI change, after validation), publish the task commit in a PR to `dev` (release PRs go from `dev` to `main`), then:
 
@@ -102,4 +102,4 @@ genie --project genie task status review --task <task-id> \
 
 After CI succeeds, add a comment with the PR URL, current head SHA, and passing checks, then check the remaining acceptance criteria. Follow the server's review and approval flow before `task status done`. `task accept` is owner acceptance, not an agent workaround. A permission or workflow rejection is a reason to request the authorized actor's action; retain the current credentials and gates.
 
-The completion gate and CI waiting rules are defined in [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md).
+The completion gate and CI waiting rules are defined in the [agent guide](../agents/guide.md).

@@ -2,9 +2,9 @@
 
 Status: **applied.** The ink and paper language is what the application renders; H33 (GNE-69) removed the last of the previous palette. This page remains the specification, so change it with the tokens rather than after them. The [redesign handoff](handoff/README.md) is the historical record of how it was applied.
 
-- Tokens: [`web/src/shared/ui/g-tokens.css`](../../../web/src/shared/ui/g-tokens.css) (prefix `--g-`; two themes).
-- Components: [`web/src/shared/ui/components.css`](../../../web/src/shared/ui/components.css) with React wrappers in [`web/src/shared/ui/kit/`](../../../web/src/shared/ui/kit/), shown with every state in [`components.html`](components.html).
-- Working reference for tokens, type, and component contracts: [`design-system/README.md`](../../../design-system/README.md).
+- Tokens: [`web/src/shared/ui/g-tokens.css`](https://github.com/grigoryshulga/genie/blob/dev/web/src/shared/ui/g-tokens.css) (prefix `--g-`; two themes).
+- Components: [`web/src/shared/ui/components.css`](https://github.com/grigoryshulga/genie/blob/dev/web/src/shared/ui/components.css) with React wrappers in [`web/src/shared/ui/kit/`](https://github.com/grigoryshulga/genie/tree/dev/web/src/shared/ui/kit/), shown with every state in [`components.html`](components.html).
+- Working reference for tokens, type, and component contracts: [`design-system/README.md`](https://github.com/grigoryshulga/genie/blob/dev/design-system/README.md).
 - Principles and review checklist: [principles.md](principles.md).
 - Brand specimen: [`design-system.html`](design-system.html). Open it from a checkout; it reads the real tokens and has a theme toggle.
 - Accessibility contract: `test/design-tokens.test.ts` fails when a documented text, control, focus, or chart pairing drops below its WCAG ratio in either theme.
@@ -92,7 +92,7 @@ Rules:
 
 ## Components
 
-The reference implementation is [`components.css`](../../../web/src/shared/ui/components.css), with every component, state, and both themes on one page in [`components.html`](components.html). It covers buttons, icon buttons, tabs and segmented controls, chips, tags, status and priority icons, inputs, selects, textareas, checkboxes, radios, switches, search, menus, tooltips, dialogs, toasts, banners, cards, sheets, rows, tables, breadcrumbs, key caps, avatars, progress, skeletons, empty states, the working arcs, rendered Markdown, and chart colours. The short notes below are the rules that are easy to get wrong.
+The reference implementation is [`components.css`](https://github.com/grigoryshulga/genie/blob/dev/web/src/shared/ui/components.css), with every component, state, and both themes on one page in [`components.html`](components.html). It covers buttons, icon buttons, tabs and segmented controls, chips, tags, status and priority icons, inputs, selects, textareas, checkboxes, radios, switches, search, menus, tooltips, dialogs, toasts, banners, cards, sheets, rows, tables, breadcrumbs, key caps, avatars, progress, skeletons, empty states, the working arcs, rendered Markdown, and chart colours. The short notes below are the rules that are easy to get wrong.
 
 Status icons differ by shape as well as colour (the table is in the components page): dashed rings for pre-work states, a ring for ready, a half-filled ring for in progress, a return arrow for changes requested, a ring with a dot for review, filled marks for approved, needs owner, and done, and a slashed ring for cancelled. Priority uses ascending bars, with an orange square for urgent; an epic is the arcs in miniature.
 
@@ -134,7 +134,7 @@ The logo mark doubles as a character. The orange arc is its eye (open "∩", clo
 | [`genie-sleep.svg`](character/genie-sleep.svg) | Falling asleep | Heavy blinks, head and antenna droop, eye closes to a thin curve, soft breathing and "z" marks, startles awake to loop |
 | [`genie-think.svg`](character/genie-think.svg) | Thinking | Gaze moves up and to the side then across, squint and blink, a thought trail ends in a "..." bubble |
 
-Open [`character/animations.html`](character/animations.html) from a checkout to see all four with replay, pause, and a theme toggle. The files are generated: edit [`character/build.mjs`](character/build.mjs) (keyframes are tables per body part) and run `node docs/assets/brand/character/build.mjs`; do not edit the SVGs by hand.
+Open [`character/animations.html`](character/animations.html) from a checkout to see all four with replay, pause, and a theme toggle. The files are generated: edit [`character/build.mjs`](character/build.mjs) (keyframes are tables per body part) and run `node design-system/brand/character/build.mjs`; do not edit the SVGs by hand.
 
 Rules:
 

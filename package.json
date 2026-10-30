@@ -16,10 +16,12 @@
     "dev:web": "npm run dev --workspace genie-web --",
     "typecheck": "tsc -p . && tsc -p web",
     "lint:web": "steiger web/src",
-    "docs:dev": "npm --prefix docs run dev --",
-    "docs:check": "npm --prefix docs run check",
-    "docs:build": "npm --prefix docs run build",
-    "docs:preview": "npm --prefix docs run preview --",
+    "docs:dev": "node site/scripts/assemble.mjs && npm --prefix site run dev --",
+    "docs:vault": "node site/scripts/vault.mjs",
+    "docs:assemble": "node site/scripts/assemble.mjs",
+    "docs:check": "node site/scripts/assemble.mjs && npm --prefix site run check",
+    "docs:build": "node site/scripts/assemble.mjs && npm --prefix site run build",
+    "docs:preview": "npm --prefix site run preview --",
     "dev:stand": "node test/ui/stand.ts"
   },
   "engines": {

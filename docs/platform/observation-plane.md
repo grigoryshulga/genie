@@ -84,7 +84,7 @@ Taken from the proposal (§16) plus implementation limits:
 
 ## 3. Glossary
 
-Russian names and every UI label are in [the glossary](https://github.com/grigoryshulga/genie/blob/main/GLOSSARY.md#observation-plane), outside this site because the documentation is English-only.
+Russian names and every UI label are in [the glossary](../glossary.md#observation-plane); the web tests check the UI strings against a copy of that section in `test/fixtures/observation-labels.md`.
 
 | Term | Meaning |
 | --- | --- |
@@ -787,7 +787,7 @@ Russian user-facing text, existing layers (`steiger.config.ts`), TanStack Query 
 - **Task card**: `TaskObservation` section in `widgets/task-detail` listing linked cases with status and result, and a create button (glossary labels `section`, `empty`, `create`, `newTitle`; policy select) for writers; it opens the new case page.
 - **Settings**: project management section (glossary label `section`) with sources (add, edit, remove, set or clear secret, test query). Admins only, like repositories.
 
-All Russian labels (statuses, results, policies, incident states, navigation, buttons) are defined in [the glossary](https://github.com/grigoryshulga/genie/blob/main/GLOSSARY.md#observation-plane); `model.ts` uses exactly those strings.
+All Russian labels (statuses, results, policies, incident states, navigation, buttons) are defined in [the glossary](../glossary.md#observation-plane); `model.ts` uses exactly those strings.
 
 ## 18. Agents, notifications, and documentation
 

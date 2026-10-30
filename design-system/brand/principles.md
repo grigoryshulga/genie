@@ -70,7 +70,7 @@ Genie is where a person supervises a team of agents that does real work. The per
 
 ## Voice and content
 
-- **Language.** User-facing text is Russian, as today. Use the established terms and the [glossary](../../../GLOSSARY.md). Do not rename domain words in the redesign.
+- **Language.** User-facing text is Russian, as today. Use the established terms and the [glossary](https://grigoryshulga.github.io/genie/glossary). Do not rename domain words in the redesign.
 - **Tone.** Direct, short, active. Buttons are verbs ("Accept", "Reply", "Create task"). Statuses are nouns or short states. No exclamation marks, except the surprised character's line.
 - **Case.** Sentence case everywhere, including buttons and headings.
 - **Slogans.** The orange full stop ends a slogan or headline of at most six words. It appears on hero headlines and the login page, not on ordinary headings or buttons.

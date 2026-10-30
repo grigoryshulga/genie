@@ -8,6 +8,8 @@ export default defineConfig({
   base: '/genie/',
   appearance: 'dark',
   lastUpdated: false,
+  // Pages are assembled from the knowledge vault into content/ (see site/scripts/assemble.mjs).
+  srcDir: 'content',
   // Brand and design handoff files are repository material (they link to source files and static specimens), not site pages.
   srcExclude: ['assets/brand/**'],
   sitemap: { hostname: 'https://grigoryshulga.github.io/genie/' },
@@ -52,6 +54,7 @@ export default defineConfig({
       { text: 'Build and understand', items: [
         { text: 'Architecture', link: '/platform/backend' },
         { text: 'Documentation contract', link: '/reference/genie-docs-system' },
+        { text: 'Glossary', link: '/glossary' },
         { text: 'Development', link: '/development' },
         { text: 'Repository workflow', link: '/development/genie-cli' },
         { text: 'Testing workflow', link: '/development/testing-workflow' },
@@ -69,10 +72,7 @@ export default defineConfig({
       ] },
     ],
     outline: { level: [2, 3], label: 'On this page' },
-    editLink: {
-      pattern: ({ filePath }) => `https://github.com/grigoryshulga/genie/edit/main/${filePath === 'changelog.md' ? 'CHANGELOG.md' : `docs/${filePath}`}`,
-      text: 'Edit this page on GitHub',
-    },
+    // Pages live in the private knowledge vault, so there is no public GitHub edit link.
     docFooter: { prev: 'Previous', next: 'Next' },
     footer: { message: 'Self-hosted. Open source. Yours.', copyright: 'Genie · MIT License' },
   },

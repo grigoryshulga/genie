@@ -1,5 +1,5 @@
 // Generates the animated Genie character: one standalone SVG per action plus a preview page.
-//   node docs/assets/brand/character/build.mjs
+//   node design-system/brand/character/build.mjs
 //
 // The character is the logo mark. Its orange arc is the eye: scaleY(1) is the open "∩" of the logo, scaleY(0) a
 // closed line, scaleY(-1) a sleeping "∪". The handle is an antenna that reacts independently of the head.

@@ -9,7 +9,7 @@ status: current
 
 Requires stable Rust, Node 22.19+, Git, and bubblewrap for Linux sandbox tests. See [Architecture](platform/backend.md) for the code map.
 
-The [repository workflow](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines how a task is tracked, isolated, published and cleaned up. In short:
+The [agent guide](agents/guide.md) defines how a task is tracked, isolated, published and cleaned up; `AGENTS.md` in the repository only points to it. In short:
 
 - Iterate on the [development stand](development/testing-workflow.md): hot reload on varied seeded data.
 - Run the [checks](#checks) that cover the changed paths; CI runs the same commands.
@@ -145,25 +145,28 @@ The [agent benchmark](https://github.com/grigoryshulga/genie/tree/main/bench) co
 
 ## Documentation site
 
-The site uses VitePress with a separate package and lockfile in `docs/`. Application dependencies do not include the documentation toolchain. The package overrides Vite to a patched 6.x release while retaining stable VitePress 1.x.
+The site uses VitePress with a separate package and lockfile in `site/`. Application dependencies do not include the documentation toolchain. The package overrides Vite to a patched 6.x release while retaining stable VitePress 1.x.
+
+The pages are not stored in this repository. The project's documentation lives in the private knowledge vault (project `genie`, space `genie/`). `site/scripts/assemble.mjs` copies that space into `site/content/`, which is generated and ignored by git, together with the brand sources in `design-system/brand/`, the static files in `site/public/` and a generated `changelog.md` page that includes `CHANGELOG.md`.
 
 ```bash
-npm ci --prefix docs
-npm run docs:dev      # http://127.0.0.1:5173/genie/
-npm run docs:check    # English content and local Markdown links
-npm run docs:build    # static site and search index
+npm ci --prefix site
+npm run docs:vault    # clone or update the vault at site/.vault over SSH
+npm run docs:dev      # http://127.0.0.1:5173/genie/; assembles content first
+npm run docs:check    # English content and local Markdown links; assembles content first
+npm run docs:build    # static site and search index; assembles content first
 npm run docs:preview  # production build at http://127.0.0.1:4173/genie/
 ```
 
-Edit the Markdown in `docs/`. The site navigation is in `docs/.vitepress/config.mts`; styles and the landing page are in `docs/.vitepress/theme/`. `CHANGELOG.md` at the repository root is included in the site, so release notes have one source.
+Set `GENIE_VAULT_DIR` to build from another checkout that contains the `genie/` space. Edit pages in the vault, never in `site/content/`; `npm run docs:assemble` regenerates that directory. The site navigation is in `site/.vitepress/config.mts`; styles and the landing page are in `site/.vitepress/theme/`. `CHANGELOG.md` at the repository root is still the source of the Changelog page, so release notes have one home.
 
 Write in English. Start with the action or contract, keep examples runnable, and link to an existing explanation instead of repeating it. Put proposals under Roadmap and mark historical pages deprecated. Retain a short pointer at an old page path when replacing it.
 
-Use relative Markdown links with `.md` extensions so they work in GitHub and on the site. Keep wiki-link syntax inside code examples when documenting the vault contract. The build rejects dead page links; the content check also verifies local link fragments and rejects Cyrillic in documentation.
+Use relative Markdown links with `.md` extensions between vault pages so they work in the vault and on the site. Link to files in this repository with absolute GitHub URLs, because a relative path from a vault page cannot resolve. Keep wiki-link syntax inside code examples when documenting the vault contract. The build rejects dead page links; the content check also verifies local link fragments and rejects Cyrillic in documentation. The glossary, which maps the product's Russian UI labels, is the one page the check allows to keep them.
 
 ## GitHub Pages
 
-`.github/workflows/docs.yml` checks and builds the site for pull requests and pushes affecting documentation. Pushes to `main` deploy the built artifact to GitHub Pages; pull requests only validate. The workflow can also be run manually.
+`.github/workflows/docs.yml` checks and builds the site for pull requests and pushes affecting the site or its sources. It checks out the vault into `site/.vault` with the read-only deploy key secret `GENIE_VAULT_DEPLOY_KEY`. Because a content change lands in the vault rather than here, the workflow also runs daily and on a `vault-updated` repository dispatch. Pushes to `main` deploy the built artifact to GitHub Pages; pull requests only validate. The workflow can also be run manually.
 
 In the repository's **Settings → Pages**, set **Source → GitHub Actions**. After the workflow is merged into `main`, its successful deployment serves [grigoryshulga.github.io/genie](https://grigoryshulga.github.io/genie/).
 

@@ -7,7 +7,7 @@ status: current
 
 # Visual review of UI changes
 
-Agents validate and publish their own task branches to `dev` through PRs and successful CI. A UI change is shown to the owner first and needs approval before publication; [AGENTS.md](https://github.com/grigoryshulga/genie/blob/main/AGENTS.md) defines what counts as a UI change, and other changes skip the preview. The owner also chooses when to inspect a batch. Candidate builds run only on an explicit owner request, normally against the current fetched `origin/dev`. A task becoming ready or a thread settling does not start a build. Feature PRs target `dev`; releases go from `dev` to `main`.
+Agents validate and publish their own task branches to `dev` through PRs and successful CI. A UI change is shown to the owner first and needs approval before publication; the [agent guide](../agents/guide.md) defines what counts as a UI change, and other changes skip the preview. The owner also chooses when to inspect a batch. Candidate builds run only on an explicit owner request, normally against the current fetched `origin/dev`. A task becoming ready or a thread settling does not start a build. Feature PRs target `dev`; releases go from `dev` to `main`.
 
 ## Instant UI fixtures
 

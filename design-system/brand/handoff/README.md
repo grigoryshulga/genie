@@ -15,7 +15,7 @@ Out of scope: server behaviour, API contracts, routes and URL parameters, keyboa
 1. This page.
 2. [Design principles](../principles.md): the rules, anti-patterns, and the pull request checklist.
 3. [Design system](../design-system.md): colour, type, shape, motif, logo, character, board concept.
-4. [Components](../components.html): every component and state in both themes (open it from a checkout). Source: [`components.css`](../../../../web/src/shared/ui/components.css) and [`g-tokens.css`](../../../../web/src/shared/ui/g-tokens.css).
+4. [Components](../components.html): every component and state in both themes (open it from a checkout). Source: [`components.css`](https://github.com/grigoryshulga/genie/blob/dev/web/src/shared/ui/components.css) and [`g-tokens.css`](https://github.com/grigoryshulga/genie/blob/dev/web/src/shared/ui/g-tokens.css).
 5. [Board concept](../concepts/board.html), [character animations](../character/animations.html), and [brand specimen](../design-system.html).
 6. [Screen briefs](screens.md): what each current screen is, what it becomes, what to preserve.
 7. [Task breakdown](tasks.md): 29 tasks with dependencies, acceptance criteria, and parallel lanes.
@@ -27,19 +27,19 @@ Out of scope: server behaviour, API contracts, routes and URL parameters, keyboa
 | Design tokens (two themes, chart colours, layers, control sizes) | `web/src/shared/ui/g-tokens.css` |
 | Component styles, reference implementation | `web/src/shared/ui/components.css` |
 | Contrast contract (text, controls, focus, charts) | `test/design-tokens.test.ts` |
-| Principles and checklist | `docs/assets/brand/principles.md` |
-| Component and state specimen | `docs/assets/brand/components.html` |
-| Board concept | `docs/assets/brand/concepts/board.html` |
-| Logo lockups (draft vector) | `docs/assets/brand/logo-*.svg` |
-| Arcs motif | `docs/assets/brand/arcs.svg` |
-| Character animations and generator | `docs/assets/brand/character/` |
-| Screen briefs, tasks, task creation script | `docs/assets/brand/handoff/` |
+| Principles and checklist | `design-system/brand/principles.md` |
+| Component and state specimen | `design-system/brand/components.html` |
+| Board concept | `design-system/brand/concepts/board.html` |
+| Logo lockups (draft vector) | `design-system/brand/logo-*.svg` |
+| Arcs motif | `design-system/brand/arcs.svg` |
+| Character animations and generator | `design-system/brand/character/` |
+| Screen briefs, tasks, task creation script | `design-system/brand/handoff/` |
 
 None of the new files is imported by the application yet. The first foundation tasks wire them in.
 
 ## Integration branch and existing foundations (read before H02)
 
-- **Work lands in `dev`.** Branch from `origin/dev`, open PRs against `dev`, and obtain the owner's visual approval of a preview candidate before publishing a UI change (see `docs/development/visual-preview.md`). `main` only receives release PRs. This overrides the `origin/main` wording elsewhere in this handoff.
+- **Work lands in `dev`.** Branch from `origin/dev`, open PRs against `dev`, and obtain the owner's visual approval of a preview candidate before publishing a UI change (see `https://grigoryshulga.github.io/genie/development/visual-preview`). `main` only receives release PRs. This overrides the `origin/main` wording elsewhere in this handoff.
 - **`web/src/shared/ui/tokens.css` was the GNE-25 palette** (legacy `--bg`, `--text`, `--accent` names, accent choices, and a Figma exporter in `scripts/design-system/`). H02 aliased the legacy names to the `--g-` tokens in `compat.css`, and H33 (GNE-69) removed both files together with the accent choices, so `g-tokens.css` is now the only token source and `scripts/design-system/export.mjs` reads it directly.
 - **`shared/lib/appearance.ts` and `preferences.ts` already store appearance preferences.** H02's theme switch extends them instead of adding a second store.
 - **`test/ui` already holds Playwright browser tests and screenshot baselines** (GNE-31), and `npm run ui:capture` (GNE-41, H00) photographs every route. Baselines change deliberately with each UI task.
@@ -47,13 +47,13 @@ None of the new files is imported by the application yet. The first foundation t
 
 ## Ground rules
 
-- **Follow [AGENTS.md](../../../../AGENTS.md).** One task, one worktree from `origin/main`, tracked in genie with progress comments, small English PRs, and a task is done only after CI passes on the PR's latest head. Do not merge; the owner merges.
-- **Create the tracker tasks first.** `node docs/assets/brand/handoff/build-tasks.mjs --genie` previews the commands, `--create` runs them against the confirmed project (see [tasks.md](tasks.md)). Confirm the project and credentials before creating anything; the repository tracker is project `genie`, prefix `GNE`.
+- **Follow the [agent guide](https://grigoryshulga.github.io/genie/agents/guide).** One task, one worktree from `origin/main`, tracked in genie with progress comments, small English PRs, and a task is done only after CI passes on the PR's latest head. Do not merge; the owner merges.
+- **Create the tracker tasks first.** `node design-system/brand/handoff/build-tasks.mjs --genie` previews the commands, `--create` runs them against the confirmed project (see [tasks.md](tasks.md)). Confirm the project and credentials before creating anything; the repository tracker is project `genie`, prefix `GNE`.
 - **Tokens and `g-` components only.** No hard-coded colours, sizes, or font families outside `g-tokens.css`. If something is missing, open a small PR against the foundation, then use it.
 - **Do not edit the same file as another task in flight.** The shared stylesheet is split in `H01` so that screens own their CSS.
 - **Behaviour is frozen.** Keep every route, URL parameter, shortcut, permission check, live update, and drag and drop path. Existing tests in `test/` must keep passing unchanged unless the task says why.
 - **Evidence over claims.** Attach before and after screenshots (both themes, 1440 and 390) to every UI task. Say "verified" only for what was actually rendered.
-- **Language.** User-facing text stays Russian and uses the established terms ([glossary](../../../../GLOSSARY.md)). Code, comments, docs, PRs: English.
+- **Language.** User-facing text stays Russian and uses the established terms ([glossary](https://grigoryshulga.github.io/genie/glossary)). Code, comments, docs, PRs: English.
 
 ## Decisions
 
@@ -70,7 +70,7 @@ None of the new files is imported by the application yet. The first foundation t
 | Monospace | Geist Mono stays for IDs and code (self-host it too) |
 | Default theme | Ink (dark), with a user preference of system, ink, or paper |
 | Character | Four states mapped to real agent state; one per view; static under reduced motion |
-| Logo | The draft vectors in `docs/assets/brand/` until the owner supplies the designer's source |
+| Logo | The draft vectors in `design-system/brand/` until the owner supplies the designer's source |
 
 ### Open for the owner (do not block on these)
 
@@ -87,7 +87,7 @@ None of the new files is imported by the application yet. The first foundation t
 - **Capture screenshots:** the preinstalled Chromium (`/opt/pw-browsers/chromium`, `PLAYWRIGHT_BROWSERS_PATH` is set) with Playwright; do not run `playwright install`. Disable animations and fix the clock so captures are comparable.
 - **Checks before every push** (see `.github/workflows/ci.yml` and `package.json`): `npm test`, `npm run typecheck`, `npm run lint:web`, `npm run build:web`; plus `npm run docs:check` for documentation changes. Rust checks run only when Rust changes.
 - **Known issue to confirm first:** `npm ci` failed on a clean checkout in one environment because the lock file lacked `typescript@5.9.3`. Check whether this reproduces in CI before touching dependencies; do not rewrite the lock file as a side effect.
-- **Tracker access:** if the native `genie` CLI or the tracker is not reachable, report the exact blocker and keep the work unfinished, as AGENTS.md requires.
+- **Tracker access:** if the native `genie` CLI or the tracker is not reachable, report the exact blocker and keep the work unfinished, as the agent guide requires.
 
 ## Suggested team shape
 

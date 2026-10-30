@@ -140,7 +140,7 @@ export const Icon = {
   ),
   /**
    * genie mark: the logo in the sidebar and on public pages. Line art of the
-   * genie in docs/assets/brand/genie-mark.svg, stroked with the surrounding
+   * genie in design-system/brand/genie-mark.svg, stroked with the surrounding
    * color (the tile behind it sets the periwinkle).
    */
   mark: ({ size = 16, ...p }: IconProps) => (

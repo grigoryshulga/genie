@@ -1,7 +1,7 @@
 {
   "epic": {
     "title": "Redesign the web UI in the ink-and-paper visual language",
-    "description": "Apply the Genie design system (docs/assets/brand/design-system.md, principles.md, components.html, handoff/) to every screen of the web UI. Redesign the board, task list, task detail, epics, team view and agent chat, authentication, the answer page and the shell; reskin documentation, the agents catalogue, other platform pages and Settings. Behaviour, routes, URLs, shortcuts and server contracts do not change.",
+    "description": "Apply the Genie design system (design-system/brand/design-system.md, principles.md, components.html, handoff/) to every screen of the web UI. Redesign the board, task list, task detail, epics, team view and agent chat, authentication, the answer page and the shell; reskin documentation, the agents catalogue, other platform pages and Settings. Behaviour, routes, URLs, shortcuts and server contracts do not change.",
     "ac": [
       "Every screen in handoff/screens.md is implemented in both themes (ink and paper) at desktop and phone widths",
       "No hard-coded colours, font families or legacy design variables remain outside g-tokens.css",
@@ -29,13 +29,13 @@
       "ui": false,
       "deps": [],
       "description": "Agents cannot judge a redesign without seeing it. Build a repeatable way to run the web UI against realistic data and capture screenshots of every route in both themes. Start a throwaway Genie server (cargo run -p genie -- serve with a temporary data directory) and seed it through the genie CLI or the HTTP API with a project containing tasks in all eleven statuses, epics with children, tasks with acceptance criteria and PR/CI data, owner decisions, notifications, documents, and as many teams and mailboxes as can be created without live agents (record the gap if teams need fixtures). Capture screenshots with Playwright using the preinstalled Chromium (PLAYWRIGHT_BROWSERS_PATH, executablePath /opt/pw-browsers/chromium; do not run playwright install). Check whether npm ci passes on a clean checkout before adding any dependency; the lock file may be out of sync.",
-      "scope": ["web/scripts/ (new)", "package.json scripts", ".gitignore", "docs/development.md"],
+      "scope": ["web/scripts/ (new)", "package.json scripts", ".gitignore", "the development guide"],
       "ac": [
         "One documented command seeds a throwaway server and prints its URL; it never touches the local tracker or real data",
         "One command captures PNGs for every route listed in handoff/screens.md in ink and paper at 1440x900 and 390x844, with animations disabled and a fixed clock, into an ignored output folder",
         "The set of baseline screenshots of the current UI is captured and attached to the task before any redesign begins",
-        "The seed covers all eleven statuses, epics, owner decisions, notifications and documents; known gaps (for example teams) are listed in docs/development.md",
-        "docs/development.md explains how to run the harness"
+        "The seed covers all eleven statuses, epics, owner decisions, notifications and documents; known gaps (for example teams) are listed in the development guide",
+        "the development guide explains how to run the harness"
       ],
       "plan": "Investigate server startup and seeding via the ops catalog; write the seed script; write the Playwright capture script; capture baselines; document."
     },
@@ -215,7 +215,7 @@
       "hours": 2.5,
       "ui": true,
       "deps": ["H05c", "H06"],
-      "description": "Bring the character into the app. Make the four animated SVGs from docs/assets/brand/character/ available to the bundle (import as assets), add a Genie component (state, size, alt) that respects reduced motion, and a pure function plus hook that derives the state from teams and tasks: thinking when any member is working, sleeping when nothing is active, waking transiently when a team becomes active, surprised when a task returns to changes requested, CI fails, or a decision arrives. Use it in the status dock and the shared EmptyState. If the live event stream lacks a needed signal, degrade to thinking and sleeping and document the gap; do not change server contracts in this task.",
+      "description": "Bring the character into the app. Make the four animated SVGs from design-system/brand/character/ available to the bundle (import as assets), add a Genie component (state, size, alt) that respects reduced motion, and a pure function plus hook that derives the state from teams and tasks: thinking when any member is working, sleeping when nothing is active, waking transiently when a team becomes active, surprised when a task returns to changes requested, CI fails, or a decision arrives. Use it in the status dock and the shared EmptyState. If the live event stream lacks a needed signal, degrade to thinking and sleeping and document the gap; do not change server contracts in this task.",
       "scope": ["web/src/shared/ui/ (Genie)", "web/src/entities/team or session (state derivation)", "test/ (node:test for the pure function)"],
       "ac": [
         "A pure function maps (teams, tasks, recent events) to a state and has node:test coverage for each state and for precedence",
@@ -525,8 +525,8 @@
       "hours": 3,
       "ui": true,
       "deps": ["H02"],
-      "description": "Apply the brand outside the app: the VitePress theme (colours, Unbounded display headings, Manrope body, the new logo lockups, favicon), the README hero SVG, and the application favicon and theme colour. Replace the old periwinkle lettermark usages with the new logo after confirming the draft vector with the owner; update docs/assets/brand/README.md.",
-      "scope": ["docs/.vitepress/theme/", "docs/public/", "docs/assets/hero.svg", "README.md", "web/index.html (icon)"],
+      "description": "Apply the brand outside the app: the VitePress theme (colours, Unbounded display headings, Manrope body, the new logo lockups, favicon), the README hero SVG, and the application favicon and theme colour. Replace the old periwinkle lettermark usages with the new logo after confirming the draft vector with the owner; update design-system/brand/README.md.",
+      "scope": ["site/.vitepress/theme/", "site/public/", "design-system/brand/hero.svg", "README.md", "web/index.html (icon)"],
       "ac": [
         "The docs site builds (npm run docs:check and docs:build) and renders in the new palette",
         "The README hero and favicon use the new logo",
@@ -543,11 +543,11 @@
       "hours": 2,
       "ui": false,
       "deps": ["H30", "H31", "H32", "H21", "H22", "H23"],
-      "description": "Remove the legacy compatibility variables and unused classes and CSS, Geist, and the sidebar remnants; update CODING_STANDARDS.md Web UI section with the design-system rules (tokens only, g- components, themes, density); update docs and the changelog; produce the final before and after screenshot set.",
-      "scope": ["web/src (dead code)", "CODING_STANDARDS.md", "CHANGELOG.md", "docs/"],
+      "description": "Remove the legacy compatibility variables and unused classes and CSS, Geist, and the sidebar remnants; update the coding standards page Web UI section with the design-system rules (tokens only, g- components, themes, density); update docs and the changelog; produce the final before and after screenshot set.",
+      "scope": ["web/src (dead code)", "the coding standards page", "CHANGELOG.md", "the knowledge vault"],
       "ac": [
         "No legacy design variable, class, or font remains; a grep proves it",
-        "CODING_STANDARDS.md points to the design system and principles",
+        "the coding standards page points to the design system and principles",
         "CHANGELOG.md has an entry for the redesign",
         "Typecheck, lint, tests, and build pass"
       ],

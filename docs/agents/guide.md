@@ -10,7 +10,7 @@ tags: [agents, workflow]
 
 Follow steps 1–7 for every repository task. Read these pages when they apply:
 
-- [Coding standards](https://github.com/grigoryshulga/genie/blob/dev/CODING_STANDARDS.md): before changing code.
+- [Coding standards](coding-standards.md): before changing code.
 - [The genie CLI guide](../development/genie-cli.md): before tracking work.
 - [The testing workflow](../development/testing-workflow.md): to check a UI change on the development stand, update the local tracker, or free disk space.
 - [The preview and approval guide](../development/visual-preview.md): before preparing a UI review, configuring T3 Project Actions, or publishing a UI change.

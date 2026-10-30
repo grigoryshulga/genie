@@ -1,16 +1,16 @@
 # Redesign task breakdown
 
-Generated from [tasks.json](tasks.json) by [build-tasks.mjs](build-tasks.mjs); edit the JSON, then run `node docs/assets/brand/handoff/build-tasks.mjs`. Read the [handoff README](README.md) first. Briefs for each screen are in [screens.md](screens.md).
+Generated from [tasks.json](tasks.json) by [build-tasks.mjs](build-tasks.mjs); edit the JSON, then run `node design-system/brand/handoff/build-tasks.mjs`. Read the [handoff README](README.md) first. Briefs for each screen are in [screens.md](screens.md).
 
 29 tasks in one epic, about 71 agent hours of work. With independent lanes running in parallel the longest dependency chain is about 28.5 hours (H00 > H01 > H02 > H03 > H05a > H05c > H06 > H07 > H14 > H30 > H33). Estimates are rough (plus or minus 50 percent) and measure agent working time, not elapsed days; review, decisions, and CI waits come on top.
 
 ## Creating the tracker tasks
 
-The tracker is the unit of record (see [the CLI guide](../../../development/genie-cli.md)). Preview the commands, then create the epic and tasks against the confirmed project:
+The tracker is the unit of record (see [the CLI guide](https://grigoryshulga.github.io/genie/development/genie-cli)). Preview the commands, then create the epic and tasks against the confirmed project:
 
 ```bash
-node docs/assets/brand/handoff/build-tasks.mjs --genie     # dry run: prints genie commands
-GENIE_PROJECT=genie node docs/assets/brand/handoff/build-tasks.mjs --create
+node design-system/brand/handoff/build-tasks.mjs --genie     # dry run: prints genie commands
+GENIE_PROJECT=genie node design-system/brand/handoff/build-tasks.mjs --create
 ```
 
 Creation uses the caller's rights: people create inbox tasks, agents create drafts. Dependencies are passed with `--dep`, so tasks start only when their predecessors close.
@@ -76,7 +76,7 @@ Tasks in the same wave have no dependency on each other. Work in a wave can proc
 
 ## Rules for the whole team
 
-- One task, one worktree, one branch from `origin/main` (see [AGENTS.md](../../../../AGENTS.md)); small PRs, English titles and descriptions.
+- One task, one worktree, one branch from `origin/main` (see [agent guide](https://grigoryshulga.github.io/genie/agents/guide)); small PRs, English titles and descriptions.
 - Do not edit the same file as another task in flight. Shared files (`g-tokens.css`, `components.css`, `app/styles.css` after the split) change only in the foundation tasks; a screen task that needs a new token or component variant opens a small PR against the foundation first.
 - Capture screenshots with the harness (`H00`) before and after every UI change, in both themes and both widths, and attach them to the task.
 - The orange rule, the Unbounded size floor, and the no-hard-coded-colours rule are checked in review; see the checklist in [principles.md](../principles.md).
@@ -92,15 +92,15 @@ Hours: 3 · Priority: 1 · Depends on: none · Wave 1
 
 Agents cannot judge a redesign without seeing it. Build a repeatable way to run the web UI against realistic data and capture screenshots of every route in both themes. Start a throwaway Genie server (cargo run -p genie -- serve with a temporary data directory) and seed it through the genie CLI or the HTTP API with a project containing tasks in all eleven statuses, epics with children, tasks with acceptance criteria and PR/CI data, owner decisions, notifications, documents, and as many teams and mailboxes as can be created without live agents (record the gap if teams need fixtures). Capture screenshots with Playwright using the preinstalled Chromium (PLAYWRIGHT_BROWSERS_PATH, executablePath /opt/pw-browsers/chromium; do not run playwright install). Check whether npm ci passes on a clean checkout before adding any dependency; the lock file may be out of sync.
 
-**Scope:** web/scripts/ (new); package.json scripts; .gitignore; docs/development.md
+**Scope:** web/scripts/ (new); package.json scripts; .gitignore; the development guide
 
 **Acceptance criteria**
 
 - One documented command seeds a throwaway server and prints its URL; it never touches the local tracker or real data
 - One command captures PNGs for every route listed in handoff/screens.md in ink and paper at 1440x900 and 390x844, with animations disabled and a fixed clock, into an ignored output folder
 - The set of baseline screenshots of the current UI is captured and attached to the task before any redesign begins
-- The seed covers all eleven statuses, epics, owner decisions, notifications and documents; known gaps (for example teams) are listed in docs/development.md
-- docs/development.md explains how to run the harness
+- The seed covers all eleven statuses, epics, owner decisions, notifications and documents; known gaps (for example teams) are listed in the development guide
+- the development guide explains how to run the harness
 - A PR is published and CI passes for its latest head
 
 **Plan:** Investigate server startup and seeding via the ops catalog; write the seed script; write the Playwright capture script; capture baselines; document.
@@ -295,7 +295,7 @@ Replace the left sidebar with the top bar specified in handoff/screens.md sectio
 
 Hours: 2.5 · Priority: 2 · Depends on: H05c, H06 · Wave 8
 
-Bring the character into the app. Make the four animated SVGs from docs/assets/brand/character/ available to the bundle (import as assets), add a Genie component (state, size, alt) that respects reduced motion, and a pure function plus hook that derives the state from teams and tasks: thinking when any member is working, sleeping when nothing is active, waking transiently when a team becomes active, surprised when a task returns to changes requested, CI fails, or a decision arrives. Use it in the status dock and the shared EmptyState. If the live event stream lacks a needed signal, degrade to thinking and sleeping and document the gap; do not change server contracts in this task.
+Bring the character into the app. Make the four animated SVGs from design-system/brand/character/ available to the bundle (import as assets), add a Genie component (state, size, alt) that respects reduced motion, and a pure function plus hook that derives the state from teams and tasks: thinking when any member is working, sleeping when nothing is active, waking transiently when a team becomes active, surprised when a task returns to changes requested, CI fails, or a decision arrives. Use it in the status dock and the shared EmptyState. If the live event stream lacks a needed signal, degrade to thinking and sleeping and document the gap; do not change server contracts in this task.
 
 **Scope:** web/src/shared/ui/ (Genie); web/src/entities/team or session (state derivation); test/ (node:test for the pure function)
 
@@ -645,9 +645,9 @@ Audit all screens for keyboard operation, focus visibility and order, roles and 
 
 Hours: 3 · Priority: 3 · Depends on: H02 · Wave 4
 
-Apply the brand outside the app: the VitePress theme (colours, Unbounded display headings, Manrope body, the new logo lockups, favicon), the README hero SVG, and the application favicon and theme colour. Replace the old periwinkle lettermark usages with the new logo after confirming the draft vector with the owner; update docs/assets/brand/README.md.
+Apply the brand outside the app: the VitePress theme (colours, Unbounded display headings, Manrope body, the new logo lockups, favicon), the README hero SVG, and the application favicon and theme colour. Replace the old periwinkle lettermark usages with the new logo after confirming the draft vector with the owner; update design-system/brand/README.md.
 
-**Scope:** docs/.vitepress/theme/; docs/public/; docs/assets/hero.svg; README.md; web/index.html (icon)
+**Scope:** site/.vitepress/theme/; site/public/; design-system/brand/hero.svg; README.md; web/index.html (icon)
 
 **Acceptance criteria**
 
@@ -665,14 +665,14 @@ Apply the brand outside the app: the VitePress theme (colours, Unbounded display
 
 Hours: 2 · Priority: 3 · Depends on: H30, H31, H32, H21, H22, H23 · Wave 11
 
-Remove the legacy compatibility variables and unused classes and CSS, Geist, and the sidebar remnants; update CODING_STANDARDS.md Web UI section with the design-system rules (tokens only, g- components, themes, density); update docs and the changelog; produce the final before and after screenshot set.
+Remove the legacy compatibility variables and unused classes and CSS, Geist, and the sidebar remnants; update the coding standards page Web UI section with the design-system rules (tokens only, g- components, themes, density); update docs and the changelog; produce the final before and after screenshot set.
 
-**Scope:** web/src (dead code); CODING_STANDARDS.md; CHANGELOG.md; docs/
+**Scope:** web/src (dead code); the coding standards page; CHANGELOG.md; the knowledge vault
 
 **Acceptance criteria**
 
 - No legacy design variable, class, or font remains; a grep proves it
-- CODING_STANDARDS.md points to the design system and principles
+- the coding standards page points to the design system and principles
 - CHANGELOG.md has an entry for the redesign
 - Typecheck, lint, tests, and build pass
 - A PR is published and CI passes for its latest head

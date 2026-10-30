@@ -1,5 +1,5 @@
 // Pure helpers of the observation plane (docs/platform/observation-plane.md §14, §15, §17).
-// Labels come from the "Observation plane" section of GLOSSARY.md; the wire types come from the
+// Labels come from the "Observation plane" section of the project glossary; the wire types come from the
 // generated files. This module loads in Node (the tests import it directly), so it uses only
 // relative imports and type-only imports from the generated files.
 
@@ -25,7 +25,7 @@ import type { Verdict } from "../../shared/api/generated/Verdict.ts";
 
 export type { CaseResult, CaseStatus, Contract, Evidence, IncidentStatus, ObservationCase, ObservationPolicy };
 
-// --- labels (GLOSSARY.md, "Observation plane") -----------------------------------------------------
+// --- labels (project glossary, "Observation plane") -----------------------------------------------------
 
 export const STATUS_LABEL: Record<CaseStatus, string> = {
   proposed: "Черновик",
@@ -53,7 +53,7 @@ export const INCIDENT_LABEL: Record<IncidentStatus, string> = {
   dismissed: "Отклонён",
 };
 
-/** The labels of the task card section and the sidebar item, as GLOSSARY.md names them. */
+/** The labels of the task card section and the sidebar item, as the glossary names them. */
 export const OBSERVATION_TEXT = {
   nav: "Наблюдения",
   section: "Наблюдение",
@@ -61,12 +61,12 @@ export const OBSERVATION_TEXT = {
   create: "Создать наблюдение",
 } as const;
 
-/** The default title of a case created from a task (`newTitle` in GLOSSARY.md). */
+/** The default title of a case created from a task (`newTitle` in the glossary). */
 export function newCaseTitle(taskTitle: string): string {
   return `${taskTitle} — наблюдение`;
 }
 
-// --- labels of the pages (GLOSSARY.md, "Observation plane": each const has its rows there) -----------
+// --- labels of the pages (glossary "Observation plane": each const has its rows there) -----------
 
 /** The filters of the case list. «Завершённые» is every case that is no longer active. */
 export const FILTER_LABEL = { active: "Активные", concluded: "Завершённые", all: "Все" } as const;
