@@ -484,9 +484,13 @@ pub fn publish(app: &App, id: i64, by: &Editor) -> AppResult<Published> {
         let conflicts: Vec<String> =
             merged.iter().filter(|(_, m)| matches!(m, FileMerge::Conflict { .. })).map(|(p, _)| p.clone()).collect();
         if !conflicts.is_empty() {
+            app.with_server(|db| db.touch_changeset(id, &paths))?;
             let merge = app.with_server(|db| db.create_merge(id, &main, &tip, &conflicts))?;
             app.with_server(|db| db.set_changeset_status(id, ChangesetStatus::Merging, Some(&by.login)))?;
-            let merge = dispatch_merger(app, &by.project, &cs, &merge)?;
+            // A server publication (sync) has no project of its own: the merger works in the page's.
+            let project =
+                if by.project.is_empty() { conflicts.iter().find_map(|p| v.project_of(p)).unwrap_or_default() } else { by.project.clone() };
+            let merge = dispatch_merger(app, &project, &cs, &merge)?;
             let cs = app.with_server(|db| db.changeset(id))?;
             return Ok((Published::Merging { changeset: Box::new(cs), merge: Box::new(merge) }, Vec::new()));
         }

@@ -197,6 +197,13 @@ async fn overlapping_edits_become_a_pending_merge_and_hold_the_push() {
     assert!(st.ok, "{st:?}");
     assert_eq!(st.merging.len(), 1, "the same merge is still waited for: {st:?}");
     assert_eq!(remote_changesets(&h).len(), before, "no second sync changeset");
+
+    // The merger works in the page's project and knows the sync changeset's pages.
+    let merge = h.app.with_server(|db| db.doc_merge(st.merging[0])).unwrap();
+    let job = h.app.with_server(|db| db.job(merge.job.expect("a merger job"))).unwrap();
+    assert_eq!((job.project.as_str(), job.role.as_str()), ("shop", "doc-merger"));
+    let cs = h.app.with_server(|db| db.changeset(merge.changeset)).unwrap();
+    assert_eq!(cs.paths, ["shop/changelog.md"]);
 }
 
 /// The commit the merge waits on: main's head when the sync reported a merge.
