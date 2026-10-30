@@ -96,7 +96,7 @@ Writes inside a changeset are commits on its branch and fail the same way: no wr
 | `review` | The author | Listed as **unreviewed** for the section owners until marked reviewed or reverted; L0 marks the page. |
 | `locked` | Nobody in the role; edits are refused | — |
 
-Review state lives in the server database (`doc_reviews`: changeset, reviewer, decision, time), not in git, so marking something reviewed creates neither commits nor sync traffic.
+Review state lives in the server database (`doc_changesets.review_needed`, `reviewed_by`, `reviewed_at`, `review_decision`), not in git, so marking something reviewed creates neither commits nor sync traffic. Pending merges are kept in `doc_merges`.
 
 ### History and rollback
 
@@ -138,6 +138,32 @@ Agents receive the pages their role must follow with their first message, in ful
 ### Documenter
 
 The documenter writes to the vault through `genie_docs edit` in its task's changeset and publishes it when done, instead of committing documentation into the code branch. Its `doc` artifact links the changeset. Files a code repository requires (`README.md`, `CHANGELOG.md`, code comments) stay in the code branch.
+
+## HTTP API
+
+All routes live under `/api/docs`, are scoped to the caller's project roots, and keep the existing capability checks (`docs.read` for reads, `docs.write` for changes). Changeset, merge and commit objects are the Rust wire types (`Changeset`, `DocMerge`, `CommitInfo`) exported to `web/src/shared/api/generated`.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /page?path=&changeset=&at=` | Read a page. Without `changeset`, an agent or person with an open changeset touching the page reads that version (read-your-writes); `changeset=main` forces main; `at=<sha>` reads a version on main. The response adds `version` (commit read), `changeset` (id or null), `openChangesets` (others' open changesets touching the page: id, author, task) and `unreviewed` (published changesets awaiting review). |
+| `POST /page` | Compatibility write: one `write-page` edit into the caller's changeset (see `/edit`). |
+| `POST /edit` | Body `{ path, ops: DocOp[], note?, task?, changeset? }`. Applies the operations to the changeset version of the page (opening the caller's changeset when needed) and commits them to its branch. Returns `{ changeset, commit, page }`. |
+| `POST /pages/move`, `DELETE /page` | Move or remove a page inside the caller's changeset. |
+| `GET /changesets?status=&task=&author=&unreviewed=&path=` | The Changes feed. |
+| `GET /changesets/{id}` | A changeset with its commits and full diff against its base or, when published, against main before publication. |
+| `POST /changesets/{id}/publish` | Integrate into main. Returns `{ status: "published", commit }` or `{ status: "merging", merge }`. |
+| `POST /changesets/{id}/discard` | Close without merging. |
+| `POST /changesets/{id}/review` | Body `{ decision: "reviewed" }`; owners of the touched sections only. |
+| `POST /changesets/{id}/revert` | Create and publish the inverse changeset. |
+| `GET /history?path=&limit=` | `CommitInfo[]` of a page on main, following moves. |
+| `GET /diff?path=&from=&to=` | Unified diff of a page between two versions. |
+| `POST /restore` | Body `{ path, at }`: publish the page's content at `at` as a new changeset. |
+| `GET /merges/{id}` | Pending merge with, per conflicted page, base/ours/theirs, the marked text, and both sides' notes, tasks and authors. |
+| `POST /merges/{id}/resolve` | Body `{ pages?: [{ path, content }], done?, fail?, contradiction?, note? }`. Pages are staged on the merge; `done` validates and publishes; `fail` hands it to people. |
+
+Errors keep the existing distinctions: 400/422 invalid input and contract diagnostics, 403 locked or not an owner, 404 outside the project, 409 a changeset in the wrong state.
+
+CLI and MCP (`genie_docs`) mirror them: `search`, `read`, `edit`, `publish`, `discard`, `changes`, `changeset`, `history`, `diff`, `revert`, `restore`, `review`, `merge-show`, `merge-resolve`, `required`.
 
 ## Migration
 
