@@ -37,6 +37,31 @@ genie task create --help
 
 Operation groups include `task`, `team`, `mail`, `docs`, `job`, `automation`, `agents`, `project`, `observe`, `user`, `me`, and `server`. Task assessment, routing evidence and policy comparisons are under `intelligence`; Jev calls are under `decision`, and project/task management is under `manager`. Repository and delivery commands are under `repos` and `pr`. Operator commands include `serve`, `doctor`, `backup`, `restore`, and `migrate`.
 
+## Documentation changesets
+
+Every documentation edit goes into a changeset: a branch forked from main, owned by its author and usually their task. Publishing merges it into main; a task cannot reach `done` while its changeset is open. See [the knowledge vault](../platform/knowledge-vault.md#changesets-history-and-rollback) for the model and the section operations.
+
+```bash
+genie docs edit shop/billing/returns.md --replace-section "Refunds" --body-file refunds.md
+genie docs edit shop/billing/returns.md --set-meta verified=2026-10-30 --append --heading "Notes" --text-file notes.md
+genie docs changes
+genie docs publish
+```
+
+| Command | Purpose |
+| --- | --- |
+| `search`, `read`, `tree`, `required` | Find pages, read one (with `--heading`, `--changeset` or `--at`), list the project's pages, read a role's required pages. |
+| `edit` | Change a page: `--replace-section`, `--insert-section`, `--append`, `--remove-section`, `--set-meta`, `--file` for a whole page, or `--ops` with the JSON operation array. |
+| `write`, `note` | Compatibility whole-page write and a draft note in the space inbox. |
+| `publish`, `discard` | Merge the caller's open changeset into main, or close it unpublished. Both accept `--changeset`; without it the caller's open changeset for its task must be the only one. |
+| `changes`, `changeset` | The Changes feed (`--status`, `--task`, `--author`, `--unreviewed`, `--path`) and one changeset with its commits and diff. |
+| `history`, `diff` | Commits on main that touched a page, and a unified diff between two versions. |
+| `revert`, `restore` | Publish the inverse of a changeset, or a page's content at a version, as a new changeset. |
+| `review` | Mark a published changeset reviewed; the touched sections' owners only. |
+| `merge-show`, `merge-resolve` | Read a pending merge, then resolve it with `--page <path> --file <file>` pairs plus `--done`, `--fail` or `--contradiction`. |
+
+The same operations are the `genie_docs` MCP actions, with `ops` as the JSON form of the edit flags.
+
 ## Task intelligence
 
 ```bash
