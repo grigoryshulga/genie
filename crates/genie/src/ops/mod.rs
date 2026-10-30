@@ -350,7 +350,7 @@ pub const GROUPS: &[(&str, &str)] = &[
     ("team", "Teams of agents: assemble, look at, steer and stop them"),
     ("mail", "Mail between the members of a team, the orchestrator and people"),
     ("chat", "The project chat: people and the project manager talk here"),
-    ("docs", "The project's knowledge base: search, read, write pages"),
+    ("docs", "The project's knowledge base: search and read pages, edit them in changesets, publish and roll back"),
     ("repos", "Git repositories of a project: hosts, attach, policy, checks, and what a task may do in them"),
     ("pr", "Pull/merge requests of a task's branches: open, look at, comment, merge"),
     ("job", "One-shot jobs: start one, see what it did"),

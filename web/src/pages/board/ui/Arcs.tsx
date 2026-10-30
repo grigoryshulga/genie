@@ -1,7 +1,7 @@
 /**
  * The arcs motif: concentric quarter rings anchored to the bottom-right corner and cropped by it,
  * a green outer band, an orange band inside it and a solid green core. One composition per surface,
- * never behind text or controls (docs/assets/brand/design-system.md). The colours live in board.css
+ * never behind text or controls (design-system/brand/design-system.md). The colours live in board.css
  * and come from the tokens, so both themes follow.
  */
 export function Arcs({ className }: { className?: string }) {

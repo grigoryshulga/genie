@@ -40,6 +40,8 @@ const ProjectChat = lazyPage(() => import("@/pages/chat").then((m) => m.ProjectC
 const EpicsPage = lazyPage(() => import("@/pages/epics").then((m) => m.EpicsPage));
 const EpicPage = lazyPage(() => import("@/pages/epic").then((m) => m.EpicPage));
 const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
+const DocsChangesPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsChangesPage));
+const DocsMergePage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsMergePage));
 const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
 const ManageShell = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.ManageShell));
 const HubTabsSection = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.HubTabsSection));
@@ -53,7 +55,6 @@ const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m
 const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.AnswerPage));
 const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
 const NotificationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.NotificationsPage));
-const ProposalsPage = lazyPage(() => import("@/pages/platform").then((m) => m.ProposalsPage));
 const ObservationsPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationsPage));
 const ObservationPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationPage));
 const TaskDetail = lazyPage(() => import("@/widgets/task-detail").then((m) => m.TaskDetail));
@@ -351,6 +352,12 @@ function LegacyServer() {
   return <LegacyManagement scope="server" legacySection={useParams().tab ?? "health"} />;
 }
 
+/** Old proposal links land on the Changes feed, keeping their query for the new filters. */
+function LegacyDocsProposals() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: "/docs/changes", search }} replace />;
+}
+
 /** Preserve bookmarks and notification links when operational tools move into management. */
 function LegacyWorkTool({ path }: { path: string }) {
   const { caseId } = useParams();
@@ -388,7 +395,9 @@ export const router = createBrowserRouter([
           { path: "chat", element: <ProjectChat /> },
           { path: "docs", element: <DocsPage /> },
           { path: "docs/edit", element: <DocsPage /> },
-          { path: "docs/proposals", element: <ProposalsPage /> },
+          { path: "docs/changes", element: <DocsChangesPage /> },
+          { path: "docs/changes/merge/:mergeId", element: <DocsMergePage /> },
+          { path: "docs/proposals", element: <LegacyDocsProposals /> },
           { path: "automations", element: <LegacyWorkTool path="runs" /> },
           { path: "observations", element: <LegacyWorkTool path="observations" /> },
           { path: "observation/:caseId", element: <LegacyWorkTool path="observation" /> },

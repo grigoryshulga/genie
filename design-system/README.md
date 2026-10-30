@@ -9,6 +9,7 @@ The application is the reference. This package extracts its foundations and spec
 - `tokens.json` is a generated [DTCG 2025.10](https://www.designtokens.org/tr/2025.10/format/) document with one group per theme (`ink`, `paper`), each fully resolved. Colors use explicit sRGB components and alpha; dimensions use CSS pixels; shadow is a composite token. CSS names and original expressions live under `$extensions.com.genie`.
 - `web/design-system.html` is a live specimen of the real kit. Run `npm run dev:web` and open `http://localhost:5173/design-system.html`; it requires no tracker login. Switch the theme select to compare both sheets.
 - Browser capture, the offline Figma plugin, plugin build/test code and agent instructions live in the separate private [genie-figma-tools repository](https://github.com/grigoryshulga/genie-figma-tools).
+- The brand sources live in `brand/`: logo vectors, the animated character, the component and board specimens, the principles, the handoff briefs and the design-system specification. They stay in this repository because the application and its README use them; the documentation site copies them to `assets/brand/` at build time (`site/scripts/assemble.mjs`), and they are not site pages.
 
 After editing tokens, run:
 
@@ -87,6 +88,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | Dialog | standard/wide, busy | `Dialog`; focus trap, `Escape`, backdrop click, restored focus. |
 | Confirmation | normal/destructive/busy | `ConfirmDialog`; composes Dialog and Button. |
 | Menu | closed/open, item resting/hover/disabled/checked | `ActionMenu`; roving focus, `Escape`, outside click, `separator` entries. |
+| Menu button | closed/open, resting/hover/focus/disabled | `MenuButton`; an icon trigger with the menu placed under it, arrow keys, `Escape` and focus return. |
 | Navigation | resting/hover/selected, full/compact | `g-nav-*` and `g-tabs`; counts and status are optional slots. |
 | Breadcrumbs, key caps, tooltip | — | `Breadcrumbs`, `Kbd`, `Tooltip`. |
 | Task status and priority | 11 statuses, priorities P0-P4 | `StatusIcon`, `PriorityIcon`; shape carries the state too. |

@@ -1,7 +1,7 @@
-// The shell's popups and where the documentation proposals count lives.
+// The shell's popups and where the documentation changes count lives.
 //
-// The seeded server has no notifications of its own (they come from agents' work) and no section
-// that asks for review, so the notification and proposals APIs are answered from the labelled
+// The seeded server has no notifications of its own (they come from agents' work) and no open
+// changeset on a fresh run, so the notification and changeset APIs are answered from the labelled
 // fixtures below through `page.route` — fixtures, not live data. Everything else is the real
 // server: the shell, its routes, and opening a task from a notification.
 
@@ -48,18 +48,18 @@ const NOTIFICATIONS: FixtureNotification[] = [
   {
     id: 1,
     project: PROJECT.id,
-    kind: "proposal",
-    title: "Предложение к документации",
+    kind: "doc.changeset",
+    title: "Черновик к документации",
     body: "Страница про деплой.",
     created: minutesAgo(1_500),
     readAt: minutesAgo(1_400),
   },
 ];
 
-/** Pending proposals: what the Documentation entry counts. */
-const PROPOSALS = [
-  { id: 2, path: "demo/guides/deploy.md", author: "agent", authorKind: "agent", note: "Новая страница про деплой", status: "open", created: minutesAgo(60) },
-  { id: 1, path: "demo/decisions/storage.md", author: "agent", authorKind: "agent", note: "Правка решения", status: "open", created: minutesAgo(120) },
+/** Open drafts and unreviewed publications: what the Knowledge entry counts. */
+const CHANGESETS = [
+  { id: 2, branch: "changes/2", project: PROJECT.id, task: "DM-2", author: "agent", authorName: "agent", authorKind: "agent", title: "Новая страница про деплой", status: "open", base: "a", paths: ["demo/guides/deploy.md"], origin: "genie", reverts: null, created: minutesAgo(60), updated: minutesAgo(60), publishedAt: null, publishedCommit: null, closedBy: null, remindedAt: null, reviewNeeded: false, reviewedBy: null, reviewedAt: null, reviewDecision: null, mergedByAgent: false },
+  { id: 1, branch: "changes/1", project: PROJECT.id, task: "DM-1", author: "ivan", authorName: "Иван", authorKind: "human", title: "Правка решения", status: "published", base: "a", paths: ["demo/decisions/storage.md"], origin: "genie", reverts: null, created: minutesAgo(120), updated: minutesAgo(90), publishedAt: minutesAgo(90), publishedCommit: "b", closedBy: null, remindedAt: null, reviewNeeded: true, reviewedBy: null, reviewedAt: null, reviewDecision: null, mergedByAgent: false },
 ];
 
 /** Answer the notification APIs from the fixture and record the reads the UI sends. */
@@ -147,7 +147,7 @@ test("a notification without a link is only marked read", async ({ page }) => {
   const { reads } = await serveNotifications(page, [{ ...NOTIFICATIONS[2], readAt: undefined }]);
   await page.goto("/board");
   await page.getByRole("button", { name: "Уведомления, непрочитанных: 1" }).click();
-  await popupOf(page).getByRole("button", { name: /Предложение к документации/ }).click();
+  await popupOf(page).getByRole("button", { name: /Черновик к документации/ }).click();
   expect(reads).toEqual([1]);
   await expect(popupOf(page)).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/board");
@@ -196,15 +196,15 @@ test("the notifications page stays its own route", async ({ page }) => {
 });
 
 for (const width of [1440, 390]) {
-  test(`pending proposals ride on the Knowledge entry (${width})`, async ({ page }) => {
+  test(`open changes ride on the Knowledge entry (${width})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.route(/\/api\/docs\/proposals\?status=open$/, async (route) => await route.fulfill({ json: PROPOSALS }));
+    await page.route(/\/api\/docs\/changesets(\?.*)?$/, async (route) => await route.fulfill({ json: CHANGESETS }));
     await page.goto("/board");
 
     const docs = page.getByRole("navigation", { name: "Навигация" }).getByRole("link", { name: /Знания/ });
     await expect(docs).toBeVisible();
     await expect(docs).toHaveAttribute("href", "/docs");
-    await expect(docs).toHaveAccessibleName(/Знания\s+предложений к документации: 2/);
+    await expect(docs).toHaveAccessibleName(/Знания\s+изменений к документации: 2/);
     // A count inside a count's entry, not a second link inside a link.
     await expect(docs.locator("a")).toHaveCount(0);
 
@@ -217,11 +217,19 @@ for (const width of [1440, 390]) {
   });
 }
 
-test("the proposals page keeps its own address and a way in from the documentation", async ({ page }) => {
-  await page.goto("/docs/proposals");
-  await expect(page.getByRole("heading", { level: 1, name: "Предложения" })).toBeVisible();
+test("the Changes feed keeps its own address and a way in from the documentation", async ({ page }) => {
+  await page.route(/\/api\/docs\/changesets(\?.*)?$/, async (route) => await route.fulfill({ json: CHANGESETS }));
+  await page.goto("/docs/changes");
+  await expect(page.getByRole("heading", { level: 1, name: "Изменения" })).toBeVisible();
   await page.getByRole("link", { name: "Страницы" }).click();
   await expect(page).toHaveURL(/\/docs$/);
+});
+
+test("an old proposal link lands on the Changes feed", async ({ page }) => {
+  await page.route(/\/api\/docs\/changesets(\?.*)?$/, async (route) => await route.fulfill({ json: CHANGESETS }));
+  await page.goto("/docs/proposals?proposal=2");
+  await expect(page).toHaveURL(/\/docs\/changes\?proposal=2$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Изменения" })).toBeVisible();
 });
 
 test("the current tab's count reads on the accent pill", async ({ page }) => {

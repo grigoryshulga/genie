@@ -3,10 +3,16 @@ import { FLOW_DOC } from "./seed.ts";
 
 async function seedDoc(request: APIRequestContext, suffix: string) {
   const path = `demo/guides/layout-${suffix}.md`;
-  const title = "Проверка рабочего пространства";
+  const title = `Проверка рабочего пространства (${suffix})`;
   const content = `---\ntitle: ${title}\ntype: guide\nstatus: current\ntags: [deploy, релиз]\npaths: [web/src/**/*.tsx]\n---\n# ${title}\n\nТекст инструкции.\n\n## Шаги\n\n1. Проверить сборку.\n\n## Команды\n\nОткройте [[demo/guides/run.md]].\n`;
   const saved = await request.post("/api/docs/page", { headers: { "x-genie": "1" }, data: { path, content, mode: "upsert" } });
   expect(saved.ok(), await saved.text()).toBe(true);
+  const written = (await saved.json()) as { changeset?: { id: number } };
+  // A write opens its author's changeset; publish it so the page is on main and other pages see it.
+  if (written.changeset) {
+    const published = await request.post(`/api/docs/changesets/${written.changeset.id}/publish`, { headers: { "x-genie": "1" } });
+    expect(published.ok(), await published.text()).toBe(true);
+  }
   return { path, title };
 }
 

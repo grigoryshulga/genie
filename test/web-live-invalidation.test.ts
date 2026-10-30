@@ -98,11 +98,12 @@ test("delivery events refetch the task's repositories and page", () => {
   assert.ok(stale([ev("git.pushed", "team-1")], ["task-repos", "T-1"]), "a push names the team, not the task");
 });
 
-test("docs events refetch docs and proposals", () => {
+test("docs events refetch pages, the Changes feed and history", () => {
   for (const type of ["doc.changed", "doc.proposal", "doc.proposal_decided"]) {
     const events = [ev(type)];
     assert.ok(stale(events, ["docs", "page", "a.md"]));
-    assert.ok(stale(events, ["proposals", "open"]));
+    assert.ok(stale(events, ["docs", "changesets", ""]));
+    assert.ok(stale(events, ["docs", "history", "a.md"]));
     assert.ok(!stale(events, keys.teams));
   }
 });

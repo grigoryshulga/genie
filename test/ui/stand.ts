@@ -15,8 +15,8 @@ import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { genie, seedDocs, seedTask } from "./seeding.ts";
-import { OWNER } from "./seed.ts";
+import { genie, seedChangesetPolicy, seedChangesets, seedDocs, seedTask } from "./seeding.ts";
+import { OWNER, PROJECT } from "./seed.ts";
 import { PEOPLE, STAND_PROJECTS } from "./stand-data.ts";
 import { TEMPLATE_FILE } from "./template-data.ts";
 import { ROLE_FILE } from "./role-data.ts";
@@ -76,9 +76,12 @@ function seed() {
     issues: { url: "http://127.0.0.1:9/issues", description: "Задачи проекта" },
   } }));
   console.log(`  a running team with mail and a saved agent conversation: ${seedTeam(bin, dataDir)}`);
+  // Published human edits wait for their owners: the Changes feed gets an unreviewed entry.
+  seedChangesetPolicy(dataDir, PROJECT.id, [OWNER.login]);
 }
 
-if (args.has("--reset") || !existsSync(join(dataDir, "server.db"))) {
+const fresh = args.has("--reset") || !existsSync(join(dataDir, "server.db"));
+if (fresh) {
   console.log(`seeding ${dataDir}`);
   seed();
 }
@@ -108,6 +111,16 @@ for (let tries = 0; ; tries++) {
   }
   if (tries > 150) fail(`the server did not become healthy; see ${join(dataDir, "server.log")}`);
   await new Promise((r) => setTimeout(r, 200));
+}
+
+// Changesets exist only through the vault routes, so they are seeded after the first
+// start. An older server without those routes leaves the rest of the stand usable.
+if (fresh) {
+  try {
+    console.log(`  ${await seedChangesets(apiPort, PROJECT.id)}`);
+  } catch (error) {
+    console.warn(`stand: changesets were not seeded: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 const vite = spawn("npm", ["run", "dev:web", "--", "--port", String(webPort), "--strictPort", "--host", "127.0.0.1"], {

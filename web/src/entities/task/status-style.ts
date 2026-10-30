@@ -1,6 +1,6 @@
 // How a status and a priority look: the shape is the primary signal, the colour role only reinforces it.
 // Roles follow the design system: neutral is quiet, accent (green) is system state, signal (orange) is
-// "your move". Mirrors the icon set in docs/assets/brand/components.html.
+// "your move". Mirrors the icon set in design-system/brand/components.html.
 
 import type { Status } from "./model.ts";
 

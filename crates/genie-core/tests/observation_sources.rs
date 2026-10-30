@@ -77,8 +77,8 @@ fn recorded_version(db: &ServerDb) -> String {
 #[test]
 fn current_schema_has_the_two_source_tables_and_is_recorded() {
     let (_dir, db) = server();
-    assert_eq!(SERVER_SCHEMA_VERSION, 11);
-    assert_eq!(recorded_version(&db), "11");
+    assert_eq!(SERVER_SCHEMA_VERSION, 12);
+    assert_eq!(recorded_version(&db), "12");
     assert_eq!(tables(&db), ["observation_secrets", "observation_sources"]);
     assert_eq!(columns(&db, "observation_sources"), ["project", "name", "kind", "url", "config", "created", "updated"]);
     assert_eq!(columns(&db, "observation_secrets"), ["project", "source", "sealed", "hint", "updated"]);
@@ -101,7 +101,7 @@ fn a_schema_6_server_database_gains_the_source_tables_and_keeps_its_data() {
             .unwrap();
     }
     let db = ServerDb::open(&path).unwrap();
-    assert_eq!(recorded_version(&db), "11");
+    assert_eq!(recorded_version(&db), "12");
     assert_eq!(tables(&db), ["observation_secrets", "observation_sources"]);
     assert!(db.project_opt("shop").unwrap().is_some(), "the projects survive the upgrade");
     db.add_observation_source("shop", prom("prom", "https://prometheus.example.com")).unwrap();

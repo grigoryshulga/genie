@@ -266,6 +266,50 @@ CREATE TABLE IF NOT EXISTS proposals (
   decided_at TEXT,
   decision_note TEXT
 );
+CREATE TABLE IF NOT EXISTS doc_changesets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  branch TEXT NOT NULL UNIQUE,
+  project TEXT,
+  task TEXT,
+  author TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  author_kind TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL,
+  base TEXT NOT NULL,
+  paths TEXT NOT NULL DEFAULT '[]',
+  origin TEXT NOT NULL DEFAULT 'genie',
+  reverts INTEGER,
+  created TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  published_at TEXT,
+  published_commit TEXT,
+  closed_by TEXT,
+  reminded_at TEXT,
+  review_needed INTEGER NOT NULL DEFAULT 0,
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  review_decision TEXT,
+  merged_by_agent INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS doc_changesets_status ON doc_changesets(status, project);
+CREATE TABLE IF NOT EXISTS doc_merges (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  changeset INTEGER NOT NULL REFERENCES doc_changesets(id),
+  status TEXT NOT NULL,
+  main TEXT NOT NULL,
+  tip TEXT NOT NULL,
+  conflicts TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  resolved_by TEXT,
+  resolution TEXT,
+  contradiction INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  job INTEGER,
+  created TEXT NOT NULL,
+  updated TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS config_changes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   at TEXT NOT NULL,
@@ -441,6 +485,9 @@ pub const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     // A repository bound to a provider connection (`git_connections`) and its immutable id on the provider.
     ("project_repos", "connection", "ALTER TABLE project_repos ADD COLUMN connection TEXT"),
     ("project_repos", "provider_repo_id", "ALTER TABLE project_repos ADD COLUMN provider_repo_id INTEGER"),
+    // The doc-merger job trying to resolve a documentation merge.
+    ("doc_merges", "job", "ALTER TABLE doc_merges ADD COLUMN job INTEGER"),
+    ("doc_changesets", "merged_by_agent", "ALTER TABLE doc_changesets ADD COLUMN merged_by_agent INTEGER NOT NULL DEFAULT 0"),
 ];
 
 pub const SESSION_DAYS: i64 = 30;
@@ -448,7 +495,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 11;
+pub const SERVER_SCHEMA_VERSION: i64 = 12;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

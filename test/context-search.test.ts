@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { matchesSearch, searchContext, searchParams } from "../web/src/shared/lib/contextSearch.ts";
 
-test("context search selects the current collection and distinguishes proposals from documentation", () => {
-  for (const path of ["/board", "/tasks", "/epics", "/manage/agents/roles", "/manage/agents/skills", "/manage/agents/automations/runs", "/notifications", "/manage/server/stats", "/docs", "/docs/proposals"])
+test("context search selects the current collection and distinguishes changes from documentation", () => {
+  for (const path of ["/board", "/tasks", "/epics", "/manage/agents/roles", "/manage/agents/skills", "/manage/agents/automations/runs", "/notifications", "/manage/server/stats", "/docs", "/docs/changes"])
     assert.equal(searchContext(path).path, path);
   assert.equal(searchContext("/manage/agents/automations/runs").label, "Поиск автоматизаций");
   assert.equal(searchContext("/manage/agents/mcp").label, "Поиск агентов и инструментов");
-  assert.equal(searchContext("/docs/proposals").label, "Поиск предложений");
+  assert.equal(searchContext("/docs/changes").label, "Поиск изменений документации");
   assert.equal(searchContext("/docs/edit").label, "Поиск по документации");
   assert.deepEqual(searchContext("/task/DEMO-1"), { label: "Поиск задач", path: "/tasks" });
   assert.equal(searchContext("/epics-unknown").path, "/tasks");

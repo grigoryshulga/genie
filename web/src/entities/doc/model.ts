@@ -2,13 +2,35 @@
 // Rust structs (`shared/api/types.ts`), so the API contract is checked by the
 // compiler on both sides.
 
-import type { DocLink, DocPage, DocRead, DocSearchResult } from "../../shared/api/types.ts";
+import type { Changeset, CommitInfo, DocLink, DocMerge, DocPage, DocRead, DocSearchResult } from "../../shared/api/types.ts";
 
-/** A page as the server reads it: the page with its text, links and policy. */
-export type DocReadResult = DocRead;
+/** Another author's open changeset that touches a page (`GET /api/docs/page`). */
+export interface OpenChangesetRef {
+  id: number;
+  author: string;
+  authorName?: string;
+  task?: string | null;
+}
+
+/**
+ * A page as the server reads it: the page with its text, links and policy, plus the
+ * changeset view the server adds. Those fields are optional here while the server
+ * side of the vault changesets lands: an older server simply sends none of them.
+ */
+export type DocReadResult = DocRead & {
+  /** The `main` commit this text was read at. */
+  version?: string;
+  /** The caller's open changeset touching the page, if any (read-your-writes). */
+  changeset?: number | null;
+  /** Other authors' open changesets touching the page. */
+  openChangesets?: OpenChangesetRef[];
+  /** Published changesets awaiting review by the section owners. */
+  unreviewed?: Changeset[];
+};
+
 export type DocType = NonNullable<DocPage["type"]>;
 export type DocStatus = NonNullable<DocPage["status"]>;
-export type { DocLink, DocPage, DocSearchResult };
+export type { Changeset, CommitInfo, DocMerge, DocLink, DocPage, DocSearchResult };
 
 /** Follows the order of `DOC_TYPES` in `crates/genie-core/src/vault.rs`. */
 export const DOC_TYPES: DocType[] = ["guide", "reference", "decision", "glossary", "runbook", "note"];

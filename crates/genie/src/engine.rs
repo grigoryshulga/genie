@@ -1086,7 +1086,7 @@ pub fn playbooks() -> Vec<(&'static str, &'static str, Value)> {
                     { "id": "docs", "timeout": "45m", "agent": {
                         "role": "documenter",
                         "workspace": "read-only",
-                        "goal": "Task {{ event.task.id }} ({{ event.task.title }}) is done. Turn its artifacts, decisions and review into durable knowledge of this project's vault space: update existing pages (search them first with `genie docs search`), add new pages only for genuinely new topics, link back to the task, set `verified` to today, and write pages with `genie docs write` (the section policy may turn them into proposals). Then write one changelog line for people who use the product.",
+                        "goal": "Task {{ event.task.id }} ({{ event.task.title }}) is done. Turn its artifacts, decisions and review into durable knowledge of this project's vault space: update existing pages (search them first with `genie docs search`), add new pages only for genuinely new topics, link back to the task, set `verified` to today, change pages section by section with `genie docs edit`, then publish your changeset with `genie docs publish` (overlapping edits are merged for you). Then write one changelog line for people who use the product.",
                         "output": { "pages_changed": ["path"], "summary": "one paragraph for the owner", "changelog": { "group": "added | changed | fixed", "text": "one line, user-facing, in the owner's language" } }
                     } },
                     { "id": "log", "changelog.add": { "group": "{{ steps.docs.output.changelog.group }}", "text": "{{ steps.docs.output.changelog.text }}" } },

@@ -2,13 +2,14 @@
 //! it in Obsidian (with its git plugin, or plain git) while genie, the web and the
 //! agents write it on the server.
 //!
-//! Every `vault.syncSecs` the server fetches the remote, merges it into the vault
-//! and pushes its own commits. Edits of different lines merge by themselves. An
-//! edit is never lost: where the same lines changed on both sides, the page keeps
-//! the server's version and the remote's goes next to it as
-//! `<page>.conflict-<time>.md`; a page deleted on one side and edited on the other
-//! stays, edited. The section owners and the server's admins hear about it. The
-//! per-user files of Obsidian (open tabs, cache, trash) stay out of the repository.
+//! Every `vault.syncSecs` the server fetches the remote and turns what it finds
+//! into changesets. Commits pushed to main become one changeset per person and
+//! sync run, published as the system: it merges by itself when the pages do not
+//! overlap, otherwise the merge agent settles the overlap like for any other
+//! changeset (no `.conflict` copies are written). Branches under `changes/` that
+//! people push are registered as open changesets; the branches of changesets the
+//! server closed are removed from the remote. The per-user files of Obsidian
+//! (open tabs, cache, trash) stay out of the repository.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -17,8 +18,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use genie_core::GenieError;
+use genie_core::changesets::{Changeset, ChangesetFilter, ChangesetOrigin, ChangesetStatus, NewChangeset};
+use genie_core::vault::AuthorKind;
+use genie_core::vault_git::{CommitMeta, Git};
 use serde::Serialize;
 
+use crate::changesets::{Editor, Published};
 use crate::state::{App, AppResult};
 
 /// Personal state of Obsidian that must not travel between people.
@@ -30,6 +35,10 @@ const IGNORED: &[&str] = &[
     ".trash/",
     ".DS_Store",
 ];
+
+/// The author of commits the server makes by itself.
+const SYSTEM_NAME: &str = "genie";
+const SYSTEM_EMAIL: &str = "genie@genie.local";
 
 /// How the last sync went, for the web and `genie doctor`.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -46,11 +55,13 @@ pub struct SyncState {
     pub pushed: usize,
     /// Pages changed on both sides since the previous sync.
     pub both: Vec<String>,
-    /// Edits that overlapped, and where the other version went (for people).
+    /// Overlaps the merge agent is resolving, and pushes the remote refused (for people).
     pub conflicts: Vec<String>,
-    /// Pages the conflicts are about (their section owners are told).
+    /// Pages the conflicts are about.
     #[serde(skip)]
     pub conflict_pages: Vec<String>,
+    /// Merges the vault is waiting for; main is not pushed while one is open.
+    pub merging: Vec<i64>,
 }
 
 static STATE: Mutex<Option<SyncState>> = Mutex::new(None);
@@ -131,11 +142,7 @@ fn ignore_personal_files(root: &Path) -> Result<(), String> {
     .map(|_| ())
 }
 
-fn changed_between(root: &Path, from: &str, to: &str) -> BTreeSet<String> {
-    git(root, &["diff", "--name-only", &format!("{from}..{to}")]).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
-}
-
-/// One sync: fetch, merge, push. `Ok(None)` when no remote is configured.
+/// One sync: fetch, import, publish, push. `Ok(None)` when no remote is configured.
 pub fn sync(app: &App) -> AppResult<Option<SyncState>> {
     let Some(remote) = app.cfg.vault.remote.clone().filter(|r| !r.trim().is_empty()) else {
         return Ok(None);
@@ -151,6 +158,28 @@ pub fn sync(app: &App) -> AppResult<Option<SyncState>> {
     Ok(Some(st))
 }
 
+/// What the vault locked its worktree for: the remote's tip to import.
+struct Incoming {
+    /// The remote's commit the changeset's branch stands on.
+    theirs: String,
+    base: String,
+    paths: Vec<String>,
+    both: Vec<String>,
+    commits: usize,
+    author_login: String,
+    author_name: String,
+}
+
+fn commit_meta(author: &str, email: &str, message: &str, trailers: Vec<(String, String)>) -> CommitMeta {
+    CommitMeta { message: message.into(), author_name: author.into(), author_email: email.into(), trailers }
+}
+
+/// `<email>@...` → the login; the author's name when the email has no local part.
+fn login_of(name: &str, email: &str) -> String {
+    let login = email.split('@').next().unwrap_or_default().trim();
+    if login.is_empty() { name.trim().to_string() } else { login.to_string() }
+}
+
 fn run(app: &App, root: &Path, remote: &str, st: &mut SyncState) -> Result<(), String> {
     if !root.join(".git").exists() {
         return Err("the vault is not a git repository (vault.commit is off?)".into());
@@ -161,125 +190,321 @@ fn run(app: &App, root: &Path, remote: &str, st: &mut SyncState) -> Result<(), S
         _ => git(root, &["symbolic-ref", "--short", "HEAD"]).unwrap_or_else(|_| "main".into()),
     };
     st.branch = branch.clone();
-    // Fetching only moves the remote's refs: no need to hold the vault meanwhile.
-    let fetched = git(root, &["fetch", "-q", &name, &branch]);
     let theirs = format!("{name}/{branch}");
-    let remote_has_branch = fetched.is_ok() && git(root, &["rev-parse", "--verify", "-q", &theirs]).is_ok();
-    if let Err(e) = &fetched
-        && !e.contains("couldn't find remote ref")
-    {
-        return Err(e.clone());
+    let changes = format!("refs/remotes/{name}/changes/");
+
+    // Fetching only moves the remote's refs: no need to hold the vault meanwhile.
+    let missing_branch = |e: &str| e.contains("couldn't find remote ref");
+    let mut fetch_error = None;
+    match git(root, &["fetch", "-q", &name, &branch]) {
+        Ok(_) => {}
+        Err(e) if missing_branch(&e) => {}
+        Err(e) => fetch_error = Some(e),
     }
-    // Merging touches the files: writes of people and agents wait for it.
-    app.with_vault(|_| {
-        ignore_personal_files(root).map_err(GenieError::invalid)?;
-        if !remote_has_branch {
-            return Ok(());
-        }
-        let counts = git(root, &["rev-list", "--left-right", "--count", &format!("HEAD...{theirs}")]).map_err(GenieError::invalid)?;
-        let behind: usize = counts.split_whitespace().nth(1).and_then(|n| n.parse().ok()).unwrap_or(0);
-        if behind == 0 {
-            return Ok(());
-        }
-        st.pulled = behind;
-        if let Ok(base) = git(root, &["merge-base", "HEAD", &theirs]) {
-            let ours = changed_between(root, &base, "HEAD");
-            st.both = changed_between(root, &base, &theirs).intersection(&ours).cloned().collect();
-        }
-        let merged = git(
-            root,
-            &[
-                "-c",
-                "user.name=genie",
-                "-c",
-                "user.email=genie@genie.local",
-                "merge",
-                "-q",
-                "--no-edit",
-                "--allow-unrelated-histories",
-                "-m",
-                &format!("genie: merge {theirs} into the vault"),
-                &theirs,
-            ],
-        );
-        if let Err(e) = merged {
-            let unmerged = git(root, &["diff", "--name-only", "--diff-filter=U"]).unwrap_or_default();
-            if unmerged.is_empty() {
-                let _ = git(root, &["merge", "--abort"]);
-                return Err(GenieError::invalid(e));
+    if let Err(e) = git(root, &["fetch", "-q", &name, &format!("+refs/heads/changes/*:{changes}*")])
+        && !missing_branch(&e)
+    {
+        fetch_error.get_or_insert(e);
+    }
+    if let Some(e) = fetch_error {
+        return Err(e);
+    }
+    let remote_has_branch = git(root, &["rev-parse", "--verify", "-q", &theirs]).is_ok();
+
+    // Absorbing touches the files: writes of people and agents wait for it.
+    let incoming = app
+        .with_vault(|_| {
+            ignore_personal_files(root).map_err(GenieError::invalid)?;
+            let vgit = Git::open(root)?;
+            vgit.absorb_worktree(&commit_meta(SYSTEM_NAME, SYSTEM_EMAIL, "genie: save the vault's uncommitted work", Vec::new()))?;
+            if !remote_has_branch {
+                return Ok(None);
             }
-            if let Err(e) = keep_both(root, &unmerged, st) {
-                let _ = git(root, &["merge", "--abort"]);
-                return Err(GenieError::invalid(e));
+            let main = vgit.resolve("HEAD")?.ok_or_else(|| GenieError::invalid("the vault has no commits"))?;
+            let Some(their_tip) = vgit.resolve(&theirs)? else { return Ok(None) };
+            let commits = vgit.commits_between(&main, &their_tip)?;
+            if commits.is_empty() {
+                return Ok(None);
+            }
+            let base = match vgit.merge_base(&main, &their_tip)? {
+                Some(base) => base,
+                None => root_commit(root, &their_tip).map_err(GenieError::invalid)?,
+            };
+            let paths = vgit.changed_paths(&main, &their_tip)?;
+            let mut both = Vec::new();
+            if base != main {
+                let ours = vgit.changed_paths(&base, &main)?;
+                let remote_paths = vgit.changed_paths(&base, &their_tip)?;
+                both = ours.into_iter().filter(|p| remote_paths.contains(p)).collect();
+            }
+            let tip = vgit.log(&their_tip, None, 1)?.into_iter().next();
+            let (author_name, author_email) = tip.map(|c| (c.author_name, c.author_email)).unwrap_or_default();
+            Ok(Some(Incoming {
+                theirs: their_tip,
+                base,
+                paths,
+                both,
+                commits: commits.len(),
+                author_login: login_of(&author_name, &author_email),
+                author_name,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+
+    if let Some(incoming) = incoming {
+        st.pulled = incoming.commits;
+        st.both = incoming.both.clone();
+        let title = sync_title(remote);
+        match sync_changeset(app, &title)? {
+            Some(c) if c.status == ChangesetStatus::Merging => {
+                // Already handed to the merge agent: no second import while it works.
+                st.conflicts.push(format!("{}: the sync changeset #{} waits for its merge", c.branch, c.id));
+                wait_for_merge(app, c.id, st)?;
+            }
+            Some(c) => {
+                move_branch(root, &c.branch, &incoming.theirs)?;
+                publish_sync(app, c.id, st)?;
+            }
+            None => {
+                let id = open_sync_changeset(app, root, remote, &incoming)?;
+                publish_sync(app, id, st)?;
             }
         }
-        Ok(())
-    })
-    .map_err(|e| e.to_string())?;
-    let ahead = if remote_has_branch {
-        git(root, &["rev-list", "--count", &format!("{theirs}..HEAD")]).ok().and_then(|n| n.parse().ok()).unwrap_or(0)
-    } else {
-        git(root, &["rev-list", "--count", "HEAD"]).ok().and_then(|n| n.parse().ok()).unwrap_or(0)
-    };
-    if ahead > 0 {
-        git(root, &["push", "-q", &name, &format!("HEAD:refs/heads/{branch}")])?;
-        st.pushed = ahead;
+    }
+
+    register_remote_changesets(app, root, &name)?;
+    push(app, root, &name, &branch, &theirs, st)?;
+    delete_closed_branches(app, root, &name, &changes)?;
+    Ok(())
+}
+
+fn sync_title(remote: &str) -> String {
+    format!("Sync from {remote}")
+}
+
+/// The open or merging changeset the last sync opened for this remote.
+fn sync_changeset(app: &App, title: &str) -> Result<Option<Changeset>, String> {
+    let list = app
+        .with_server(|db| {
+            db.changesets(&ChangesetFilter {
+                statuses: vec![ChangesetStatus::Open, ChangesetStatus::Merging],
+                limit: 500,
+                ..Default::default()
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(list.into_iter().find(|c| c.origin == ChangesetOrigin::Remote && c.title == title))
+}
+
+/// The first parent of every history: git's `rev-list --max-parents=0`.
+fn root_commit(root: &Path, rev: &str) -> Result<String, String> {
+    let out =
+        Command::new("git").arg("-C").arg(root).args(["rev-list", "--max-parents=0", rev]).output().map_err(|e| format!("git: {e}"))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let first = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or_default().to_string();
+    if !out.status.success() || first.is_empty() {
+        return Err(format!("git rev-list --max-parents=0 {rev}: no root commit"));
+    }
+    Ok(first)
+}
+
+/// Open the changeset that imports the remote's main commits; its branch stands on their tip.
+fn open_sync_changeset(app: &App, root: &Path, remote: &str, incoming: &Incoming) -> Result<i64, String> {
+    let title = sync_title(remote);
+    let cs = app
+        .with_server(|db| {
+            db.create_changeset(&NewChangeset {
+                branch: "",
+                project: None,
+                task: None,
+                author: &incoming.author_login,
+                author_name: &incoming.author_name,
+                author_kind: "human",
+                title: &title,
+                base: &incoming.base,
+                origin: ChangesetOrigin::Remote,
+                reverts: None,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    move_branch(root, &cs.branch, &incoming.theirs)?;
+    if !incoming.paths.is_empty() {
+        app.with_server(|db| db.touch_changeset(cs.id, &incoming.paths)).map_err(|e| e.to_string())?;
+    }
+    Ok(cs.id)
+}
+
+/// Point a changeset branch at `sha`, whatever it held before (the sync owns it).
+fn move_branch(root: &Path, branch: &str, sha: &str) -> Result<(), String> {
+    let vgit = Git::open(root).map_err(|e| e.to_string())?;
+    let refname = format!("refs/heads/{branch}");
+    let current = vgit.resolve(&refname).map_err(|e| e.to_string())?;
+    if current.as_deref() == Some(sha) {
+        return Ok(());
+    }
+    vgit.update_ref(&refname, sha, current.as_deref()).map_err(|e| e.to_string())
+}
+
+/// The system publishes the sync changeset; a textual overlap becomes a pending merge.
+fn publish_sync(app: &App, id: i64, st: &mut SyncState) -> Result<(), String> {
+    let cs = app.with_server(|db| db.changeset(id)).map_err(|e| e.to_string())?;
+    let by = system_editor(cs.project.as_deref());
+    match crate::changesets::publish(app, id, &by).map_err(|e| e.to_string())? {
+        Published::Published { .. } => Ok(()),
+        Published::Merging { merge, .. } => {
+            st.merging.push(merge.id);
+            for page in &merge.conflicts {
+                st.conflicts.push(format!("{page}: overlapping edits; the merge agent is resolving merge {}", merge.id));
+                st.conflict_pages.push(page.clone());
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Remember the merge a changeset already waits for, so main is not pushed meanwhile.
+fn wait_for_merge(app: &App, changeset: i64, st: &mut SyncState) -> Result<(), String> {
+    let merge = app.with_server(|db| db.active_merge(changeset)).map_err(|e| e.to_string())?;
+    let Some(merge) = merge else { return Ok(()) };
+    st.merging.push(merge.id);
+    for page in merge.conflicts {
+        st.conflicts.push(format!("{page}: overlapping edits; the merge agent is resolving merge {}", merge.id));
+        st.conflict_pages.push(page);
     }
     Ok(())
 }
 
-/// A file of the merge's index stage (`2` ours, `3` theirs), if that side has one.
-fn staged(root: &Path, stage: u8, path: &str) -> Option<Vec<u8>> {
-    let out = Command::new("git").arg("-C").arg(root).args(["show", &format!(":{stage}:{path}")]).output().ok()?;
-    out.status.success().then_some(out.stdout)
-}
-
-/// `shop/notes.md` → `shop/notes.conflict-20260929-1530.md`.
-fn conflict_copy(path: &str, stamp: &str) -> String {
-    let (dir, name) = path.rsplit_once('/').map(|(d, n)| (format!("{d}/"), n)).unwrap_or((String::new(), path));
-    match name.rsplit_once('.') {
-        Some((stem, ext)) if !stem.is_empty() => format!("{dir}{stem}.conflict-{stamp}.{ext}"),
-        _ => format!("{dir}{name}.conflict-{stamp}"),
+fn system_editor(project: Option<&str>) -> Editor {
+    Editor {
+        name: SYSTEM_NAME.into(),
+        login: SYSTEM_NAME.into(),
+        kind: AuthorKind::System,
+        task: None,
+        project: project.unwrap_or_default().to_string(),
+        admin: true,
+        role: None,
     }
 }
 
-/// Settle a merge git could not: nothing is lost. Both edited → the server's
-/// version stays, the remote's goes next to it; deleted on one side, edited on
-/// the other → the edited page stays. Then the merge is committed.
-fn keep_both(root: &Path, unmerged: &str, st: &mut SyncState) -> Result<(), String> {
-    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M").to_string();
-    let put = |rel: &str, bytes: &[u8]| -> Result<(), String> {
-        let abs = root.join(rel);
-        if let Some(parent) = abs.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        std::fs::write(&abs, bytes).map_err(|e| format!("{rel}: {e}"))?;
-        git(root, &["add", "--", rel]).map(|_| ())
-    };
-    for path in unmerged.lines().filter(|l| !l.is_empty()) {
-        match (staged(root, 2, path), staged(root, 3, path)) {
-            (Some(ours), Some(theirs)) => {
-                let copy = conflict_copy(path, &stamp);
-                put(path, &ours)?;
-                put(&copy, &theirs)?;
-                st.conflicts
-                    .push(format!("{path}: правили и там, и здесь — осталась версия сервера, версия из репозитория сохранена в {copy}"));
-            }
-            (Some(ours), None) => {
-                put(path, &ours)?;
-                st.conflicts.push(format!("{path}: удалена в репозитории, но изменена на сервере — страница оставлена"));
-            }
-            (None, Some(theirs)) => {
-                put(path, &theirs)?;
-                st.conflicts.push(format!("{path}: удалена на сервере, но изменена в репозитории — страница возвращена"));
-            }
-            (None, None) => {
-                let _ = git(root, &["rm", "-q", "--cached", "--ignore-unmatch", "--", path]);
-            }
-        }
-        st.conflict_pages.push(path.to_string());
+/// Branches under `changes/` on the remote that no changeset of this server owns become
+/// open changesets; branches of known changesets fast-forward to their remote tip.
+fn register_remote_changesets(app: &App, root: &Path, name: &str) -> Result<(), String> {
+    let vgit = Git::open(root).map_err(|e| e.to_string())?;
+    let prefix = format!("refs/remotes/{name}/changes/");
+    let refs = vgit.list_refs(&prefix).map_err(|e| e.to_string())?;
+    if refs.is_empty() {
+        return Ok(());
     }
-    git(root, &["-c", "user.name=genie", "-c", "user.email=genie@genie.local", "commit", "-q", "--no-edit"]).map(|_| ())
+    let main = vgit.resolve("HEAD").map_err(|e| e.to_string())?.ok_or("the vault has no commits")?;
+    for (refname, sha) in refs {
+        let Some(short) = refname.strip_prefix(&prefix) else { continue };
+        if short.trim().is_empty() {
+            continue;
+        }
+        let branch = format!("changes/{short}");
+        let local = format!("refs/heads/{branch}");
+        let known = app.with_server(|db| db.changeset_by_branch(&branch)).map_err(|e| e.to_string())?;
+        match known {
+            Some(c) => {
+                if matches!(c.status, ChangesetStatus::Open | ChangesetStatus::Merging) {
+                    fast_forward(&vgit, &local, &sha)?;
+                }
+            }
+            None => {
+                let (base, paths) = match vgit.merge_base(&main, &sha).map_err(|e| e.to_string())? {
+                    Some(base) => (base.clone(), vgit.changed_paths(&base, &sha).map_err(|e| e.to_string())?),
+                    // No common history: the branch brings its whole tree.
+                    None => (root_commit(root, &sha)?, vgit.changed_paths(&main, &sha).map_err(|e| e.to_string())?),
+                };
+                let tip = vgit.log(&sha, None, 1).map_err(|e| e.to_string())?.into_iter().next();
+                let (author_name, author_email) = tip.map(|c| (c.author_name, c.author_email)).unwrap_or_default();
+                let login = login_of(&author_name, &author_email);
+                let title = format!("Changes from {login}");
+                let cs = app
+                    .with_server(|db| {
+                        db.create_changeset(&NewChangeset {
+                            branch: &branch,
+                            project: None,
+                            task: None,
+                            author: &login,
+                            author_name: &author_name,
+                            author_kind: "human",
+                            title: &title,
+                            base: &base,
+                            origin: ChangesetOrigin::Remote,
+                            reverts: None,
+                        })
+                    })
+                    .map_err(|e| e.to_string())?;
+                if !paths.is_empty() {
+                    app.with_server(|db| db.touch_changeset(cs.id, &paths)).map_err(|e| e.to_string())?;
+                }
+                fast_forward(&vgit, &local, &sha)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Move a changeset branch forward to the remote's tip; a diverged branch stays as it is.
+fn fast_forward(vgit: &Git, refname: &str, sha: &str) -> Result<(), String> {
+    let current = vgit.resolve(refname).map_err(|e| e.to_string())?;
+    if current.as_deref() == Some(sha) {
+        return Ok(());
+    }
+    if let Some(old) = &current {
+        let ancestor = vgit.merge_base(old, sha).map_err(|e| e.to_string())?;
+        if ancestor.as_deref() != Some(old.as_str()) {
+            return Ok(());
+        }
+    }
+    vgit.update_ref(refname, sha, current.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Push main when it is ahead, then the open branches this server owns, then remove the
+/// branches of changesets it closed. A refused branch is reported, not fatal.
+fn push(app: &App, root: &Path, name: &str, branch: &str, theirs: &str, st: &mut SyncState) -> Result<(), String> {
+    if st.merging.is_empty() {
+        let ahead = if git(root, &["rev-parse", "--verify", "-q", theirs]).is_ok() {
+            git(root, &["rev-list", "--count", &format!("{theirs}..HEAD")]).ok().and_then(|n| n.parse().ok()).unwrap_or(0)
+        } else {
+            git(root, &["rev-list", "--count", "HEAD"]).ok().and_then(|n| n.parse().ok()).unwrap_or(0)
+        };
+        if ahead > 0 {
+            git(root, &["push", "-q", name, &format!("HEAD:refs/heads/{branch}")])?;
+            st.pushed = ahead;
+        }
+    }
+    let open = app
+        .with_server(|db| db.changesets(&ChangesetFilter { statuses: vec![ChangesetStatus::Open], limit: 500, ..Default::default() }))
+        .map_err(|e| e.to_string())?;
+    for c in open.iter().filter(|c| c.branch == format!("changes/{}", c.id)) {
+        let refspec = format!("refs/heads/{0}:refs/heads/{0}", c.branch);
+        if let Err(e) = git(root, &["push", "-q", name, &refspec]) {
+            st.conflicts.push(format!("{}: the branch was not pushed ({})", c.branch, e));
+        }
+    }
+    Ok(())
+}
+
+/// Branches of changesets this server published or discarded leave the remote.
+fn delete_closed_branches(app: &App, root: &Path, name: &str, prefix: &str) -> Result<(), String> {
+    let vgit = Git::open(root).map_err(|e| e.to_string())?;
+    for (refname, _) in vgit.list_refs(prefix).map_err(|e| e.to_string())? {
+        let Some(short) = refname.strip_prefix(prefix) else { continue };
+        let branch = format!("changes/{short}");
+        let closed = app
+            .with_server(|db| {
+                Ok(db
+                    .changeset_by_branch(&branch)?
+                    .is_some_and(|c| matches!(c.status, ChangesetStatus::Published | ChangesetStatus::Discarded)))
+            })
+            .map_err(|e| e.to_string())?;
+        if closed {
+            let _ = git(root, &["push", "-q", name, "--delete", &branch]);
+        }
+    }
+    Ok(())
 }
 
 /// The server's admins, who hear about the vault.
@@ -287,15 +512,9 @@ fn admins(app: &App) -> Vec<i64> {
     app.with_server(|db| Ok(db.users()?.into_iter().filter(|u| u.is_admin && !u.disabled).map(|u| u.id).collect())).unwrap_or_default()
 }
 
+/// Only failures are told: an overlap is the merge agent's work, not a person's.
 fn tell(app: &App, st: &SyncState) {
     let users = admins(app);
-    let msg = |title: String, body: String| crate::notify::Message {
-        kind: "vault".into(),
-        title,
-        body,
-        link: Some("/settings/server/health".into()),
-        ..Default::default()
-    };
     if let Some(e) = &st.error
         && !users.is_empty()
     {
@@ -304,37 +523,17 @@ fn tell(app: &App, st: &SyncState) {
         let _ = crate::notify::send(
             app,
             &users,
-            &msg(
-                "Синхронизация базы знаний не удалась".into(),
-                format!(
+            &crate::notify::Message {
+                kind: "vault".into(),
+                title: "Синхронизация базы знаний не удалась".into(),
+                body: format!(
                     "{e}\n\nРепозиторий: {} ({}). Сервер продолжает работать со своей копией и повторит попытку.",
                     st.remote, st.branch
                 ),
-            ),
+                link: Some("/settings/server/health".into()),
+                ..Default::default()
+            },
             Some(&key),
-        );
-    } else if !st.conflicts.is_empty() {
-        // The owners of the sections the pages are in, besides the admins.
-        let mut to: BTreeSet<i64> = users.into_iter().collect();
-        let owners: BTreeSet<String> =
-            app.with_vault(|v| Ok(st.conflict_pages.iter().flat_map(|p| v.owners_for(p)).collect())).unwrap_or_default();
-        for login in owners {
-            if let Ok(Some(u)) = app.with_server(|db| db.user_by_login(&login)) {
-                to.insert(u.id);
-            }
-        }
-        let _ = crate::notify::send(
-            app,
-            &to.into_iter().collect::<Vec<_>>(),
-            &msg(
-                "Правки базы знаний пересеклись".into(),
-                format!(
-                    "Одни и те же страницы изменили и в репозитории ({}), и на сервере. Ничего не потеряно:\n\n{}\n\nСведите версии и удалите копию .conflict.",
-                    st.remote,
-                    st.conflicts.join("\n")
-                ),
-            ),
-            None,
         );
     }
 }

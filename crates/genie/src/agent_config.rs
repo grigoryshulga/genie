@@ -39,6 +39,7 @@ const BUILTIN_ROLES: &[(&str, &str)] = &[
     ("reviewer", include_str!("../../../agents/reviewer.md")),
     ("tester", include_str!("../../../agents/tester.md")),
     ("documenter", include_str!("../../../agents/documenter.md")),
+    ("doc-merger", include_str!("../../../agents/doc-merger.md")),
     ("researcher", include_str!("../../../agents/researcher.md")),
     ("planner", include_str!("../../../agents/planner.md")),
 ];

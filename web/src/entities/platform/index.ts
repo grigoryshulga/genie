@@ -1,4 +1,4 @@
-// Platform features of the Rust server: notifications, automations, proposals, profile.
+// Platform features of the Rust server: notifications, automations and profile.
 export * from "./model.ts";
 import { useQuery } from "@tanstack/react-query";
 import { request } from "@/shared/api";
@@ -57,18 +57,6 @@ export interface Playbook {
   spec: Record<string, unknown>;
 }
 
-export interface Proposal {
-  id: number;
-  path: string;
-  author: string;
-  authorKind: string;
-  task?: string;
-  note: string;
-  status: string;
-  created: string;
-  content?: string;
-}
-
 export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: () => request<{ items: Notification[]; unread: number }>("GET", "/api/notifications"), refetchInterval: 30_000 });
 
@@ -89,16 +77,6 @@ export const useRun = (id?: number) =>
     enabled: !!id,
     // Runs live in server.db, outside the journal the live stream reads: poll while one is going, never after it ended.
     refetchInterval: (q) => (RUN_ENDED.has(q.state.data?.status ?? "") ? false : 4000),
-  });
-
-export const useProposals = (status = "open") =>
-  useQuery({ queryKey: ["proposals", status], queryFn: () => request<Proposal[]>("GET", `/api/docs/proposals?status=${status}`), refetchInterval: 30_000 });
-
-export const useProposal = (id?: number) =>
-  useQuery({
-    queryKey: ["proposal", id ?? 0],
-    queryFn: () => request<{ proposal: Proposal; current?: string; owners: string[] }>("GET", `/api/docs/proposals/${id}`),
-    enabled: !!id,
   });
 
 export const useChannels = () =>
