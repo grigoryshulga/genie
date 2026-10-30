@@ -175,6 +175,8 @@ pub struct Changeset {
     pub reviewed_by: Option<String>,
     pub reviewed_at: Option<String>,
     pub review_decision: Option<ReviewDecision>,
+    /// The merge agent resolved an overlap of this changeset before it was published.
+    pub merged_by_agent: bool,
 }
 
 impl Changeset {
@@ -203,6 +205,7 @@ impl Changeset {
             reviewed_by: r.get("reviewed_by")?,
             reviewed_at: r.get("reviewed_at")?,
             review_decision: decode_opt(r, "review_decision", ReviewDecision::parse)?,
+            merged_by_agent: r.get::<_, i64>("merged_by_agent")? != 0,
         })
     }
 }
@@ -455,6 +458,12 @@ impl ServerDb {
             )?;
             self.changeset(id)
         })
+    }
+
+    /// Marks that the merge agent resolved an overlap of this changeset.
+    pub fn mark_merged_by_agent(&self, id: i64) -> Result<()> {
+        self.conn().execute("UPDATE doc_changesets SET merged_by_agent = 1 WHERE id = ?1", [id])?;
+        Ok(())
     }
 
     /// Records a reviewer's decision on a published changeset.

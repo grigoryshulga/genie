@@ -58,8 +58,8 @@ const NOTIFICATIONS: FixtureNotification[] = [
 
 /** Open drafts and unreviewed publications: what the Knowledge entry counts. */
 const CHANGESETS = [
-  { id: 2, branch: "changes/2", project: PROJECT.id, task: "DM-2", author: "agent", authorName: "agent", authorKind: "agent", title: "Новая страница про деплой", status: "open", base: "a", paths: ["demo/guides/deploy.md"], origin: "genie", reverts: null, created: minutesAgo(60), updated: minutesAgo(60), publishedAt: null, publishedCommit: null, closedBy: null, remindedAt: null, reviewNeeded: false, reviewedBy: null, reviewedAt: null, reviewDecision: null },
-  { id: 1, branch: "changes/1", project: PROJECT.id, task: "DM-1", author: "ivan", authorName: "Иван", authorKind: "human", title: "Правка решения", status: "published", base: "a", paths: ["demo/decisions/storage.md"], origin: "genie", reverts: null, created: minutesAgo(120), updated: minutesAgo(90), publishedAt: minutesAgo(90), publishedCommit: "b", closedBy: null, remindedAt: null, reviewNeeded: true, reviewedBy: null, reviewedAt: null, reviewDecision: null },
+  { id: 2, branch: "changes/2", project: PROJECT.id, task: "DM-2", author: "agent", authorName: "agent", authorKind: "agent", title: "Новая страница про деплой", status: "open", base: "a", paths: ["demo/guides/deploy.md"], origin: "genie", reverts: null, created: minutesAgo(60), updated: minutesAgo(60), publishedAt: null, publishedCommit: null, closedBy: null, remindedAt: null, reviewNeeded: false, reviewedBy: null, reviewedAt: null, reviewDecision: null, mergedByAgent: false },
+  { id: 1, branch: "changes/1", project: PROJECT.id, task: "DM-1", author: "ivan", authorName: "Иван", authorKind: "human", title: "Правка решения", status: "published", base: "a", paths: ["demo/decisions/storage.md"], origin: "genie", reverts: null, created: minutesAgo(120), updated: minutesAgo(90), publishedAt: minutesAgo(90), publishedCommit: "b", closedBy: null, remindedAt: null, reviewNeeded: true, reviewedBy: null, reviewedAt: null, reviewDecision: null, mergedByAgent: false },
 ];
 
 /** Answer the notification APIs from the fixture and record the reads the UI sends. */

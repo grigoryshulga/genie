@@ -31,4 +31,8 @@ reverts: number | null, created: string, updated: string, publishedAt: string | 
 /**
  * Who published or discarded it.
  */
-closedBy: string | null, remindedAt: string | null, reviewNeeded: boolean, reviewedBy: string | null, reviewedAt: string | null, reviewDecision: ReviewDecision | null, };
+closedBy: string | null, remindedAt: string | null, reviewNeeded: boolean, reviewedBy: string | null, reviewedAt: string | null, reviewDecision: ReviewDecision | null, 
+/**
+ * The merge agent resolved an overlap of this changeset before it was published.
+ */
+mergedByAgent: boolean, };

@@ -85,8 +85,8 @@ export function changesFilterToParams(filter: ChangesFilter): URLSearchParams {
 }
 
 /**
- * The server-side query for a feed view. The agent-resolved view has no server
- * parameter in the HTTP contract, so it is filtered from the published list.
+ * The server-side query for a feed view. The agent-resolved view is filtered from
+ * the list by the changesets' `mergedByAgent` flag.
  */
 export function changesServerQuery(filter: ChangesFilter): string {
   const params = new URLSearchParams();
@@ -98,9 +98,9 @@ export function changesServerQuery(filter: ChangesFilter): string {
   return params.toString();
 }
 
-/** A published changeset the merge agent resolved; the list carries `origin: "merge"`. */
-export function isAgentMergedChangeset(changeset: Pick<Changeset, "origin" | "status">): boolean {
-  return changeset.status === "published" && changeset.origin === "merge";
+/** A published changeset whose overlap the merge agent resolved (the server's `mergedByAgent`). */
+export function isAgentMergedChangeset(changeset: Pick<Changeset, "mergedByAgent" | "status">): boolean {
+  return changeset.status === "published" && changeset.mergedByAgent;
 }
 
 /** Published, flagged for review and not decided yet. */
@@ -156,12 +156,22 @@ export interface MergeSideInfo {
 }
 
 /** One conflicted page of a pending merge, with the marked text the editor starts from. */
+/** A commit of one side of a merge, as the server lists it for a page. */
+export interface MergeSideNote {
+  sha: string;
+  author: string;
+  message: string;
+  task?: string | null;
+}
+
 export interface MergePageView {
   path: string;
   base: string;
   ours: string;
   theirs: string;
   marked: string;
+  oursNotes?: MergeSideNote[];
+  theirsNotes?: MergeSideNote[];
 }
 
 export interface MergeView {
@@ -172,7 +182,7 @@ export interface MergeView {
 }
 
 export type PublishResult =
-  | { status: "published"; commit: CommitInfo }
+  | { status: "published"; commit: string }
   | { status: "merging"; merge: DocMerge };
 
 /**
@@ -195,13 +205,23 @@ export function normalizeChangesetDetail(
 
 /** The merge detail may arrive as `{ merge, pages }` or as the merge with its pages. */
 export function normalizeMergeView(raw: Partial<MergeView> & DocMerge): MergeView {
-  if (raw.merge) return raw as MergeView;
+  if (raw.merge) {
+    const view = raw as MergeView;
+    return { ...view, ours: view.ours ?? sideOf(view.pages, "oursNotes"), theirs: view.theirs ?? sideOf(view.pages, "theirsNotes") };
+  }
   return {
     merge: raw,
     pages: raw.pages ?? (raw.conflicts ?? []).map((path) => ({ path, base: "", ours: "", theirs: "", marked: "" })),
     ours: raw.ours,
     theirs: raw.theirs,
   };
+}
+
+/** Who wrote a side: the newest commit of that side over the conflicted pages. */
+function sideOf(pages: MergePageView[], key: "oursNotes" | "theirsNotes"): MergeSideInfo | undefined {
+  const notes = pages.flatMap((page) => page[key] ?? []);
+  const last = notes[notes.length - 1];
+  return last ? { author: last.author, task: last.task ?? null, note: last.message } : undefined;
 }
 
 // ---------------------------------------------------------------- page markers

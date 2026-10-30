@@ -58,6 +58,7 @@ function changeset(patch: Partial<Changeset> & { id: number }): Changeset {
     reviewedBy: null,
     reviewedAt: null,
     reviewDecision: null,
+    mergedByAgent: false,
     ...patch,
   };
 }
@@ -114,7 +115,7 @@ test("each feed view keeps exactly its own changesets", () => {
   const list = [
     changeset({ id: 1, status: "open" }),
     changeset({ id: 2, status: "published", reviewNeeded: true }),
-    changeset({ id: 3, status: "published", origin: "merge" }),
+    changeset({ id: 3, status: "published", mergedByAgent: true }),
     changeset({ id: 4, status: "published", reviewNeeded: true, reviewDecision: "reviewed" }),
     changeset({ id: 5, status: "discarded" }),
     changeset({ id: 6, status: "merging", task: "GNE-9", author: "ivan" }),
@@ -213,6 +214,7 @@ test("detail envelopes are accepted nested or flat", () => {
     resolvedBy: null,
     resolution: null,
     contradiction: false,
+    job: null,
     note: "",
     created: "2026-10-30T09:00:00Z",
     updated: "2026-10-30T09:30:00Z",

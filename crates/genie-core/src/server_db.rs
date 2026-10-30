@@ -289,7 +289,8 @@ CREATE TABLE IF NOT EXISTS doc_changesets (
   review_needed INTEGER NOT NULL DEFAULT 0,
   reviewed_by TEXT,
   reviewed_at TEXT,
-  review_decision TEXT
+  review_decision TEXT,
+  merged_by_agent INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS doc_changesets_status ON doc_changesets(status, project);
 CREATE TABLE IF NOT EXISTS doc_merges (
@@ -486,6 +487,7 @@ pub const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     ("project_repos", "provider_repo_id", "ALTER TABLE project_repos ADD COLUMN provider_repo_id INTEGER"),
     // The doc-merger job trying to resolve a documentation merge.
     ("doc_merges", "job", "ALTER TABLE doc_merges ADD COLUMN job INTEGER"),
+    ("doc_changesets", "merged_by_agent", "ALTER TABLE doc_changesets ADD COLUMN merged_by_agent INTEGER NOT NULL DEFAULT 0"),
 ];
 
 pub const SESSION_DAYS: i64 = 30;

@@ -528,6 +528,7 @@ pub fn publish(app: &App, id: i64, by: &Editor) -> AppResult<Published> {
                 .is_some_and(|info| info.trailers.iter().any(|(k, v)| k == "Genie-Merged-By" && v == "doc-merger"));
             if by_merger {
                 extra.push(("Genie-Merged-By", "doc-merger".to_string()));
+                app.with_server(|db| db.mark_merged_by_agent(id))?;
             }
         }
         let commit =
@@ -731,7 +732,8 @@ pub fn changeset_detail(app: &App, project: &str, id: i64) -> AppResult<Value> {
         let commits = git.commits_between(&cs.base, &tip)?;
         let commits: Vec<CommitInfo> = commits.iter().filter_map(|sha| git.log(sha, None, 1).ok().and_then(|mut l| l.pop())).collect();
         let diff = git.diff(&cs.base, &tip, &[])?;
-        Ok(json!({ "changeset": cs, "commits": commits, "diff": diff }))
+        let merge = app.with_server(|db| db.active_merge(cs.id))?;
+        Ok(json!({ "changeset": cs, "commits": commits, "diff": diff, "merge": merge }))
     })
 }
 

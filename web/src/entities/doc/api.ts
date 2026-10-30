@@ -256,7 +256,7 @@ export const useRevertChangeset = () => {
 export const useMoveDocPage = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { path: string; to: string }) => request<{ page: DocReadResult; changeset: Changeset }>("POST", "/api/docs/pages/move", body),
+    mutationFn: (body: { from: string; to: string }) => request<{ page: DocReadResult; changeset: Changeset }>("POST", "/api/docs/pages/move", body),
     onSuccess: () => void qc.invalidateQueries({ queryKey: docsKeys.all }),
   });
 };
