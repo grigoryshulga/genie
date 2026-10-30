@@ -8,6 +8,7 @@ pub mod chat;
 pub mod connections;
 pub mod db;
 pub mod decisions;
+pub mod doc_ops;
 pub mod env;
 pub mod error;
 pub mod events;
