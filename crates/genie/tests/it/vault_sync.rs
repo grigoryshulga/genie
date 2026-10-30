@@ -9,7 +9,30 @@ use std::path::Path;
 
 use axum::http::StatusCode;
 use common::{Harness, call};
+use genie::changesets::{self, Editor, Published};
+use genie_core::vault::AuthorKind;
 use serde_json::json;
+
+/// Publish the changeset returned by a docs write, as its author.
+fn publish_change(h: &Harness, project: &str, written: &serde_json::Value) {
+    let id = written["changeset"]["id"].as_i64().expect("a changeset for the write");
+    let cs = h.app.with_server(|db| db.changeset(id)).unwrap();
+    let kind = match cs.author_kind.as_str() {
+        "agent" => AuthorKind::Agent,
+        "system" => AuthorKind::System,
+        _ => AuthorKind::Human,
+    };
+    let ed = Editor {
+        name: cs.author_name.clone(),
+        login: cs.author.clone(),
+        kind,
+        task: cs.task.clone(),
+        project: project.into(),
+        admin: true,
+        role: None,
+    };
+    assert!(matches!(changesets::publish(&h.app, id, &ed).unwrap(), Published::Published { .. }));
+}
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let out = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
@@ -60,12 +83,13 @@ async fn the_vault_syncs_with_a_remote_both_ways() {
     let r = &h.router;
     let (_, _, cookies) = call(r, "POST", "/api/auth/login").json(json!({ "login": "anna", "password": "password-1" })).send().await;
     let session = cookies[0].clone();
-    let (s, e, _) = call(r, "POST", "/api/docs/page")
+    let (s, written, _) = call(r, "POST", "/api/docs/page")
         .cookie(&session)
         .json(json!({ "path": "shop/server.md", "content": "# С сервера\n\nСтраница из веба.\n" }))
         .send()
         .await;
-    assert!(s.is_success(), "{s}: {e}");
+    assert!(s.is_success(), "{s}: {written}");
+    publish_change(&h, "shop", &written);
     let st = genie::vault_sync::sync(&h.app).unwrap().unwrap();
     assert!(st.ok, "{st:?}");
     assert_eq!((st.pulled, st.both.len()), (1, 0));
@@ -86,12 +110,13 @@ async fn the_vault_syncs_with_a_remote_both_ways() {
     write(&clone.join("shop/notes.md"), "# Заметки\n\nСклад работает до 23:00.\n\nВолны — каждые 15 минут.\n");
     push(&clone, "later closing");
     let (_, current, _) = call(r, "GET", "/api/docs/page?path=shop/notes.md").cookie(&session).send().await;
-    let (s, e, _) = call(r, "POST", "/api/docs/page")
+    let (s, written, _) = call(r, "POST", "/api/docs/page")
         .cookie(&session)
         .json(json!({ "path": "shop/notes.md", "content": "# Заметки\n\nСклад работает до 21:00.\n\nВолны — каждые 15 минут.\n", "baseHash": current["page"]["contentHash"] }))
         .send()
         .await;
-    assert!(s.is_success(), "{s}: {e}");
+    assert!(s.is_success(), "{s}: {written}");
+    publish_change(&h, "shop", &written);
     let st = genie::vault_sync::sync(&h.app).unwrap().unwrap();
     assert!(st.ok, "{st:?}");
     assert_eq!(st.both, ["shop/notes.md"]);
@@ -111,12 +136,13 @@ async fn the_vault_syncs_with_a_remote_both_ways() {
     git(&clone, &["rm", "-q", "shop/server.md"]);
     push(&clone, "remove the server page");
     let (_, current, _) = call(r, "GET", "/api/docs/page?path=shop/server.md").cookie(&session).send().await;
-    let (s, e, _) = call(r, "POST", "/api/docs/page")
+    let (s, written, _) = call(r, "POST", "/api/docs/page")
         .cookie(&session)
         .json(json!({ "path": "shop/server.md", "content": "# С сервера\n\nСтраница из веба, дополнена.\n", "baseHash": current["page"]["contentHash"] }))
         .send()
         .await;
-    assert!(s.is_success(), "{s}: {e}");
+    assert!(s.is_success(), "{s}: {written}");
+    publish_change(&h, "shop", &written);
     let st = genie::vault_sync::sync(&h.app).unwrap().unwrap();
     assert!(st.ok, "{st:?}");
     assert!(st.conflicts.iter().any(|c| c.starts_with("shop/server.md: удалена в репозитории")), "{st:?}");

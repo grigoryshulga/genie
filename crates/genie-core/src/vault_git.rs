@@ -327,6 +327,15 @@ impl Git {
 
     /// History, newest first: `log` of `rev` (optionally `--follow -- <path>`), up to `limit`. Parse with a `-z`/NUL-separated custom `--format` including %H %P %an %ae %aI %s %b and `%(trailers:only,unfold)` parsed into pairs.
     pub fn log(&self, rev: &str, path: Option<&str>, limit: usize) -> Result<Vec<CommitInfo>> {
+        self.log_with(rev, path, limit, false)
+    }
+
+    /// Page history that keeps merge commits (`--full-history` instead of `--follow`): a publication is a merge commit, and `--follow` simplifies it away.
+    pub fn log_full(&self, rev: &str, path: Option<&str>, limit: usize) -> Result<Vec<CommitInfo>> {
+        self.log_with(rev, path, limit, true)
+    }
+
+    fn log_with(&self, rev: &str, path: Option<&str>, limit: usize, full_history: bool) -> Result<Vec<CommitInfo>> {
         check_rev(rev)?;
         if let Some(path) = path {
             check_path(path)?;
@@ -336,7 +345,9 @@ impl Git {
         let format = "--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%(trailers:only,unfold)%x00%b";
         let count = format!("--max-count={limit}");
         let mut args: Vec<&str> = vec!["log", "-z", format, &count];
-        if path.is_some() {
+        if full_history {
+            args.push("--full-history");
+        } else if path.is_some() {
             args.push("--follow");
         }
         args.push(rev);

@@ -1216,13 +1216,29 @@ impl Vault {
         if !self.commit || !self.root.join(".git").exists() {
             return Ok(());
         }
-        let git = |args: &[&str]| std::process::Command::new("git").arg("-C").arg(&self.root).args(args).output();
-        let _ = git(&[&["add", "--"], paths].concat());
+        let run = |args: &[&str]| std::process::Command::new("git").arg("-C").arg(&self.root).args(args).output();
+        let add = run(&[&["add", "--"], paths].concat())?;
+        if !add.status.success() {
+            return Err(git_failure("add", &add.stderr));
+        }
+        // Nothing staged for these paths is success: the page already has exactly this content.
+        let staged = run(&[&["diff", "--cached", "--quiet", "--"], paths].concat())?;
+        if staged.status.success() {
+            return Ok(());
+        }
         let (user, email, author) =
             (format!("user.name={name}"), format!("user.email={login}@genie.local"), format!("{name} <{login}@genie.local>"));
-        // "Nothing to commit" is fine, and a failed commit never loses the write itself.
-        let _ = git(&[&["-c", &user, "-c", &email, "commit", "-q", "--author", &author, "-m", message, "--"], paths].concat());
-        Ok(())
+        let commit = run(&[&["-c", &user, "-c", &email, "commit", "-q", "--author", &author, "-m", message, "--"], paths].concat())?;
+        if commit.status.success() {
+            return Ok(());
+        }
+        // "Nothing to commit" is success too, for git versions that report it on stdout.
+        let stdout = String::from_utf8_lossy(&commit.stdout);
+        let stderr = String::from_utf8_lossy(&commit.stderr);
+        if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") || stderr.contains("no changes added to commit") {
+            return Ok(());
+        }
+        Err(git_failure("commit", &commit.stderr))
     }
 
     // --- changelog ---------------------------------------------------------------
@@ -1326,6 +1342,13 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
         let _ = std::fs::remove_file(&tmp);
     })?;
     Ok(())
+}
+
+/// A failed git step of a vault write, with git's own reason.
+fn git_failure(step: &str, stderr: &[u8]) -> GenieError {
+    let reason = String::from_utf8_lossy(stderr);
+    let reason = reason.trim();
+    GenieError::Io(std::io::Error::other(format!("git {step}: {}", if reason.is_empty() { "failed" } else { reason })))
 }
 
 #[cfg(test)]

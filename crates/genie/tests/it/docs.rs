@@ -2,23 +2,47 @@ use crate::common;
 
 use axum::http::StatusCode;
 use common::{Harness, call};
+use genie::changesets::{self, Editor, Published};
 use genie_core::Role;
-use genie_core::vault::{Policy, Publish, RequiredPage, Section};
+use genie_core::vault::{AuthorKind, Policy, Publish, RequiredPage, Section};
 use serde_json::json;
 
+/// Publish the changeset a write opened, as its author (a test stands in for the web action).
+fn publish_change(h: &Harness, project: &str, id: i64) {
+    let cs = h.app.with_server(|db| db.changeset(id)).unwrap();
+    let kind = match cs.author_kind.as_str() {
+        "agent" => AuthorKind::Agent,
+        "system" => AuthorKind::System,
+        _ => AuthorKind::Human,
+    };
+    let ed = Editor {
+        name: cs.author_name.clone(),
+        login: cs.author.clone(),
+        kind,
+        task: cs.task.clone(),
+        project: project.into(),
+        admin: true,
+        role: None,
+    };
+    assert!(matches!(changesets::publish(&h.app, id, &ed).unwrap(), Published::Published { .. }));
+}
+
 #[tokio::test]
-async fn people_write_agents_propose_owners_approve() {
+async fn people_and_agents_edit_through_changesets_and_publish() {
     let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
     h.project("shop");
     let r = &h.router;
     let page = "---\ntitle: Экспорт\ntype: guide\nstatus: current\n---\n# Экспорт\n\nЗаказы выгружаются в CSV.\n";
     let (s, saved, _) =
         call(r, "POST", "/api/docs/page").json(json!({ "path": "shop/export.md", "content": page, "mode": "create" })).send().await;
-    assert_eq!(s, StatusCode::CREATED, "{saved}");
-    let hash = saved["page"]["contentHash"].as_str().unwrap().to_string();
+    assert_eq!(s, StatusCode::OK, "{saved}");
+    let id = saved["changeset"]["id"].as_i64().unwrap();
+    assert_eq!(saved["changeset"]["status"], "open");
+    assert!(saved["page"]["content"].as_str().unwrap().contains("CSV"), "the author reads their version");
+    publish_change(&h, "shop", id);
     let (s, _, _) =
         call(r, "POST", "/api/docs/page").json(json!({ "path": "shop/export.md", "content": page, "mode": "create" })).send().await;
-    assert_eq!(s, StatusCode::CONFLICT);
+    assert_eq!(s, StatusCode::CONFLICT, "the page exists on main now");
 
     let (_, tree, _) = call(r, "GET", "/api/docs/tree").send().await;
     assert!(tree["pages"].as_array().unwrap().iter().any(|p| p["path"] == "shop/changelog.md"), "every project space has a changelog");
@@ -28,41 +52,38 @@ async fn people_write_agents_propose_owners_approve() {
     let agent =
         h.app.with_server(|db| db.create_agent_token("shop", Role::Documenter, "tolkien", None, None, chrono::Duration::hours(1))).unwrap();
     let edited = page.replace("CSV.", "CSV и XLSX.");
-    let (s, prop, _) = call(&h.remote, "POST", "/api/docs/page")
+    let (s, change, _) = call(&h.remote, "POST", "/api/docs/page")
         .bearer(&agent)
         .no_csrf()
         .json(json!({ "path": "shop/export.md", "content": edited, "note": "XLSX", "task": "G-1" }))
         .send()
         .await;
-    assert_eq!(s, StatusCode::ACCEPTED, "agents propose by default: {prop}");
-    let id = prop["proposal"].as_i64().unwrap();
-    let (_, listed, _) = call(r, "GET", "/api/docs/proposals").send().await;
-    assert_eq!(listed[0]["id"], id);
-    let (_, one, _) = call(r, "GET", &format!("/api/docs/proposals/{id}")).send().await;
-    assert!(one["current"].as_str().unwrap().contains("CSV."));
-    let (s, _, _) = call(&h.remote, "POST", &format!("/api/docs/proposals/{id}/approve")).bearer(&agent).no_csrf().send().await;
-    assert_eq!(s, StatusCode::FORBIDDEN, "agents do not approve");
-    let (s, done, _) = call(r, "POST", &format!("/api/docs/proposals/{id}/approve")).send().await;
-    assert_eq!(s, StatusCode::OK, "{done}");
+    assert_eq!(s, StatusCode::OK, "an agent edits its changeset: {change}");
+    assert_eq!(change["changeset"]["authorKind"], "agent");
+    assert!(change["page"]["content"].as_str().unwrap().contains("XLSX"), "the agent reads its own version");
+    let id = change["changeset"]["id"].as_i64().unwrap();
+    publish_change(&h, "shop", id);
     let (_, read, _) = call(r, "GET", "/api/docs/page?path=shop/export.md").send().await;
     assert!(read["content"].as_str().unwrap().contains("XLSX"));
     let vault = h.app.with_vault(|v| Ok(v.root().to_path_buf())).unwrap();
     let committed = crate::common::githost::sh(&vault, &["show", "HEAD:shop/export.md"]);
-    assert!(committed.contains("CSV и XLSX."), "the approved document is committed to Git: {committed}");
+    assert!(committed.contains("CSV и XLSX."), "the published document is committed to Git: {committed}");
 
     // A stale edit is a conflict, not a silent overwrite.
-    let (s, e, _) =
-        call(r, "POST", "/api/docs/page").json(json!({ "path": "shop/export.md", "content": page, "baseHash": hash })).send().await;
+    let (s, e, _) = call(r, "POST", "/api/docs/page")
+        .json(json!({ "path": "shop/export.md", "content": page, "baseHash": saved["page"]["contentHash"] }))
+        .send()
+        .await;
     assert_eq!(s, StatusCode::CONFLICT, "{e}");
 
     let events = h.app.with_tracker("shop", |t| t.events_after(0, 100)).unwrap();
     let kinds: Vec<&str> = events.iter().map(|e| e.kind.as_str()).collect();
-    assert!(kinds.contains(&"doc.changed") && kinds.contains(&"doc.proposal"), "{kinds:?}");
+    assert!(kinds.contains(&"doc.changeset_edited") && kinds.contains(&"doc.changeset_published"), "{kinds:?}");
 }
 
 #[tokio::test]
 async fn locked_sections_and_changelog_release() {
-    let h = Harness::new();
+    let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
     h.project("shop");
     h.app
         .with_vault(|v| {
@@ -119,8 +140,7 @@ async fn a_task_in_review_names_the_pages_its_changes_may_have_made_stale() {
         ("shop/vozvraty.md", "---\ntitle: Возвраты\nrelated: [G-1]\n---\n# Возвраты\n\nПравила возвратов.\n"),
         ("shop/sklad.md", "---\ntitle: Склад\npaths: [docs/**]\n---\n# Склад\n\nВолны.\n"),
     ] {
-        let (s, e, _) = call(r, "POST", "/api/docs/page").json(json!({ "path": path, "content": content })).send().await;
-        assert!(s.is_success(), "{s}: {e}");
+        h.app.with_vault(|v| v.write(path, content, AuthorKind::System, ("test", "test"), None, "fixture")).unwrap();
     }
     let (s, impact, _) = call(r, "GET", "/api/tasks/G-1/docs-impact").send().await;
     assert_eq!(s, StatusCode::OK, "{impact}");
@@ -137,7 +157,7 @@ async fn a_task_in_review_names_the_pages_its_changes_may_have_made_stale() {
 /// in their prompt (L0) and the pages chosen for a task in their kickoff (L1).
 #[tokio::test]
 async fn agents_get_the_index_in_their_prompt_and_the_tasks_pages_in_their_kickoff() {
-    let h = Harness::new();
+    let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
     h.project("shop");
     let r = &h.router;
     let export = "---\ntitle: Export\ntype: guide\nstatus: current\nsummary: How orders leave the shop\nrelated: [G-1]\n---\n# Export\n\n## Formats\n\nOrders go out as CSV and XLSX.\n";
@@ -145,7 +165,8 @@ async fn agents_get_the_index_in_their_prompt_and_the_tasks_pages_in_their_kicko
         "---\ntitle: Billing\ntype: reference\nstatus: current\n---\n# Billing\n\nInvoices are monthly.\n\nBody-only-secret-phrase.\n";
     for (path, content) in [("shop/features/export.md", export), ("shop/features/billing.md", billing)] {
         let (s, v, _) = call(r, "POST", "/api/docs/page").json(json!({ "path": path, "content": content, "mode": "create" })).send().await;
-        assert_eq!(s, StatusCode::CREATED, "{v}");
+        assert_eq!(s, StatusCode::OK, "{v}");
+        publish_change(&h, "shop", v["changeset"]["id"].as_i64().unwrap());
     }
     call(r, "POST", "/api/tasks").json(json!({ "title": "CSV export" })).send().await;
 
@@ -248,34 +269,38 @@ async fn documentation_is_confined_to_the_selected_projects_roots() {
 
 #[tokio::test]
 async fn documentation_proposals_do_not_cross_project_boundaries() {
-    let h = Harness::new();
+    let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
     h.project("shop");
     h.project("other");
     let agent =
         h.app.with_server(|db| db.create_agent_token("other", Role::Documenter, "writer", None, None, chrono::Duration::hours(1))).unwrap();
-    let (_, proposed, _) = call(&h.remote, "POST", "/api/docs/page")
+    let (s, edited, _) = call(&h.remote, "POST", "/api/docs/page")
         .bearer(&agent)
         .no_csrf()
         .json(json!({ "path": "other/proposal.md", "content": "# Proposal" }))
         .send()
         .await;
-    let id = proposed["proposal"].as_i64().unwrap();
+    assert_eq!(s, StatusCode::OK, "the write opens a changeset in its own project: {edited}");
+    assert_eq!(edited["changeset"]["project"], "other");
     let (_, list, _) = call(&h.router, "GET", "/api/docs/proposals?project=shop").send().await;
-    assert_eq!(list, json!([]));
-    h.app
+    assert_eq!(list, json!([]), "a write never creates a proposal");
+    let foreign = h
+        .app
         .with_server(|db| {
             db.create_proposal("shop/local.md", None, "# Local", "writer", "agent", Some("shop"), None, "fixture")?;
+            let mut foreign = None;
             for _ in 0..205 {
-                db.create_proposal("other/new.md", None, "# Foreign", "writer", "agent", Some("other"), None, "fixture")?;
+                let p = db.create_proposal("other/new.md", None, "# Foreign", "writer", "agent", Some("other"), None, "fixture")?;
+                foreign.get_or_insert(p.id);
             }
-            Ok(())
+            Ok(foreign.unwrap())
         })
         .unwrap();
     let (_, list, _) = call(&h.router, "GET", "/api/docs/proposals?project=shop").send().await;
     assert_eq!(list.as_array().unwrap().len(), 1, "foreign proposals cannot crowd out the project's proposals");
     assert_eq!(list[0]["path"], "shop/local.md");
     for (method, suffix) in [("GET", ""), ("POST", "/approve"), ("POST", "/reject")] {
-        let (s, _, _) = call(&h.router, method, &format!("/api/docs/proposals/{id}{suffix}?project=shop")).send().await;
+        let (s, _, _) = call(&h.router, method, &format!("/api/docs/proposals/{foreign}{suffix}?project=shop")).send().await;
         assert_eq!(s, StatusCode::NOT_FOUND);
     }
 }
@@ -311,7 +336,8 @@ async fn project_admins_remove_sections_with_their_pages() {
     let page = "---\ntitle: Гид\ntype: guide\nstatus: current\n---\n# Гид\n\nТекст.\n";
     let (s, saved, _) =
         call(r, "POST", "/api/docs/page").json(json!({ "path": "shop/guides/setup.md", "content": page, "mode": "create" })).send().await;
-    assert_eq!(s, StatusCode::CREATED, "{saved}");
+    assert_eq!(s, StatusCode::OK, "{saved}");
+    publish_change(&h, "shop", saved["changeset"]["id"].as_i64().unwrap());
 
     let (s, _, _) = call(r, "DELETE", "/api/docs/section?path=shop").send().await;
     assert!(!s.is_success(), "a space root is not a section");
@@ -321,9 +347,10 @@ async fn project_admins_remove_sections_with_their_pages() {
     let (s, _, _) = call(r, "GET", "/api/docs/page?path=shop/guides/setup.md").send().await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 
-    let (s, _, _) =
+    let (s, saved, _) =
         call(r, "POST", "/api/docs/page").json(json!({ "path": "shop/notes.md", "content": page, "mode": "create" })).send().await;
-    assert_eq!(s, StatusCode::CREATED);
+    assert_eq!(s, StatusCode::OK);
+    publish_change(&h, "shop", saved["changeset"]["id"].as_i64().unwrap());
     let (s, gone, _) = call(r, "DELETE", "/api/docs/page?path=shop/notes.md").send().await;
     assert_eq!(s, StatusCode::OK, "{gone}");
     let (s, _, _) = call(r, "GET", "/api/docs/page?path=shop/notes.md").send().await;
@@ -332,14 +359,15 @@ async fn project_admins_remove_sections_with_their_pages() {
 
 #[tokio::test]
 async fn required_reading_lists_a_roles_pages_whole_and_names_missing_ones() {
-    let h = Harness::new();
+    let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
     h.project("shop");
     let guide = "---\ntitle: Agent guide\ntype: guide\nstatus: current\n---\n# Agent guide\n\nRead me first, before the rest.\n";
     let (s, saved, _) = call(&h.router, "POST", "/api/docs/page")
         .json(json!({ "path": "shop/agent-guide.md", "content": guide, "mode": "create" }))
         .send()
         .await;
-    assert_eq!(s, StatusCode::CREATED, "{saved}");
+    assert_eq!(s, StatusCode::OK, "{saved}");
+    publish_change(&h, "shop", saved["changeset"]["id"].as_i64().unwrap());
     h.app
         .with_vault(|v| {
             v.config.spaces.get_mut("shop").unwrap().required = vec![
