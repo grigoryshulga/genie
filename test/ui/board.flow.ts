@@ -90,7 +90,12 @@ for (const theme of ["ink", "paper"]) {
       await expect(ghost.locator(".epic-icon")).toHaveCSS("color", before.epic);
       expect(await ghost.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(before.background);
       await page.keyboard.press("Escape");
-      await expect(ghost).toHaveCount(0);
+      // dnd-kit attaches the keyboard sensor's document Escape listener in a deferred task after the
+      // drag starts, so a cancel sent in the same breath is lost. Press again while the overlay is up.
+      await expect(async () => {
+        await page.keyboard.press("Escape");
+        await expect(ghost).toHaveCount(0, { timeout: 250 });
+      }).toPass({ timeout: 5_000 });
 
       await card.getByRole("button", { name: `Переместить ${id}` }).click();
       await page.getByRole("menuitem", { name: /^Готово к работе/ }).click();
