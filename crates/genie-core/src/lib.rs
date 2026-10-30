@@ -4,6 +4,7 @@
 //! `docs/platform/backend.md`.
 
 pub mod automation;
+pub mod changesets;
 pub mod chat;
 pub mod connections;
 pub mod db;
