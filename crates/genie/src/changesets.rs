@@ -818,9 +818,27 @@ pub fn read_for(
             let rev = git.resolve(at)?.ok_or_else(|| GenieError::not_found(format!("version {at} not found")))?;
             (rev.clone(), rev == main)
         } else {
+            // Read-your-writes: the reader's changeset for its task, else any open one of theirs touching the page
+            // (a reader does not always name its task: a person in the web, an agent outside its team).
             let task = ed.task.as_deref();
-            let found = app.with_server(|db| db.open_changeset_for(&ed.login, task, task.is_none().then_some(rel.as_str())))?;
-            match found.filter(|cs| cs.paths.iter().any(|p| p == &rel) && changeset_in_project(v, cs, &ed.project).is_ok()) {
+            let for_task = app.with_server(|db| db.open_changeset_for(&ed.login, task, task.is_none().then_some(rel.as_str())))?;
+            let touches = |cs: &Changeset| cs.paths.iter().any(|p| p == &rel) && changeset_in_project(v, cs, &ed.project).is_ok();
+            let found = match for_task.filter(|cs| touches(cs)) {
+                Some(cs) => Some(cs),
+                None => app
+                    .with_server(|db| {
+                        db.changesets(&ChangesetFilter {
+                            statuses: vec![ChangesetStatus::Open, ChangesetStatus::Merging],
+                            author: Some(ed.login.clone()),
+                            path: Some(rel.clone()),
+                            limit: 10,
+                            ..Default::default()
+                        })
+                    })?
+                    .into_iter()
+                    .find(|cs| touches(cs)),
+            };
+            match found {
                 Some(cs) => {
                     selected = Some(cs.id);
                     (tip_of(&git, &cs)?, false)

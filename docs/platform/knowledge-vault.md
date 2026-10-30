@@ -18,9 +18,15 @@ Use the Docs screen, Obsidian, or the CLI:
 ```bash
 genie docs search "authentication"
 genie docs read <path>
+genie docs edit <path> --replace-section "Sign-in" --body-file sign-in.md
+genie docs publish
 genie vault import ./docs --space shop
 genie vault reindex
 ```
+
+Every edit goes into a **changeset**: a git branch `changes/<id>` forked from main, owned by its author and usually their task. The first edit opens it; later edits of the same task join it. The author and the author's team read the changeset's version of a page; everyone else reads main and sees that the page has an open changeset. `genie docs read <path> --changeset <id>` reads another changeset, and `--at <sha>` reads a version on main.
+
+Prefer section operations over whole-page writes: `replace-section`, `insert-section`, `append`, `remove-section` and `set-meta` change one region of a page, so concurrent authors keep working in different regions. `genie docs write` replaces a whole page and stays for people and imports. MCP callers pass the same operations as a JSON `ops` array.
 
 Pages support Markdown, frontmatter, wiki-links, heading reads, and backlinks. Search indexes titles, summaries, headings, body text, tags, and aliases. See the [documentation contract](../reference/genie-docs-system.md) for exact field and search behavior.
 
@@ -34,7 +40,7 @@ Breadcrumbs return to any parent section or the space overview. Type and status 
 
 Visual edits serialize back to Markdown and can normalize whitespace and marker style. Tables, task lists, images, code languages, and vault wiki-links retain their meaning. Articles containing raw HTML use source editing, since arbitrary HTML cannot be represented by the visual schema; HTML inside code remains visually editable.
 
-Tree, search, page reads/writes, link resolution, backlinks, proposals, and change signatures are scoped to the selected project's configured roots, including for CLI and MCP callers. A project without roots has an empty documentation space; it never falls back to the entire vault. Notes also require a project root. Use `genie --project shop docs space handbook --of shop` to bind an additional unused root. The project API cannot reassign another project's root.
+Tree, search, page reads/writes, link resolution, backlinks, changesets, merges, history, and change signatures are scoped to the selected project's configured roots, including for CLI and MCP callers. A project without roots has an empty documentation space; it never falls back to the entire vault. Notes also require a project root. Use `genie --project shop docs space handbook --of shop` to bind an additional unused root. The project API cannot reassign another project's root.
 
 ## Publication policies
 
@@ -42,11 +48,25 @@ Tree, search, page reads/writes, link resolution, backlinks, proposals, and chan
 
 | Policy | Result |
 | --- | --- |
-| `direct` | Commit the change to the vault's main branch. |
-| `review` | Create a proposal for a section owner to review in Genie. |
-| `locked` | Agents cannot change the section. They can report findings elsewhere. |
+| `direct` | Publishing the changeset lands the change on main. |
+| `review` | Publishing still lands the change; it is listed as **unreviewed** for the section owners, who mark it reviewed or revert it. |
+| `locked` | Nobody in the role edits the section. They can report findings elsewhere. |
 
-Proposals include a diff, preview, and discussion. Review works without a GitHub or GitLab remote. A section's policy still applies when a role has `docs.write`.
+`genie docs publish` merges the changeset into main. Overlapping edits are combined by the merge agent; when two sides conflict, publication answers `merging` and completes when the merge does, so the author never redoes the work. Publication is journaled and appears in the Changes feed for every policy, including `direct`. A task cannot reach `done` while its changeset is still open. A section's policy still applies when a role has `docs.write`.
+
+## Changesets, history and rollback
+
+`genie docs changes` is the project's Changes feed: open changesets, published ones, pending merges, and the review queue. Filters select by status, task, author, page and review state; `--unreviewed` lists published changesets the section owners have not marked reviewed yet.
+
+- `genie docs changeset <id>` shows a changeset with its commits and full diff; the same diff is in the page's open-changeset marker.
+- `genie docs history <path>` lists the commits on main that touched a page, following moves, with author, task, changeset and reason.
+- `genie docs diff <path> --from <sha> --to <sha>` compares any two versions of a page.
+- `genie docs restore <path> --at <sha>` publishes the page's content at that version as a new changeset, itself revertible.
+- `genie docs revert <id>` publishes a new changeset with the inverse change, so later overlapping edits reach the merge agent instead of failing.
+- `genie docs review <id>` marks a published changeset reviewed; only the touched sections' owners (or the project's admins) may do it.
+- `genie docs discard` closes a changeset without publishing it; the branch stays as a record.
+
+A pending merge is read with `genie docs merge-show <id>` and resolved with `genie docs merge-resolve <id> --page <path> --file <merged page> ... --done`, or handed to the owners with `--fail`. The merge agent (`doc-merger`) does this for agents; a person can resolve it the same way. History is read from git, so it is identical in Genie, Obsidian and a plain clone.
 
 ## Git and Obsidian
 

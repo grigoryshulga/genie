@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use genie_core::Capability;
+use genie_core::doc_ops::DocOp;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -11,7 +12,30 @@ use super::{Cx, Entry, Listed, Need, Op, Out, enc, register, render};
 
 pub fn register(all: &mut Vec<Entry>) {
     register!(
-        all, Search, Read, Tree, Required, Write, Note, Impact, Proposals, Proposal, Approve, Reject, Spaces, Space, Changelog, Release
+        all,
+        Search,
+        Read,
+        Tree,
+        Required,
+        Edit,
+        Write,
+        Publish,
+        Discard,
+        Changes,
+        Changeset,
+        History,
+        Diff,
+        Revert,
+        Restore,
+        Review,
+        MergeShow,
+        MergeResolve,
+        Note,
+        Impact,
+        Spaces,
+        Space,
+        Changelog,
+        Release
     );
 }
 
@@ -76,6 +100,12 @@ pub struct Read {
     /// Cut the text after this many characters.
     #[arg(long)]
     pub max_chars: Option<usize>,
+    /// Read a changeset's version (default: your own open changeset touching the page).
+    #[arg(long)]
+    pub changeset: Option<String>,
+    /// Read the page at this commit on main.
+    #[arg(long)]
+    pub at: Option<String>,
 }
 
 impl Op for Read {
@@ -90,6 +120,12 @@ impl Op for Read {
         }
         if let Some(n) = self.max_chars {
             q.push_str(&format!("&maxChars={n}"));
+        }
+        if let Some(c) = &self.changeset {
+            q.push_str(&format!("&changeset={}", enc(c)));
+        }
+        if let Some(a) = &self.at {
+            q.push_str(&format!("&at={}", enc(a)));
         }
         let v = cx.call("GET", &q, None).await?;
         Ok(Out::new(render::doc(&v), v))
@@ -140,7 +176,135 @@ impl Op for Required {
     }
 }
 
-/// Write a page; where the section asks for a review it becomes a proposal the owner decides on.
+/// Change a page section by section in your changeset; publish it with `genie docs publish`.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Edit {
+    /// Path in the vault, e.g. billing/returns.md.
+    pub path: String,
+    /// The operations as JSON: one DocOp object or an array of them (the MCP form of the flags).
+    #[arg(long, allow_hyphen_values = true)]
+    pub ops: Option<String>,
+    /// Replace a section's body; pass the new text with --body-file.
+    #[arg(long, value_name = "HEADING")]
+    pub replace_section: Option<String>,
+    /// Append to the page, or to --heading's section; pass the text with --text-file.
+    #[arg(long)]
+    pub append: bool,
+    /// The section --append writes into (default: the end of the page).
+    #[arg(long)]
+    pub heading: Option<String>,
+    /// The text to append (command line only).
+    #[arg(long)]
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub text_file: Option<PathBuf>,
+    /// Insert a new section; pass its body with --body-file.
+    #[arg(long, value_name = "HEADING")]
+    pub insert_section: Option<String>,
+    /// Insert after this section (default: the end of the page).
+    #[arg(long, value_name = "HEADING")]
+    pub after: Option<String>,
+    /// The new section's heading level, 1-6 (default: 2).
+    #[arg(long)]
+    pub level: Option<u8>,
+    /// Read a section body from this file (command line only).
+    #[arg(long)]
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub body_file: Option<PathBuf>,
+    /// Remove a section and its subsections.
+    #[arg(long, value_name = "HEADING")]
+    pub remove_section: Option<String>,
+    /// Set a frontmatter field (`field=value`; the value is JSON or a plain string); repeat for more.
+    #[arg(long = "set-meta", value_name = "FIELD=VALUE")]
+    #[serde(default)]
+    pub set_meta: Vec<String>,
+    /// Replace the whole page with this file's text (command line only).
+    #[arg(long)]
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub file: Option<PathBuf>,
+    /// What changed and why: the commit message.
+    #[arg(long, allow_hyphen_values = true)]
+    pub note: Option<String>,
+    /// The changeset to edit (default: your own for your task, opened on the first edit).
+    #[arg(long)]
+    pub changeset: Option<i64>,
+    /// The task this change belongs to (default: yours).
+    #[arg(long)]
+    pub task: Option<String>,
+}
+
+impl Edit {
+    /// The operations of this call: the JSON form and the flags, in the order they were given.
+    fn operations(&self, cx: &Cx) -> Result<Vec<DocOp>, String> {
+        let mut ops: Vec<DocOp> = Vec::new();
+        if let Some(raw) = &self.ops {
+            let value: Value = serde_json::from_str(raw).map_err(|e| format!("--ops: {e}"))?;
+            match value {
+                Value::Array(items) => {
+                    ops = serde_json::from_value(Value::Array(items)).map_err(|e| format!("--ops: {e}"))?;
+                }
+                one => ops.push(serde_json::from_value(one).map_err(|e| format!("--ops: {e}"))?),
+            }
+        }
+        if let Some(heading) = &self.replace_section {
+            let body = cx.text(None, self.body_file.clone())?.ok_or("pass the new section body with --body-file")?;
+            ops.push(DocOp::ReplaceSection { heading: heading.clone(), body });
+        }
+        if self.append {
+            let text = cx.text(None, self.text_file.clone())?.ok_or("pass the text to append with --text-file")?;
+            ops.push(DocOp::Append { heading: self.heading.clone(), text });
+        }
+        if let Some(heading) = &self.insert_section {
+            let body = cx.text(None, self.body_file.clone())?.ok_or("pass the new section body with --body-file")?;
+            ops.push(DocOp::InsertSection { after: self.after.clone(), heading: heading.clone(), level: self.level, body });
+        }
+        if let Some(heading) = &self.remove_section {
+            ops.push(DocOp::RemoveSection { heading: heading.clone() });
+        }
+        for kv in &self.set_meta {
+            let (field, value) = kv.split_once('=').ok_or_else(|| format!("--set-meta {kv}: expected field=value"))?;
+            let raw = value.trim();
+            let value = serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()));
+            ops.push(DocOp::SetMeta { field: field.trim().to_string(), value });
+        }
+        if let Some(file) = &self.file {
+            let content = cx.text(None, Some(file.clone()))?.ok_or("the file is empty")?;
+            ops.push(DocOp::WritePage { content });
+        }
+        if ops.is_empty() {
+            return Err(
+                "pass --ops or an editing flag (--replace-section, --append, --insert-section, --remove-section, --set-meta, --file)"
+                    .into(),
+            );
+        }
+        Ok(ops)
+    }
+}
+
+impl Op for Edit {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "edit";
+    const LEGACY: Option<&'static str> = Some("docs edit");
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::DocsWrite];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let ops = self.operations(cx)?;
+        let task = self.task.or_else(|| cx.task.clone());
+        let path = self.path.clone();
+        let body =
+            json!({ "path": self.path, "ops": ops, "note": self.note.unwrap_or_default(), "task": task, "changeset": self.changeset });
+        let v = cx.call("POST", "/docs/edit", Some(body)).await?;
+        let id = v["changeset"]["id"].as_i64().unwrap_or_default();
+        let page = v["page"]["path"].as_str().unwrap_or(&path);
+        let sha = v["commit"].as_str().unwrap_or_default();
+        Ok(Out::new(format!("{page} changed in changeset #{id} (commit {})", short(sha)), v))
+    }
+}
+
+/// Write a page in one go; kept for people and imports, prefer `genie docs edit`.
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Write {
@@ -178,13 +342,351 @@ impl Op for Write {
     async fn run(self, cx: &Cx) -> Result<Out, String> {
         let content = cx.text(self.text, self.file)?.ok_or("pass the page as --text (or --file on the command line)")?;
         let task = self.task.or_else(|| cx.task.clone());
+        let path = self.path.clone();
         let body = json!({ "path": self.path, "content": content, "note": self.note.unwrap_or_default(), "mode": self.mode, "task": task });
         let v = cx.call("POST", "/docs/page", Some(body)).await?;
-        let text = match v["changeset"]["id"].as_i64() {
-            Some(id) => format!("changeset #{id} opened for {}: publish it when the editing is done", self.path),
-            None => format!("{} saved", v["page"]["path"].as_str().unwrap_or(&self.path)),
+        let id = v["changeset"]["id"].as_i64().unwrap_or_default();
+        let page = v["page"]["path"].as_str().unwrap_or(&path);
+        Ok(Out::new(format!("{page} saved in changeset #{id}; publish it with `genie docs publish`"), v))
+    }
+}
+
+fn short(sha: &str) -> &str {
+    sha.get(..7).unwrap_or(sha)
+}
+
+/// Publish a changeset into main (default: your open changeset for your task).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Publish {
+    /// The changeset; default: the one you have open for your task.
+    #[arg(long)]
+    pub changeset: Option<i64>,
+}
+
+impl Op for Publish {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "publish";
+    const LEGACY: Option<&'static str> = Some("docs publish");
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::DocsWrite];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let id = open_changeset(cx, self.changeset).await?;
+        let v = cx.call("POST", &format!("/docs/changesets/{id}/publish"), None).await?;
+        Ok(Out::new(publish_text(&v), v))
+    }
+}
+
+/// Close a changeset without publishing it (default: your open changeset for your task).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Discard {
+    /// The changeset; default: the one you have open for your task.
+    #[arg(long)]
+    pub changeset: Option<i64>,
+}
+
+impl Op for Discard {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "discard";
+    const LEGACY: Option<&'static str> = Some("docs discard");
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::DocsWrite];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let id = open_changeset(cx, self.changeset).await?;
+        let v = cx.call("POST", &format!("/docs/changesets/{id}/discard"), None).await?;
+        Ok(Out::new(format!("discarded changeset #{id}"), v))
+    }
+}
+
+async fn open_changeset(cx: &Cx, given: Option<i64>) -> Result<i64, String> {
+    if let Some(id) = given {
+        return Ok(id);
+    }
+    let mut q = String::from("/docs/changesets?status=open&mine=1");
+    if let Some(task) = cx.task.clone().filter(|t| !t.is_empty()) {
+        q.push_str(&format!("&task={}", enc(&task)));
+    }
+    let v = cx.call("GET", &q, None).await?;
+    let ids: Vec<i64> = v.as_array().map(|a| a.iter().filter_map(|c| c["id"].as_i64()).collect()).unwrap_or_default();
+    match ids.as_slice() {
+        [] => Err("no open changeset: edit a page first".into()),
+        [id] => Ok(*id),
+        many => Err(format!("{} open changesets: pass --changeset <id>", many.len())),
+    }
+}
+
+fn publish_text(v: &Value) -> String {
+    match v["status"].as_str() {
+        Some("merging") => format!("merging: merge {}, the merge agent is on it", v["merge"]["id"]),
+        _ => format!("published {}", v["commit"].as_str().unwrap_or_default()),
+    }
+}
+
+/// The Changes feed: open, published and reviewed changesets (default: your own open ones).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Changes {
+    /// open, merging, published, discarded; several separated by commas.
+    #[arg(long)]
+    pub status: Option<String>,
+    #[arg(long)]
+    pub task: Option<String>,
+    /// A login.
+    #[arg(long)]
+    pub author: Option<String>,
+    /// Published changesets whose section owners have not reviewed them yet.
+    #[arg(long)]
+    pub unreviewed: bool,
+    #[arg(long)]
+    pub path: Option<String>,
+    #[arg(long)]
+    pub limit: Option<usize>,
+}
+
+impl Op for Changes {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "changes";
+    const LEGACY: Option<&'static str> = Some("docs changes");
+    const CAPS: &'static [Capability] = &[Capability::DocsRead];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let filters = self.status.is_some() || self.task.is_some() || self.author.is_some() || self.unreviewed || self.path.is_some();
+        let mut q = String::from(if filters { "/docs/changesets?" } else { "/docs/changesets?status=open&mine=1&" });
+        for (k, v) in [
+            ("status", self.status),
+            ("task", self.task),
+            ("author", self.author),
+            ("path", self.path),
+            ("limit", self.limit.map(|n| n.to_string())),
+        ] {
+            if let Some(v) = v {
+                q.push_str(&format!("{k}={}&", enc(&v)));
+            }
+        }
+        if self.unreviewed {
+            q.push_str("unreviewed=1&");
+        }
+        let v = cx.call("GET", q.trim_end_matches(['?', '&']), None).await?;
+        let rows = v.as_array().cloned().unwrap_or_default();
+        let text = if rows.is_empty() {
+            "no changesets".to_string()
+        } else {
+            rows.iter().map(render::changeset_line).collect::<Vec<_>>().join("\n")
         };
         Ok(Out::new(text, v))
+    }
+}
+
+/// A changeset with its commits and full diff.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Changeset {
+    pub id: i64,
+}
+
+impl Op for Changeset {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "changeset";
+    const LEGACY: Option<&'static str> = Some("docs changeset");
+    const CAPS: &'static [Capability] = &[Capability::DocsRead];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("GET", &format!("/docs/changesets/{}", self.id), None).await?;
+        Ok(Out::new(render::changeset_detail(&v), v))
+    }
+}
+
+/// Commits on main that touched a page, following moves.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct History {
+    pub path: String,
+    #[arg(long)]
+    pub limit: Option<usize>,
+}
+
+impl Op for History {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "history";
+    const LEGACY: Option<&'static str> = Some("docs history");
+    const CAPS: &'static [Capability] = &[Capability::DocsRead];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let mut q = format!("/docs/history?path={}", enc(&self.path));
+        if let Some(n) = self.limit {
+            q.push_str(&format!("&limit={n}"));
+        }
+        let v = cx.call("GET", &q, None).await?;
+        let rows = v.as_array().cloned().unwrap_or_default();
+        let text = if rows.is_empty() {
+            format!("no history for {}", self.path)
+        } else {
+            rows.iter().map(render::commit_line).collect::<Vec<_>>().join("\n")
+        };
+        Ok(Out::new(text, v))
+    }
+}
+
+/// A unified diff of a page between two versions.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Diff {
+    pub path: String,
+    /// The older version: a commit SHA or a changeset id.
+    #[arg(long)]
+    pub from: String,
+    /// The newer version.
+    #[arg(long)]
+    pub to: String,
+}
+
+impl Op for Diff {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "diff";
+    const LEGACY: Option<&'static str> = Some("docs diff");
+    const CAPS: &'static [Capability] = &[Capability::DocsRead];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let q = format!("/docs/diff?path={}&from={}&to={}", enc(&self.path), enc(&self.from), enc(&self.to));
+        let v = cx.call("GET", &q, None).await?;
+        let diff = v["diff"].as_str().unwrap_or_default();
+        let text = if diff.trim().is_empty() {
+            format!("{}: no differences between {} and {}", self.path, self.from, self.to)
+        } else {
+            format!("{} {} → {}\n{diff}", self.path, self.from, self.to)
+        };
+        Ok(Out::new(text, v))
+    }
+}
+
+/// Revert a published changeset with a new one that undoes it.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Revert {
+    pub id: i64,
+}
+
+impl Op for Revert {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "revert";
+    const LEGACY: Option<&'static str> = Some("docs revert");
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::DocsWrite];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("POST", &format!("/docs/changesets/{}/revert", self.id), None).await?;
+        Ok(Out::new(format!("reverted #{}: {}", self.id, publish_text(&v)), v))
+    }
+}
+
+/// Publish a page's content at a version as a new changeset.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Restore {
+    pub path: String,
+    /// The commit SHA to restore the page to.
+    #[arg(long)]
+    pub at: String,
+}
+
+impl Op for Restore {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "restore";
+    const LEGACY: Option<&'static str> = Some("docs restore");
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::DocsWrite];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("POST", "/docs/restore", Some(json!({ "path": self.path, "at": self.at }))).await?;
+        Ok(Out::new(format!("restored {} at {}: {}", self.path, self.at, publish_text(&v)), v))
+    }
+}
+
+/// Mark a published changeset reviewed (the touched sections' owners only).
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Review {
+    pub id: i64,
+}
+
+impl Op for Review {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "review";
+    const LEGACY: Option<&'static str> = Some("docs review");
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::DocsWrite];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("POST", &format!("/docs/changesets/{}/review", self.id), Some(json!({ "decision": "reviewed" }))).await?;
+        let by = v["changeset"]["reviewedBy"].as_str().filter(|b| !b.is_empty()).unwrap_or("you");
+        Ok(Out::new(format!("changeset #{} reviewed by {by}", self.id), v))
+    }
+}
+
+/// A pending merge: the conflicted pages with base, ours, theirs and the marked text.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct MergeShow {
+    pub id: i64,
+}
+
+impl Op for MergeShow {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "merge-show";
+    const LEGACY: Option<&'static str> = Some("docs merge-show");
+    const CAPS: &'static [Capability] = &[Capability::DocsRead];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("GET", &format!("/docs/merges/{}", self.id), None).await?;
+        Ok(Out::new(render::merge(&v), v))
+    }
+}
+
+/// Resolve a pending merge: stage merged pages and publish, or hand it to the owners.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeResolve {
+    pub id: i64,
+    /// A conflicted page; repeat with --file in the same order.
+    #[arg(long = "page")]
+    #[serde(default)]
+    pub page: Vec<String>,
+    /// The whole merged page for the --page before it (command line only).
+    #[arg(long = "file")]
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub file: Vec<PathBuf>,
+    /// Every conflicted page is staged: validate and publish.
+    #[arg(long)]
+    pub done: bool,
+    /// Hand the merge to the section owners.
+    #[arg(long)]
+    pub fail: bool,
+    /// The two sides contradict each other in meaning: list it unreviewed.
+    #[arg(long)]
+    pub contradiction: bool,
+    /// One line: what you combined and why, or why you stopped.
+    #[arg(long, allow_hyphen_values = true)]
+    pub note: Option<String>,
+}
+
+impl MergeResolve {
+    fn pages(&self, cx: &Cx) -> Result<Vec<Value>, String> {
+        if self.page.len() != self.file.len() {
+            return Err("give each --page one --file with its merged text".into());
+        }
+        let mut pages = Vec::new();
+        for (path, file) in self.page.iter().zip(self.file.iter()) {
+            let content = cx.text(None, Some(file.clone()))?.ok_or_else(|| format!("{}: the file is empty", file.display()))?;
+            pages.push(json!({ "path": path, "content": content }));
+        }
+        Ok(pages)
+    }
+}
+
+impl Op for MergeResolve {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "merge-resolve";
+    const LEGACY: Option<&'static str> = Some("docs merge-resolve");
+    const NEED: Need = Need::Write;
+    const CAPS: &'static [Capability] = &[Capability::DocsWrite];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let pages = self.pages(cx)?;
+        let body = json!({
+            "pages": pages,
+            "done": self.done,
+            "fail": self.fail,
+            "contradiction": self.contradiction,
+            "note": self.note.unwrap_or_default(),
+        });
+        let v = cx.call("POST", &format!("/docs/merges/{}/resolve", self.id), Some(body)).await?;
+        let status = v["merge"]["status"].as_str().or_else(|| v["status"].as_str()).unwrap_or("resolved");
+        Ok(Out::new(format!("merge #{} {status}", self.id), v))
     }
 }
 
@@ -252,117 +754,6 @@ fn st<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or_default()
 }
 
-fn proposal_line(p: &Value) -> String {
-    format!(
-        "#{:<4} {:<9} {}  by {} ({}){}{}",
-        p["id"].to_string(),
-        st(p, "status"),
-        st(p, "path"),
-        st(p, "author"),
-        st(p, "authorKind"),
-        p["task"].as_str().map(|t| format!(" for {t}")).unwrap_or_default(),
-        if st(p, "note").is_empty() { String::new() } else { format!(" — {}", st(p, "note")) }
-    )
-}
-
-/// Proposed changes to pages waiting for their owners (--status open, approved, rejected, superseded or all).
-#[derive(clap::Args, Deserialize, JsonSchema)]
-pub struct Proposals {
-    #[arg(long, default_value = "open")]
-    #[serde(default = "open")]
-    pub status: String,
-}
-
-fn open() -> String {
-    "open".into()
-}
-
-impl Op for Proposals {
-    const GROUP: &'static str = "docs";
-    const NAME: &'static str = "proposals";
-    async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let v = cx.call("GET", &format!("/docs/proposals?status={}", enc(&self.status)), None).await?;
-        let rows = v.as_array().cloned().unwrap_or_default();
-        let text = if rows.is_empty() {
-            format!("no {} proposals", self.status)
-        } else {
-            rows.iter().map(proposal_line).collect::<Vec<_>>().join("\n")
-        };
-        Ok(Out::new(text, v))
-    }
-}
-
-/// A proposal: the proposed page next to the current one, and who decides.
-#[derive(clap::Args, Deserialize, JsonSchema)]
-pub struct Proposal {
-    pub id: i64,
-}
-
-impl Op for Proposal {
-    const GROUP: &'static str = "docs";
-    const NAME: &'static str = "proposal";
-    async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let v = cx.call("GET", &format!("/docs/proposals/{}", self.id), None).await?;
-        let p = &v["proposal"];
-        let owners: Vec<&str> = v["owners"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
-        let mut out = vec![proposal_line(p)];
-        out.push(format!("decides: {}", if owners.is_empty() { "the project's admins".to_string() } else { owners.join(", ") }));
-        if let Some(by) = p["decidedBy"].as_str() {
-            out.push(format!("decided by {by}{}", p["decisionNote"].as_str().map(|n| format!(": {n}")).unwrap_or_default()));
-        }
-        out.push(String::new());
-        out.push("## Proposed".into());
-        out.push(st(p, "content").to_string());
-        out.push(String::new());
-        out.push("## Current".into());
-        out.push(v["current"].as_str().unwrap_or("(the page does not exist yet)").to_string());
-        Ok(Out::new(out.join("\n"), v))
-    }
-}
-
-/// Apply a proposal to its page (the section's owners and the project's admins).
-#[derive(clap::Args, Deserialize, JsonSchema)]
-pub struct Approve {
-    pub id: i64,
-    #[arg(long, allow_hyphen_values = true)]
-    pub note: Option<String>,
-    /// Apply it even though the page changed since it was proposed.
-    #[arg(long)]
-    #[serde(default)]
-    pub force: bool,
-}
-
-impl Op for Approve {
-    const GROUP: &'static str = "docs";
-    const NAME: &'static str = "approve";
-    const NEED: Need = Need::Admin;
-    async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let v = cx
-            .call("POST", &format!("/docs/proposals/{}/approve", self.id), Some(json!({ "note": self.note, "force": self.force })))
-            .await?;
-        Ok(Out::new(format!("proposal #{} approved: {} changed", self.id, st(&v, "path")), v))
-    }
-}
-
-/// Turn a proposal down (the section's owners and the project's admins).
-#[derive(clap::Args, Deserialize, JsonSchema)]
-pub struct Reject {
-    pub id: i64,
-    /// Why, for its author.
-    #[arg(long, allow_hyphen_values = true)]
-    pub note: Option<String>,
-}
-
-impl Op for Reject {
-    const GROUP: &'static str = "docs";
-    const NAME: &'static str = "reject";
-    const NEED: Need = Need::Admin;
-    async fn run(self, cx: &Cx) -> Result<Out, String> {
-        let v = cx.call("POST", &format!("/docs/proposals/{}/reject", self.id), Some(json!({ "note": self.note }))).await?;
-        Ok(Out::new(format!("proposal #{} rejected", self.id), v))
-    }
-}
-
 fn policy(p: &Value) -> String {
     if p.is_null() { "default".into() } else { format!("people {}, agents {}", st(p, "humans"), st(p, "agents")) }
 }
@@ -406,7 +797,7 @@ pub struct Space {
     /// The project whose code its pages describe.
     #[arg(long = "of")]
     pub of: Option<String>,
-    /// An owner's login; repeat for more. Owners decide on proposals.
+    /// An owner's login; repeat for more. Owners review what their sections publish.
     #[arg(long = "owner")]
     pub owners: Option<Vec<String>>,
     /// How people publish: direct, review or locked.

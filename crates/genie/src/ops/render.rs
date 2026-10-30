@@ -398,6 +398,84 @@ fn doc_marker_list(p: &Value) -> Vec<String> {
     m
 }
 
+/// A changeset in one line of the Changes feed: `#7 open anna G-1 Export (2 pages)`.
+pub fn changeset_line(c: &Value) -> String {
+    let pages = c["paths"].as_array().map(Vec::len).unwrap_or(0);
+    format!("#{} {} {} {} {} ({pages} pages)", c["id"], s(c, "status"), s(c, "author"), c["task"].as_str().unwrap_or("-"), s(c, "title"))
+}
+
+/// One commit of a vault history: short SHA, day, author, subject.
+pub fn commit_line(c: &Value) -> String {
+    let sha = s(c, "sha");
+    let short = sha.get(..7).unwrap_or(sha);
+    format!("{short} {} {} {}", s(c, "date").get(..10).unwrap_or_default(), s(c, "authorName"), s(c, "subject"))
+}
+
+/// A changeset in full: the line, the branch, its commits and the diff.
+pub fn changeset_detail(v: &Value) -> String {
+    let c = if v["changeset"].is_object() { &v["changeset"] } else { v };
+    let mut out = vec![changeset_line(c)];
+    out.push(format!("branch {} · base {} · origin {}", s(c, "branch"), s(c, "base"), s(c, "origin")));
+    let paths = strs(&c["paths"]);
+    if !paths.is_empty() {
+        out.push(format!("pages: {}", paths.join(", ")));
+    }
+    if let Some(by) = c["reviewedBy"].as_str().filter(|b| !b.is_empty()) {
+        out.push(format!("reviewed by {by}"));
+    }
+    if let Some(commits) = v["commits"].as_array() {
+        out.push(format!("commits: {}", commits.len()));
+        out.extend(commits.iter().map(|m| format!("  {}", commit_line(m))));
+    }
+    if let Some(diff) = v["diff"].as_str().filter(|d| !d.trim().is_empty()) {
+        out.push(String::new());
+        out.push(diff.to_string());
+    }
+    out.join("\n")
+}
+
+/// A pending merge: the status, the conflicted pages with both sides and the marked text.
+pub fn merge(v: &Value) -> String {
+    let m = if v["merge"].is_object() { &v["merge"] } else { v };
+    let mut out = vec![format!("merge #{} {} · changeset #{}", m["id"], s(m, "status"), m["changeset"])];
+    let conflicts = strs(&m["conflicts"]);
+    if !conflicts.is_empty() {
+        out.push(format!("conflicted: {}", conflicts.join(", ")));
+    }
+    if let Some(error) = m["error"].as_str().filter(|e| !e.is_empty()) {
+        out.push(format!("error: {error}"));
+    }
+    if !s(m, "note").is_empty() {
+        out.push(format!("note: {}", s(m, "note")));
+    }
+    if m["contradiction"] == json!(true) {
+        out.push("a contradiction: the section owners review it".into());
+    }
+    for p in v["pages"].as_array().cloned().unwrap_or_default() {
+        out.push(String::new());
+        out.push(format!("## {}", s(&p, "path")));
+        for (key, label) in [("base", "base"), ("ours", "published (ours)"), ("theirs", "changeset (theirs)")] {
+            if let Some(text) = p[key].as_str().filter(|t| !t.is_empty()) {
+                out.push(format!("\n### {label}\n{text}"));
+            }
+        }
+        for (key, label) in [("ours", "published side"), ("theirs", "changeset side")] {
+            let side = &p[key];
+            if let Some(author) = side["author"].as_str() {
+                out.push(format!(
+                    "\n{label}: {author}{}{}",
+                    side["task"].as_str().map(|t| format!(" · task {t}")).unwrap_or_default(),
+                    side["note"].as_str().filter(|n| !n.is_empty()).map(|n| format!(" — {n}")).unwrap_or_default()
+                ));
+            }
+        }
+        if let Some(marked) = p["marked"].as_str().filter(|t| !t.trim().is_empty()) {
+            out.push(format!("\n### conflicted regions\n{marked}"));
+        }
+    }
+    out.join("\n")
+}
+
 /// The required pages of a role, as the prompt section shows them.
 pub fn required(v: &Value) -> String {
     let pages: Vec<crate::context::RequiredPageView> = serde_json::from_value(v["pages"].clone()).unwrap_or_default();
@@ -419,6 +497,18 @@ pub fn doc(p: &Value) -> String {
     }
     if let Some(sm) = p["summary"].as_str().filter(|x| !x.is_empty()) {
         lines.push(format!("- summary: {sm}"));
+    }
+    if let Some(version) = p["version"].as_str().filter(|x| !x.is_empty()) {
+        lines.push(format!("- version: {version}"));
+    }
+    if let Some(id) = p["changeset"].as_i64().or_else(|| p["changeset"]["id"].as_i64()) {
+        lines.push(format!("- changeset: #{id} (yours; others read main)"));
+    }
+    if let Some(others) = p["openChangesets"].as_array().filter(|a| !a.is_empty()) {
+        lines.push(format!("- {} open changeset(s) from others touch this page", others.len()));
+    }
+    if p["unreviewed"].as_array().is_some_and(|a| !a.is_empty()) {
+        lines.push("- published changesets here await the owners' review".into());
     }
     for k in ["tags", "aliases", "related"] {
         let v = strs(&p[k]);
