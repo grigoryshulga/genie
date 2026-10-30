@@ -130,6 +130,11 @@ pub struct RuntimeView {
 
 /// Start background workers: crash recovery, then the scheduler.
 pub fn start(app: &Arc<App>) {
+    // The retired proposals and `.conflict` copies move onto changesets once; a failure is
+    // reported and retried on the next start, so the rest of the startup carries on.
+    if let Err(e) = crate::changesets::migrate_legacy(app) {
+        eprintln!("genie docs migration: {e}");
+    }
     crate::knowledge::start_watcher(app);
     crate::vault_sync::start(app);
     crate::agent_config::start_watcher(app);

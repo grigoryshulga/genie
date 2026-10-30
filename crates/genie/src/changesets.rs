@@ -448,7 +448,11 @@ pub fn publish(app: &App, id: i64, by: &Editor) -> AppResult<Published> {
         let git = git_of(v)?;
         absorb_external(v, app, &git)?;
         let cs = app.with_server(|db| db.changeset(id))?;
-        changeset_in_project(v, &cs, &by.project)?;
+        // The server (sync, migration) publishes across the whole vault; everyone else inside a project.
+        let vault_wide = by.kind == AuthorKind::System;
+        if !vault_wide {
+            changeset_in_project(v, &cs, &by.project)?;
+        }
         if !may_close(&cs, by) {
             return Err(GenieError::Denied(format!(
                 "only the author, an agent of the same task, an admin or the server publishes changeset #{id}"
@@ -462,7 +466,7 @@ pub fn publish(app: &App, id: i64, by: &Editor) -> AppResult<Published> {
         let base =
             git.merge_base(&main, &tip)?.ok_or_else(|| GenieError::invalid(format!("changeset #{id} and main have no common ancestor")))?;
         let paths = git.changed_paths(&base, &tip)?;
-        for path in &paths {
+        for path in paths.iter().filter(|_| !vault_wide) {
             if v.project_of(path).as_deref() != Some(by.project.as_str()) {
                 return Err(GenieError::not_found(format!("documentation page {path} not found in this project")));
             }
@@ -526,6 +530,8 @@ pub fn publish(app: &App, id: i64, by: &Editor) -> AppResult<Published> {
             git.commit_tree(&main, &[&main, &tip], &changes, &meta(by, &format!("Publish changeset #{id}: {title}"), &cs, &extra))?;
         git.fast_forward(&commit)?;
         v.refresh()?;
+        // Changesets made outside the edit path (sync, migration) learn their pages here.
+        app.with_server(|db| db.touch_changeset(id, &paths))?;
         let cs = app.with_server(|db| db.mark_published(id, &commit, needed, &by.login))?;
         let mut events: Vec<Event> = paths
             .iter()
@@ -1181,6 +1187,6 @@ impl From<AppError> for GenieError {
 }
 
 /// One-time migration of open proposals and `.conflict` copies (sync/migration task).
-pub fn migrate_legacy(_app: &App) -> AppResult<()> {
-    Ok(())
+pub fn migrate_legacy(app: &App) -> AppResult<()> {
+    crate::changesets_migrate::migrate_legacy(app)
 }

@@ -9,6 +9,7 @@ mod agent_config;
 mod api;
 mod catalog;
 mod changesets;
+mod changesets_migrate;
 mod channels;
 mod chat;
 mod connections;

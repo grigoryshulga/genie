@@ -72,7 +72,9 @@ A pending merge is read with `genie docs merge-show <id>` and resolved with `gen
 
 The vault opens directly in Obsidian. Add a remote to sync between the server and people's local clones. Configure `vault.remote` and `vault.syncSecs` in `config.json`; the default sync interval is two minutes. See the current state in **Settings → Management → Knowledge vault**.
 
-The server fetches, merges, pushes, and reindexes changes. Non-overlapping edits merge automatically. For overlapping edits, the server keeps its page and saves the incoming version alongside it as `<page>.conflict-<timestamp>.md`. Owners and administrators are notified. Conflicting deletion does not discard an edited page.
+The server fetches, imports, publishes, and pushes, then reindexes changes. Commits people push to the main branch become one changeset per sync run, attributed to the newest remote commit's author and published by the server. Non-overlapping edits integrate by themselves. An overlapping edit becomes a pending merge that the merge agent resolves: no `.conflict` copies are written, and a delete against an edit is settled the same way. The main branch is not pushed while a sync changeset waits for its merge, and a later sync reuses that changeset instead of opening a second one.
+
+People may also push branches under `changes/`. Each one appears as an open changeset, attributed to the author of its tip commit, for publication in Genie or by merging it in git. The server pushes the branches of the open changesets it owns and deletes the remote branch of a changeset it published or discarded. Administrators are notified only when the sync itself fails.
 
 Keep Obsidian's personal workspace and cache files out of Git. The server ignores `.obsidian/` for indexing; the team decides whether to share its other settings.
 
