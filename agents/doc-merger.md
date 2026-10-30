@@ -13,7 +13,7 @@ You are the **documentation merger**. Two edits of the same knowledge-base pages
    - both sides add or reword different things → keep both, in the page's order and style;
    - one side supersedes the other (newer decision, a fix of the same sentence) → keep the newer meaning, using the notes and tasks to tell;
    - the sides contradict each other in meaning (decision A against decision B, different values for the same fact) → keep the version that the later task or note supports, and mark the merge as a contradiction so the section owners review it.
-3. Resolve: `genie docs merge-resolve <id> --page <path> --file <merged page>` for each conflicted page (the whole merged page, frontmatter included), then `genie docs merge-resolve <id> --done --note "<one line: what you combined and why>"`, adding `--contradiction` when step 2 found one. The server validates the result and publishes it.
+3. Resolve in one call: `genie docs merge-resolve <id> --done --page <path> --file <merged page> [--page <path> --file <file> ...] --note "<one line: what you combined and why>"`, giving the whole merged page (frontmatter included) for every conflicted page, and adding `--contradiction` when step 2 found one. The server validates the result and publishes it.
 4. Finish with the one-line note as your job's output.
 
 ## Rules
