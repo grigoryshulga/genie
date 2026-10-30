@@ -3,7 +3,7 @@ use crate::common;
 use axum::http::StatusCode;
 use common::{Harness, call};
 use genie_core::Role;
-use genie_core::vault::{Policy, Publish, Section};
+use genie_core::vault::{Policy, Publish, RequiredPage, Section};
 use serde_json::json;
 
 #[tokio::test]
@@ -328,4 +328,53 @@ async fn project_admins_remove_sections_with_their_pages() {
     assert_eq!(s, StatusCode::OK, "{gone}");
     let (s, _, _) = call(r, "GET", "/api/docs/page?path=shop/notes.md").send().await;
     assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn required_reading_lists_a_roles_pages_whole_and_names_missing_ones() {
+    let h = Harness::new();
+    h.project("shop");
+    let guide = "---\ntitle: Agent guide\ntype: guide\nstatus: current\n---\n# Agent guide\n\nRead me first, before the rest.\n";
+    let (s, saved, _) = call(&h.router, "POST", "/api/docs/page")
+        .json(json!({ "path": "shop/agent-guide.md", "content": guide, "mode": "create" }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{saved}");
+    h.app
+        .with_vault(|v| {
+            v.config.spaces.get_mut("shop").unwrap().required = vec![
+                RequiredPage { page: "shop/agent-guide.md".into(), roles: vec!["all".into()] },
+                RequiredPage { page: "shop/executor-only.md".into(), roles: vec!["executor".into()] },
+            ];
+            v.save_config()
+        })
+        .unwrap();
+
+    let (s, body, _) = call(&h.router, "GET", "/api/docs/required?role=executor").send().await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    assert_eq!(body["role"], "executor");
+    let pages = body["pages"].as_array().unwrap();
+    assert_eq!(pages.len(), 1, "{body}");
+    assert_eq!(pages[0]["path"], "shop/agent-guide.md");
+    assert_eq!(pages[0]["title"], "Agent guide");
+    let content = pages[0]["content"].as_str().unwrap();
+    assert!(content.contains("Read me first") && !content.starts_with("---") && !content.contains("type: guide"), "{content}");
+    assert_eq!(pages[0]["version"].as_str().unwrap().chars().count(), 12, "the version is the short content hash");
+    assert_eq!(pages[0]["oversize"], false);
+    assert_eq!(body["missing"], json!(["shop/executor-only.md"]));
+
+    // A person must name the role; an agent's own role is used when it is omitted.
+    let (s, _, _) = call(&h.router, "GET", "/api/docs/required").send().await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let agent = h
+        .app
+        .with_server(|db| {
+            db.create_role_token("shop", Role::Documenter, Some("documenter"), "tolkien", None, None, chrono::Duration::hours(1))
+        })
+        .unwrap();
+    let (s, own, _) = call(&h.remote, "GET", "/api/docs/required").bearer(&agent).no_csrf().send().await;
+    assert_eq!(s, StatusCode::OK, "{own}");
+    assert_eq!(own["role"], "documenter");
+    assert_eq!(own["pages"].as_array().unwrap().len(), 1, "the executor-only page stays out: {own}");
+    assert_eq!(own["missing"], json!([]));
 }

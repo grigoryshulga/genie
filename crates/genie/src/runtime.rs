@@ -1695,12 +1695,18 @@ fn agent_prompt(
     if let Some(i) = instructions.filter(|i| !i.trim().is_empty()) {
         out.push_str(&format!("\n## Instructions for you\n\n{i}\n"));
     }
-    // Last, because they change with the project's state (its documents, its repository history,
-    // its people), not with the role: everything above is the prefix a provider caches across restarts.
-    if (reader == AgentKind::Orchestrator || role.can(Capability::DocsRead))
-        && let Some(l0) = crate::context::l0(app, &project.slug)
-    {
-        out.push_str(&format!("\n{l0}\n"));
+    // Required pages change rarely, so they sit before the state-derived L0 index in the
+    // prefix a provider caches across restarts. Both sections are last for the same reason:
+    // they change with the project's state (its documents, its repository history, its
+    // people), not with the role.
+    if reader == AgentKind::Orchestrator || role.can(Capability::DocsRead) {
+        let role_name = if reader == AgentKind::Orchestrator { "orchestrator" } else { role.id.as_str() };
+        if let Some(required) = crate::context::required(app, &project.slug, role_name) {
+            out.push_str(&format!("\n{required}\n"));
+        }
+        if let Some(l0) = crate::context::l0(app, &project.slug) {
+            out.push_str(&format!("\n{l0}\n"));
+        }
     }
     if reader == AgentKind::Orchestrator {
         let people: Vec<String> = app
