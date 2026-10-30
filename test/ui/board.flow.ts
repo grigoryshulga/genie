@@ -252,11 +252,12 @@ for (const theme of ["ink", "paper"]) {
   test(`a ready card in work shows a team placeholder and its hint, a running card does not (${theme})`, async ({ page }) => {
     await page.goto("/board");
     await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
-    // DM-3 is seeded as ready (no team yet); DM-2 is in progress.
+    // DM-3 is seeded as ready (no team yet); DM-2 is in work. The keyboard move in a11y.flow may have
+    // moved DM-2 to review on this same server, so either in-work status is accepted.
     const waiting = page.locator('[data-task-id="DM-3"]');
     const running = page.locator('[data-task-id="DM-2"]');
     await expect(waiting).toHaveAttribute("data-status", "ready");
-    await expect(running).toHaveAttribute("data-status", "in_progress");
+    await expect(running).toHaveAttribute("data-status", /^(in_progress|review)$/);
 
     const placeholder = waiting.locator(".bd-team-dot");
     await expect(placeholder).toHaveCount(3);
