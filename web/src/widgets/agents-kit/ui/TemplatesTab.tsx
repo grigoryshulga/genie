@@ -1,4 +1,5 @@
 // Team composition is the primary workspace; settings and generated prompts stay out of its way.
+import { plural } from "@/shared/lib";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { exportTemplate, templateFile, templateSchema, STAGE_TITLE, useDeleteConfig, useTemplate, type Catalogue, type Problem, type TeamDef } from "@/entities/agent-config";
@@ -26,7 +27,7 @@ export function TemplatesTab({ cfg, selected, onSelect, onCreate, readOnly = fal
   const select = (id: string) => { if (id === current) return; if (editingId === current) setPendingId(id); else onSelect(id); };
   return <div className="split ag-templates-layout config-workspace">
     <section className="split-list ag-list" aria-label="Шаблоны команд">
-      <div className="side-head"><span className="side-title">Шаблоны</span><div className="config-icon-group" role="group" aria-label="Действия со списком шаблонов">
+      <div className="side-head"><span className="side-title">{cfg.teams.length} {plural(cfg.teams.length, "шаблон", "шаблона", "шаблонов")}</span><div className="config-icon-group" role="group" aria-label="Действия со списком шаблонов">
         {!readOnly && onCreate && <IconButton label="Новый шаблон" onClick={onCreate}><Icon.plus /></IconButton>}
         {!readOnly && cfg.admin && <><IconButton label="Импорт шаблона" disabled={editingId === current} onClick={() => setImporting(true)}><Icon.upload /></IconButton><IconButton label="Скачать схему шаблона" onClick={() => downloadConfigJson("genie-team.schema.json", templateSchema)}><Icon.file /></IconButton></>}
       </div></div>

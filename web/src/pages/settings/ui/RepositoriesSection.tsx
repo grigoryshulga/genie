@@ -3,6 +3,7 @@
 // The page reads from the top down: what the project has, then what agents may do in each
 // repository; rare things (the folder, the rule as JSON, a probe push) wait under a disclosure or a menu.
 
+import { HubActions } from "@/widgets/settings-shell";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import {
@@ -41,7 +42,6 @@ export function RepositoriesHead({ admin, onAdd }: { admin: boolean; onAdd?: () 
   return (
     <div className="rp-top">
       <div className="st-head">
-        <h1 className="g-page-title">Репозитории</h1>
         <p className="rp-lead">
           Хостинги
           <span className="rp-info" title={HOST_HINT} aria-label={HOST_HINT} role="img">
@@ -50,10 +50,12 @@ export function RepositoriesHead({ admin, onAdd }: { admin: boolean; onAdd?: () 
         </p>
       </div>
       {admin && onAdd && (
-        <button type="button" className="g-btn secondary" onClick={onAdd}>
-          <Icon.plus size={14} />
-          Добавить репозиторий
-        </button>
+        <HubActions>
+          <button type="button" className="g-btn secondary" onClick={onAdd}>
+            <Icon.plus size={14} />
+            Добавить репозиторий
+          </button>
+        </HubActions>
       )}
     </div>
   );
@@ -445,7 +447,7 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
         <AddHead onClose={onClose} />
         <div className="st-card-body">
           <p className="st-note">
-            Сервер пока не знает ни одного хостинга. Администратор сервера описывает его (адрес) в <b>git.json</b>; токен можно задать у самого репозитория; пример — в docs/platform/git-repositories.md.
+            Сервер пока не знает ни одного хостинга. Администратор сервера описывает его (адрес) в <b>git.json</b>; токен можно задать у самого репозитория; пример — в документации: https://grigoryshulga.github.io/genie/platform/git-repositories.
           </p>
           {problems.map((p) => (
             <p key={p} className="rp-hint warn">

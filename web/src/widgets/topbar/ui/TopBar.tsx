@@ -1,12 +1,11 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { useAgentConfig } from "@/entities/agent-config";
 import { initials, ProjectIcon, useMeta } from "@/entities/project";
 import { useLogout, useSession, useSwitchProject } from "@/entities/session";
-import { useProposals } from "@/entities/platform";
+import { attentionChangesets, useChangesets } from "@/entities/doc";
 import { EpicIcon, inTaskViews, OPEN, useTasks } from "@/entities/task";
-import { canManageProject, saveAppearancePreferences, useTick } from "@/shared/lib";
-import { ActionMenu, Banner, Icon, IconButton, type MenuEntry, Tabs, Tag, useToast } from "@/shared/ui";
+import { canManageProject, hubHome, saveAppearancePreferences, useTick, visibleHub } from "@/shared/lib";
+import { ActionMenu, Banner, Icon, IconButton, type MenuEntry, type NavMenuEntry, Tabs, Tag, useToast } from "@/shared/ui";
 import { ContextSearch } from "./ContextSearch.tsx";
 import { NotificationsPopover } from "./NotificationsPopover.tsx";
 import { Popover } from "./Popover.tsx";
@@ -16,15 +15,26 @@ import "./shell.css";
 
 type Props = { onNew: () => void; online: boolean; searchRef: React.RefObject<HTMLInputElement | null>; searchOpen: boolean; onOpenSearch: () => void; onCloseSearch: () => void; onOpenPalette: () => void };
 
-type Primary = "board" | "tasks" | "epics" | "docs" | "agents";
+type Primary = "tasks" | "chat" | "knowledge" | "manage";
 
 function activePrimary(pathname: string): Primary | undefined {
-  if (pathname.startsWith("/board")) return "board";
-  if (pathname.startsWith("/epic")) return "epics";
-  if (pathname.startsWith("/docs")) return "docs";
-  if (pathname.startsWith("/agents")) return "agents";
-  if (pathname.startsWith("/tasks") || pathname.startsWith("/task/")) return "tasks";
+  if (["/board", "/tasks", "/task/", "/epic"].some((p) => pathname.startsWith(p))) return "tasks";
+  if (pathname.startsWith("/chat")) return "chat";
+  if (pathname.startsWith("/docs")) return "knowledge";
+  if (pathname.startsWith("/manage")) return "manage";
   return undefined;
+}
+
+/** «Задачи» reopens the view the person used last: the list, the board or the epics. */
+const TASK_VIEW_KEY = "genie.tasks-view";
+const TASK_VIEWS = ["/tasks", "/board", "/epics"];
+function rememberedTaskView(): string {
+  try {
+    const saved = localStorage.getItem(TASK_VIEW_KEY);
+    return saved && TASK_VIEWS.includes(saved) ? saved : "/board";
+  } catch {
+    return "/board";
+  }
 }
 
 /** Project, navigation, search, create, notifications, and the person's menu. */
@@ -36,9 +46,8 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
   const session = useSession().data;
   const switchProject = useSwitchProject();
   const logout = useLogout();
-  const proposals = useProposals().data?.length ?? 0;
+  const attention = attentionChangesets(useChangesets({ view: "all" }).data ?? []).length;
   const tasks = useTasks().data;
-  const agents = useAgentConfig();
   const listed = tasks?.filter(inTaskViews);
   const open = listed ? listed.filter((t) => OPEN.includes(t.status)).length : OPEN.reduce((n, st) => n + (meta?.counts[st] ?? 0), 0);
   const waiting = listed ? listed.filter((t) => t.status === "needs_owner").length : (meta?.counts.needs_owner ?? 0);
@@ -79,21 +88,33 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
     }
   };
 
+  const isAdmin = !!session?.user.isAdmin;
+  const viewer = { serverAdmin: isAdmin, projectAdmin: canManageProject(isAdmin, project?.role) };
+  useEffect(() => {
+    const view = TASK_VIEWS.find((v) => pathname === v);
+    if (view) try { localStorage.setItem(TASK_VIEW_KEY, view); } catch { /* private mode: fall back to the board */ }
+  }, [pathname]);
+
   // Every destination wears an icon: the bar collapses to icons (with the label under them on a phone)
   // when the window is narrow. The label stays in the DOM so the accessible name never changes.
   const label = (text: string) => <span className="g-tab-label">{text}</span>;
-  const primary: { id: Primary; label: React.ReactNode; to: string; title: string }[] = [
-    {
-      id: "epics",
-      label: (
-        <>
-          <EpicIcon size={16} />
-          {label("Эпики")}
-        </>
-      ),
-      to: "/epics",
-      title: "Эпики",
-    },
+  const count = (n: number, what: string) =>
+    n > 0 && (
+      <>
+        <span className="g-caption g-topbar-open" aria-hidden="true">{n}</span>
+        <span className="g-sr">{`${what}: ${n}`}</span>
+      </>
+    );
+  const page = (id: string, text: string, to: string, icon: React.ReactNode, extra?: Partial<NavMenuEntry>): NavMenuEntry => ({
+    id,
+    label: text,
+    to,
+    icon,
+    current: pathname === to || (to !== "/docs" && pathname.startsWith(`${to}/`)),
+    ...extra,
+  });
+  const hub = visibleHub(viewer);
+  const primary: { id: Primary; label: React.ReactNode; to: string; title: string; menu?: { label: string; items: NavMenuEntry[] } }[] = [
     {
       id: "tasks",
       label: (
@@ -108,71 +129,79 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
           {open > 0 && <span className="g-caption g-topbar-open">{open}</span>}
         </>
       ),
-      to: "/tasks",
+      to: rememberedTaskView(),
       title: "Задачи",
+      menu: {
+        label: "Виды задач",
+        items: [
+          page("list", "Список", "/tasks", <Icon.list size={14} />, { current: pathname === "/tasks" || pathname.startsWith("/task/") }),
+          page("board", "Доска", "/board", <Icon.board size={14} />),
+          page("epics", "Эпики", "/epics", <EpicIcon size={14} />, { current: pathname.startsWith("/epic") }),
+        ],
+      },
     },
+    // A plain link: the project chat has no sibling pages, so its tab carries no menu chevron.
     {
-      id: "board",
+      id: "chat",
       label: (
         <>
-          <Icon.board size={16} />
-          {label("Доска")}
+          <Icon.chat size={16} />
+          {label("Чат")}
         </>
       ),
-      to: "/board",
-      title: "Доска",
+      to: "/chat",
+      title: "Чат",
     },
     {
-      id: "docs",
-      // Pending proposals belong to the documentation: the count rides on its entry, and the
-      // proposals themselves stay reachable on their own route.
+      id: "knowledge",
+      // Open drafts and unreviewed publications belong to the documentation: the count rides on its
+      // entry and on the Changes feed.
       label: (
         <>
           <Icon.file size={16} />
           {label("Знания")}
-          {proposals > 0 && (
-            <>
-              <span className="g-caption g-topbar-open" aria-hidden="true">
-                {proposals}
-              </span>
-              <span className="g-sr">{`предложений к документации: ${proposals}`}</span>
-            </>
-          )}
+          {count(attention, "изменений к документации")}
         </>
       ),
       to: "/docs",
       title: "Знания",
+      menu: {
+        label: "Разделы знаний",
+        items: [
+          page("docs", "Документация", "/docs", <Icon.file size={14} />, { current: pathname.startsWith("/docs") && !pathname.startsWith("/docs/changes") }),
+          page("changes", "Изменения", "/docs/changes", <Icon.branch size={14} />, { count: attention > 0 && <Tag tone="solid-signal">{attention}</Tag> }),
+        ],
+      },
     },
-    ...(agents.isSuccess
-      ? [
-          {
-            id: "agents" as const,
-            label: (
-              <>
-                <Icon.spark size={16} />
-                {label("Агенты")}
-              </>
-            ),
-            to: "/agents",
-            title: "Агенты",
-          },
-        ]
-      : []),
+    {
+      id: "manage",
+      label: (
+        <>
+          <Icon.gear size={16} />
+          {label("Управление")}
+        </>
+      ),
+      to: hubHome(viewer),
+      title: "Управление",
+      menu: {
+        label: "Разделы управления",
+        items: hub.map((group) => ({
+          id: group.id,
+          label: group.label,
+          hint: group.hint,
+          to: group.items[0].to,
+          icon: group.id === "settings" ? <Icon.gear size={14} /> : group.id === "agents" ? <Icon.spark size={14} /> : <Icon.server size={14} />,
+          current: group.items.some((item) => pathname === item.to || pathname.startsWith(`${item.to}/`)),
+        })),
+      },
+    },
   ];
   const current = activePrimary(pathname) ?? ("none" as Primary);
 
-  const isAdmin = !!session?.user.isAdmin;
   const toggleTheme = () => saveAppearancePreferences({ theme: document.documentElement.dataset.theme === "paper" ? "ink" : "paper" });
   const profile: MenuEntry[] = [
     { id: "palette", label: "Быстрые команды", hint: "⌘K", onSelect: onOpenPalette },
     { id: "settings", label: "Настройки", hint: "G S", onSelect: () => navigate("/settings") },
-    { id: "manage", label: "Управление проектом", onSelect: () => navigate(canManageProject(isAdmin, project?.role) ? "/manage/project/general" : "/manage/project/automation-runs") },
-    ...(isAdmin
-      ? ([
-          { id: "server", label: "Глобальные настройки", onSelect: () => navigate("/manage/server/projects") },
-          { id: "stats", label: "Статистика", onSelect: () => navigate("/statistics") },
-        ] satisfies MenuEntry[])
-      : []),
     ...(session?.mode === "users" ? (["separator", { id: "logout", label: `Выйти (${session.user.login})`, onSelect: () => void logout() }] satisfies MenuEntry[]) : []),
   ];
 

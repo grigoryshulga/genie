@@ -8,7 +8,7 @@ import { InvitePage, LoginPage } from "@/pages/auth";
 import { BoardPage } from "@/pages/board";
 import { useSession } from "@/entities/session";
 import { OnlineProvider, useLiveUpdates, useOnline } from "@/shared/api";
-import { canManageProject, managementDestination, isTyping, rememberWorkRoute } from "@/shared/lib";
+import { canManageProject, hubHome, managementDestination, isTyping, rememberWorkRoute } from "@/shared/lib";
 import { Dialog, LoadingState, Skeleton } from "@/shared/ui";
 import { TopBar } from "@/widgets/topbar";
 import { lazyPage } from "./lazyPage.ts";
@@ -36,10 +36,15 @@ const TasksPage = lazyPage(() => import("@/pages/tasks").then((m) => m.TasksPage
 const TaskPage = lazyPage(() => import("@/pages/task").then((m) => m.TaskPage));
 const TeamView = lazyPage(() => import("@/pages/team").then((m) => m.TeamView));
 const AgentChat = lazyPage(() => import("@/pages/agent").then((m) => m.AgentChat));
+const ProjectChat = lazyPage(() => import("@/pages/chat").then((m) => m.ProjectChat));
 const EpicsPage = lazyPage(() => import("@/pages/epics").then((m) => m.EpicsPage));
 const EpicPage = lazyPage(() => import("@/pages/epic").then((m) => m.EpicPage));
 const DocsPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsPage));
+const DocsChangesPage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsChangesPage));
+const DocsMergePage = lazyPage(() => import("@/pages/docs").then((m) => m.DocsMergePage));
 const AgentsPage = lazyPage(() => import("@/pages/agents").then((m) => m.AgentsPage));
+const ManageShell = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.ManageShell));
+const HubTabsSection = lazyPage(() => import("@/widgets/settings-shell").then((m) => m.HubTabsSection));
 const MeSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.MeSettingsPage));
 const AutomationsSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.AutomationsSettingsPage));
 const ProjectSettingsPage = lazyPage(() => import("@/pages/settings").then((m) => m.ProjectSettingsPage));
@@ -50,7 +55,6 @@ const FirstProjectPage = lazyPage(() => import("@/pages/settings").then((m) => m
 const AnswerPage = lazyPage(() => import("@/pages/platform").then((m) => m.AnswerPage));
 const AutomationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.AutomationsPage));
 const NotificationsPage = lazyPage(() => import("@/pages/platform").then((m) => m.NotificationsPage));
-const ProposalsPage = lazyPage(() => import("@/pages/platform").then((m) => m.ProposalsPage));
 const ObservationsPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationsPage));
 const ObservationPage = lazyPage(() => import("@/pages/observations").then((m) => m.ObservationPage));
 const TaskDetail = lazyPage(() => import("@/widgets/task-detail").then((m) => m.TaskDetail));
@@ -89,9 +93,10 @@ function Shell() {
   const teamRoute = location.pathname.startsWith("/team/");
   const taskRoute = location.pathname.startsWith("/task/");
   const docsRoute = location.pathname.startsWith("/docs");
-  const platformRoute = ["/automations", "/observation", "/agents", "/notifications", "/statistics"].some((p) => location.pathname.startsWith(p));
+  const platformRoute = ["/manage", "/notifications"].some((p) => location.pathname.startsWith(p));
+  const chatRoute = location.pathname.startsWith("/chat");
   // Pages without the task list or board: opening a task from the palette goes to the list.
-  const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute;
+  const ownPage = teamRoute || taskRoute || location.pathname.startsWith("/epic") || docsRoute || platformRoute || chatRoute;
   const openTaskId = teamRoute || taskRoute ? undefined : (sp.get("task") ?? undefined);
   const openTask = tasks?.find((t) => t.id === openTaskId);
   const taskModalOpen = !!openTaskId;
@@ -290,7 +295,7 @@ function Gate() {
 function RequireServerAdmin({ children }: { children: ReactNode }) {
   const session = useSession();
   if (session.isLoading) return <div className="empty"><LoadingState label="Загрузка" lines={2} width={320} /></div>;
-  if (!session.data?.user.isAdmin) return <div className="empty">Раздел доступен администраторам сервера.</div>;
+  if (!session.data?.user.isAdmin) return <main className="main"><div className="empty">Раздел доступен администраторам сервера.</div></main>;
   return children;
 }
 
@@ -299,17 +304,35 @@ function RequireProjectAdmin({ children }: { children: ReactNode }) {
   if (isLoading) return <PageFallback />;
   const role = data?.projects.find((p) => p.slug === data.project)?.role;
   if (!canManageProject(!!data?.user.isAdmin, role))
-    return <div className="empty">Управление проектом доступно администраторам проекта и сервера.</div>;
+    return <main className="main"><div className="empty">Раздел доступен администраторам проекта и сервера.</div></main>;
   return children;
 }
 
 function LegacyManagement({ scope, legacySection }: { scope: "project" | "server"; legacySection?: string }) {
-  const { section: routeSection } = useParams();
+  const { section: routeSection, caseId } = useParams();
   const section = legacySection ?? routeSection ?? (scope === "project" ? "general" : "projects");
   const { search, hash } = useLocation();
-  const params = new URLSearchParams(search);
-  if (scope === "project" && (section === "decisions" || section === "agents")) params.set("tab", section === "decisions" ? "jev" : "agents");
-  return <Navigate to={{ pathname: managementDestination(scope, section), search: params.toString(), hash }} replace />;
+  const pathname = caseId ? `/manage/agents/automations/observation/${encodeURIComponent(caseId)}` : managementDestination(scope, section, new URLSearchParams(search).get("tab"));
+  return <Navigate to={{ pathname, search, hash }} replace />;
+}
+
+/** `/agents?tab=…&id=…` — the agent catalog before it moved into the management hub. */
+function LegacyAgents() {
+  const [sp] = useSearchParams();
+  const tab = sp.get("tab");
+  const pathname = tab === "history" ? "/manage/server/history" : `/manage/agents/${tab === "templates" || tab === "skills" || tab === "mcp" ? tab : "roles"}`;
+  // The selected item and its view (`id`, `view`) carry over; the tab is the path now.
+  const next = new URLSearchParams(sp);
+  next.delete("tab");
+  return <Navigate to={{ pathname, search: next.size ? `?${next}` : "" }} replace />;
+}
+
+/** «Управление» opens on the first page this person may use. */
+function ManageHome() {
+  const { data } = useSession();
+  if (!data) return <PageFallback />;
+  const role = data.projects.find((p) => p.slug === data.project)?.role;
+  return <Navigate to={hubHome({ serverAdmin: !!data.user.isAdmin, projectAdmin: canManageProject(!!data.user.isAdmin, role) })} replace />;
 }
 
 /** `/profile/…` — the personal settings before the settings mode (PD21); old notifications still carry these links. */
@@ -329,11 +352,17 @@ function LegacyServer() {
   return <LegacyManagement scope="server" legacySection={useParams().tab ?? "health"} />;
 }
 
+/** Old proposal links land on the Changes feed, keeping their query for the new filters. */
+function LegacyDocsProposals() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: "/docs/changes", search }} replace />;
+}
+
 /** Preserve bookmarks and notification links when operational tools move into management. */
 function LegacyWorkTool({ path }: { path: string }) {
   const { caseId } = useParams();
   const { search, hash } = useLocation();
-  return <Navigate to={{ pathname: `/manage/project/${path}${caseId ? `/${encodeURIComponent(caseId)}` : ""}`, search, hash }} replace />;
+  return <Navigate to={{ pathname: `/manage/agents/automations/${path}${caseId ? `/${encodeURIComponent(caseId)}` : ""}`, search, hash }} replace />;
 }
 
 export const router = createBrowserRouter([
@@ -363,15 +392,72 @@ export const router = createBrowserRouter([
           { path: "team/:teamId/:member", element: <AgentChat /> },
           { path: "epics", element: <EpicsRoute /> },
           { path: "epic/:epicId", element: <EpicRoute /> },
+          { path: "chat", element: <ProjectChat /> },
           { path: "docs", element: <DocsPage /> },
           { path: "docs/edit", element: <DocsPage /> },
-          { path: "docs/proposals", element: <ProposalsPage /> },
-          { path: "automations", element: <LegacyWorkTool path="automation-runs" /> },
+          { path: "docs/changes", element: <DocsChangesPage /> },
+          { path: "docs/changes/merge/:mergeId", element: <DocsMergePage /> },
+          { path: "docs/proposals", element: <LegacyDocsProposals /> },
+          { path: "automations", element: <LegacyWorkTool path="runs" /> },
           { path: "observations", element: <LegacyWorkTool path="observations" /> },
           { path: "observation/:caseId", element: <LegacyWorkTool path="observation" /> },
-          { path: "agents", element: <AgentsPage /> },
+          { path: "agents", element: <LegacyAgents /> },
           { path: "notifications", element: <NotificationsPage /> },
-          { path: "statistics", element: <RequireServerAdmin><ServerStatisticsPage /></RequireServerAdmin> },
+          { path: "statistics", element: <Navigate to="/manage/server/stats" replace /> },
+          // «Управление»: the project hub, under the same top bar as the work pages (see shared/lib/management.ts).
+          {
+            path: "manage", element: <ManageShell />,
+            children: [
+              { index: true, element: <ManageHome /> },
+              {
+                path: "project",
+                children: [
+                  { index: true, element: <Navigate to="general" replace /> },
+                  // Sections that moved to «Агенты» or «Администрирование» keep their old links.
+                  ...["tools", "people", "automations", "automation-runs", "observations", "observation", "agents", "decisions", "telegram"].map((section) => ({ path: section, element: <LegacyManagement scope="project" legacySection={section} /> })),
+                  { path: "observation/:caseId", element: <LegacyManagement scope="project" /> },
+                  { path: ":section", element: <RequireProjectAdmin><ProjectSettingsPage /></RequireProjectAdmin> },
+                ],
+              },
+              {
+                path: "agents",
+                children: [
+                  { index: true, element: <Navigate to="roles" replace /> },
+                  { path: "roles", element: <AgentsPage tab="roles" /> },
+                  { path: "templates", element: <AgentsPage tab="templates" /> },
+                  ...(["skills", "mcp"] as const).map((kind) => ({
+                    path: kind, element: <HubTabsSection section={kind} label={kind === "mcp" ? "MCP-серверы" : "Навыки"} />,
+                    children: [
+                      { index: true, element: <AgentsPage tab={kind} /> },
+                      { path: "project", element: <RequireProjectAdmin><ProjectSettingsPage section="tools" tab={kind} /></RequireProjectAdmin> },
+                    ],
+                  })),
+                  {
+                    path: "automations", element: <HubTabsSection section="automations" label="Разделы автоматизаций" />,
+                    children: [
+                      { index: true, element: <RequireProjectAdmin><AutomationsSettingsPage /></RequireProjectAdmin> },
+                      { path: "runs", element: <AutomationsPage /> },
+                      { path: "observations", element: <ObservationsPage /> },
+                      { path: "observation/:caseId", element: <ObservationPage /> },
+                      { path: "sources", element: <RequireProjectAdmin><ProjectSettingsPage section="observation" /></RequireProjectAdmin> },
+                    ],
+                  },
+                  { path: "jev", element: <RequireProjectAdmin><ProjectSettingsPage section="tools" tab="jev" /></RequireProjectAdmin> },
+                  { path: "work", element: <RequireProjectAdmin><ProjectSettingsPage section="work" /></RequireProjectAdmin> },
+                ],
+              },
+              {
+                path: "server", element: <RequireServerAdmin><Outlet /></RequireServerAdmin>,
+                children: [
+                  { index: true, element: <Navigate to="projects" replace /> },
+                  ...["roles", "templates", "skills", "agents", "mcp"].map((section) => ({ path: section, element: <LegacyManagement scope="server" legacySection={section} /> })),
+                  { path: "stats", element: <ServerStatisticsPage /> },
+                  { path: "history", element: <AgentsPage tab="history" /> },
+                  { path: ":section", element: <ServerSettingsPage /> },
+                ],
+              },
+            ],
+          },
           { path: ":view", element: <LegacyView /> },
         ],
       },
@@ -382,29 +468,9 @@ export const router = createBrowserRouter([
           { path: "me/:section?", element: <MeSettingsPage /> },
         ],
       },
-      { path: "settings/stats", element: <Navigate to="/statistics" replace /> },
+      { path: "settings/stats", element: <Navigate to="/manage/server/stats" replace /> },
       { path: "settings/project/:section?", element: <LegacyManagement scope="project" /> },
       { path: "settings/server/:section?", element: <LegacyManagement scope="server" /> },
-      {
-        path: "manage/project", element: <SettingsShell />,
-        children: [
-          { index: true, element: <Navigate to="general" replace /> },
-          { path: "automation-runs", element: <AutomationsPage /> },
-          { path: "observations", element: <ObservationsPage /> },
-          { path: "observation/:caseId", element: <ObservationPage /> },
-          { path: "automations", element: <RequireProjectAdmin><AutomationsSettingsPage /></RequireProjectAdmin> },
-          { path: ":section", element: <RequireProjectAdmin><ProjectSettingsPage /></RequireProjectAdmin> },
-        ],
-      },
-      {
-        path: "manage/server", element: <RequireServerAdmin><SettingsShell /></RequireServerAdmin>,
-        children: [
-          { index: true, element: <Navigate to="projects" replace /> },
-          // The agent configuration moved to «Агенты»; the old global links land there.
-          ...["roles", "templates", "skills", "history", "agents"].map((section) => ({ path: section, element: <Navigate to={`/agents?tab=${section === "agents" ? "roles" : section}`} replace /> })),
-          { path: ":section", element: <ServerSettingsPage /> },
-        ],
-      },
       { path: "profile/:tab?", element: <LegacyProfile /> },
       { path: "project/:tab?", element: <LegacyProject /> },
       { path: "server/:tab?", element: <LegacyServer /> },

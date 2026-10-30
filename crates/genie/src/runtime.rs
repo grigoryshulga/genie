@@ -22,8 +22,9 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use genie_core::chat::MANAGER;
 use genie_core::server_db::Project;
-use genie_core::team::{self, Mail, NewMember, NewTeam, ORCHESTRATOR, TeamWorktree};
+use genie_core::team::{self, CHAT_MAIL, Mail, NewMember, NewTeam, ORCHESTRATOR, TeamWorktree};
 use genie_core::work::Job;
 use genie_core::{Actor, CLOSED, Capability, GenieError, Role, Status, StatusOptions, Task, TeamState};
 use serde_json::json;
@@ -76,7 +77,8 @@ impl AgentKey {
 #[derive(Default)]
 pub struct Sched {
     state: Mutex<SchedState>,
-    tick: tokio::sync::Mutex<()>,
+    /// Serializes the scheduler's passes, and the session starts that happen outside one (`sessions::prewarm`).
+    pub(crate) tick: tokio::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -128,6 +130,11 @@ pub struct RuntimeView {
 
 /// Start background workers: crash recovery, then the scheduler.
 pub fn start(app: &Arc<App>) {
+    // The retired proposals and `.conflict` copies move onto changesets once; a failure is
+    // reported and retried on the next start, so the rest of the startup carries on.
+    if let Err(e) = crate::changesets::migrate_legacy(app) {
+        eprintln!("genie docs migration: {e}");
+    }
     crate::knowledge::start_watcher(app);
     crate::vault_sync::start(app);
     crate::agent_config::start_watcher(app);
@@ -281,7 +288,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
                         None if genie_core::management::managed_task(&b.recipient).is_some() => {
                             out.push(AgentKey::mailbox(&p.slug, &b.recipient))
                         }
-                        None if orchestrator_runs(app, &p) => out.push(AgentKey::Orchestrator { project: p.slug.clone() }),
+                        None if manager_starts(app, &p) => out.push(AgentKey::Orchestrator { project: p.slug.clone() }),
                         // A person's console lapses by itself: the orchestrator takes its mail then.
                         None if p.autonomy != "manual" => {
                             let lapses = app.with_server(|db| db.console(&p.slug)).ok().flatten().and_then(|c| {
@@ -504,7 +511,8 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
         }
         AgentKey::Orchestrator { project: slug } => {
             let turn = app.with_server(|db| db.start_turn(slug, &label, None, None, None))?;
-            let mail = app.with_tracker(slug, |t| t.bus().lease(None, ORCHESTRATOR, turn))?;
+            let mail =
+                app.with_tracker(slug, |t| t.bus().lease_kind(None, ORCHESTRATOR, turn, taken_kind(&project, None, ORCHESTRATOR)))?;
             if mail.is_empty() {
                 app.with_server(|db| db.finish_turn(turn, "skipped", None, None, None))?;
                 return Ok(None);
@@ -1337,10 +1345,81 @@ fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, l
     })
 }
 
-/// Whether the server's orchestrator of a project runs: not in `manual` mode, and not while
-/// a person's session holds its console.
-fn orchestrator_runs(app: &App, project: &Project) -> bool {
-    project.autonomy != "manual" && !console_held(app, &project.slug)
+/// The one kind of mail a mailbox takes, when it takes only one. In a `manual` project the project
+/// manager takes chat alone: a message that tags it is an explicit request, while every other mail
+/// (system notes, automation) stays queued until a person asks for it (owner decision). `None`
+/// means every kind. Used by the scheduler's leases and by the mailbox's notes.
+pub(crate) fn taken_kind(project: &Project, team: Option<&str>, recipient: &str) -> Option<&'static str> {
+    (project.autonomy == "manual" && team.is_none() && recipient == ORCHESTRATOR).then_some(CHAT_MAIL)
+}
+
+/// The kind of the note genie writes into an agent's own mailbox: `system`, except that the project
+/// manager of a `manual` project takes chat alone, so its note is chat from genie.
+pub(crate) fn note_kind(app: &App, key: &AgentKey) -> AppResult<&'static str> {
+    if !matches!(key, AgentKey::Orchestrator { .. }) {
+        return Ok("system");
+    }
+    let project = project_of(app, key.project())?;
+    Ok(taken_kind(&project, None, ORCHESTRATOR).unwrap_or("system"))
+}
+
+/// Whether the project's manager starts for the mail waiting in its mailbox. In a `manual` project
+/// only chat mail starts it: a message that tags the manager is an explicit request, while other
+/// mail waits for the person (owner decision).
+pub fn manager_starts(app: &App, project: &Project) -> bool {
+    orchestrator_runs(app, project, chat_waiting(app, &project.slug))
+}
+
+/// Whether the server's orchestrator of a project runs: not in `manual` mode unless `chat`
+/// (chat mail waits for it, or it is wanted for chat), and not while a person's session holds
+/// its console.
+fn orchestrator_runs(app: &App, project: &Project, chat: bool) -> bool {
+    (project.autonomy != "manual" || chat) && !console_held(app, &project.slug)
+}
+
+/// Chat mail waits in the orchestrator's mailbox. A tracker that cannot be read is logged and
+/// counts as no chat, like the scheduler's other per-project failures.
+fn chat_waiting(app: &App, slug: &str) -> bool {
+    match app.with_tracker(slug, |t| Ok(t.bus().undelivered_of_kind(ORCHESTRATOR, CHAT_MAIL)? > 0)) {
+        Ok(waiting) => waiting,
+        Err(e) => {
+            eprintln!("genie runtime: {slug}: chat mail: {e}");
+            false
+        }
+    }
+}
+
+/// Whether the project's manager session is wanted now (what the sweep checks before it lets one run on).
+pub fn manager_wanted_in(app: &App, slug: &str) -> AppResult<bool> {
+    let project = project_of(app, slug)?;
+    manager_wanted(app, &project, &AgentKey::Orchestrator { project: slug.into() })
+}
+
+fn manager_wanted(app: &App, project: &Project, key: &AgentKey) -> AppResult<bool> {
+    let chat = project.autonomy == "manual" && manual_manager_wanted(app, project, key)?;
+    Ok(orchestrator_runs(app, project, chat))
+}
+
+/// What keeps a manual project's manager wanted once it runs: chat mail waiting for it, a message
+/// that tagged it or a warm-up from a person (`POST /api/chat/warm`) within the manager idle window,
+/// or a step it is running now (the window only decides whether a new step starts, so a long step
+/// is not cut short).
+fn manual_manager_wanted(app: &App, project: &Project, key: &AgentKey) -> AppResult<bool> {
+    if app.sessions.get(key).is_some_and(|s| s.live().state == "working") {
+        return Ok(true);
+    }
+    let secs = app.cfg.runtime.manager_idle_stop_secs;
+    if app.sessions.warmed_within(&project.slug, app.clock.now(), Duration::from_secs(secs)) {
+        return Ok(true);
+    }
+    let window = chrono::Duration::seconds(i64::try_from(secs).unwrap_or(i64::MAX));
+    app.with_tracker(&project.slug, |t| {
+        if t.bus().undelivered_of_kind(ORCHESTRATOR, CHAT_MAIL)? > 0 {
+            return Ok(true);
+        }
+        let tagged = t.chat().last_mention_at(MANAGER)?.and_then(|at| chrono::DateTime::parse_from_rfc3339(&at).ok());
+        Ok(tagged.is_some_and(|at| chrono::Utc::now() - at.to_utc() < window))
+    })
 }
 
 /// Whether someone's own session holds the orchestrator console of a project
@@ -1371,13 +1450,16 @@ pub(crate) fn console_spec(app: &App, slug: &str, user: &str) -> AppResult<Conso
 }
 
 /// The live session of an agent, or `None` when it should not run now (team
-/// stopped, member removed or in error, orchestrator in manual mode or at a
-/// person's console, a job).
+/// stopped, member removed or in error, orchestrator in manual mode unless chat
+/// wants it, at a person's console, a job).
 pub(crate) fn session_spec(app: &App, key: &AgentKey) -> AppResult<Option<AgentSpec>> {
     let project = project_of(app, key.project())?;
     match key {
         AgentKey::TaskManager { task, .. } => task_manager_spec(app, &project, task, true),
-        AgentKey::Orchestrator { project: slug } if orchestrator_runs(app, &project) => {
+        AgentKey::Orchestrator { project: slug } => {
+            if !manager_wanted(app, &project, key)? {
+                return Ok(None);
+            }
             orchestrator_spec(app, &project, true, crate::llm_key::orchestrator_initiator(app, slug)).map(Some)
         }
         AgentKey::Member { project: slug, team, member } => {
@@ -1602,24 +1684,7 @@ fn agent_prompt(
     ));
     out.push_str(&crate::git::service::prompt_section(app, &project.slug, who));
     out.push_str("\nTo reach a person, mention them as `@login` in a task comment: they get a notification (in the web, Telegram or e-mail). A task's person responsible (`assignee`) is the one to ask about it.\n");
-    if (reader == AgentKind::Orchestrator || role.can(Capability::DocsRead))
-        && let Some(l0) = crate::context::l0(app, &project.slug)
-    {
-        out.push_str(&format!("\n{l0}\n"));
-    }
     if reader == AgentKind::Orchestrator {
-        let people: Vec<String> = app
-            .with_server(|db| db.members_of(&project.slug))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|(u, _)| !u.disabled)
-            .map(|(u, r)| {
-                format!("@{} ({}{})", u.login, r.as_str(), if u.name.is_empty() { String::new() } else { format!(", {}", u.name) })
-            })
-            .collect();
-        if !people.is_empty() {
-            out.push_str(&format!("\nPeople of the project: {}. Set a task's person responsible with `genie task update --assignee login` when someone owns the decision or the review.\n", people.join(", ")));
-        }
         if project.autonomy == "assisted" {
             out.push_str("\n## Autonomy: assisted\n\nPeople close tasks in this project. Take tasks into work and see them through as usual, but do not move a task to `done` or `cancelled` yourself (the server refuses): when it meets its Definition of Done, move it to `needs_owner` with a short summary of the result and what to check. A person closes it.\n");
         }
@@ -1634,6 +1699,33 @@ fn agent_prompt(
     }
     if let Some(i) = instructions.filter(|i| !i.trim().is_empty()) {
         out.push_str(&format!("\n## Instructions for you\n\n{i}\n"));
+    }
+    // Required pages change rarely, so they sit before the state-derived L0 index in the
+    // prefix a provider caches across restarts. Both sections are last for the same reason:
+    // they change with the project's state (its documents, its repository history, its
+    // people), not with the role.
+    if reader == AgentKind::Orchestrator || role.can(Capability::DocsRead) {
+        let role_name = if reader == AgentKind::Orchestrator { "orchestrator" } else { role.id.as_str() };
+        if let Some(required) = crate::context::required(app, &project.slug, role_name) {
+            out.push_str(&format!("\n{required}\n"));
+        }
+        if let Some(l0) = crate::context::l0(app, &project.slug) {
+            out.push_str(&format!("\n{l0}\n"));
+        }
+    }
+    if reader == AgentKind::Orchestrator {
+        let people: Vec<String> = app
+            .with_server(|db| db.members_of(&project.slug))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(u, _)| !u.disabled)
+            .map(|(u, r)| {
+                format!("@{} ({}{})", u.login, r.as_str(), if u.name.is_empty() { String::new() } else { format!(", {}", u.name) })
+            })
+            .collect();
+        if !people.is_empty() {
+            out.push_str(&format!("\nPeople of the project: {}. Set a task's person responsible with `genie task update --assignee login` when someone owns the decision or the review.\n", people.join(", ")));
+        }
     }
     out
 }
@@ -2776,7 +2868,9 @@ pub fn tell_orchestrator(app: &App, project: &str, task: Option<&str>, text: &st
 }
 
 /// A note in the agent's own mailbox (a member's, or the orchestrator's): it reads it on its next step.
+/// The note has the kind the mailbox takes (see [`note_kind`]), so a manual project's manager gets it.
 pub fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
+    let kind = note_kind(app, k)?;
     app.with_tracker(k.project(), |t| match k {
         AgentKey::Member { team, member, .. } => t
             .bus()
@@ -2791,7 +2885,7 @@ pub fn note_to_self(app: &App, k: &AgentKey, text: &str) -> AppResult<()> {
                 ..Default::default()
             })
             .map(|_| ()),
-        _ => t.bus().notify_manager(&k.label(), "genie", "system", "system", text, None),
+        _ => t.bus().notify_manager(&k.label(), "genie", "system", kind, text, None),
     })?;
     app.wake_runtime.notify_one();
     Ok(())

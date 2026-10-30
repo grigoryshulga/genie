@@ -23,7 +23,7 @@ for (const route of ["board", "tasks"]) {
         expect(await page.locator(".app").evaluate((node) => node.classList.contains("with-detail"))).toBe(false);
 
         // Start from loaded content: the lazy fallback itself has no focusable controls.
-        await modal.getByRole("link", { name: "Открыть страницу" }).focus();
+        await modal.getByRole("link", { name: "Открыть страницу", exact: true }).focus();
         for (const key of ["Tab", "Shift+Tab"]) {
           await page.keyboard.press(key);
           expect(await modal.evaluate((node) => node.contains(document.activeElement))).toBe(true);
@@ -49,7 +49,7 @@ test("task query links open the modal and retain the full-page route", async ({ 
   await expect(page).toHaveURL(/\/tasks\?q=/);
   await expect(page).not.toHaveURL(/[?&]task=/);
   await page.goto("/tasks?task=DM-2");
-  await page.getByRole("link", { name: "Открыть страницу" }).click();
+  await page.getByRole("link", { name: "Открыть страницу", exact: true }).click();
   await expect(page).toHaveURL(/\/task\/DM-2$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: SEED_TASKS[1].title })).toBeVisible();

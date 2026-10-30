@@ -8,6 +8,7 @@ pub mod account;
 pub mod agent_config;
 pub mod agents;
 pub mod automations;
+pub mod chat;
 pub mod connections;
 pub mod console;
 pub mod ctx;
@@ -40,7 +41,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use genie_core::GenieError;
-use serde_json::json;
+use serde_json::{Value, json};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::state::{App, AppError};
@@ -49,17 +50,24 @@ use crate::state::{App, AppError};
 pub struct ApiError {
     pub status: StatusCode,
     pub message: String,
+    /// Extra fields of the response body next to `error`, e.g. the diagnostics of a page whose
+    /// frontmatter breaks the documentation contract.
+    pub details: Option<serde_json::Value>,
 }
 
 impl ApiError {
     pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        ApiError { status, message: message.into() }
+        ApiError { status, message: message.into(), details: None }
     }
     pub fn unauthorized() -> Self {
         ApiError::new(StatusCode::UNAUTHORIZED, "login required")
     }
     pub fn bad(message: impl Into<String>) -> Self {
         ApiError::new(StatusCode::BAD_REQUEST, message)
+    }
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 }
 
@@ -87,7 +95,11 @@ impl From<GenieError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(json!({ "error": self.message }))).into_response()
+        let mut body = json!({ "error": self.message });
+        if let (Some(Value::Object(extra)), Some(fields)) = (self.details, body.as_object_mut()) {
+            fields.extend(extra);
+        }
+        (self.status, Json(body)).into_response()
     }
 }
 
@@ -138,6 +150,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(social_auth::routes())
         .merge(tasks::routes())
         .merge(ideas::routes())
+        .merge(chat::routes())
         .merge(management::routes())
         .merge(teams::routes())
         .merge(decisions::routes())

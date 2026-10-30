@@ -44,9 +44,6 @@ export function McpAdminSection() {
   const [editing, setEditing] = useState<string | null>(); // a connection id, `null` for a new one
   return (
     <div className="st-body sv-wide">
-      <div className="st-head">
-        <h1 className="g-page-title">MCP</h1>
-      </div>
       {!d ? (
         admin.error ? <p className="g-muted">{admin.error.message}</p> : <SettingsLoading />
       ) : (

@@ -6,7 +6,6 @@
 
 import { type FormEvent, useId, useState } from "react";
 import {
-  OBSERVATION_TEXT,
   SOURCE_AUTH_LABEL,
   SOURCE_KIND_LABEL,
   SOURCE_NAME_PATTERN,
@@ -28,7 +27,7 @@ import type { SourceKind } from "@/shared/api/generated/SourceKind.ts";
 import type { SourceTestView } from "@/shared/api/generated/SourceTestView.ts";
 import type { SourceView } from "@/shared/api/generated/SourceView.ts";
 import { ConfirmDialog, Icon, useAct, useToast } from "@/shared/ui";
-import { SettingsLoading } from "@/widgets/settings-shell";
+import { HubActions, SettingsLoading } from "@/widgets/settings-shell";
 
 const SOURCE_KINDS: SourceKind[] = ["prometheus", "sentry"];
 const SOURCE_AUTHS: SourceAuth[] = ["none", "bearer", "basic"];
@@ -69,18 +68,17 @@ export function ObservationSources({ admin }: { admin: boolean }) {
 
   return (
     <div className="st-body">
-      <div className="st-head-row">
-        <div className="st-head">
-          <h2>{OBSERVATION_TEXT.section}</h2>
-          <p>Источники — серверы метрик и ошибок, из которых наблюдения берут измерения. Секреты хранятся на сервере зашифрованными и после сохранения не показываются.</p>
-        </div>
-        {admin && !adding && (
+      <div className="st-head">
+        <p>Источники — серверы метрик и ошибок, из которых наблюдения берут измерения. Секреты хранятся на сервере зашифрованными и после сохранения не показываются.</p>
+      </div>
+      {admin && !adding && (
+        <HubActions>
           <button type="button" className="g-btn secondary" onClick={() => setAdding(true)}>
             <Icon.plus size={14} />
             Добавить источник
           </button>
-        )}
-      </div>
+        </HubActions>
+      )}
 
       {!admin ? (
         <section className="st-card" aria-label="Доступ к источникам">

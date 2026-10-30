@@ -25,6 +25,7 @@ mod admin;
 mod agents;
 pub mod api;
 mod automations;
+mod chat;
 mod decisions;
 mod docs;
 mod intelligence;
@@ -348,7 +349,8 @@ pub const GROUPS: &[(&str, &str)] = &[
     ("task", "Tasks and epics: read, create, update, move through statuses, comment, attach artifacts"),
     ("team", "Teams of agents: assemble, look at, steer and stop them"),
     ("mail", "Mail between the members of a team, the orchestrator and people"),
-    ("docs", "The project's knowledge base: search, read, write pages"),
+    ("chat", "The project chat: people and the project manager talk here"),
+    ("docs", "The project's knowledge base: search and read pages, edit them in changesets, publish and roll back"),
     ("repos", "Git repositories of a project: hosts, attach, policy, checks, and what a task may do in them"),
     ("pr", "Pull/merge requests of a task's branches: open, look at, comment, merge"),
     ("job", "One-shot jobs: start one, see what it did"),
@@ -370,6 +372,7 @@ pub fn catalog() -> &'static [Entry] {
         decisions::register(&mut all);
         intelligence::register(&mut all);
         mail::register(&mut all);
+        chat::register(&mut all);
         management::register(&mut all);
         docs::register(&mut all);
         automations::register(&mut all);
@@ -527,6 +530,9 @@ mod tests {
             orch.contains("--merge-strategy") && orch.contains("| `genie_task` split |") && orch.contains("| `genie_team` templates |")
         );
         assert!(!orch.contains("set-status") && !orch.contains("genie job output"), "a member's and a job's own commands");
+        assert!(orch.contains("| `genie_chat` read | `genie chat read [--limit …] [--before …]` |"), "{orch}");
+        assert!(orch.contains("| `genie_chat` post | `genie chat post <TEXT> [--reply-to …]` |"), "{orch}");
+        assert!(orch.contains("`genie manager dispatch [<TASK>] [--on-behalf …]`"), "{orch}");
 
         let reviewer = command_table(AgentKind::Member, &caps(Role::Reviewer));
         assert!(
@@ -540,7 +546,16 @@ mod tests {
         assert!(reviewer.contains(
             "`genie mail send <TO> <TEXT> [--level low|normal|high|interrupt] [--intent question|blocker|verdict|done|fyi] [--topic …]`"
         ));
-        for other in ["genie task create", "--title", "--plan", "--force", "genie team spawn", "genie team templates", "genie task split"] {
+        for other in [
+            "genie task create",
+            "--title",
+            "--plan",
+            "--force",
+            "genie team spawn",
+            "genie team templates",
+            "genie task split",
+            "genie chat",
+        ] {
             assert!(!reviewer.contains(other), "a reviewer has no {other}");
         }
 

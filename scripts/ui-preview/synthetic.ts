@@ -93,4 +93,20 @@ export const synthetic: Record<string, unknown> = {
       providerRepo(506, "acme/billing", { boundElsewhere: true }),
     ],
   },
+  // The project chat: an exchange with the project manager, ending in a question it is still answering,
+  // so the typing line shows. Authors alternate, so no two messages share a header.
+  "/api/chat": {
+    messages: [
+      chatMessage(1, "owner", "human", "Что сейчас в работе по проекту?", { mentions: ["manager"] }),
+      chatMessage(2, "orchestrator", "orchestrator", "Сейчас в работе **три задачи**:\n\n- GNE-12 — ждёт ревью\n- GNE-14 — агент пишет код\n- GNE-19 — менеджер готовит описание", { replyTo: 1 }),
+      chatMessage(3, "owner", "human", "Создай задачу: проверить поиск по документации на мобильном", { mentions: ["manager"] }),
+      chatMessage(4, "orchestrator", "orchestrator", "Создал **GNE-23** в подготовке. Когда описание будет готово, переведу её в очередь.", { replyTo: 3 }),
+      chatMessage(5, "owner", "human", "Поставь её после GNE-14: поиск зависит от него. Когда закроется GNE-14?", { mentions: ["manager"] }),
+    ],
+    manager: { state: "working", pending: 0 },
+  },
 };
+
+function chatMessage(id: number, author: string, authorRole: string, text: string, over: { mentions?: string[]; replyTo?: number } = {}) {
+  return { id, at, author, authorRole, text, mentions: over.mentions ?? [], replyTo: over.replyTo ?? null };
+}

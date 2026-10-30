@@ -97,8 +97,8 @@ async fn admins_change_the_agent_configuration_and_everyone_reads_it() {
     // Not yet seen by the server (its watcher reloads within seconds), already by the check.
     let check = cli(&admin, &["agents", "check"]).await.unwrap();
     assert!(check.text.contains("role:broken"), "{}", check.text);
-    // PD24: broken plus the two file-less built-ins (planner, researcher) without models.
-    assert!(check.failed.as_deref().unwrap_or_default().starts_with("3 error(s) in the agent configuration"), "{:?}", check.failed);
+    // PD24: broken plus the file-less built-ins (planner, researcher, doc-merger) without models.
+    assert!(check.failed.as_deref().unwrap_or_default().starts_with("4 error(s) in the agent configuration"), "{:?}", check.failed);
     let list = cli(&admin, &["agents", "ls"]).await.unwrap();
     assert!(list.text.contains("security-reviewer") && list.text.contains("Team templates:\n  abap"), "{}", list.text);
     assert!(list.text.contains("Skills: deploy") && list.text.ends_with("problem(s): genie agents check"), "{}", list.text);
@@ -201,34 +201,42 @@ async fn automations_jobs_and_the_journal_through_the_catalog() {
 }
 
 #[tokio::test]
-async fn owners_decide_on_the_pages_agents_propose() {
-    let h = Harness::new();
+async fn documentation_edits_publish_through_the_catalog() {
+    let h = Harness::with_config(|cfg| cfg.vault.commit = Some(true));
     h.project("shop");
     let admin = cx(&h, Auth::Operator, Some("shop"));
     let documenter = agent(&h, Role::Documenter, "documenter");
 
     let page = "---\ntitle: Export\ntype: guide\nstatus: current\n---\n# Export\n\nOrders go out as CSV.\n";
-    let proposed =
-        op(&documenter, "docs", "write", json!({ "path": "shop/features/export.md", "text": page, "note": "export docs" })).await.unwrap();
-    assert!(proposed.text.starts_with("proposal #1 created"), "agents' pages go to review by default: {}", proposed.text);
-    let open = cli(&admin, &["docs", "proposals"]).await.unwrap();
-    assert!(open.text.starts_with("#1    open      shop/features/export.md  by documenter (agent) — export docs"), "{}", open.text);
-    let one = cli(&admin, &["docs", "proposal", "1"]).await.unwrap();
-    assert!(one.text.contains("## Proposed\n---\ntitle: Export") && one.text.contains("(the page does not exist yet)"), "{}", one.text);
-    assert!(cli(&documenter, &["docs", "approve", "1"]).await.is_err(), "agents do not decide");
-    let approved = cli(&admin, &["docs", "approve", "1", "--note", "good"]).await.unwrap();
-    assert_eq!(approved.text, "proposal #1 approved: shop/features/export.md changed");
-    assert!(cli(&admin, &["docs", "read", "shop/features/export.md"]).await.unwrap().text.contains("Orders go out as CSV."));
+    h.app
+        .with_vault(|v| v.write("shop/features/export.md", page, genie_core::vault::AuthorKind::System, ("test", "test"), None, "fixture"))
+        .unwrap();
 
-    op(&documenter, "docs", "write", json!({ "path": "shop/features/export.md", "text": page.replace("CSV", "XLSX") })).await.unwrap();
-    let rejected = op(&admin, "docs", "reject", json!({ "id": 2, "note": "we stay with CSV" })).await.unwrap();
-    assert_eq!(rejected.text, "proposal #2 rejected");
-    assert!(cli(&admin, &["docs", "proposals", "--status", "all"]).await.unwrap().text.contains("#2    rejected"));
+    // An agent changes one section; the edit opens its changeset.
+    let ops = json!([{ "op": "replace-section", "heading": "Export", "body": "# Export\n\nOrders go out as CSV and XLSX." }]).to_string();
+    let edited = cli(&documenter, &["docs", "edit", "shop/features/export.md", "--ops", &ops, "--note", "XLSX"]).await.unwrap();
+    assert!(edited.text.starts_with("shop/features/export.md changed in changeset #1 (commit "), "{}", edited.text);
+    assert!(
+        cli(&admin, &["docs", "read", "shop/features/export.md"]).await.unwrap().text.contains("Orders go out as CSV."),
+        "others read main"
+    );
+
+    // Publishing makes the section's text main; the changeset awaits its owners' review.
+    let published = cli(&documenter, &["docs", "publish"]).await.unwrap();
+    assert!(published.text.starts_with("published "), "{}", published.text);
+    assert!(cli(&admin, &["docs", "read", "shop/features/export.md"]).await.unwrap().text.contains("CSV and XLSX"));
+    let changes = cli(&admin, &["docs", "changes", "--unreviewed"]).await.unwrap();
+    assert!(changes.text.starts_with("#1 published documenter"), "{}", changes.text);
+    let detail = cli(&admin, &["docs", "changeset", "1"]).await.unwrap();
+    assert!(detail.text.contains("XLSX"), "{}", detail.text);
+    let history = cli(&admin, &["docs", "history", "shop/features/export.md"]).await.unwrap();
+    assert!(!history.text.lines().next().unwrap_or_default().is_empty(), "{}", history.text);
+    let reverted = cli(&admin, &["docs", "revert", "1"]).await.unwrap();
+    assert!(reverted.text.starts_with("reverted #1: published "), "{}", reverted.text);
+    assert!(!cli(&admin, &["docs", "read", "shop/features/export.md"]).await.unwrap().text.contains("XLSX"), "the revert undoes it");
 
     let space = cli(&admin, &["docs", "space", "shop", "--owner", "anna", "--agents", "direct"]).await.unwrap();
     assert_eq!(space.text, "shop/  project shop · owners anna · people direct, agents direct");
-    let direct = op(&documenter, "docs", "write", json!({ "path": "shop/features/import.md", "text": page })).await.unwrap();
-    assert_eq!(direct.text, "shop/features/import.md saved", "the space now lets agents publish directly");
     assert!(cli(&admin, &["docs", "spaces"]).await.unwrap().text.starts_with("shop/  project shop · owners anna"));
     assert!(cli(&admin, &["docs", "changelog"]).await.unwrap().text.starts_with("shop/changelog.md"));
 }

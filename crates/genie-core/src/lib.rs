@@ -4,9 +4,12 @@
 //! `docs/platform/backend.md`.
 
 pub mod automation;
+pub mod changesets;
+pub mod chat;
 pub mod connections;
 pub mod db;
 pub mod decisions;
+pub mod doc_ops;
 pub mod env;
 pub mod error;
 pub mod events;
@@ -25,6 +28,7 @@ pub mod telegram;
 pub mod tracker;
 pub mod usage;
 pub mod vault;
+pub mod vault_git;
 pub mod work;
 
 pub use error::{GenieError, Result};

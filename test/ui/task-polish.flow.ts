@@ -28,7 +28,7 @@ for (const theme of ["ink", "paper"]) {
       await page.screenshot({ path: `test-results/task-editor-${theme}-${width}.png`, animations: "disabled" });
       await editor.locator("..").getByRole("button", { name: "Отмена", exact: true }).click();
       const bar = (await modal.locator(".td-bar").boundingBox())!;
-      const fullPage = (await modal.getByRole("link", { name: "Открыть страницу" }).boundingBox())!;
+      const fullPage = (await modal.getByRole("link", { name: "Открыть страницу", exact: true }).boundingBox())!;
       expect(fullPage.y - bar.y).toBeGreaterThanOrEqual(6);
       expect(bar.y + bar.height - fullPage.y - fullPage.height).toBeGreaterThanOrEqual(6);
       await page.screenshot({ path: `test-results/task-sections-closed-${theme}-${width}.png`, animations: "disabled" });

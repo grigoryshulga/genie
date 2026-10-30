@@ -34,6 +34,7 @@
 <script type="module">
   import React from "react";
   import { createRoot } from "react-dom/client";
+  import { MemoryRouter } from "react-router";
   import * as kit from "/src/shared/ui/index.ts";
   import { TemplateGraph } from "/src/entities/agent-config/ui/TemplateGraph.tsx";
   import { StatusIcon, PriorityIcon } from "/src/entities/task/ui/StatusIcon.tsx";
@@ -53,6 +54,16 @@
     return h(kit.Tabs, { label: "Animated navigation", animated: true, value, onChange: select, items: [{ id: "tasks", label: "Tasks" }, { id: "board", label: "Board" }, { id: "knowledge", label: "Knowledge" }] });
   }
 
+  /** Link tabs with sibling pages: the chevron opens a rounded, animated page menu. */
+  function MenuTabsSpecimen() {
+    const page = (id, label, current, hint) => ({ id, label, to: `#${id}`, current, hint, icon: h(kit.Icon.list, { size: 14 }) });
+    return h(MemoryRouter, null, h(kit.Tabs, { label: "Navigation with menus", animated: true, value: "tasks", items: [
+      { id: "tasks", label: "Tasks", to: "#tasks", menu: { label: "Task views", items: [page("list", "List", false), page("board", "Board", true), page("epics", "Epics", false)] } },
+      { id: "knowledge", label: "Knowledge", to: "#docs", menu: { label: "Knowledge pages", items: [page("docs", "Documentation", false), page("changes", "Changes", false)] } },
+      { id: "manage", label: "Management", to: "#manage", menu: { label: "Management sections", items: [page("settings", "General settings", false, "Project, knowledge, notifications")] } },
+    ] }));
+  }
+
   createRoot(document.getElementById("root")).render(h(React.Fragment, null,
     block("Surfaces and semantic colour",
       row(...colors.map((name) => h("div", { key: name, className: "swatch" },
@@ -68,8 +79,10 @@
         h(kit.Button, { sm: true }, "Dense"),
         h(kit.IconButton, { label: "More actions" }, "⋯"),
         h(kit.Popover, { label: "File actions", icon: h(kit.Icon.dots), iconOnly: true }, h(kit.Button, { variant: "ghost" }, "Export")),
+        h(kit.MenuButton, { label: "Page actions", icon: h(kit.Icon.dots), items: [{ id: "history", label: "Version history", hint: "view, compare, restore", onSelect: () => {} }] }),
         h(kit.SplitButton, { menuLabel: "Send options", items: [{ id: "normal", label: "Normal", checked: true, onSelect: () => {} }, { id: "interrupt", label: "Interrupt", hint: "once, stops the step", checked: false, onSelect: () => {} }] }, "Send"))),
     block("Animated tabs", h(AnimatedTabsSpecimen)),
+    block("Tabs with page menus", h(MenuTabsSpecimen)),
     block("Tabs, segments, chips, tags, key caps",
       row(h(kit.Tabs, { label: "Views", value: "board", items: [{ id: "board", label: "Board" }, { id: "list", label: "List" }] }),
         h(kit.Tabs, { label: "Role views", variant: "underline", value: "prompt", items: [{ id: "prompt", label: "Prompt" }, { id: "settings", label: "Settings" }, { id: "history", label: "History" }] }),

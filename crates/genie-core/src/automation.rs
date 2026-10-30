@@ -449,6 +449,21 @@ impl ServerDb {
         self.automation(id)
     }
 
+    /// Disable the enabled rules that are a retired built-in: named `name`, with the same `on` and
+    /// `steps` (limits may differ). A rule of the owner's that only shares the name is kept. Returns
+    /// how many changed, so a second start changes nothing.
+    pub fn disable_retired_automations(&self, name: &str, on: &Value, steps: &Value) -> Result<usize> {
+        let rules = {
+            let mut stmt = self.conn().prepare("SELECT * FROM automations WHERE name = ?1 AND enabled = 1")?;
+            stmt.query_map([name], Automation::from_row)?.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let mut n = 0;
+        for rule in rules.iter().filter(|r| r.spec["on"] == *on && r.spec["steps"] == *steps) {
+            n += self.conn().execute("UPDATE automations SET enabled = 0, updated = ?1 WHERE id = ?2", params![now(), rule.id])?;
+        }
+        Ok(n)
+    }
+
     pub fn set_automation_enabled(&self, id: i64, enabled: bool) -> Result<Automation> {
         self.conn().execute("UPDATE automations SET enabled = ?1, updated = ?2 WHERE id = ?3", params![enabled as i64, now(), id])?;
         self.automation(id)

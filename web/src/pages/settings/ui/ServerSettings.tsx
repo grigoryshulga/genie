@@ -7,7 +7,7 @@ import { ProvidersAdminSection } from "./ProvidersAdmin.tsx";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import {
   AUTONOMY,
   DOCTOR_AREA,
@@ -34,11 +34,11 @@ import {
 } from "@/entities/project";
 import { useSession } from "@/entities/session";
 import { ContextSearch } from "@/widgets/topbar";
-import { matchesSearch, settingsTabHref } from "@/shared/lib";
+import { matchesSearch } from "@/shared/lib";
 import { request } from "@/shared/api";
-import { BarChart, ConfirmDialog, Icon, Menu, PageHeader, useAct, useToast } from "@/shared/ui";
+import { BarChart, ConfirmDialog, Icon, Menu, useAct, useToast } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
-import { FirstAdmin } from "./ProjectSettings.tsx";
+import { FirstAdmin, ProjectMembers } from "./ProjectSettings.tsx";
 import { SettingsTabs, useSettingsTab } from "./SettingsTabs.tsx";
 import { SystemOneSettings } from "./SystemOneSettings.tsx";
 import { Costs } from "./ServerCosts.tsx";
@@ -51,16 +51,16 @@ export function ServerSettingsPage() {
   const { section = "health" } = useParams();
   const local = session?.mode === "local";
   const tab = useSettingsTab("server", section);
-  if (section === "tools" && (tab === "health" || tab === "vault"))
-    return <Navigate to={settingsTabHref("server", "tools", tab)} replace />;
   return (
     <main className="main">
-      <SettingsTabs scope="server" section={section === "health" || section === "vault" ? "tools" : section} current={section === "health" || section === "vault" ? section : undefined} />
+      <SettingsTabs scope="server" section={section} />
       <div className="scroll">
         {section === "projects" ? (
           <Projects current={session?.project} tab={tab} />
         ) : section === "accounts" ? (
           local ? <div className="st-body"><FirstAdmin /></div> : <Accounts me={session?.user.login} tab={tab} />
+        ) : section === "members" ? (
+          <ProjectMembers tab={tab} />
         ) : section === "providers" ? (
           <ProvidersAdminSection />
         ) : section === "tools" ? (
@@ -79,7 +79,6 @@ export function ServerSettingsPage() {
 export function ServerStatisticsPage() {
   return (
     <main className="main">
-      <PageHeader title="Статистика" />
       <ContextSearch className="mobile-context-search mobile-search-bar" />
       <div className="scroll">
         <Statistics />
@@ -100,9 +99,6 @@ function Health() {
   const fine = checks.filter((c) => c.level === "ok");
   return (
     <div className="st-body sv-wide">
-      <div className="st-head">
-        <h1 className="g-page-title">Состояние</h1>
-      </div>
       <section className="st-card">
         {doctor.isPending ? (
           <div className="st-card-body g-muted">Проверяем сервер…</div>
@@ -165,7 +161,7 @@ function Week() {
       <div className="sv-section-head">
         <h3>Последние 7 дней</h3>
         <span className="g-muted">все проекты</span>
-        <Link to="/statistics" className="sv-more">
+        <Link to="/manage/server/stats" className="sv-more">
           Вся статистика
           <Icon.chevron size={12} />
         </Link>
@@ -318,7 +314,7 @@ function ProjectTable({ list }: { list: ProjectStats[] }) {
               <dt>{p.name}</dt>
               <dd>
                 Комментарии: людей {p.commentsByPeople}, агентов {p.commentsByAgents}. Вызовов MCP {p.mcpCalls}. Заданий {p.jobs}
-                {p.jobsFailed ? `, со сбоем ${p.jobsFailed}` : ""}. Предложений в базу знаний {p.proposals}: принято {p.proposalsApproved}, отклонено {p.proposalsRejected}. 90% задач готовы за{" "}
+                {p.jobsFailed ? `, со сбоем ${p.jobsFailed}` : ""}. 90% задач готовы за{" "}
                 {hoursText(p.cycleHoursP90)}.
               </dd>
             </div>
@@ -338,9 +334,6 @@ function Knowledge() {
   const last = s?.last;
   return (
     <div className="st-body">
-      <div className="st-head">
-        <h2>База знаний</h2>
-      </div>
       {!s ? (
         <p className="g-muted">{sync.isPending ? <SettingsLoading rows={2} /> : sync.error?.message}</p>
       ) : !s.remote ? (
@@ -387,7 +380,7 @@ function Knowledge() {
               <div className="st-row">
                 <div className="lbl">
                   <b>Пересечения</b>
-                  <span>Здесь осталась версия сервера, версия из репозитория лежит рядом копией .conflict.</span>
+                  <span>Одни и те же строки изменили и в репозитории, и на сервере: их сводит агент, публикация ждёт его в ленте изменений.</span>
                 </div>
                 <div className="ctl">
                   {last.conflicts.map((c) => (
@@ -403,8 +396,8 @@ function Knowledge() {
             <summary>Как открыть в Obsidian</summary>
             <p className="sv-p sv-pad">
               Склонируйте репозиторий и откройте папку как хранилище Obsidian; правки отправляйте в git, например плагином Obsidian Git. Правки разных строк сливаются
-              сами; если одни и те же строки изменили и там, и на сервере, остаётся версия сервера, а версия из репозитория ложится рядом копией <code>.conflict</code> —
-              ничего не теряется.
+              сами; если одни и те же строки изменили и там, и на сервере, их сводит агент слияния — результат и обе исходные версии остаются в истории
+              страницы, любую можно восстановить.
             </p>
           </details>
         </>
@@ -420,9 +413,6 @@ function Projects({ current, tab }: { current?: string; tab: string }) {
   return (
     <div className="st-body">
       <div className="st-col" hidden={tab !== "list"}>
-        <div className="st-head">
-          <h1 className="g-page-title">Проекты</h1>
-        </div>
         <section className="st-card">
           <ul className="sv-list">
             {(projects.data ?? []).map((p) => (
@@ -576,10 +566,7 @@ function Accounts({ me, tab }: { me?: string; tab: string }) {
   return (
     <div className="st-body">
       <div className="st-col" hidden={tab !== "list"}>
-        <div className="st-head">
-          <h2>Учётные записи</h2>
-          <p>В проект можно пригласить по ссылке со страницы проекта.</p>
-        </div>
+        <p className="g-muted">Людей в проект приглашают на странице «Участники проекта».</p>
         <section className="st-card">
           <ul className="sv-list">
             {list.map((u) => (
@@ -692,7 +679,7 @@ function Accounts({ me, tab }: { me?: string; tab: string }) {
           <button className="g-btn secondary" disabled={create.isPending}>
             Создать
           </button>
-          <span className="pj-hint">Потом добавьте человека в проект на странице проекта.</span>
+          <span className="pj-hint">Потом добавьте человека в проект в разделе «Участники проекта».</span>
         </form>
         {credentials && <div className="st-card-body"><p>Создана учётная запись @{credentials.login}.</p><button type="button" className="g-btn secondary" onClick={() => void act(async () => {
           await navigator.clipboard.writeText(`Адрес: ${location.origin}\nЛогин: ${credentials.login}\nПароль: ${credentials.password}`);

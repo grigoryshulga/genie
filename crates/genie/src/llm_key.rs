@@ -430,7 +430,11 @@ pub fn mail_initiator(app: &App, project: &str, mail: &[Mail]) -> Option<String>
 
 /// The person the orchestrator would answer now: from the mail waiting for it.
 pub fn orchestrator_initiator(app: &App, project: &str) -> Option<String> {
-    let mail = app.with_tracker(project, |t| t.bus().pending(None, ORCHESTRATOR)).ok()?;
+    // Only the mail the manager takes: a manual project's queued system notes do not name a person.
+    let row = app.with_server(|db| db.project(project)).ok()?;
+    let mail = app
+        .with_tracker(project, |t| t.bus().pending_kind(None, ORCHESTRATOR, crate::runtime::taken_kind(&row, None, ORCHESTRATOR)))
+        .ok()?;
     mail_initiator(app, project, &mail)
 }
 

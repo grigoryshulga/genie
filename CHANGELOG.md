@@ -2,6 +2,22 @@
 
 Notable changes by release. Versions follow [SemVer](https://semver.org/); entries use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Detailed implementation history remains in Git.
 
+## [0.7.0] — 2026-10-29
+
+### Added
+
+- Project chat: a top-level tab where the owner talks to the project manager, who puts tasks into work. A built-in work loop and warm manager sessions drive tasks without an external orchestrator.
+- Global navigation regrouped into Tasks, Knowledge and Management, with one consistent page head across management pages.
+
+### Changed
+
+- Board lanes centre on open lanes and show waiting cards; the queue lane is removed because the project manager now starts work directly.
+- Improved task detail layout and editing.
+
+### Upgrade notes
+
+- Back up the project tracker data before upgrading from 0.6.2. The tracker schema becomes 9 (0.6.2 used 8) with a new chat messages table; the server schema is unchanged at 11. Startup applies the migration. Older binaries reject schema 9, so a rollback requires restoring a compatible backup together with the older image.
+
 ## [0.6.2] — 2026-10-27
 
 ### Added

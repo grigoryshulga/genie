@@ -12,9 +12,9 @@ import { focusInside, tabTo } from "./keyboard.ts";
 const seededAt = Date.parse(process.env.GENIE_UI_SEEDED_AT ?? "");
 const THEMES = ["ink", "paper"] as const;
 
-// Every screen the standard seed (seed.ts) fills. The docs pages, the proposals queue and the
-// task waiting for the owner only exist in the capture seed, so those are photographed and audited
-// by `npm run ui:capture` instead of here.
+// Every screen the standard seed (seed.ts) fills. The docs pages, the Changes feed and the task
+// waiting for the owner only exist in the capture seed, so those are photographed and audited by
+// `npm run ui:capture` instead of here.
 const ROUTES = [
   { name: "tasks", path: "/tasks" },
   { name: "board", path: "/board" },
@@ -23,11 +23,11 @@ const ROUTES = [
   { name: "epics", path: "/epics" },
   { name: "epic", path: "/epic/DM-1" },
   { name: "docs", path: "/docs" },
-  { name: "automations", path: "/automations" },
-  { name: "observations", path: "/observations" },
-  { name: "agents", path: "/agents" },
+  { name: "automations", path: "/manage/agents/automations/runs" },
+  { name: "observations", path: "/manage/agents/automations/observations" },
+  { name: "agents", path: "/manage/agents/roles" },
   { name: "notifications", path: "/notifications" },
-  { name: "statistics", path: "/statistics" },
+  { name: "statistics", path: "/manage/server/stats" },
   { name: "settings-me", path: "/settings/me" },
   { name: "manage-project", path: "/manage/project/general" },
   { name: "manage-server", path: "/manage/server/projects" },

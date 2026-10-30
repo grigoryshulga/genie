@@ -13,7 +13,7 @@
 .docs-col-head .count { font-size: var(--g-text-dense); font-weight: var(--g-weight-medium); color: var(--g-text-muted); }
 .doc-col-tag { font-size: var(--g-text-eyebrow); font-weight: var(--g-weight-semibold); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; color: var(--g-text-muted); background: var(--g-surface-active); border-radius: var(--g-radius-pill); padding: 2px var(--g-space-2); }
 .docs-col-head .g-btn { flex: none; height: var(--g-control-sm); padding: 0 var(--g-space-3); font-size: var(--g-text-dense); white-space: nowrap; }
-/* Pages / Proposals switch in the top row's toolbar: a pill with the current route filled. */
+/* Pages / Changes switch in the top row's toolbar: a pill with the current route filled. */
 .docs-view-switch { flex: none; }
 .docs-view-switch .g-tabs { display: flex; }
 .docs-view-switch .g-tabs > a { display: inline-flex; align-items: center; justify-content: center; height: var(--g-control-sm); padding: 0 var(--g-space-3); border-radius: var(--g-radius-pill); font-size: var(--g-text-dense); font-weight: var(--g-weight-semibold); color: var(--g-text-2); text-decoration: none; white-space: nowrap; }

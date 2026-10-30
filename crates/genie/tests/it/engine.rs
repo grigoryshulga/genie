@@ -38,12 +38,19 @@ fn a_rule_sees_events_after_its_creation_only() {
     assert_eq!(runs[0].trigger_key, format!("event:shop:{}", event.id), "the run is for the task created after the rule");
 }
 
+/// The `task.ready` step of a custom rule still moves a task once nothing holds it. A manual project
+/// keeps the built-in work loop out of the way, so the rule's step is the only thing that moves it.
 #[test]
-fn the_auto_ready_playbook_moves_a_task_once_nothing_holds_it() {
+fn a_task_ready_step_moves_a_task_once_nothing_holds_it() {
     let dir = tempfile::tempdir().unwrap();
     let app = App::open(dir.path(), Config::load(dir.path()).unwrap(), PathBuf::from("/nonexistent")).unwrap();
     app.create_project("shop", "Shop", None, None, None).unwrap();
-    let (_, _, spec) = genie::engine::playbooks().into_iter().find(|(id, ..)| *id == "auto-ready").unwrap();
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let spec = json!({
+        "name": "Ready check",
+        "on": { "event": "task.*", "where": { "task.status": ["draft", "refining", "done"] } },
+        "steps": [{ "id": "ready", "task.ready": {} }]
+    });
     assert!(genie_core::automation::validate(&spec).is_empty());
     app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -84,85 +91,6 @@ fn the_auto_ready_playbook_moves_a_task_once_nothing_holds_it() {
     assert_eq!(status(&waiting), Status::Ready, "its dependency is done");
 }
 
-#[test]
-fn the_ready_start_playbook_wakes_the_orchestrator_to_start_work() {
-    let dir = tempfile::tempdir().unwrap();
-    let app = App::open(dir.path(), Config::load(dir.path()).unwrap(), PathBuf::from("/nonexistent")).unwrap();
-    app.create_project("shop", "Shop", None, None, None).unwrap();
-    for name in ["auto-ready", "ready-start"] {
-        let (_, _, spec) = genie::engine::playbooks().into_iter().find(|(id, ..)| *id == name).unwrap();
-        assert!(genie_core::automation::validate(&spec).is_empty(), "{name}");
-        app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
-    }
-    std::thread::sleep(std::time::Duration::from_millis(5));
-
-    let anna = Actor::new("anna", Role::Human);
-    let input = |title: &str, kind: genie_core::TaskType| CreateInput {
-        title: title.into(),
-        task_type: Some(kind),
-        description: Some("Export the orders".into()),
-        acceptance: vec!["A CSV file downloads".into()],
-        ..Default::default()
-    };
-    let epic = app.with_tracker("shop", |t| t.create(&anna, input("Reports", genie_core::TaskType::Epic))).unwrap().id;
-    let task = app.with_tracker("shop", |t| t.create(&anna, input("Export orders", genie_core::TaskType::Task))).unwrap().id;
-    app.with_tracker("shop", |t| {
-        t.set_status(&anna, &epic, Status::Ready, StatusOptions { note: None, force: true, ..Default::default() })
-    })
-    .unwrap();
-    // auto-ready moves the task to ready; that (not the epic going to ready) wakes the orchestrator.
-    genie::engine::tick(&app).unwrap();
-    genie::engine::tick(&app).unwrap();
-    assert_eq!(app.with_tracker("shop", |t| t.get(&task)).unwrap().status, Status::Ready);
-    let mail = app.with_tracker("shop", |t| t.bus().pending(None, "orchestrator")).unwrap();
-    let starts: Vec<_> = mail.iter().filter(|m| m.text.contains("start work")).collect();
-    assert_eq!(starts.len(), 1, "{mail:?}");
-    assert_eq!(starts[0].task.as_deref(), Some(task.as_str()));
-    assert!(starts[0].text.contains(&task) && !starts[0].text.contains(&epic), "{}", starts[0].text);
-}
-
-/// G-89: a stopped team frees room, and the orchestrator is asked to take the next ready task.
-#[test]
-fn the_ready_next_playbook_wakes_the_orchestrator_when_a_team_stops() {
-    let dir = tempfile::tempdir().unwrap();
-    let app = App::open(dir.path(), Config::load(dir.path()).unwrap(), PathBuf::from("/nonexistent")).unwrap();
-    app.create_project("shop", "Shop", None, None, None).unwrap();
-    let (_, _, spec) = genie::engine::playbooks().into_iter().find(|(id, ..)| *id == "ready-next").unwrap();
-    assert!(genie_core::automation::validate(&spec).is_empty());
-    app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(5));
-
-    let anna = Actor::new("anna", Role::Human);
-    let task = app.with_tracker("shop", |t| t.create(&anna, CreateInput { title: "Export".into(), ..Default::default() })).unwrap().id;
-    app.with_tracker("shop", |t| {
-        t.bus().create(
-            "anna",
-            "human",
-            genie_core::team::NewTeam {
-                id: task.clone(),
-                task: task.clone(),
-                cwd: dir.path().to_string_lossy().into_owned(),
-                members: vec![genie_core::team::NewMember { name: "bender".into(), role: "executor".into(), ..Default::default() }],
-                ..Default::default()
-            },
-        )
-    })
-    .unwrap();
-    genie::engine::tick(&app).unwrap();
-    let asked = |app: &App| {
-        app.with_tracker("shop", |t| t.bus().pending(None, "orchestrator"))
-            .unwrap()
-            .iter()
-            .filter(|m| m.text.contains("A team stopped"))
-            .count()
-    };
-    assert_eq!(asked(&app), 0, "a team that starts does not free room");
-
-    app.with_tracker("shop", |t| t.bus().set_state(&task, genie_core::TeamState::Stopped, Some("done"), "anna")).unwrap();
-    genie::engine::tick(&app).unwrap();
-    assert_eq!(asked(&app), 1, "a stopped team asks the orchestrator for the next ready task");
-}
-
 fn open_app() -> (tempfile::TempDir, std::sync::Arc<App>) {
     let dir = tempfile::tempdir().unwrap();
     let app = App::open(dir.path(), Config::load(dir.path()).unwrap(), PathBuf::from("/nonexistent")).unwrap();
@@ -191,6 +119,9 @@ async fn journal_events_wake_the_engine_and_mail_wakes_the_scheduler() {
 #[test]
 fn the_engine_sleeps_until_the_next_cron_fire_reminder_and_wait() {
     let (_dir, app) = open_app();
+    // A non-manual project also wakes for the work loop's reconciliation (within a minute): a manual
+    // one has no such deadline, so this test sees only the deadlines of its own rules.
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
     let plan = genie::engine::pass(&app).unwrap();
     assert_eq!(plan.next_at(), None, "an idle server has no deadline: only the safety net");
 

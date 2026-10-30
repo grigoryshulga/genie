@@ -63,6 +63,11 @@ export const Icon = {
       <path d="M9.5 1.5v3h3" />
     </svg>
   ),
+  chat: ({ size, ...p }: IconProps) => (
+    <svg {...stroke(size, p)} strokeWidth={1.5}>
+      <path d="M2.5 3h11v7.5H7l-3.5 2.5V10.5h-1z" />
+    </svg>
+  ),
   send: ({ size, ...p }: IconProps) => (
     <svg {...stroke(size, p)} strokeWidth={1.7}>
       <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" />
@@ -135,7 +140,7 @@ export const Icon = {
   ),
   /**
    * genie mark: the logo in the sidebar and on public pages. Line art of the
-   * genie in docs/assets/brand/genie-mark.svg, stroked with the surrounding
+   * genie in design-system/brand/genie-mark.svg, stroked with the surrounding
    * color (the tile behind it sets the periwinkle).
    */
   mark: ({ size = 16, ...p }: IconProps) => (

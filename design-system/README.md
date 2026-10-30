@@ -9,6 +9,7 @@ The application is the reference. This package extracts its foundations and spec
 - `tokens.json` is a generated [DTCG 2025.10](https://www.designtokens.org/tr/2025.10/format/) document with one group per theme (`ink`, `paper`), each fully resolved. Colors use explicit sRGB components and alpha; dimensions use CSS pixels; shadow is a composite token. CSS names and original expressions live under `$extensions.com.genie`.
 - `web/design-system.html` is a live specimen of the real kit. Run `npm run dev:web` and open `http://localhost:5173/design-system.html`; it requires no tracker login. Switch the theme select to compare both sheets.
 - Browser capture, the offline Figma plugin, plugin build/test code and agent instructions live in the separate private [genie-figma-tools repository](https://github.com/grigoryshulga/genie-figma-tools).
+- The brand sources live in `brand/`: logo vectors, the animated character, the component and board specimens, the principles, the handoff briefs and the design-system specification. They stay in this repository because the application and its README use them; the documentation site copies them to `assets/brand/` at build time (`site/scripts/assemble.mjs`), and they are not site pages.
 
 After editing tokens, run:
 
@@ -44,9 +45,9 @@ Layer 1 holds the palette; layer 2 names the meaning. A component uses layer 2 a
 | Controls | 40 px roomy, 32 px dense (`sm`), rows 44 px. The dense variant is for lists, toolbars and settings, not for touch-first screens. |
 | Layout | content column 840 px, prose measure 64ch, board lane 344 px, card 288 × 144. Sidebar/detail rail and responsive breakpoints remain application layout CSS. |
 
-Board cards use `g-shadow-board-card`, a short unblurred lift, without changing shared card or overlay shadows. Each of the six existing lanes uses its own `g-board-lane-*` colour: grey backlog, orange owner decision, blue preparation, ochre queue, green work and muted green completion. Lane surfaces mix 6% of that colour with `g-surface`; card surfaces mix 5% with `g-board-card-bg`. Folded and empty lanes retain their identity, and drag copies use the task's existing status-to-lane mapping. Cancelled tasks stay neutral outside the workflow.
+Board cards use `g-shadow-board-card`, a short unblurred lift, without changing shared card or overlay shadows. Each of the five existing lanes uses its own `g-board-lane-*` colour: grey backlog, orange owner decision, blue preparation, green work and muted green completion. Lane surfaces mix 6% of that colour with `g-surface`; card surfaces mix 5% with `g-board-card-bg`. Folded and empty lanes retain their identity, and drag copies use the task's existing status-to-lane mapping. Cancelled tasks stay neutral outside the workflow.
 
-Epic identity is independent: its stable four-tone palette remains on the compact `EpicChip` link and `EpicIcon`, without a competing card stripe. Task status is carried by the lane; comment counters stay hidden. Board-only `g-board-card-bg` and `g-board-label-bg` keep surfaces and filled labels quiet. Human circles and agent rounded squares reuse `Avatar` unchanged; role colours are not changed.
+Epic identity is independent: its stable four-tone palette remains on the compact `EpicChip` link and `EpicIcon`, without a competing card stripe. Task status is carried by the lane; comment counters stay hidden. Board-only `g-board-card-bg` and `g-board-label-bg` keep surfaces and filled labels quiet. Human circles and agent rounded squares reuse `Avatar` unchanged; role colours are not changed. A ready card with no team yet shows three skeleton tiles (`g-skeleton`, the small avatar size) where its team's avatars will appear, with the wait explained in its accessible description; the shimmer stops under reduced motion.
 
 ## Typography
 
@@ -87,6 +88,7 @@ The reference implementation is `components.css`; render each row from the kit w
 | Dialog | standard/wide, busy | `Dialog`; focus trap, `Escape`, backdrop click, restored focus. |
 | Confirmation | normal/destructive/busy | `ConfirmDialog`; composes Dialog and Button. |
 | Menu | closed/open, item resting/hover/disabled/checked | `ActionMenu`; roving focus, `Escape`, outside click, `separator` entries. |
+| Menu button | closed/open, resting/hover/focus/disabled | `MenuButton`; an icon trigger with the menu placed under it, arrow keys, `Escape` and focus return. |
 | Navigation | resting/hover/selected, full/compact | `g-nav-*` and `g-tabs`; counts and status are optional slots. |
 | Breadcrumbs, key caps, tooltip | — | `Breadcrumbs`, `Kbd`, `Tooltip`. |
 | Task status and priority | 11 statuses, priorities P0-P4 | `StatusIcon`, `PriorityIcon`; shape carries the state too. |
