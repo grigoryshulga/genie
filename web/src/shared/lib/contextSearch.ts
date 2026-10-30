@@ -4,7 +4,7 @@ export function searchContext(pathname: string): { label: string; path: string }
     ["/board", "Поиск на доске"],
     ["/tasks", "Поиск задач"],
     ["/epics", "Поиск эпиков"],
-    ["/docs/proposals", "Поиск предложений"],
+    ["/docs/changes", "Поиск изменений документации"],
     ["/docs", "Поиск по документации"],
     // The more specific management page goes first: runs live under «Агенты».
     ["/manage/agents/automations/runs", "Поиск автоматизаций"],
