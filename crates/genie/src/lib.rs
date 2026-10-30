@@ -5,6 +5,7 @@
 
 pub mod agent_config;
 pub mod budget;
+pub mod changesets;
 pub mod channels;
 pub mod cli;
 pub mod clock;
