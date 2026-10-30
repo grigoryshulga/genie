@@ -398,6 +398,13 @@ fn doc_marker_list(p: &Value) -> Vec<String> {
     m
 }
 
+/// The required pages of a role, as the prompt section shows them.
+pub fn required(v: &Value) -> String {
+    let pages: Vec<crate::context::RequiredPageView> = serde_json::from_value(v["pages"].clone()).unwrap_or_default();
+    let missing: Vec<String> = serde_json::from_value(v["missing"].clone()).unwrap_or_default();
+    crate::context::required_section(&pages, &missing).unwrap_or_else(|| format!("no pages are required for the role {}", s(v, "role")))
+}
+
 /// A page with what genie knows about it, then its text.
 pub fn doc(p: &Value) -> String {
     let mut lines = vec![format!("# {}", s(p, "title")), format!("- path: {}", s(p, "path"))];

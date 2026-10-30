@@ -13,7 +13,7 @@
 //!   `direct`, `review` (a proposal for the section owners) or `locked`.
 //! - Each project has a space (top-level folder) with a `changelog.md`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
@@ -26,6 +26,10 @@ use crate::error::{GenieError, Result};
 
 pub const DOC_TYPES: &[&str] = &["guide", "reference", "decision", "glossary", "runbook", "note"];
 pub const DOC_STATUSES: &[&str] = &["draft", "current", "deprecated"];
+
+/// Characters of a required page above which `genie doctor` reports it. Pages are
+/// still delivered whole; the limit only flags reading that is too long to be useful.
+pub const REQUIRED_PAGE_LIMIT: usize = 12_000;
 
 const INDEX_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS pages (
@@ -84,6 +88,17 @@ pub struct Section {
     pub owners: Vec<String>,
 }
 
+/// A page an agent's role must read before its work, delivered with its first message.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RequiredPage {
+    /// Vault-relative page path inside this space, e.g. `genie/agents/guide.md`.
+    pub page: String,
+    /// Role names (as in `agents/*.md` file stems: executor, reviewer, documenter, ...) or `all`.
+    pub roles: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Space {
@@ -92,6 +107,9 @@ pub struct Space {
     pub owners: Vec<String>,
     pub policy: Option<Policy>,
     pub sections: BTreeMap<String, Section>,
+    /// Pages delivered whole to the agents whose role is listed (`all`: every agent).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required: Vec<RequiredPage>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -675,6 +693,26 @@ impl Vault {
     /// Spaces bound to a project.
     pub fn spaces_of(&self, project: &str) -> Vec<String> {
         self.config.spaces.iter().filter(|(_, s)| s.project.as_deref() == Some(project)).map(|(k, _)| k.clone()).collect()
+    }
+
+    /// Pages the project declares as required for a role, in configuration order,
+    /// without duplicates. A page listed twice (or by two spaces) comes once.
+    pub fn required_for(&self, project: &str, role: &str) -> Vec<String> {
+        let wanted = role.trim().to_lowercase();
+        let mut seen = HashSet::new();
+        let mut pages = Vec::new();
+        for space in self.config.spaces.values().filter(|s| s.project.as_deref() == Some(project)) {
+            for required in &space.required {
+                let applies = required.roles.iter().any(|r| {
+                    let r = r.to_lowercase();
+                    r == wanted || r == "all"
+                });
+                if applies && !required.page.trim().is_empty() && seen.insert(required.page.clone()) {
+                    pages.push(required.page.clone());
+                }
+            }
+        }
+        pages
     }
 
     /// Resolve a page inside a project's configured documentation roots.
@@ -1383,6 +1421,27 @@ mod tests {
         let log = std::process::Command::new("git").arg("-C").arg(v.root()).args(["log", "--format=%an|%s"]).output().unwrap();
         let log = String::from_utf8_lossy(&log.stdout);
         assert!(log.contains("a|m"), "writes are committed with the author:\n{log}");
+    }
+
+    #[test]
+    fn required_pages_follow_role_and_project_without_duplicates() {
+        let (_d, mut v) = vault();
+        v.ensure_space("shop", None).unwrap();
+        v.ensure_space("other", None).unwrap();
+        let req = |page: &str, roles: &[&str]| RequiredPage { page: page.into(), roles: roles.iter().map(|r| r.to_string()).collect() };
+        v.config.spaces.get_mut("shop").unwrap().required = vec![
+            req("shop/agent-guide.md", &["all"]),
+            req("shop/coding.md", &["Executor", "reviewer"]),
+            req("shop/coding.md", &["executor"]),
+            req("shop/documenting.md", &["documenter"]),
+        ];
+        v.config.spaces.get_mut("other").unwrap().required = vec![req("other/secret.md", &["all"])];
+        assert_eq!(v.required_for("shop", "executor"), ["shop/agent-guide.md", "shop/coding.md"]);
+        assert_eq!(v.required_for("shop", "EXECUTOR"), ["shop/agent-guide.md", "shop/coding.md"], "role match ignores case");
+        assert_eq!(v.required_for("shop", "reviewer"), ["shop/agent-guide.md", "shop/coding.md"]);
+        assert_eq!(v.required_for("shop", "documenter"), ["shop/agent-guide.md", "shop/documenting.md"]);
+        assert_eq!(v.required_for("other", "executor"), ["other/secret.md"], "another project's pages stay out");
+        assert!(v.required_for("missing", "executor").is_empty());
     }
 
     #[test]

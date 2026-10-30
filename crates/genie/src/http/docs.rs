@@ -29,6 +29,7 @@ pub fn routes() -> Router<Arc<App>> {
     Router::new()
         .route("/docs/version", get(version))
         .route("/docs/tree", get(tree))
+        .route("/docs/required", get(required))
         .route("/docs/search", get(search))
         .route("/docs/page", get(read).post(write).delete(remove_page))
         .route("/docs/note", post(note))
@@ -65,6 +66,37 @@ async fn tree(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let diagnostics: Vec<Value> =
         pages.iter().filter(|p| !p.diagnostics.is_empty()).map(|p| json!({ "path": p.path, "diagnostics": p.diagnostics })).collect();
     Ok(Json(json!({ "version": sig, "roots": roots, "pages": pages, "diagnostics": diagnostics })))
+}
+
+#[derive(Deserialize, Default)]
+struct RequiredQuery {
+    role: Option<String>,
+}
+
+/// The pages the project requires a role to read, whole, with their versions.
+/// Without `?role`, an agent's own role is used; people must name one.
+async fn required(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<RequiredQuery>) -> ApiResult<Json<Value>> {
+    let access = ctx.access(&app, None).await?;
+    access.can(Capability::DocsRead)?;
+    let role = q
+        .role
+        .map(|r| r.trim().to_string())
+        .filter(|r| !r.is_empty())
+        .or_else(|| {
+            if access.actor.role == genie_core::Role::Orchestrator {
+                Some("orchestrator".to_string())
+            } else {
+                access.agent_role_id.clone()
+            }
+        })
+        .ok_or_else(|| ApiError::bad("which role? pass ?role=executor"))?;
+    let project = access.project.clone();
+    let wanted = role.clone();
+    let reading = app.blocking(move |app| Ok(crate::context::required_reading(app, &project, &wanted))).await.map_err(docs_error)?;
+    Ok(match reading {
+        Some(r) => Json(json!({ "role": r.role, "pages": r.pages, "missing": r.missing })),
+        None => Json(json!({ "role": role, "pages": [], "missing": [] })),
+    })
 }
 
 #[derive(Deserialize, Default)]

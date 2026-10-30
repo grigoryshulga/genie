@@ -62,12 +62,14 @@ A page's `related` field names tasks or epics. Its `paths` globs describe code r
 
 ## Agent context
 
-Agents with `docs.read` receive two context layers:
+Agents with `docs.read` receive their role's required reading first, then two context layers:
 
 - **L0:** a compact index of the project's pages in the system prompt, with title, summary, and editorial warnings. The usual budget is about 600 units, capped at 1000. Omitted pages are counted explicitly.
 - **L1:** up to three pages at task kickoff, within 4000 units total and 1500 per page. Explicit task/epic relationships rank first, then path matches, then matches in titles, summaries, headings, tags, and aliases. Common words do not drive selection.
 
 Deprecated pages enter L1 only through an explicit task relationship. Long content is cut at section boundaries and marked as truncated. Agents fetch further content with `genie docs search` and `genie docs read`.
+
+A space may also declare `required`: pages its agents must follow, as a list of `{ "page": "genie/agents/guide.md", "roles": ["all"] }` where `roles` holds role names (the stems of `agents/*.md`, such as `executor` or `reviewer`) or `all`. Agents with `docs.read` and the orchestrator receive these pages whole, before L0 and L1 and outside their budgets: title, path and a content version, so a change is visible. `genie docs required --role executor` prints the same section. A required page over 12,000 characters is still delivered whole but reported by `genie doctor`, which also lists missing required pages.
 
 ## Keep knowledge useful
 

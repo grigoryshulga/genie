@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 use super::{Cx, Entry, Listed, Need, Op, Out, enc, register, render};
 
 pub fn register(all: &mut Vec<Entry>) {
-    register!(all, Search, Read, Tree, Write, Note, Impact, Proposals, Proposal, Approve, Reject, Spaces, Space, Changelog, Release);
+    register!(
+        all, Search, Read, Tree, Required, Write, Note, Impact, Proposals, Proposal, Approve, Reject, Spaces, Space, Changelog, Release
+    );
 }
 
 /// Full-text search over the project's pages; deprecated pages only when --status asks for them.
@@ -112,6 +114,29 @@ impl Op for Tree {
             pages.iter().map(render::doc_line).collect::<Vec<_>>().join("\n")
         };
         Ok(Out::new(text, v["pages"].clone()))
+    }
+}
+
+/// The pages the project requires a role to read, whole, as an agent receives them.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Required {
+    /// The role (executor, reviewer, documenter, ...); default: the caller's own role for an agent.
+    #[arg(long)]
+    pub role: Option<String>,
+}
+
+impl Op for Required {
+    const GROUP: &'static str = "docs";
+    const NAME: &'static str = "required";
+    const LEGACY: Option<&'static str> = Some("docs required");
+    const CAPS: &'static [Capability] = &[Capability::DocsRead];
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let mut q = String::from("/docs/required");
+        if let Some(role) = self.role.filter(|r| !r.trim().is_empty()) {
+            q.push_str(&format!("?role={}", enc(&role)));
+        }
+        let v = cx.call("GET", &q, None).await?;
+        Ok(Out::new(render::required(&v), v))
     }
 }
 
