@@ -74,7 +74,7 @@ impl Op for Hosts {
             .collect();
         let hosts = v["hosts"].as_array().cloned().unwrap_or_default();
         if hosts.is_empty() && lines.is_empty() {
-            lines.push("(no hosts: create <data>/git.json — see docs/platform/git-repositories.md)".into());
+            lines.push("(no hosts: create <data>/git.json — see https://grigoryshulga.github.io/genie/platform/git-repositories)".into());
         }
         let mut failed = !lines.is_empty();
         for h in &hosts {

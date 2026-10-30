@@ -447,7 +447,7 @@ function AddRepo({ hosts, problems, loaded, onClose }: { hosts: GitHostInfo[]; p
         <AddHead onClose={onClose} />
         <div className="st-card-body">
           <p className="st-note">
-            Сервер пока не знает ни одного хостинга. Администратор сервера описывает его (адрес) в <b>git.json</b>; токен можно задать у самого репозитория; пример — в docs/platform/git-repositories.md.
+            Сервер пока не знает ни одного хостинга. Администратор сервера описывает его (адрес) в <b>git.json</b>; токен можно задать у самого репозитория; пример — в документации: https://grigoryshulga.github.io/genie/platform/git-repositories.
           </p>
           {problems.map((p) => (
             <p key={p} className="rp-hint warn">
