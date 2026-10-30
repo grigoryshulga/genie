@@ -13,7 +13,7 @@ use genie_core::changesets::{
     Changeset, ChangesetFilter, ChangesetOrigin, ChangesetStatus, DocMerge, MergeStatus, NewChangeset, ReviewDecision,
 };
 use genie_core::doc_ops::{DocOp, apply_ops};
-use genie_core::vault::{AuthorKind, DocLink, DocPage, DocRead, Publish, Vault, parse_doc};
+use genie_core::vault::{AuthorKind, DocPage, DocRead, Publish, Vault, parse_doc};
 use genie_core::vault_git::{CommitInfo, CommitMeta, FileMerge, Git};
 use genie_core::work::NewJob;
 use serde_json::{Value, json};
@@ -764,6 +764,7 @@ fn section(text: &str, heading: &str) -> genie_core::Result<String> {
 fn page_value(v: &Vault, project: &str, path: &str, rev: &str, content: &str) -> Value {
     let doc = parse_doc(content, path);
     let body = doc.body.clone();
+    let (links, backlinks) = v.links_of(project, path, &doc.links).unwrap_or_default();
     let page = DocPage {
         root_id: "vault".into(),
         path: path.to_string(),
@@ -785,15 +786,7 @@ fn page_value(v: &Vault, project: &str, path: &str, rev: &str, content: &str) ->
         space: path.split('/').next().map(str::to_string),
         project: Some(project.to_string()),
     };
-    let read = DocRead {
-        page,
-        content: body,
-        truncated: false,
-        heading: None,
-        links: Vec::<DocLink>::new(),
-        backlinks: Vec::new(),
-        policy: v.policy_for(path),
-    };
+    let read = DocRead { page, content: body, truncated: false, heading: None, links, backlinks, policy: v.policy_for(path) };
     let mut value = json!(read);
     if let Some(object) = value.as_object_mut() {
         object.insert("version".into(), json!(rev));

@@ -1034,6 +1034,27 @@ impl Vault {
         Ok(DocRead { policy: self.policy_for(&rel), page, content, truncated, heading: heading.map(str::to_string), links, backlinks })
     }
 
+    /// Links and backlinks of a page version that is not on main (a changeset's), resolved
+    /// against the indexed pages of the project: `targets` are the version's own link targets.
+    pub fn links_of(&self, project: &str, rel: &str, targets: &[String]) -> Result<(Vec<DocLink>, Vec<String>)> {
+        let mut all: Vec<_> =
+            self.all_link_targets()?.into_iter().filter(|(path, ..)| self.project_of(path).as_deref() == Some(project)).collect();
+        if !all.iter().any(|(p, ..)| p == rel) {
+            all.push((rel.to_string(), serde_json::to_string(targets)?, Vec::new()));
+        }
+        let links = targets.iter().map(|t| Self::resolve_link(t, &all)).collect();
+        let backlinks = all
+            .iter()
+            .filter(|(p, ..)| *p != rel)
+            .filter(|(_, l, _)| {
+                let targets: Vec<String> = serde_json::from_str(l).unwrap_or_default();
+                targets.iter().any(|t| Self::resolve_link(t, &all).target_path.as_deref() == Some(rel))
+            })
+            .map(|(p, ..)| p.clone())
+            .collect();
+        Ok((links, backlinks))
+    }
+
     /// Full-text search with BM25 ranking and snippets marked `[…]`.
     pub fn search(&mut self, query: &str, opts: &SearchOptions) -> Result<Vec<DocSearchResult>> {
         let terms: Vec<String> = normalize(query)

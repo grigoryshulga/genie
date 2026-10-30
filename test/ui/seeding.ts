@@ -50,8 +50,13 @@ export function seedTask(bin: string, dataDir: string, project: string, t: SeedT
 
 export function seedDocs(bin: string, dataDir: string, project: string, docs: Doc[]) {
   for (const doc of docs) {
-    if (!doc.raw) genie(bin, ["--project", project, "docs", "write", doc.path, "--text", doc.text], undefined, dataDir);
-    else {
+    if (!doc.raw) {
+      // A write opens the author's changeset; the seed publishes it so the page is on main.
+      const written = JSON.parse(genie(bin, ["--project", project, "docs", "write", doc.path, "--text", doc.text, "--json"], undefined, dataDir));
+      const id = written.changeset?.id ?? written.data?.changeset?.id;
+      if (typeof id !== "number") throw new Error(`docs write ${doc.path}: no changeset in ${JSON.stringify(written)}`);
+      genie(bin, ["--project", project, "docs", "publish", "--changeset", String(id)], undefined, dataDir);
+    } else {
       mkdirSync(dirname(join(dataDir, "vault", doc.path)), { recursive: true });
       writeFileSync(join(dataDir, "vault", doc.path), doc.text);
     }
