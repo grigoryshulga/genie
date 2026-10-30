@@ -1,24 +1,24 @@
 ---
 title: Documentation vault on changesets
-summary: GNE-110 design for versioned, immediately visible doc edits with section operations, history, rollback and agent conflict resolution.
+summary: GNE-110 design for branch-based doc edits with explicit publication, section operations, history, rollback, agent conflict resolution and required reading.
 type: specification
 status: draft
 tags: [docs, vault, git, agents, conflicts]
-paths: [crates/genie-core/src/vault.rs, crates/genie/src/knowledge.rs, crates/genie/src/vault_sync.rs, crates/genie/src/http/docs.rs, crates/genie/src/ops/docs.rs]
+paths: [crates/genie-core/src/vault.rs, crates/genie/src/knowledge.rs, crates/genie/src/vault_sync.rs, crates/genie/src/http/docs.rs, crates/genie/src/ops/docs.rs, crates/genie/src/context.rs]
 related: [GNE-110, GNE-111]
 ---
 
 # Documentation vault on changesets
 
-Status: draft for owner review (GNE-111). Scope: the product's knowledge vault ([knowledge vault](../platform/knowledge-vault.md), [documentation contract](../reference/genie-docs-system.md)) and moving this repository's `docs/` into it.
+Status: draft for owner review (GNE-111). Scope: the product's knowledge vault ([knowledge vault](../platform/knowledge-vault.md), [documentation contract](../reference/genie-docs-system.md)), moving this repository's documentation and agent instructions into it, and delivering required reading to agents.
 
 ## Goals
 
 1. **Simpler for agents.** An agent edits a section, not a whole page, and never has to redo an edit because someone else wrote first.
 2. **Reliable.** Every change is a git commit with a full diff, an author, a task and a reason; any change can be rolled back in one step; nothing is silently lost or silently uncommitted.
-3. **Immediately visible.** A submitted change is the current version of the page for everyone (people, agents, L0/L1 context) at once. Drafts that disappear from view are not part of the model.
+3. **A direct process.** Editing opens a branch; publishing merges it into the main version. Open branches are visible on their pages and in one feed, so unpublished work does not drop out of sight.
 4. **Conflicts resolve themselves.** A dedicated merge agent combines overlapping edits; people step in through history and rollback, not through `.conflict` copies.
-5. **One documentation source.** The repository's `docs/` becomes a vault space; the site is built from the vault.
+5. **One documentation source.** The repository's `docs/`, `AGENTS.md` and `CODING_STANDARDS.md` become vault pages; agents receive the pages their role must read with their first message.
 
 ## Problems this replaces
 
@@ -29,29 +29,34 @@ Status: draft for owner review (GNE-111). Scope: the product's knowledge vault (
 | Remote sync writes `<page>.conflict-<time>.md` | Junk pages in the vault and the index; a person must merge by hand. |
 | `git_commit` ignores git failures | The file changes on disk while history does not record it. |
 | The documenter commits docs into the code branch | Two documentation locations, no link between them. |
+| Agent instructions live in repository files | Each tool finds them differently; there is no per-role required reading. |
 
 ## Model
 
 ### Vocabulary
 
-- **Edit**: one operation on one page (see [Section operations](#section-operations)).
-- **Changeset**: the edits an author makes for one purpose, usually one task. It is a group of commits on the vault's main branch sharing a `Genie-Changeset: <id>` trailer, plus the trailers `Genie-Task`, `Genie-Author-Kind` and `Genie-Base` (the commit the author read). Commits stay small and individually revertible; the changeset is the unit for review, history and rollback.
-- **Version**: a commit. Every page version is addressable by commit SHA.
+- **Main**: the vault's main branch; the published documentation that search, L0/L1 context and the site show by default.
+- **Changeset**: a git branch `changes/<id>` forked from main, owned by an author and usually a task. Its commits carry the trailers `Genie-Changeset`, `Genie-Task` and `Genie-Author-Kind`.
+- **Edit**: one operation on one page inside a changeset (see [Section operations](#section-operations)).
+- **Publish**: merge a changeset into main. **Discard**: close it without merging; the branch is kept as a closed record.
+- **Version**: a commit on main. Every page version is addressable by SHA.
 - **Unreviewed**: a published changeset that the section's owners have not marked reviewed yet.
 
-The main branch is always the current documentation. There is no separate draft store; the `proposals` table is retired.
+The `proposals` table is retired; a changeset replaces it.
 
-### Write path
+### Lifecycle
 
-All writes (web, CLI, MCP, the documenter, sync, the merge agent) go through one integration function under the vault lock:
+1. **Open.** The first edit opens a changeset. Agents get one per task automatically; every later edit within the task joins it. A person editing in the web gets one per page and editing session, unless they add the page to a changeset they already have open.
+2. **Edit.** Edits commit to the changeset branch. The author (and the author's team) reads the changeset's version of a page by default (read-your-writes); everyone else reads main and sees that the page has an open changeset.
+3. **Publish.** The author publishes. Publication merges the branch into main (see [Integration](#integration)). An agent publishes when its documentation is done; a task cannot reach `done` while its changeset is open (the completion gate lists it).
+4. **After publication.** In `review` sections the published changeset appears as unreviewed for the owners, who mark it reviewed or revert it.
 
-1. Parse and validate the edit against the page at `HEAD`: frontmatter contract, wiki-link targets, path scope, `locked` policy.
-2. If the edit's `base` commit equals the page's last-changing commit, apply it directly.
-3. Otherwise run a three-way merge of the affected region (`base` → `HEAD` versus `base` → edit), using `git merge-file` semantics. A clean merge is applied.
-4. A textual conflict is parked as a **pending merge** (`refs/genie/pending/<id>`, holding base/ours/theirs) and handed to the merge agent. The author gets `merging` instead of an error and does not retry.
-5. The result is written and committed in one step. A failed commit restores the file and returns an error; the index refreshes only after a successful commit.
+Visibility of open work:
 
-The response to an author is one of `saved {commit}`, `merging {pending id}` or a validation error. Agents never receive a "reload and apply again" conflict.
+- A page shows a compact marker for each open changeset touching it, with author, task and a diff link.
+- The project's **Changes** feed lists open changesets, published ones (filters: unreviewed, by task, by author, merged by agent) and pending merges, for every policy including `direct`.
+- Changesets idle for longer than a configurable time (default three days) notify their author, or the task's owner for an agent.
+- Changeset branches are pushed to `vault.remote`, so they are visible in Obsidian and plain git as well.
 
 ### Section operations
 
@@ -67,35 +72,39 @@ Agents and the CLI address content by heading path instead of sending a whole pa
 | `create-page`, `move-page`, `remove-page` | Whole-page operations; moves update wiki-links in the same changeset. |
 | `write-page` | Full replacement; kept for people and imports. |
 
-Heading paths are resolved at `HEAD`; a heading renamed since `base` is matched through the merge in step 3. Section-sized edits keep concurrent agents in different regions of a page, so most concurrent edits merge cleanly.
+The agent tool surface becomes `genie_docs` actions `search`, `read` (returns the version read), `edit` (one or more operations plus `note`), `publish`, `discard`, `changes` (own open changesets), `history`, `diff` and `revert`. CLI commands mirror them (`genie docs edit|publish|discard|changes|history|diff|revert`).
 
-The agent tool surface becomes `genie_docs` actions `search`, `read` (now returns `commit`), `edit` (one or more operations plus `note` and `task`), `history`, `diff` and `revert`. Every edit within a task joins that task's changeset automatically.
+Section-sized edits keep concurrent authors in different regions of a page, so most publications merge cleanly.
+
+### Integration
+
+Every change to main (publication, revert, restore, sync, migration) goes through one function under the vault lock:
+
+1. Validate the changeset's result against main: frontmatter contract, wiki-link targets, path scope, `locked` policy.
+2. If main has not changed the changeset's pages since the fork, fast-forward or merge.
+3. Otherwise run a three-way merge per page (`git merge-file` semantics). A clean merge is committed as a merge commit.
+4. A textual conflict becomes a **pending merge** on the changeset and is handed to the [merge agent](#merge-agent). The author gets `merging` instead of an error and does not redo the edit; publication completes when the merge does.
+5. Main moves with a compare-and-swap ref update. A failed commit or ref update leaves main and the working tree unchanged and returns an error; the index refreshes only after success.
+
+Writes inside a changeset are commits on its branch and fail the same way: no write without a commit.
 
 ### Publication and review
 
-The `review` policy changes meaning from *gate before publication* to *review after publication*:
+| Policy | Who may publish | After publication |
+| --- | --- | --- |
+| `direct` | The author | Listed in Changes; no review queue entry. |
+| `review` | The author | Listed as **unreviewed** for the section owners until marked reviewed or reverted; L0 marks the page. |
+| `locked` | Nobody in the role; edits are refused | — |
 
-| Policy | Result |
-| --- | --- |
-| `direct` | Published; no review queue entry. |
-| `review` | Published at once and listed as **unreviewed** for the section owners until they mark it reviewed or revert it. |
-| `locked` | Refused for the role, unchanged. |
-
-Visibility of unreviewed content:
-
-- Pages show a compact "unreviewed changes" marker linking to the diff.
-- L0 marks pages with unreviewed changes; L1 includes the page as current, since immediate visibility to other agents is the goal.
-- The project's **Changes** feed lists changesets with filters (unreviewed, by task, by author, merged by agent).
-
-Review state lives in the server database (`doc_reviews`: changeset, reviewer, decision, time), not in git, so marking something reviewed does not create commits or sync traffic.
+Review state lives in the server database (`doc_reviews`: changeset, reviewer, decision, time), not in git, so marking something reviewed creates neither commits nor sync traffic.
 
 ### History and rollback
 
-- **Page history**: commits touching a page, following moves, each with author, task, changeset and reason.
-- **Diff**: any two versions of a page; a changeset's full diff across pages.
+- **Page history**: commits on main touching a page, following moves, each with author, task, changeset and reason.
+- **Diff**: any two versions of a page; a changeset's full diff across pages, open or published.
 - **View a version**: the page rendered at a commit.
-- **Restore a page** to a version: a new commit, itself revertible.
-- **Revert a changeset**: reverts its commits as a new changeset. Later edits to the same lines go through the normal write path, so overlaps reach the merge agent instead of failing.
+- **Restore a page** to a version: a new changeset published at once, itself revertible.
+- **Revert a changeset**: a new changeset with the inverse commits, published through integration, so overlaps with later edits reach the merge agent instead of failing.
 
 History is read from git, so it is the same in Genie, Obsidian and a plain clone.
 
@@ -104,53 +113,66 @@ History is read from git, so it is the same in Genie, Obsidian and a plain clone
 A new built-in role `doc-merger` (`agents/doc-merger.md`).
 
 - **Input**: per conflicted region, base/ours/theirs text; both sides' notes, tasks and authors; the page outline.
-- **Output**: the merged page region and a one-line explanation. The result passes the same validation as any edit; conflict markers are rejected.
-- **Authority**: per the owner's decision, its result is published directly in every section the original edit could publish to. It does not escalate by default; when the two sides contradict each other in meaning, it records `contradiction` in the commit and the changeset appears as unreviewed for the owners.
-- **Traceability**: the commit carries `Genie-Merged-By: doc-merger` and `Genie-Merge-Of: <ours>,<theirs>`; history shows it with a badge, and either side can be restored in one action.
-- **Failure**: if the agent is unavailable or produces invalid output after a retry, the pending merge stays visible on the page and in the Changes feed, owners are notified, and a person resolves it in a three-pane view. No `.conflict` files are created.
+- **Output**: the merged region and a one-line explanation. The result passes the same validation as any edit; conflict markers are rejected.
+- **Authority**: per the owner's decision, its result is published directly. When the two sides contradict each other in meaning, it records `contradiction` in the commit, and the changeset is listed as unreviewed for the owners whatever the policy.
+- **Traceability**: the merge commit carries `Genie-Merged-By: doc-merger`; history shows it with a badge, and the pre-merge version of either side can be restored in one action.
+- **Failure**: if the agent is unavailable or its output stays invalid after a retry, the pending merge stays on the page and in Changes, owners are notified, and a person resolves it in a three-pane view. No `.conflict` files are created.
 
 ### Remote sync
 
-Sync with `vault.remote` keeps its schedule but uses the same pipeline:
+Sync with `vault.remote` keeps its schedule and treats incoming work as changesets:
 
-- Fetch and attempt the merge as today.
-- On overlapping edits, the server's main branch stays as is; each conflicted page becomes a pending merge whose "theirs" is the remote version, handled by the merge agent. The resolved merge commit has both histories as parents, so the next push reconciles the remote.
-- A delete on one side and an edit on the other keeps the edited page, as today, and is recorded in the Changes feed.
-- Commits from the remote receive changeset IDs on import (by person and sync run), so they are reviewable and revertible like any other changeset.
+- Commits pushed to main by people (Obsidian, plain git) are imported as a changeset per person and sync run and integrated like a publication. Overlaps become pending merges for the merge agent; the resolved merge commit has both histories as parents, so the next push reconciles the remote.
+- People may also push `changes/*` branches; they appear as open changesets and are published from Genie or by merging them in git.
+- A delete on one side and an edit on the other keeps the edited page, as today, and is recorded in Changes.
+
+### Required reading
+
+Agents receive the pages their role must follow with their first message, in full, before L0/L1:
+
+- `vault.json` gains `required`: a list of `{ page, roles }` per space, where `roles` is a list of role names or `all`. Example: the agent guide for `all`, the coding standards for `executor` and `reviewer`.
+- Required pages are delivered whole, not truncated, and do not count against the L0/L1 budgets; the kickoff states their versions. A required page above a hard limit (proposed 12,000 characters) is reported by `genie doctor` and the docs check instead of being cut silently.
+- When a required page changes on main during a running task, the agent's next turn receives a short notice with the diff.
+- Required pages are shown with a badge in the Docs screen; editing one is subject to its section policy like any page (the guide's section is proposed as `review` for agents).
 
 ### Documenter
 
-The documenter writes to the vault through `genie_docs edit` under its task's changeset instead of committing documentation into the code branch. Its `doc` artifact links the changeset. Code-adjacent files a repository requires (`README.md`, `CHANGELOG.md`, `AGENTS.md`, code comments) stay in the code branch.
+The documenter writes to the vault through `genie_docs edit` in its task's changeset and publishes it when done, instead of committing documentation into the code branch. Its `doc` artifact links the changeset. Files a code repository requires (`README.md`, `CHANGELOG.md`, code comments) stay in the code branch.
 
 ## Migration
 
-1. **Proposals**: each open proposal becomes a changeset. Its base is the newest commit where the page's hash equals `base_hash` (or the proposal's creation time if none matches). It goes through the write path, so it is published as unreviewed and conflicts reach the merge agent. Decided proposals are kept as read-only records; the `proposals` table and its routes are removed after migration.
+1. **Proposals**: each open proposal becomes an open changeset forked from the newest commit where the page's hash equals `base_hash` (or main at the proposal's creation if none matches), owned by the proposal's author and task. It stays open for its author to publish or discard. Decided proposals are kept as read-only records; the `proposals` table and its routes are removed afterwards.
 2. **Conflict copies**: existing `*.conflict-*.md` files become pending merges against their pages and are removed from the tree.
-3. **Policies**: `vault.json` keeps its policy names; `review` takes the new meaning. The release notes state the change.
+3. **Policies**: `vault.json` keeps its policy names; `review` takes the post-publication meaning. The release notes state the change.
 
-## Moving the repository docs into the vault
+## Moving this repository's documentation into the vault
 
-Target: this repository keeps only the files tools need at its root (`README.md`, `CHANGELOG.md`, `AGENTS.md`, `CODING_STANDARDS.md`, `GLOSSARY.md`); `docs/` content lives in the `genie` project's vault space.
+Target: the repository root keeps only what tools and the release gate require (`README.md`, `CHANGELOG.md`) plus a thin `AGENTS.md`; everything else lives in the `genie` project's vault space.
 
-- The vault's remote is a separate private git repository. The documentation site's CI checks it out and builds it with the existing VitePress theme and checks; the theme and its config stay in this repository as a UI concern.
-- Agents read process documentation through `genie docs read/search` (MCP or CLI). `AGENTS.md` links are replaced with vault paths.
+- `docs/`, `CODING_STANDARDS.md` and `GLOSSARY.md` move to the vault space. The vault's remote is a separate private git repository; the documentation site's CI checks it out and builds it with the VitePress theme, config and checks, which stay in this repository.
+- `AGENTS.md` is reworked into the agent guide page in the vault and declared required reading for `all`. The repository keeps a short `AGENTS.md` stub, because host tools (Claude Code, Codex, T3) load that file by name: it tells an agent to read its required pages with `genie docs required --role <role>` and nothing else.
+- A running tracker is an accepted requirement for every agent environment (owner decision).
 - A code change and its documentation are linked by task ID instead of sharing a commit.
-
-This step depends on the tracker being reachable from every agent environment, so it is the last phase and has its own decision point (see [Open questions](#open-questions)).
 
 ## Phases
 
 | Phase | Result |
 | --- | --- |
-| 1. Core | Single write path, commit-or-fail, changeset trailers, section operations, `read` returns commit. |
-| 2. Publication and history | `review` as post-publication review, unreviewed markers in UI and L0, Changes feed, history, diff, restore, revert. |
+| 1. Core | Changeset branches, single integration path, commit-or-fail, section operations, `edit`/`publish`/`discard`. |
+| 2. Visibility, history and review | Page markers, Changes feed, idle reminders, completion gate, post-publication review, history, diff, restore, revert. |
 | 3. Merge agent | Pending merges, `doc-merger` role and dispatch, three-pane fallback. |
-| 4. Sync | Remote conflicts through pending merges; changeset IDs for imported commits; `.conflict` files gone. |
+| 4. Sync | Remote commits and `changes/*` branches as changesets; `.conflict` files gone. |
 | 5. Migration | Proposals and conflict copies migrated; proposal routes removed. |
-| 6. Documenter and repository docs | Documenter writes to the vault; this repository's `docs/` moves to the vault; site built from the vault remote. |
+| 6. Required reading | `required` in `vault.json`, kickoff delivery, change notices, `genie docs required`. |
+| 7. Documenter and repository docs | Documenter writes to the vault; `docs/`, `CODING_STANDARDS.md`, `GLOSSARY.md` and the reworked `AGENTS.md` move to the vault; site built from the vault remote. |
 
-## Open questions
+## Decisions
 
-1. **Agents outside Genie.** Host agents (for example, in T3 worktrees) would read process docs only through the tracker. Is a running tracker an acceptable requirement, or should a read-only export of the vault be checked out next to the code?
-2. **Granularity of a changeset without a task.** Edits by people in the web UI without a task: one changeset per editing session (proposed: per page, closed after 30 minutes of inactivity) or one per save?
-3. **Review queue scope.** Should `direct` sections also show agent changesets in the Changes feed (unflagged), so owners can audit everything in one place? Proposed: yes.
+Recorded with the owner on 2026-10-30:
+
+- Scope is the product vault; this repository's documentation and agent instructions move into it.
+- Editing opens a branch; publishing merges it into main.
+- The merge agent publishes its resolutions itself; versions and rollback are the safeguard.
+- Open proposals are migrated; there is no dual mode.
+- Agents may depend on a running tracker for documentation.
+- The Changes feed covers `direct` sections too.
