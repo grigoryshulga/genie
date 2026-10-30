@@ -181,7 +181,7 @@
     border: 0;
     border-radius: var(--g-radius-md);
   }
-  .task-page .tp-content-tabs button[aria-selected="true"] { background: var(--g-surface-active); }
+  .task-page .tp-content-tabs button[aria-selected="true"] { background: var(--g-surface-active); color: var(--g-text); }
 }
 @media (min-width: 901px) and (max-width: 1199px) {
   .task-page .tp-navigation { grid-column: 1 / -1; margin-top: var(--g-space-5); }
