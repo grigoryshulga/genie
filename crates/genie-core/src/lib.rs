@@ -26,6 +26,7 @@ pub mod telegram;
 pub mod tracker;
 pub mod usage;
 pub mod vault;
+pub mod vault_git;
 pub mod work;
 
 pub use error::{GenieError, Result};
