@@ -97,8 +97,8 @@ async fn admins_change_the_agent_configuration_and_everyone_reads_it() {
     // Not yet seen by the server (its watcher reloads within seconds), already by the check.
     let check = cli(&admin, &["agents", "check"]).await.unwrap();
     assert!(check.text.contains("role:broken"), "{}", check.text);
-    // PD24: broken plus the two file-less built-ins (planner, researcher) without models.
-    assert!(check.failed.as_deref().unwrap_or_default().starts_with("3 error(s) in the agent configuration"), "{:?}", check.failed);
+    // PD24: broken plus the three file-less built-ins (planner, researcher, doc-merger) without models.
+    assert!(check.failed.as_deref().unwrap_or_default().starts_with("4 error(s) in the agent configuration"), "{:?}", check.failed);
     let list = cli(&admin, &["agents", "ls"]).await.unwrap();
     assert!(list.text.contains("security-reviewer") && list.text.contains("Team templates:\n  abap"), "{}", list.text);
     assert!(list.text.contains("Skills: deploy") && list.text.ends_with("problem(s): genie agents check"), "{}", list.text);
