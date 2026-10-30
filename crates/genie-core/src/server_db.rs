@@ -305,6 +305,7 @@ CREATE TABLE IF NOT EXISTS doc_merges (
   resolution TEXT,
   contradiction INTEGER NOT NULL DEFAULT 0,
   note TEXT NOT NULL DEFAULT '',
+  job INTEGER,
   created TEXT NOT NULL,
   updated TEXT NOT NULL
 );
@@ -483,6 +484,8 @@ pub const SERVER_COLUMN_MIGRATIONS: &[(&str, &str, &str)] = &[
     // A repository bound to a provider connection (`git_connections`) and its immutable id on the provider.
     ("project_repos", "connection", "ALTER TABLE project_repos ADD COLUMN connection TEXT"),
     ("project_repos", "provider_repo_id", "ALTER TABLE project_repos ADD COLUMN provider_repo_id INTEGER"),
+    // The doc-merger job trying to resolve a documentation merge.
+    ("doc_merges", "job", "ALTER TABLE doc_merges ADD COLUMN job INTEGER"),
 ];
 
 pub const SESSION_DAYS: i64 = 30;

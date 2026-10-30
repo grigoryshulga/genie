@@ -178,16 +178,33 @@ async fn write(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<WriteBody>) 
                 return Ok(Err(ApiError::new(StatusCode::NOT_FOUND, "documentation page not found")));
             }
             let base = b.base_hash.clone().or_else(|| (mode == "create").then(String::new));
-            let out = knowledge::write_doc(app, &path, &content, Author { name: &name, login: &login, kind }, base.as_deref(), &b.note, task.as_deref())?;
+            let out = knowledge::write_doc(
+                app,
+                &path,
+                &content,
+                Author { name: &name, login: &login, kind },
+                base.as_deref(),
+                &b.note,
+                task.as_deref(),
+            )?;
             Ok(Ok(match out {
                 DocWrite::Saved { created, .. } => {
                     let page = app.with_vault(|v| v.project_read(&project, &path, None, None))?;
                     (if created { StatusCode::CREATED } else { StatusCode::OK }, json!({ "page": page, "diagnostics": [] }))
                 }
-                DocWrite::Proposed(p) => (
-                    StatusCode::ACCEPTED,
-                    json!({ "proposal": p.id, "proposalUrl": format!("{}/docs?proposal={}", app.cfg.public_url(), p.id), "note": "the section requires a review; the page changes when an owner approves" }),
-                ),
+                DocWrite::Changeset(cs) => {
+                    let ed = crate::changesets::Editor {
+                        name: name.clone(),
+                        login: login.clone(),
+                        kind,
+                        task: task.clone(),
+                        project: project.clone(),
+                        admin: false,
+                        role: None,
+                    };
+                    let page = crate::changesets::read_for(app, &ed, &path, None, None, None, None)?;
+                    (StatusCode::OK, json!({ "changeset": cs, "page": page }))
+                }
             }))
         })
         .await
@@ -283,18 +300,31 @@ async fn note(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<NoteBody>) ->
             })?;
             let author = Author { name: &name, login: &login, kind };
             let out = knowledge::write_doc(app, &path, &content, author, Some(""), &format!("note: {title}"), task.as_deref())?;
+            let ed = crate::changesets::Editor {
+                name: name.clone(),
+                login: login.clone(),
+                kind,
+                task: task.clone(),
+                project: project.clone(),
+                admin: false,
+                role: None,
+            };
             Ok(match out {
                 DocWrite::Saved { .. } => (
                     StatusCode::CREATED,
                     json!({ "path": path, "title": title, "type": "note", "status": "draft", "tags": b.tags, "related": b.related }),
                 ),
-                DocWrite::Proposed(p) => (
-                    StatusCode::ACCEPTED,
-                    json!({ "path": path, "title": title, "proposal": p.id, "proposalUrl": format!("{}/docs?proposal={}", app.cfg.public_url(), p.id) }),
-                ),
+                DocWrite::Changeset(cs) => {
+                    let page = crate::changesets::read_for(app, &ed, &path, None, None, None, None)?;
+                    (
+                        StatusCode::OK,
+                        json!({ "path": path, "title": title, "changeset": cs, "page": page, "tags": b.tags, "related": b.related }),
+                    )
+                }
             })
         })
-        .await.map_err(docs_error)?;
+        .await
+        .map_err(docs_error)?;
     Ok((status, Json(v)))
 }
 

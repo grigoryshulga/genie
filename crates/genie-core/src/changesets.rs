@@ -229,6 +229,8 @@ pub struct DocMerge {
     /// Whether the resolution contradicts one side of the change.
     pub contradiction: bool,
     pub note: String,
+    /// The doc-merger job working on this merge.
+    pub job: Option<i64>,
     pub created: String,
     pub updated: String,
 }
@@ -248,6 +250,7 @@ impl DocMerge {
             resolution: r.get("resolution")?,
             contradiction: r.get::<_, i64>("contradiction")? != 0,
             note: r.get("note")?,
+            job: r.get("job")?,
             created: r.get("created")?,
             updated: r.get("updated")?,
         })
@@ -554,6 +557,15 @@ impl ServerDb {
             )?;
             self.doc_merge(id)
         })
+    }
+
+    /// Records the agent job that works on a merge.
+    pub fn set_merge_job(&self, id: i64, job: i64) -> Result<DocMerge> {
+        let n = self.conn().execute("UPDATE doc_merges SET job = ?1, updated = ?2 WHERE id = ?3", params![job, now(), id])?;
+        if n == 0 {
+            return Err(GenieError::not_found(format!("merge {id} not found")));
+        }
+        self.doc_merge(id)
     }
 
     /// Closes a merge with the commit that resolved it.

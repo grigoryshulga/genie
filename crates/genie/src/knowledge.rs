@@ -6,15 +6,20 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use genie_core::vault::{AuthorKind, WriteOutcome};
+use genie_core::changesets::Changeset;
+use genie_core::vault::AuthorKind;
 use genie_core::work::Proposal;
 use serde_json::{Value, json};
 
 use crate::state::{App, AppResult};
 
 pub enum DocWrite {
-    Saved { created: bool, hash: String },
-    Proposed(Box<Proposal>),
+    Saved {
+        created: bool,
+        hash: String,
+    },
+    /// The edit lives on a changeset branch until its author publishes it.
+    Changeset(Box<Changeset>),
 }
 
 pub struct Author<'a> {
@@ -33,8 +38,8 @@ pub fn doc_event(app: &App, path: &str, kind: &str, actor: &str, actor_role: &st
     }
 }
 
-/// Write a page on behalf of a person or an agent, honouring the section policy.
-#[allow(clippy::too_many_arguments)]
+/// Write a page on behalf of a person or an agent: a `write-page` edit in the caller's changeset.
+/// The server itself (changelog, imports) publishes at once; people and agents publish themselves.
 pub fn write_doc(
     app: &App,
     path: &str,
@@ -44,35 +49,53 @@ pub fn write_doc(
     note: &str,
     task: Option<&str>,
 ) -> AppResult<DocWrite> {
-    let message = if note.trim().is_empty() { format!("{}: update {path}", author.login) } else { note.trim().to_string() };
-    let outcome = app.with_vault(|v| v.write(path, content, author.kind, (author.name, author.login), base_hash, &message))?;
-    let role = match author.kind {
-        AuthorKind::Human => "human",
-        AuthorKind::Agent => "agent",
-        AuthorKind::System => "system",
+    let (rel, project, created) = app.with_vault(|v| {
+        let (rel, _) = v.resolve(path)?;
+        let project =
+            v.project_of(&rel).ok_or_else(|| genie_core::GenieError::not_found("documentation page not found in this project"))?;
+        let created = v.current_hash(&rel)?.is_none();
+        Ok((rel.clone(), project, created))
+    })?;
+    if let Some(base) = base_hash {
+        let current = app.with_vault(|v| v.current_hash(&rel))?;
+        let matches = match (&current, base) {
+            (None, "") => true,
+            (Some(c), b) => c == b,
+            (None, _) => false,
+        };
+        if !matches {
+            return Err(genie_core::GenieError::invalid(format!(
+                "conflict: {rel} changed since you opened it; reload and apply your edit again"
+            ))
+            .into());
+        }
+    }
+    let ed = crate::changesets::Editor {
+        name: author.name.to_string(),
+        login: author.login.to_string(),
+        kind: author.kind,
+        task: task.map(str::to_string),
+        project,
+        admin: author.kind == AuthorKind::System,
+        role: None,
     };
-    match outcome {
-        WriteOutcome::Saved { created, hash } => {
-            let rel = app.with_vault(|v| Ok(v.resolve(path)?.0))?;
+    let ops = [genie_core::doc_ops::DocOp::WritePage { content: content.to_string() }];
+    let edited = crate::changesets::edit(app, &ed, &rel, &ops, note, None)?;
+    if author.kind != AuthorKind::System {
+        return Ok(DocWrite::Changeset(Box::new(edited.changeset)));
+    }
+    match crate::changesets::publish(app, edited.changeset.id, &ed)? {
+        crate::changesets::Published::Published { .. } => {
+            let hash = app.with_vault(|v| v.current_hash(&rel))?.unwrap_or_default();
+            let role = match author.kind {
+                AuthorKind::Human => "human",
+                AuthorKind::Agent => "agent",
+                AuthorKind::System => "system",
+            };
             doc_event(app, &rel, "doc.changed", author.login, role, json!({ "path": rel, "created": created, "task": task }));
             Ok(DocWrite::Saved { created, hash })
         }
-        WriteOutcome::NeedsReview => {
-            let (rel, project, base) = app.with_vault(|v| {
-                let rel = v.resolve(path)?.0;
-                Ok((rel.clone(), v.project_of(&rel), v.current_hash(&rel)?))
-            })?;
-            let base = base_hash.map(str::to_string).or(base).or(Some(String::new()));
-            let proposal = app.with_server(|db| {
-                // A newer proposal from the same author for the same page replaces the open one.
-                for old in db.proposals(Some("open"), 500)?.into_iter().filter(|p| p.path == rel && p.author == author.login) {
-                    db.decide_proposal(old.id, "superseded", author.login, Some("replaced by a newer proposal"))?;
-                }
-                db.create_proposal(&rel, base.as_deref(), content, author.login, role, project.as_deref(), task, note)
-            })?;
-            doc_event(app, &rel, "doc.proposal", author.login, role, json!({ "path": rel, "proposal": proposal.id, "task": task }));
-            Ok(DocWrite::Proposed(Box::new(proposal)))
-        }
+        crate::changesets::Published::Merging { changeset, .. } => Ok(DocWrite::Changeset(Box::new(changeset))),
     }
 }
 
@@ -164,8 +187,16 @@ pub fn start_watcher(app: &Arc<App>) {
     tokio::spawn(async move {
         let mut last = String::new();
         let mut wait = WATCH_MIN;
+        let mut swept = std::time::Instant::now() - std::time::Duration::from_secs(60);
         loop {
             tokio::time::sleep(wait).await;
+            if swept.elapsed() >= std::time::Duration::from_secs(60) {
+                swept = std::time::Instant::now();
+                match app.blocking(crate::changesets::sweep).await {
+                    Ok(()) => {}
+                    Err(e) => eprintln!("genie vault: merge sweep: {e}"),
+                }
+            }
             let prev = last.clone();
             let res = app
                 .blocking(move |app| {

@@ -155,8 +155,8 @@ impl Op for Write {
         let task = self.task.or_else(|| cx.task.clone());
         let body = json!({ "path": self.path, "content": content, "note": self.note.unwrap_or_default(), "mode": self.mode, "task": task });
         let v = cx.call("POST", "/docs/page", Some(body)).await?;
-        let text = match v["proposal"].as_i64() {
-            Some(id) => format!("proposal #{id} created for {}: the section needs a review, the owner decides", self.path),
+        let text = match v["changeset"]["id"].as_i64() {
+            Some(id) => format!("changeset #{id} opened for {}: publish it when the editing is done", self.path),
             None => format!("{} saved", v["page"]["path"].as_str().unwrap_or(&self.path)),
         };
         Ok(Out::new(text, v))
@@ -197,8 +197,8 @@ impl Op for Note {
             json!({ "title": self.title, "body": self.body, "tags": split(self.tags), "related": split(self.related), "task": cx.task });
         let v = cx.call("POST", "/docs/note", Some(body)).await?;
         let path = v["path"].as_str().unwrap_or_default();
-        let text = match v["proposal"].as_i64() {
-            Some(id) => format!("proposal #{id} created for {path}: the section needs a review, the owner decides"),
+        let text = match v["changeset"]["id"].as_i64() {
+            Some(id) => format!("changeset #{id} opened for {path}: publish it when you are done"),
             None => format!("created {path}"),
         };
         Ok(Out::new(text, v))

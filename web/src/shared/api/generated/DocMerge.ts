@@ -21,4 +21,8 @@ resolution: string | null,
 /**
  * Whether the resolution contradicts one side of the change.
  */
-contradiction: boolean, note: string, created: string, updated: string, };
+contradiction: boolean, note: string, 
+/**
+ * The doc-merger job working on this merge.
+ */
+job: number | null, created: string, updated: string, };
