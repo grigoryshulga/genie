@@ -106,6 +106,6 @@ pub fn sweep(_app: &App) -> AppResult<()> {
     Ok(())
 }
 /// One-time migration of open proposals and `.conflict` copies (sync/migration task).
-pub fn migrate_legacy(_app: &App) -> AppResult<()> {
-    Ok(())
+pub fn migrate_legacy(app: &App) -> AppResult<()> {
+    crate::changesets_migrate::migrate_legacy(app)
 }

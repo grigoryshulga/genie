@@ -8,6 +8,7 @@ mod common;
 mod agent_config;
 mod api;
 mod catalog;
+mod changesets_migrate;
 mod channels;
 mod chat;
 mod connections;
