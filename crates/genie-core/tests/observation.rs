@@ -127,11 +127,10 @@ fn kinds(t: &Tracker, id: i64) -> Vec<String> {
 }
 
 #[test]
-fn a_fresh_tracker_records_schema_9_with_every_observation_table() {
+fn a_fresh_tracker_records_the_current_schema_with_every_observation_table() {
     let (_dir, t) = fresh();
-    assert_eq!(SCHEMA_VERSION, 9);
     let recorded: String = t.conn().query_row("SELECT value FROM meta WHERE key = 'schema'", [], |r| r.get(0)).unwrap();
-    assert_eq!(recorded, "9");
+    assert_eq!(recorded, SCHEMA_VERSION.to_string());
     assert_eq!(
         names(&t, "table"),
         [

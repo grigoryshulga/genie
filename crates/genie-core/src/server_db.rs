@@ -1253,6 +1253,14 @@ impl ServerDb {
         Ok(())
     }
 
+    /// Fence an earlier process of this exact agent before retrying its durable work.
+    /// Other agents, projects and personal tokens retain their credentials.
+    pub fn revoke_named_agent_tokens(&self, project: &str, name: &str) -> Result<()> {
+        self.conn()
+            .execute("UPDATE api_tokens SET revoked = 1 WHERE kind = 'agent' AND project = ?1 AND member = ?2", params![project, name])?;
+        Ok(())
+    }
+
     /// Drop expired sessions, agent tokens and link codes.
     pub fn sweep(&self) -> Result<()> {
         let t = now();
@@ -1724,6 +1732,28 @@ mod tests {
         db.revoke_agent_tokens("shop", Some("G-1"), None).unwrap();
         assert!(db.resolve_token(&agent).unwrap().is_none());
         assert!(db.resolve_token("gnu_nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn revoking_one_named_agent_fences_its_old_tokens_without_stopping_other_work() {
+        let (_d, db) = db();
+        db.create_project("shop", "Shop", "/tmp/shop", None, None).unwrap();
+        db.create_project("other", "Other", "/tmp/other", None, None).unwrap();
+        let user = db.create_user("owner", "Owner", None, None, false).unwrap();
+        let personal = db.create_user_token(user.id, "request:one").unwrap();
+        let token = |project, name| db.create_agent_token(project, Role::Analyst, name, None, None, ChronoDuration::hours(1)).unwrap();
+        let first = token("shop", "request:one");
+        let second = token("shop", "request:one");
+        let neighbor = token("shop", "request:two");
+        let foreign = token("other", "request:one");
+        db.revoke_named_agent_tokens("shop", "request:one").unwrap();
+        assert!(db.resolve_token(&first).unwrap().is_none());
+        assert!(db.resolve_token(&second).unwrap().is_none());
+        for preserved in [personal, neighbor, foreign] {
+            assert!(db.resolve_token(&preserved).unwrap().is_some());
+        }
+        let replacement = token("shop", "request:one");
+        assert!(db.resolve_token(&replacement).unwrap().is_some());
     }
 
     #[test]

@@ -109,6 +109,11 @@ fn prompt_if_preparing(app: &App, project: &str, task: &str) -> AppResult<()> {
 }
 
 fn prompt(app: &App, project: &str, id: &str, title: &str) -> AppResult<()> {
+    if app.with_tracker(project, |t| t.conversations().conversation_for_task(id))?.is_some() {
+        // Its independent intake owns preparation. Reconciliation must not also send it
+        // to the shared project manager, including after a server restart.
+        return Ok(());
+    }
     let text = format!(
         "Task {id} ({title}) is in preparation. Prepare it: read it, check project memory and documentation, complete its description, scope and acceptance criteria, and link its dependencies. Ask the author only what only they can answer (owner questions). When the Definition of Ready is met, move the task to `ready` yourself, even while its dependencies are still open: the server starts it once they are done and the team limits allow. Do not wait for automation to do it. If it is not worth doing, say so to the author instead of guessing."
     );

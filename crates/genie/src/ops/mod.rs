@@ -26,6 +26,7 @@ mod agents;
 pub mod api;
 mod automations;
 mod chat;
+mod conversations;
 mod decisions;
 mod docs;
 mod intelligence;
@@ -72,6 +73,8 @@ pub enum AgentKind {
     Member,
     /// A one-shot job: no team, no mail.
     Job,
+    /// An incoming conversation response: no team, mail or automation job.
+    Request,
 }
 
 /// Which agents' prompts list an operation in their command table.
@@ -80,6 +83,8 @@ pub enum Listed {
     Nobody,
     /// Every agent that may use it.
     Agents,
+    /// An incoming conversation's worker only.
+    Request,
     /// The orchestrator only, though others may use it.
     Orchestrator,
 }
@@ -253,15 +258,18 @@ impl Entry {
 
     /// Whether an agent may use it: its need, then its role's permissions.
     pub fn for_agent(&self, kind: AgentKind, can: &dyn Fn(Capability) -> bool) -> bool {
+        if kind == AgentKind::Request && !matches!((self.group, self.name), ("conversation" | "task" | "docs", _) | ("manager", "memory")) {
+            return false;
+        }
         let fits = match self.need {
             Need::Read | Need::Write => true,
             Need::Orchestrator => kind == AgentKind::Orchestrator,
-            Need::Agent => kind != AgentKind::Job,
+            Need::Agent => matches!(kind, AgentKind::Orchestrator | AgentKind::Member),
             Need::Member => kind == AgentKind::Member,
             Need::Job => kind == AgentKind::Job,
             Need::Person | Need::Admin => false,
         };
-        let alone = kind == AgentKind::Job && matches!(self.group, "team" | "mail");
+        let alone = matches!(kind, AgentKind::Job | AgentKind::Request) && matches!(self.group, "team" | "mail");
         fits && !alone && (kind == AgentKind::Orchestrator || self.caps.is_empty() || self.caps.iter().any(|c| can(*c)))
     }
 
@@ -270,6 +278,7 @@ impl Entry {
         let listed = match self.listed {
             Listed::Nobody => false,
             Listed::Agents => true,
+            Listed::Request => kind == AgentKind::Request,
             Listed::Orchestrator => kind == AgentKind::Orchestrator,
         };
         listed && self.for_agent(kind, can)
@@ -342,6 +351,7 @@ impl Entry {
 
 /// The groups of operations, in the order people read them.
 pub const GROUPS: &[(&str, &str)] = &[
+    ("conversation", "Incoming project work: responses, tasks, questions and version-bound decisions"),
     ("intelligence", "Task signals, constrained routing history and shadow policy evaluation"),
     ("decision", "Jev judgements: evaluate alternatives, inspect uncertainty and read recorded decisions"),
     ("manager", "Project memory and task managers: dispatch, clarification, execution evidence and retrospectives"),
@@ -373,6 +383,7 @@ pub fn catalog() -> &'static [Entry] {
         intelligence::register(&mut all);
         mail::register(&mut all);
         chat::register(&mut all);
+        conversations::register(&mut all);
         management::register(&mut all);
         docs::register(&mut all);
         automations::register(&mut all);

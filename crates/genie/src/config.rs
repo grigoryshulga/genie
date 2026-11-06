@@ -118,6 +118,10 @@ impl Default for Language {
 /// and `{skill}` — a list: its group is repeated for each skill directory.
 /// `{?name}` adds nothing but keeps its group only when `name` is set
 /// (`["--no-skills", "{?limitSkills}"]`).
+/// Incoming requests give Pi their complete context on stdin. Custom turn commands
+/// can use `{messageFile}` to read that context without an argv size limit; a large
+/// `{message}` contains a private file reference and server-tool recovery instructions.
+/// File delivery is a harness input, so it works even when the model has `files: none`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RuntimeConfig {

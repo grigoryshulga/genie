@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 
 use genie::config::Config;
 use genie::state::App;
+use genie_core::conversations::{Message, Response, ResponseStatus, Submission};
+use genie_core::server_db::ProjectRole;
 use genie_core::team::{CHAT_MAIL, NewMember, NewTeam, ORCHESTRATOR, SendMail};
 use genie_core::work::NewJob;
 use genie_core::{Activity, Actor, CreateInput, Role, Status, TeamState};
@@ -76,6 +78,259 @@ async fn wait_for(app: &Arc<App>, what: &str, timeout: Duration, mut done: impl 
 
 fn status(app: &App) -> Status {
     app.with_tracker("shop", |t| Ok(t.get("G-1")?.status)).unwrap()
+}
+
+async fn incoming(mode: &str) -> Live {
+    live_cfg(&[("REQUEST_MODE", mode)], |cfg| {
+        // Explicit ticks make queue boundaries observable. Incoming requests must
+        // still use one-shot workers when the rest of the project uses sessions.
+        cfg.runtime.enabled = false;
+        cfg.runtime.mode = "sessions".into();
+        cfg.runtime.max_concurrent = 2;
+        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/request-agent.sh");
+        cfg.runtime.command = vec![vec!["bash".into(), script.to_string_lossy().into_owned()], vec!["{message}".into()]];
+    })
+    .await
+}
+
+fn requester(app: &App, login: &str) -> i64 {
+    app.with_server(|db| {
+        let u = db.create_user(login, login, None, None, false)?;
+        db.set_membership("shop", u.id, ProjectRole::Member)?;
+        Ok(u.id)
+    })
+    .unwrap()
+}
+
+fn incoming_response(app: &App, user: i64, text: &str, previous: Option<&Response>) -> Response {
+    app.with_tracker("shop", |t| {
+        t.conversations().submit(Submission {
+            principal: format!("user:{user}"),
+            initiator: None,
+            conversation_id: previous.map(|r| r.conversation_id.clone()),
+            previous_response_id: previous.map(|r| r.id.clone()),
+            input: vec![Message { role: "user".into(), content: text.into() }],
+            idempotency_key: None,
+            fingerprint: text.into(),
+        })
+    })
+    .unwrap()
+}
+
+fn response(app: &App, id: &str) -> Response {
+    app.with_tracker("shop", |t| t.conversations().get(id)).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn incoming_requests_run_concurrently_with_private_history_and_no_manager_session() {
+    let l = incoming("wait").await;
+    let anna = requester(&l.app, "anna");
+    let boris = requester(&l.app, "boris");
+    let first = incoming_response(&l.app, anna, "private-anna-first", None);
+    let other = incoming_response(&l.app, boris, "private-boris-first", None);
+    genie::runtime::tick(&l.app).await.unwrap();
+    let capture = l._dir.path().join("requests");
+    wait_for(&l.app, "both independent request processes", Duration::from_secs(20), |app| {
+        capture.join(format!("{}.cwd", first.id)).exists()
+            && capture.join(format!("{}.cwd", other.id)).exists()
+            && app.sched.snapshot(2, app.slots.available_permits()).running == 2
+    })
+    .await;
+    let first_cwd = std::fs::read_to_string(capture.join(format!("{}.cwd", first.id))).unwrap();
+    let other_cwd = std::fs::read_to_string(capture.join(format!("{}.cwd", other.id))).unwrap();
+    assert_ne!(first_cwd, other_cwd);
+    assert_eq!(l.app.slots.available_permits(), 0, "requests may use the manager's reserved slot");
+    std::fs::write(capture.join("release"), "go").unwrap();
+    wait_for(&l.app, "both persisted replies", Duration::from_secs(20), |app| {
+        response(app, &first.id).status.is_terminal()
+            && response(app, &other.id).status.is_terminal()
+            && app.sched.snapshot(2, app.slots.available_permits()).running == 0
+    })
+    .await;
+    let first = response(&l.app, &first.id);
+    let other = response(&l.app, &other.id);
+    assert_eq!(first.status, ResponseStatus::Completed, "{:?}", first.error);
+    assert_eq!(other.status, ResponseStatus::Completed, "{:?}", other.error);
+    assert!(first.output.contains("private-anna-first"));
+    assert!(!first.output.contains("private-boris-first"));
+    assert!(!other.output.contains("private-anna-first"));
+
+    let next = incoming_response(&l.app, anna, "private-anna-next", Some(&first));
+    genie::runtime::tick(&l.app).await.unwrap();
+    wait_for(&l.app, "reply with only its own earlier context", Duration::from_secs(20), |app| {
+        response(app, &next.id).status.is_terminal() && app.sched.snapshot(2, app.slots.available_permits()).running == 0
+    })
+    .await;
+    let next = response(&l.app, &next.id);
+    assert_eq!(next.status, ResponseStatus::Completed, "{:?}", next.error);
+    let answer = next.output;
+    assert!(answer.contains("private-anna-first"));
+    assert!(answer.contains("private-anna-next"));
+    assert!(!answer.contains("private-boris-first"));
+    assert!(manager_turns(&l.app).is_empty());
+    let turns = l.app.with_server(|db| db.turns("shop", None, 10)).unwrap();
+    assert_eq!(turns.len(), 3);
+    assert!(turns.iter().all(|t| t.agent.starts_with("request:") && t.status == "succeeded"));
+    assert!(turns.iter().all(|t| t.log.is_none() && t.error.is_none()), "shared turn records must not contain private messages");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn incoming_large_unicode_continuations_reach_the_process_without_argv_limits() {
+    for delivery in ["stdin", "file"] {
+        let l = live_cfg(&[("REQUEST_INPUT", delivery)], |cfg| {
+            cfg.runtime.enabled = false;
+            let data = PathBuf::from(&cfg.runtime.env["GENIE_MARK"]).parent().unwrap().to_path_buf();
+            std::fs::create_dir_all(data.join("agents")).unwrap();
+            std::fs::write(data.join("agents/intake.md"), "---\nfiles: none\n---\n").unwrap();
+            let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/request-agent.sh");
+            cfg.runtime.command = if delivery == "stdin" {
+                // A stand-in for Pi's documented stdin transport, without model/network calls.
+                let pi = data.join("pi");
+                std::fs::copy(script, &pi).unwrap();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&pi, std::fs::Permissions::from_mode(0o700)).unwrap();
+                }
+                vec![vec![pi.to_string_lossy().into_owned()], vec!["{message}".into()]]
+            } else {
+                vec![
+                    vec!["bash".into(), script.to_string_lossy().into_owned()],
+                    vec!["--message-file".into(), "{messageFile}".into()],
+                    vec!["{message}".into()],
+                ]
+            };
+        })
+        .await;
+        assert_eq!(l.app.agents().roles["intake"].files, genie::agent_config::FileAccess::None);
+        let user = requester(&l.app, "anna");
+        let earlier = "Ранее🙂\\\"\n".repeat(900);
+        let first = incoming_response(&l.app, user, &earlier, None);
+        genie::runtime::tick(&l.app).await.unwrap();
+        wait_for(&l.app, "the earlier Unicode reply", Duration::from_secs(20), |app| {
+            response(app, &first.id).status.is_terminal() && app.sched.snapshot(4, app.slots.available_permits()).running == 0
+        })
+        .await;
+        assert_eq!(response(&l.app, &first.id).status, ResponseStatus::Completed);
+        let memory = "confirmed-project-context ".repeat(1100);
+        l.app.with_tracker("shop", |t| t.management().remember(&Actor::new("anna", Role::Human), &memory, "owner", None)).unwrap();
+        let input = "Я🙂\\\"\n".repeat(13_500);
+        assert!(input.len() < 128 * 1024, "valid OpenAI input before JSON escaping");
+        let next = incoming_response(&l.app, user, &input, Some(&first));
+        genie::runtime::tick(&l.app).await.unwrap();
+        wait_for(&l.app, "the complete oversized continuation", Duration::from_secs(20), |app| {
+            response(app, &next.id).status.is_terminal() && app.sched.snapshot(4, app.slots.available_permits()).running == 0
+        })
+        .await;
+        let next = response(&l.app, &next.id);
+        assert_eq!(next.status, ResponseStatus::Completed, "{delivery}: {:?}", next.error);
+        let capture = l._dir.path().join("requests");
+        let message = std::fs::read_to_string(capture.join(format!("{}.message", next.id))).unwrap();
+        assert!(message.len() > 128 * 1024, "the old single-argument delivery could not spawn this request");
+        assert_eq!(message, next.output);
+        let context: serde_json::Value = serde_json::from_str(message.lines().last().unwrap()).unwrap();
+        assert_eq!(context["input"][0]["content"], input);
+        assert_eq!(context["history"][0]["input"][0]["content"], earlier);
+        assert_eq!(context["project_memory"][0]["text"], memory);
+        let argument = std::fs::read_to_string(capture.join(format!("{}.argument", next.id))).unwrap();
+        assert!(argument.len() < 4096);
+        assert!(!argument.contains(&input));
+        if delivery == "file" {
+            assert!(argument.contains(&format!("genie conversation show {}", next.id)));
+            assert!(argument.contains("genie manager memory"));
+        }
+        let private_input = l.app.data.join("runtime/shop").join(format!("request:{}", next.id)).join("input.txt");
+        assert_eq!(std::fs::read_to_string(&private_input).unwrap(), message);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(private_input).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        assert!(l.app.with_server(|db| db.turns("shop", None, 10)).unwrap().iter().all(|turn| turn.log.is_none()));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn incoming_workers_must_persist_the_reply_and_process_failures_do_not_loop() {
+    for mode in ["no_reply", "crash"] {
+        let l = incoming(mode).await;
+        let user = requester(&l.app, "anna");
+        let request = incoming_response(&l.app, user, "answer this", None);
+        genie::runtime::tick(&l.app).await.unwrap();
+        wait_for(&l.app, "a visibly failed response", Duration::from_secs(20), |app| {
+            response(app, &request.id).status.is_terminal() && app.sched.snapshot(2, app.slots.available_permits()).running == 0
+        })
+        .await;
+        let request = response(&l.app, &request.id);
+        assert_eq!(request.status, ResponseStatus::Failed);
+        assert!(request.output.is_empty());
+        assert!(request.error.as_deref().unwrap().contains(if mode == "no_reply" { "conversation reply" } else { "exit code" }));
+        genie::runtime::tick(&l.app).await.unwrap();
+        let turns = l.app.with_server(|db| db.turns("shop", None, 10)).unwrap();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].status, "failed");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cancelling_an_incoming_response_stops_its_process_and_preserves_cancellation() {
+    let l = incoming("wait").await;
+    let user = requester(&l.app, "anna");
+    let request = incoming_response(&l.app, user, "will be cancelled", None);
+    genie::runtime::tick(&l.app).await.unwrap();
+    wait_for(&l.app, "the request process", Duration::from_secs(20), |_| {
+        l._dir.path().join("requests").join(format!("{}.cwd", request.id)).exists()
+    })
+    .await;
+    l.app.with_tracker("shop", |t| t.conversations().cancel(&request.id)).unwrap();
+    genie::runtime::cancel_request(&l.app, "shop", &request.id);
+    wait_for(&l.app, "cancelled worker to release its slot", Duration::from_secs(5), |app| {
+        app.sched.snapshot(2, app.slots.available_permits()).running == 0
+    })
+    .await;
+    assert_eq!(response(&l.app, &request.id).status, ResponseStatus::Cancelled);
+    assert!(response(&l.app, &request.id).output.is_empty());
+    let turns = l.app.with_server(|db| db.turns("shop", None, 10)).unwrap();
+    assert_eq!(turns[0].error.as_deref(), Some("incoming response failed; see its private receipt"));
+    assert!(turns[0].log.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_incoming_request_rechecks_the_initiators_membership_before_spawning() {
+    let l = incoming("reply").await;
+    let user = requester(&l.app, "anna");
+    let request = incoming_response(&l.app, user, "queued before access changed", None);
+    l.app.with_server(|db| db.remove_membership("shop", user)).unwrap();
+    genie::runtime::tick(&l.app).await.unwrap();
+    wait_for(&l.app, "revoked request to fail", Duration::from_secs(10), |app| response(app, &request.id).status.is_terminal()).await;
+    let request = response(&l.app, &request.id);
+    assert_eq!(request.status, ResponseStatus::Failed);
+    assert!(l.app.with_server(|db| db.turns("shop", None, 10)).unwrap().is_empty());
+    assert!(!l._dir.path().join("requests").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_interrupted_incoming_response_reuses_its_id_and_revokes_the_previous_worker() {
+    let l = incoming("reply").await;
+    let user = requester(&l.app, "anna");
+    let request = incoming_response(&l.app, user, "recover me", None);
+    l.app.with_tracker("shop", |t| t.conversations().claim(&request.id)).unwrap();
+    let name = format!("request:{}", request.id);
+    let old_token = l
+        .app
+        .with_server(|db| {
+            db.start_turn("shop", &name, None, None, None)?;
+            db.create_role_token("shop", Role::Analyst, Some("intake"), &name, None, None, chrono::Duration::hours(1))
+        })
+        .unwrap();
+    genie::runtime::recover(&l.app).unwrap();
+    assert_eq!(response(&l.app, &request.id).status, ResponseStatus::Queued);
+    assert!(l.app.with_server(|db| db.resolve_token(&old_token)).unwrap().is_none());
+    genie::runtime::tick(&l.app).await.unwrap();
+    wait_for(&l.app, "recovered request's reply", Duration::from_secs(20), |app| response(app, &request.id).status.is_terminal()).await;
+    assert_eq!(response(&l.app, &request.id).status, ResponseStatus::Completed);
+    assert_eq!(l.app.with_tracker("shop", |t| t.conversations().history(&request.conversation_id)).unwrap().len(), 1);
+    assert!(manager_turns(&l.app).is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -11,6 +11,7 @@ pub mod automations;
 pub mod chat;
 pub mod connections;
 pub mod console;
+pub mod conversations;
 pub mod ctx;
 pub mod decisions;
 pub mod docs;
@@ -24,6 +25,7 @@ pub mod mcp_admin;
 pub mod mcp_gateway;
 pub mod mcp_server;
 mod observation;
+pub mod openai;
 pub mod repos;
 pub mod social_auth;
 pub mod tasks;
@@ -151,6 +153,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(tasks::routes())
         .merge(ideas::routes())
         .merge(chat::routes())
+        .merge(conversations::routes())
         .merge(management::routes())
         .merge(teams::routes())
         .merge(decisions::routes())
@@ -171,6 +174,7 @@ pub fn router(app: Arc<App>) -> Router {
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "not found") });
     let router = Router::new()
         .nest("/api", api)
+        .merge(openai::routes())
         .merge(git::routes())
         .route("/mcp", post(mcp_server::endpoint).get(mcp_server::no_stream).delete(mcp_server::no_stream));
     // Client-side routes (/board, /team/G-7…) fall back to the SPA entry.
@@ -190,18 +194,20 @@ pub fn router(app: Arc<App>) -> Router {
 }
 
 async fn guard(State(app): State<Arc<App>>, req: Request, next: Next) -> Response {
+    let openai = req.uri().path().starts_with("/openai/");
     let host = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()).unwrap_or_default();
     let port = app.cfg.port;
     let allowed = ["127.0.0.1", "localhost", "[::1]"].iter().any(|h| host == format!("{h}:{port}"))
         || app.cfg.allow_hosts.iter().any(|h| h == host || format!("{h}:{port}") == host);
     if !allowed {
-        return ApiError::new(StatusCode::MISDIRECTED_REQUEST, "unexpected Host header").into_response();
+        let error = ApiError::new(StatusCode::MISDIRECTED_REQUEST, "unexpected Host header");
+        return if openai { openai::error_response(error) } else { error.into_response() };
     }
     let write = !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
     let bearer = req.headers().contains_key(header::AUTHORIZATION);
     // Webhooks come from other services and carry their own secret instead.
-    // The git proxy takes tokens only (never cookies), so it has no cross-site risk either.
-    let hook = req.uri().path().starts_with("/api/hooks/") || req.uri().path().starts_with("/git/");
+    // The git proxy and OpenAI routes take tokens only (never cookies).
+    let hook = req.uri().path().starts_with("/api/hooks/") || req.uri().path().starts_with("/git/") || openai;
     if write && !bearer && !hook && req.headers().get("x-genie").and_then(|v| v.to_str().ok()) != Some("1") {
         return ApiError::new(StatusCode::FORBIDDEN, "missing X-Genie header").into_response();
     }

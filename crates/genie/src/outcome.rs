@@ -192,7 +192,7 @@ fn give_up(app: &App, key: &AgentKey, task: Option<&str>, error: &str, failures:
             );
             return;
         }
-        AgentKey::Job { .. } => return,
+        AgentKey::Job { .. } | AgentKey::Request { .. } => return,
     };
     let _ = runtime::tell_orchestrator(app, key.project(), task, &text);
 }

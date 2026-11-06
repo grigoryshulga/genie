@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -434,6 +434,7 @@ impl Db {
     fn migrate(&self) -> Result<()> {
         self.add_columns(COLUMN_MIGRATIONS)?;
         self.conn.execute_batch(crate::intelligence::SCHEMA)?;
+        self.conn.execute_batch(crate::conversations::SCHEMA)?;
         // Indexes on migrated columns (an old database gets the columns just above), and on the
         // ones the loops of the background poller query every couple of seconds: the mailbox
         // pass, the open-delivery sweep and the quiet-team streak. Without them these scan
