@@ -36,6 +36,10 @@ pub enum Kind {
         team: Option<String>,
         job: Option<i64>,
     },
+    /// An intake activation; its task scope is persisted with its conversation.
+    Ingress {
+        response: String,
+    },
     /// A step of an automation, acting as the orchestrator.
     Automation,
 }
@@ -69,6 +73,9 @@ pub enum Touch {
 /// its subtasks, and may leave notes on that task's epic. The orchestrator, automations and
 /// people are not limited here (the workflow rules still apply).
 pub fn authorize(app: &App, caller: &Caller, id: &str, touch: Touch) -> AppResult<()> {
+    if let Kind::Ingress { response } = &caller.kind {
+        return crate::conversations::authorize_task(app, caller, response, id);
+    }
     let Kind::Agent { team, job } = &caller.kind else { return Ok(()) };
     if caller.actor.role == Role::Orchestrator {
         return crate::management::authorize_task(app, &caller.project, &caller.actor, id);
@@ -287,6 +294,17 @@ mod lenient {
 // --- commands -----------------------------------------------------------------------------------
 
 pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
+    let mut incoming_initiator = None;
+    if matches!(caller.kind, Kind::Ingress { .. }) {
+        crate::conversations::validate_agent(app, &caller.project, &caller.actor.name)?;
+        if let Kind::Ingress { response } = &caller.kind {
+            let r = app.with_tracker(&caller.project, |t| t.conversations().get(response))?;
+            incoming_initiator = Some(crate::conversations::current_principal(app, &caller.project, &r.principal, true)?);
+        }
+        if body.parent.is_some() {
+            return Err(AppError::Bad("incoming conversations create one primary task; continue its existing work".into()));
+        }
+    }
     if genie_core::management::managed_task(&caller.actor.name).is_some() {
         return Err(AppError::Forbidden("task managers ask the project manager to create or split work".into()));
     }
@@ -301,7 +319,7 @@ pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
     let inbox = match caller.kind {
         Kind::Person => body.draft != Some(true),
         Kind::Automation => body.inbox == Some(true),
-        Kind::Agent { .. } => false,
+        Kind::Agent { .. } | Kind::Ingress { .. } => false,
     };
     let input = CreateInput {
         title: body.title,
@@ -315,15 +333,40 @@ pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
         merge_strategy: body.merge_strategy,
         plan: body.plan,
         status: inbox.then_some(Status::Inbox),
-        quiet: false,
+        quiet: matches!(caller.kind, Kind::Ingress { .. }),
     };
-    let task = app.with_tracker(&caller.project, |t| t.create(&caller.actor, input))?;
+    let task = app.with_tracker(&caller.project, |t| {
+        t.tx(|| {
+            if let Kind::Ingress { response } = &caller.kind {
+                let r = t.conversations().get(response)?;
+                if r.status != genie_core::conversations::ResponseStatus::InProgress {
+                    return Err(genie_core::GenieError::Denied("this request is no longer running".into()));
+                }
+                // Retrying a worker after a crash must not create a second primary task.
+                if let Some(id) = t.conversations().tasks(&r.conversation_id)?.first() {
+                    return t.get(id);
+                }
+                let task = t.create(&caller.actor, input)?;
+                t.conversations().link_task(&r.conversation_id, &task.id)?;
+                // The durable requester supplies the task manager's identity and keys too.
+                return t.update(
+                    &Actor::new("genie", Role::Orchestrator),
+                    &task.id,
+                    UpdateInput { assignee: Some(incoming_initiator), ..Default::default() },
+                );
+            }
+            t.create(&caller.actor, input)
+        })
+    })?;
     changed(app);
     Ok(task)
 }
 
 pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResult<Task> {
     authorize(app, caller, id, Touch::Edit)?;
+    if matches!(caller.kind, Kind::Ingress { .. }) && body.parent.is_some() {
+        return Err(AppError::Forbidden("incoming work cannot change a task's parent".into()));
+    }
     if genie_core::management::managed_task(&caller.actor.name).is_some()
         && (body.task_type.is_some()
             || body.description.is_some()
@@ -369,7 +412,10 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
         remove_deps: body.remove_deps.unwrap_or_default(),
         parent: body.parent,
     };
-    let task = app.with_tracker(&caller.project, |t| t.update(&caller.actor, id, input))?;
+    let task = app.with_tracker(&caller.project, |t| {
+        crate::conversations::ensure_active(t, &caller.actor.name)?;
+        t.update(&caller.actor, id, input)
+    })?;
     // A new person responsible hears of it (not when they assign themselves).
     if let Some(login) = task.assignee.clone().filter(|l| before.as_ref() != Some(l) && *l != caller.actor.name) {
         let users = crate::notify::resolve(app, &caller.project, &[format!("@{login}")], &json!({}))?;
@@ -390,6 +436,26 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
 
 /// Move a task. Blocking: the delivery gate asks the git host about the checks.
 pub fn set_status(app: &App, caller: &Caller, id: &str, body: StatusBody) -> AppResult<Task> {
+    set_status_inner(app, caller, id, body, None)
+}
+
+/// Owner acceptance and the corresponding version-bound decision commit together.
+pub(crate) fn accept_proposal(app: &App, caller: &Caller, proposal: &str) -> AppResult<Task> {
+    let p = app.with_tracker(&caller.project, |t| t.conversations().proposal(proposal))?;
+    if !caller.is_person() {
+        return Err(AppError::Forbidden("a person accepts an incoming result".into()));
+    }
+    crate::git::delivery::gate(app, &caller.project, &p.task, Status::Done).map_err(AppError::Conflict)?;
+    set_status_inner(
+        app,
+        caller,
+        &p.task,
+        StatusBody::to(Status::Done, Some(format!("Accepted proposal {} for its recorded result version.", p.id))),
+        Some(proposal),
+    )
+}
+
+fn set_status_inner(app: &App, caller: &Caller, id: &str, body: StatusBody, proposal: Option<&str>) -> AppResult<Task> {
     authorize(app, caller, id, Touch::Edit)?;
     let to = body.status;
     // An agent's documentation stays in a changeset: the task is not done while it is open.
@@ -427,12 +493,40 @@ pub fn set_status(app: &App, caller: &Caller, id: &str, body: StatusBody) -> App
     let agents = app.agents();
     let task = app.with_tracker(&caller.project, |t| {
         t.tx(|| {
+            crate::conversations::ensure_active(t, &caller.actor.name)?;
+            if let Some(proposal) = proposal {
+                let p = crate::conversations::check_proposal(t, proposal, genie_core::conversations::ProposalAction::Accept)?;
+                if p.task != t.normalize_id(id)? {
+                    return Err(genie_core::GenieError::Denied("the proposal names another task".into()));
+                }
+                if p.status == genie_core::conversations::ProposalStatus::Approved {
+                    return t.get(id);
+                }
+                if t.management().has_blocking_questions(id)? {
+                    return Err(genie_core::GenieError::invalid("answer blocking clarifications before accepting this result"));
+                }
+            }
             if matches!(to, Status::InProgress | Status::Done)
                 && let Some(team) = t.get(id)?.team
             {
                 crate::intelligence::validate_team_checks(t, &agents, &policy.intelligence, &team)?;
             }
-            t.set_status(&caller.actor, id, to, opts)
+            let task = t.set_status(&caller.actor, id, to, opts)?;
+            if let Some(proposal) = proposal {
+                t.conversations().decide(proposal, true)?;
+            }
+            if crate::conversations::has_result(&task)
+                && let Some(conversation) = t.conversations().conversation_for_task(&task.id)?
+                && !t.management().has_blocking_questions(&task.id)?
+            {
+                t.conversations().propose(
+                    &conversation,
+                    &task.id,
+                    genie_core::conversations::ProposalAction::Accept,
+                    &crate::conversations::task_version(t, &task.id)?,
+                )?;
+            }
+            Ok(task)
         })
     })?;
     if CLOSED.contains(&to) {
@@ -477,7 +571,10 @@ fn owner_action(app: &App, project: &str, task: &str, action: OwnerAction) -> Ap
 pub fn comment(app: &App, caller: &Caller, id: &str, body: CommentBody) -> AppResult<Task> {
     authorize(app, caller, id, Touch::Note)?;
     let kind = if caller.is_person() { CommentKind::Owner } else { body.kind.unwrap_or(CommentKind::Note) };
-    let task = app.with_tracker(&caller.project, |t| t.comment(&caller.actor, id, &body.text, kind))?;
+    let task = app.with_tracker(&caller.project, |t| {
+        crate::conversations::ensure_active(t, &caller.actor.name)?;
+        t.comment(&caller.actor, id, &body.text, kind)
+    })?;
     // People named with `@login` hear of it — from people, agents and automations alike.
     let me = app.with_server(|db| db.user_by_login(&caller.actor.name))?.map(|u| u.id);
     let users: Vec<i64> = mentioned(app, &caller.project, &body.text)?.into_iter().filter(|u| Some(*u) != me).collect();

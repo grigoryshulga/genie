@@ -50,6 +50,42 @@ pub fn dispatch_on_behalf(app: &App, project: &str, actor: &Actor, task: &str, c
     dispatch_with(app, project, actor, task, Some(chat))
 }
 
+/// Dispatch authorized by a durable incoming proposal, independently of the chat transport.
+/// The caller has checked its requester; version, dispatch and decision commit together.
+pub(crate) fn dispatch_proposal(app: &App, project: &str, actor: &Actor, proposal: &str) -> AppResult<TaskManager> {
+    if actor.role != Role::Human {
+        return Err(AppError::Forbidden("a person approves an incoming dispatch".into()));
+    }
+    let p = app.with_tracker(project, |t| t.conversations().proposal(proposal))?;
+    if app.agents().orchestrator().is_none() {
+        return Err(AppError::Bad("task-manager role is missing".into()));
+    }
+    if let Some(exceeded) = crate::budget::check(app, project, Some(&p.task))? {
+        return Err(AppError::Conflict(exceeded.explain()));
+    }
+    let manager = app.with_tracker(project, |t| {
+        t.tx(|| {
+            let p = crate::conversations::check_proposal(t, proposal, genie_core::conversations::ProposalAction::Dispatch)?;
+            if p.status == genie_core::conversations::ProposalStatus::Approved {
+                return t.management().manager(&p.task)?.ok_or_else(|| GenieError::not_found("approved task manager"));
+            }
+            let manager = t.management().dispatch(actor, &p.task)?;
+            if p.status == genie_core::conversations::ProposalStatus::Pending {
+                t.comment(
+                    actor,
+                    &p.task,
+                    &format!("Dispatched on behalf of {} through proposal {}.", actor.name, p.id),
+                    CommentKind::Note,
+                )?;
+                t.conversations().decide(proposal, true)?;
+            }
+            Ok(manager)
+        })
+    })?;
+    crate::tasks::changed(app);
+    Ok(manager)
+}
+
 fn dispatch_with(app: &App, project: &str, actor: &Actor, task: &str, chat: Option<i64>) -> AppResult<TaskManager> {
     project_manager(actor)?;
     let manual = app.with_server(|db| db.project(project))?.autonomy == "manual";
@@ -70,6 +106,7 @@ fn dispatch_with(app: &App, project: &str, actor: &Actor, task: &str, chat: Opti
     }
     let manager = app.with_tracker(project, |t| {
         t.tx(|| {
+            crate::conversations::ensure_active(t, &actor.name)?;
             let fresh = t.management().manager(&t.normalize_id(task)?)?.is_none_or(|m| m.state == "completed");
             let manager = t.management().dispatch(actor, task)?;
             // The note records who asked, next to the task; a repeated call that finds a manager running adds nothing.

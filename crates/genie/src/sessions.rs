@@ -377,7 +377,7 @@ const RESTART_NOTE: &str = "[genie] The genie server restarted after a crash. Co
 /// member without a process. One letter fixes both: the same note the agent-crash path writes.
 ///
 /// No-op in `turns` mode: there the interrupted turn released its lease and its mail runs again.
-/// Jobs are skipped — `requeue_running_jobs` already re-runs them.
+/// Jobs and incoming requests are skipped — their durable records requeue them.
 ///
 /// The already acknowledged mail is *not* offered again: it is in the resumed conversation, and
 /// re-delivering it would duplicate it (requirement 2 of G-132).
@@ -386,7 +386,7 @@ pub fn resume_after_restart(app: &App, turns: &[Turn]) {
         return;
     }
     let mut told = 0;
-    for t in turns.iter().filter(|t| t.job.is_none()) {
+    for t in turns.iter().filter(|t| t.job.is_none() && !t.agent.starts_with("request:")) {
         let key = match (&t.member, &t.team) {
             (Some(member), Some(team)) => AgentKey::Member { project: t.project.clone(), team: team.clone(), member: member.clone() },
             _ => AgentKey::mailbox(&t.project, &t.agent),
@@ -604,7 +604,7 @@ fn clip(text: &str, n: usize) -> String {
 pub(crate) fn idle_window(app: &App, key: &AgentKey) -> Duration {
     let secs = match key {
         AgentKey::Orchestrator { .. } | AgentKey::TaskManager { .. } => app.cfg.runtime.manager_idle_stop_secs,
-        AgentKey::Member { .. } | AgentKey::Job { .. } => app.cfg.runtime.idle_stop_secs,
+        AgentKey::Member { .. } | AgentKey::Job { .. } | AgentKey::Request { .. } => app.cfg.runtime.idle_stop_secs,
     };
     Duration::from_secs(secs.max(1))
 }
@@ -613,7 +613,7 @@ pub(crate) fn idle_window(app: &App, key: &AgentKey) -> Duration {
 /// then task managers, the project manager last; within a rank, the one idle the longest.
 fn eviction_order(key: &AgentKey, idle_for: Duration) -> (u8, Reverse<Duration>) {
     let rank = match key {
-        AgentKey::Member { .. } | AgentKey::Job { .. } => 0,
+        AgentKey::Member { .. } | AgentKey::Job { .. } | AgentKey::Request { .. } => 0,
         AgentKey::TaskManager { .. } => 1,
         AgentKey::Orchestrator { .. } => 2,
     };

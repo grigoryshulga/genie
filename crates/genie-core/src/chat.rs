@@ -286,8 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn a_schema_8_tracker_upgrades_to_schema_9_with_the_chat_table() {
-        assert_eq!(SCHEMA_VERSION, 9);
+    fn a_schema_8_tracker_upgrades_to_the_current_schema_with_the_chat_table() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join(".genie");
         let t = Tracker::init(&root, None, None).unwrap();
@@ -306,7 +305,7 @@ mod tests {
         assert_eq!(migrate::version(&file).unwrap(), Some(8), "checking does not write");
 
         let t = Tracker::open(&root).unwrap();
-        assert_eq!(migrate::version(&file).unwrap(), Some(SCHEMA_VERSION), "the upgrade records schema 9");
+        assert_eq!(migrate::version(&file).unwrap(), Some(SCHEMA_VERSION), "the upgrade records the current schema");
         assert_eq!(t.get(&task).unwrap().title, "Legacy", "existing tasks survive the upgrade");
         let posted = t.chat().post("alice", Role::Human, "after the upgrade", None).unwrap();
         assert_eq!(posted.id, 1);

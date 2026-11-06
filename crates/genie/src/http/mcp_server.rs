@@ -102,14 +102,18 @@ async fn caller(app: &Arc<App>, ctx: &Ctx, headers: &HeaderMap) -> ApiResult<Cal
         Who::Agent { project, role, role_id, name, team, job } => {
             let token = bearer(headers).ok_or_else(ApiError::unauthorized)?;
             let kind = match (role, job) {
+                _ if role_id.as_deref() == Some("intake") => AgentKind::Request,
                 (Role::Orchestrator, _) => AgentKind::Orchestrator,
                 (_, Some(_)) => AgentKind::Job,
                 _ => AgentKind::Member,
             };
-            let caps = role_id
+            let mut caps = role_id
                 .as_deref()
                 .and_then(|id| app.agents().roles.get(id).map(|r| r.capabilities.clone()))
                 .unwrap_or_else(|| genie_core::class_capabilities(*role));
+            if kind == AgentKind::Request {
+                caps.retain(|c| crate::conversations::intake_capability(*c));
+            }
             // Resolve the task manager, actual team task or job scope.
             let task = match job {
                 Some(j) => {

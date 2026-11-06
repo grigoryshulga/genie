@@ -12,6 +12,7 @@ pub mod cli;
 pub mod clock;
 pub mod config;
 pub mod context;
+pub mod conversations;
 pub mod decisions;
 pub mod doctor;
 pub mod engine;

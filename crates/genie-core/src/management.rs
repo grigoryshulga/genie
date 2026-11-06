@@ -273,7 +273,12 @@ impl Management<'_> {
             self.0.conn().execute("INSERT INTO clarifications(task, brief_version, question, blocking, created) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![m.task, m.brief_version, question, blocking, now()])?;
             let id = self.0.conn().last_insert_rowid();
-            self.notify(ORCHESTRATOR, &actor.name, &format!("Clarification #{id} for {} (brief {}): {question}\nAnswer with a verified source using `genie manager answer`, or escalate to a person using `genie manager escalate`.", m.task, m.brief_version), Some(&m.task))?;
+            if let Some(conversation) = self.0.conversations().conversation_for_task(&m.task)? {
+                self.0.conn().execute("UPDATE clarifications SET state = 'owner' WHERE id = ?1", [id])?;
+                self.event("conversation.question", &m.task, actor, json!({"conversation_id":conversation,"question":id}))?;
+            } else {
+                self.notify(ORCHESTRATOR, &actor.name, &format!("Clarification #{id} for {} (brief {}): {question}\nAnswer with a verified source using `genie manager answer`, or escalate to a person using `genie manager escalate`.", m.task, m.brief_version), Some(&m.task))?;
+            }
             self.event("manager.clarification", &m.task, actor, json!({ "id": id }))?;
             self.clarifications(&m.task)?.into_iter().find(|q| q.id == id).ok_or_else(|| GenieError::not_found("clarification"))
         })

@@ -85,7 +85,9 @@ impl Access {
     }
     /// The caller of a task command.
     pub fn caller(&self) -> crate::tasks::Caller {
-        let kind = if self.agent {
+        let kind = if self.agent && self.agent_role_id.as_deref() == Some("intake") {
+            crate::tasks::Kind::Ingress { response: crate::conversations::request_id(&self.actor.name).unwrap_or_default().into() }
+        } else if self.agent {
             crate::tasks::Kind::Agent { team: self.agent_team.clone(), job: self.agent_job }
         } else {
             crate::tasks::Kind::Person
@@ -192,6 +194,22 @@ impl FromRequestParts<Arc<App>> for Ctx {
         if bearer.is_some() && matches!(who, Who::Anonymous) {
             return Err(ApiError::new(StatusCode::UNAUTHORIZED, "invalid or expired token"));
         }
+        if let Who::Agent { project, role, role_id, name, .. } = &who
+            && (role_id.as_deref() == Some("intake") || crate::conversations::request_id(name).is_some())
+        {
+            if *role != Role::Analyst || role_id.as_deref() != Some("intake") {
+                return Err(ApiError::new(StatusCode::FORBIDDEN, "invalid intake token scope"));
+            }
+            if !intake_route(parts.method.as_str(), parts.uri.path()) {
+                return Err(ApiError::new(StatusCode::FORBIDDEN, "this endpoint is outside the intake agent's scope"));
+            }
+            // The final assistant message reports usage after the reply has committed.
+            // Accounting is the sole permitted write after completion/cancellation.
+            if !matches!(parts.uri.path(), "/api/agent/usage" | "/agent/usage") {
+                let (project, name) = (project.clone(), name.clone());
+                app.blocking(move |app| crate::conversations::validate_agent(app, &project, &name)).await?;
+            }
+        }
         Ok(Ctx { who, project_hint, project_strict, session })
     }
 }
@@ -224,7 +242,14 @@ impl Ctx {
                 }
                 // The role's permissions come from the configuration at the time of the
                 // request, so a revoked permission stops working at once.
-                let caps = role_id.as_deref().and_then(|id| app.agents().roles.get(id).map(|r| r.capabilities.clone()));
+                let mut caps = role_id.as_deref().and_then(|id| {
+                    app.agents().roles.get(id).map(|r| {
+                        r.capabilities.iter().copied().filter(|c| id != "intake" || crate::conversations::intake_capability(*c)).collect()
+                    })
+                });
+                if role_id.as_deref() == Some("intake") && caps.is_none() {
+                    caps = Some(Vec::new());
+                }
                 let actor = match caps {
                     Some(caps) if *role != Role::Orchestrator => Actor::with_caps(name.clone(), *role, caps),
                     _ => Actor::new(name.clone(), *role),
@@ -275,4 +300,36 @@ impl Ctx {
             }
         }
     }
+}
+
+/// Intake uses an explicitly bounded surface, including when called directly over
+/// HTTP. Generic Member-only automation, chat and team endpoints are not authority
+/// to affect unrelated work. Task/conversation handlers enforce the finer scope.
+fn intake_route(method: &str, path: &str) -> bool {
+    let path = path.strip_prefix("/api").unwrap_or(path);
+    let segments: Vec<_> = path.trim_start_matches('/').split('/').collect();
+    matches!(
+        (method, segments.as_slice()),
+        ("POST", ["mcp"] | ["agent", "usage"])
+            | (
+                "GET",
+                ["meta"]
+                    | ["tasks"]
+                    | ["tasks", _]
+                    | ["tasks", _, "artifacts", _]
+                    | ["tasks", _, "docs-impact"]
+                    | ["management", "memory"]
+                    | ["conversations", _]
+            )
+            | ("GET", ["docs", ..])
+            | (
+                "POST",
+                ["tasks"]
+                    | ["tasks", _, "status" | "comments" | "artifacts" | "block"]
+                    | ["tasks", _, "acceptance", _]
+                    | ["conversations", _, "reply" | "tasks" | "proposals" | "dispatch"],
+            )
+            | ("PATCH", ["tasks", _])
+            | ("DELETE", ["tasks", _, "block"])
+    )
 }

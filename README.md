@@ -13,7 +13,7 @@
 - GitHub/GitLab repositories, PRs/MRs, CI feedback, and server-enforced delivery policies.
 - A Git-backed, Obsidian-compatible knowledge vault with search and publication review.
 - Durable automations, Telegram/email notifications, usage tracking, and budgets.
-- Web UI, CLI, and MCP access to the same operations; projects with or without code.
+- Web UI, CLI, MCP, and OpenAI-compatible project entrypoints; projects with or without code.
 
 ## Run with Docker
 
@@ -24,6 +24,37 @@ printf '%s\n' 'replace-with-a-strong-password' | docker compose -f docker/docker
 ```
 
 Open [localhost:7420](http://127.0.0.1:7420). Configure role models and provider keys in Settings before starting agents. See [Docker deployment](https://grigoryshulga.github.io/genie/platform/docker) for storage, network access, sandboxing, and updates.
+
+## OpenAI-compatible project entrypoint
+
+Set a client's base URL to `http://localhost:7420/openai/projects/<project>/v1`, use a personal Genie API token and select model `genie`. Each new conversation gets an independent agent with project knowledge and its own durable history. The `intake` role uses its configured model, or the project manager's configured model.
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:7420/openai/projects/my-project/v1",
+    api_key=os.environ["GENIE_API_TOKEN"],
+)
+response = client.responses.create(
+    model="genie",
+    input="Prepare an order export and return the result for my approval.",
+    background=True,
+    extra_headers={"Idempotency-Key": "order-export-001"},
+)
+print(response.id, response.status)
+# Retrieve later; continue a terminal response using previous_response_id.
+print(client.responses.retrieve(response.id))
+```
+
+Supported: text Chat Completions and Responses, JSON and SSE, Responses background retrieval and cancellation. SSE sends keepalives while working, then the persisted final answer; it does not stream intermediate model tokens. Unsupported options, tools and modalities return an error. Retrying with the same `Idempotency-Key` and payload returns the same response; without a key, a new request is new work.
+
+The default Pi harness receives request context through stdin. Custom `runtime.command` templates can use `{messageFile}` to read the full context without process argument limits; oversized `{message}` values become a reference to that private file and server commands for retrieving the context.
+
+Continue with `previous_response_id` in Responses or the returned `X-Genie-Conversation` header in either API. An ordinary chat client can also send `/status <task>`, `/continue <task> <text>`, `/answer <task> <question-id> <text>`, or `/approve <proposal>` / `/reject <proposal>`; the server routes these to the requester's original conversation. Imported chat history supplies context, never authorization.
+
+Each conversation has one primary task. Manual projects require an explicit dispatch approval. Result approvals bind to a specific task and artifact version; changed results need a new proposal. A completed response may report an ongoing task: later questions, artifacts and proposals remain available through `/status` or `GET /api/conversations/<conversation-id>` with `X-Genie-Project`. Cancelling a response stops its intake agent; already released tasks keep their own lifecycle.
 
 ## Build from source
 

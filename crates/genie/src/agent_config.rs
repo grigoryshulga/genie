@@ -42,6 +42,7 @@ const BUILTIN_ROLES: &[(&str, &str)] = &[
     ("doc-merger", include_str!("../../../agents/doc-merger.md")),
     ("researcher", include_str!("../../../agents/researcher.md")),
     ("planner", include_str!("../../../agents/planner.md")),
+    ("intake", include_str!("../../../agents/intake.md")),
 ];
 
 const BUILTIN_TEAMS: &[(&str, &str)] = &[
@@ -1757,6 +1758,14 @@ fn resolve_roles(
     {
         project_manager.model = model;
     }
+    // The independent entrypoint starts with the project's existing intake model.
+    // Only the model is shared: its analyst class and scoped permissions stay separate.
+    let model = roles.get("project-manager").and_then(|r| r.model.clone());
+    if let Some(intake) = roles.get_mut("intake")
+        && intake.model.is_none()
+    {
+        intake.model = model;
+    }
     // PD24: a role without a model cannot run — the administrator must assign one.
     for (id, def) in &roles {
         if def.model.is_none() {
@@ -2209,8 +2218,28 @@ mod tests {
         assert_eq!(a.teams["research"].stage, Stage::Refinement);
         assert_eq!(a.teams["idea"].members.len(), 1);
         assert_eq!(a.roles["planner"].class, Role::Analyst);
+        assert_eq!(a.roles["intake"].class, Role::Analyst);
+        assert!(!a.roles["intake"].can(Capability::DocsWrite));
+        assert!(!a.roles["intake"].can(Capability::MailOrchestrator));
+        assert!(!a.roles["intake"].can(Capability::StatusStart));
         assert_eq!(a.teams["abap"].workspace, Workspace::Repo);
         assert!(a.teams["abap"].members[1].instructions.as_deref().unwrap().contains("read-only"));
+    }
+
+    #[test]
+    fn the_entrypoint_shares_the_project_model_but_keeps_its_own_permissions() {
+        let (_d, a) = load(&[("agents/project-manager.md", "---\nmodel: fake/project\n---\n")]);
+        let intake = &a.roles["intake"];
+        assert_eq!(intake.model.as_deref(), Some("fake/project"));
+        assert_eq!(intake.class, Role::Analyst);
+        assert_eq!(intake.files, FileAccess::Read);
+        assert!(!intake.can(Capability::StatusApprove));
+        assert!(!a.problems.iter().any(|p| p.item == "role:intake"));
+        let (_d, a) = load(&[
+            ("agents/project-manager.md", "---\nmodel: fake/project\n---\n"),
+            ("agents/intake.md", "---\nmodel: fake/intake\n---\n"),
+        ]);
+        assert_eq!(a.roles["intake"].model.as_deref(), Some("fake/intake"));
     }
 
     #[test]

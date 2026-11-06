@@ -45,7 +45,15 @@ pub async fn tracker<T: Send + 'static>(
     f: impl FnOnce(&Tracker) -> Result<T> + Send + 'static,
 ) -> ApiResult<T> {
     let slug = access.project.clone();
-    let out = app.blocking(move |app| app.with_tracker(&slug, f)).await?;
+    let name = access.actor.name.clone();
+    let out = app
+        .blocking(move |app| {
+            app.with_tracker(&slug, |t| {
+                crate::conversations::ensure_active(t, &name)?;
+                f(t)
+            })
+        })
+        .await?;
     Ok(out)
 }
 
