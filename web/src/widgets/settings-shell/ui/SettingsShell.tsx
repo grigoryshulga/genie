@@ -1,4 +1,5 @@
-// Profile and administration use separate menus and share the project switcher.
+// The personal settings (account, appearance, keys): their own mode with a way back to work. Project and
+// server administration live in the management hub under the top bar instead (ManageShell).
 //
 // The rail is the one place that names the settings area: a card-like column of
 // section links on the left, the page itself on the right. Pages no longer repeat
@@ -6,16 +7,12 @@
 
 import { Suspense } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
-import { OBSERVATION_TEXT } from "@/entities/observation";
 import { PROJECT_ROLE_NAME } from "@/entities/project";
 import { useSession, useSwitchProject } from "@/entities/session";
-import { canManageProject, lastWorkRoute } from "@/shared/lib";
+import { lastWorkRoute } from "@/shared/lib";
 import { Icon } from "@/shared/ui";
 import { SettingsLoading } from "./SettingsLoading.tsx";
 import "@/shared/ui/settings.css";
-
-/** Sections that are not in `items` but belong to the "tools" tab of the rail. */
-const TOOLS_SECTIONS = /\/(roles|templates|skills|history|automations|decisions|health|vault)$/;
 
 export function SettingsShell() {
   const session = useSession().data;
@@ -24,24 +21,14 @@ export function SettingsShell() {
   const { pathname } = useLocation();
   const project = session?.projects.find((p) => p.slug === session.project);
   const many = (session?.projects.length ?? 0) > 1;
-  const projectMode = pathname.startsWith("/manage/project");
-  const serverMode = pathname.startsWith("/manage/server");
-  const title = projectMode ? "Управление проектом" : serverMode ? "Глобальные настройки" : "Настройки";
-  const admin = canManageProject(!!session?.user.isAdmin, project?.role);
-  const items = projectMode ? [
-    ["general", "Общие настройки"], ["repos", "Репозитории и окружение"],
-    ["tools", "Инструменты"], ["automation-runs", "Автоматизации"], ["observations", OBSERVATION_TEXT.nav], ["observation", OBSERVATION_TEXT.section], ["people", "Доступ и роли"],
-    ["channels", "Каналы связи"], ["knowledge", "База знаний"],
-  ].filter(([id]) => admin || id === "automation-runs" || id === "observations") : serverMode ? [
-    ["projects", "Проекты"], ["accounts", "Учётные записи"],
-    ["providers", "Провайдеры"], ["tools", "Инструменты"],
-  ] : [
+  const title = "Настройки";
+  const items = [
     ["account", "Аккаунт"], ["appearance", "Оформление"], ["security", "Вход и пароль"], ["telegram", "Telegram"],
     ["keys", "Провайдеры и ключи"], ["tokens", "Токены CLI и MCP"],
   ];
-  const base = projectMode ? "/manage/project" : serverMode ? "/manage/server" : "/settings/me";
+  const base = "/settings/me";
   const sub = session?.mode === "local" ? "локальный режим" : project ? `${project.name} · ${PROJECT_ROLE_NAME[project.role]}` : "genie";
-  const active = (id: string) => pathname === `${base}/${id}` || (id === "tools" && TOOLS_SECTIONS.test(pathname)) || (id === "observations" && pathname.startsWith(`${base}/observation/`));
+  const active = (id: string) => pathname === `${base}/${id}`;
   return (
     <div className="app settings-mode">
       <nav className="st-rail" aria-label={title}>

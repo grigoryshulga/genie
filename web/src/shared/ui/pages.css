@@ -9,7 +9,7 @@
 .settings .auth-form { width: min(340px, 100%); gap: 14px; }
 .settings .auth-form > .g-btn { height: 32px; font-weight: 400; align-self: flex-start; }
 
-/* Two-pane pages: automations and proposals */
+/* Two-pane pages: automations, notifications and the Changes feed */
 /* Every side column is the same width; its head (`.side-head`) sits flush at the top, like the screen's title row. */
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
 .split.narrow { grid-template-columns: 300px minmax(0, 1fr); }
@@ -101,9 +101,7 @@
 .notif-empty { display: flex; flex-direction: column; align-items: center; gap: var(--g-space-4); padding: var(--g-space-7) var(--g-space-5); text-align: center; }
 .notif-skeletons .notif-row { grid-template-columns: 6px 18px minmax(0, 1fr); }
 
-/* Proposals */
-.proposal-state { padding: var(--g-space-4) 40px 0; display: flex; align-items: center; gap: var(--g-space-3); font-size: var(--g-text-dense); color: var(--g-text-2); }
-.proposal-note { margin: 0; padding: var(--g-space-3) 40px 0; color: var(--g-text-2); line-height: 1.55; }
+/* Two compared bodies (the agents' history uses it too) */
 .compare { margin: 16px 40px 40px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); overflow: hidden; }
 .compare > div { min-width: 0; display: flex; flex-direction: column; }
 .compare > div + div { border-left: 1px solid var(--g-border); }
@@ -115,7 +113,6 @@
   .split, .split.narrow { grid-template-columns: 1fr; }
   .split-list { border-right: 0; border-bottom: 1px solid var(--g-border); max-height: 40vh; }
   .pane-head, .pane-body { padding-left: 16px; padding-right: 16px; }
-  .proposal-state, .proposal-note { padding-left: 16px; padding-right: 16px; }
   .compare { margin: 16px; grid-template-columns: 1fr; }
   .compare > div + div { border-left: 0; border-top: 1px solid var(--g-border); }
   .run-row { grid-template-columns: 110px minmax(0, 1fr) 60px; }

@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use genie_core::db::SCHEMA_VERSION;
 use genie_core::server_db::{SERVER_SCHEMA_VERSION, ServerDb};
+use genie_core::vault::{REQUIRED_PAGE_LIMIT, VaultConfig, parse_doc};
 use serde::Serialize;
 
 use crate::agent_config::AgentConfig;
@@ -86,6 +87,7 @@ pub fn run(data: &Path, cfg: &Config, agents: &AgentConfig, web: Option<&Path>) 
     git(&mut out, &repos);
     git_hosts(&mut out, data);
     vault(&mut out, data, cfg);
+    required_reading(&mut out, data, cfg);
     channels(&mut out, cfg);
     network(&mut out, cfg);
     out.0
@@ -781,6 +783,53 @@ fn vault(out: &mut Out, data: &Path, cfg: &Config) {
     }
 }
 
+/// Required agent reading that is missing or too long to be useful. Pages over the
+/// limit are still delivered whole; the check only names them.
+fn required_reading(out: &mut Out, data: &Path, cfg: &Config) {
+    let root = cfg.vault_path(data);
+    let Ok(text) = std::fs::read_to_string(root.join(".genie/vault.json")) else { return };
+    let Ok(config) = serde_json::from_str::<VaultConfig>(&text) else { return };
+    let mut checked = 0;
+    let mut problems = 0;
+    for space in config.spaces.values() {
+        for required in &space.required {
+            checked += 1;
+            let page = required.page.trim();
+            let abs = root.join(page);
+            if page.is_empty() || !abs.starts_with(&root) {
+                out.warn(
+                    "vault",
+                    format!("required page {page:?} is not a vault-relative path"),
+                    "use a path inside the vault, such as genie/agents/guide.md, in .genie/vault.json",
+                );
+                problems += 1;
+                continue;
+            }
+            let Ok(markdown) = std::fs::read_to_string(&abs) else {
+                out.warn(
+                    "vault",
+                    format!("required page {page} is missing"),
+                    "create the page or remove it from the space's required list in .genie/vault.json",
+                );
+                problems += 1;
+                continue;
+            };
+            let chars = parse_doc(&markdown, page).body.chars().count();
+            if chars > REQUIRED_PAGE_LIMIT {
+                out.warn(
+                    "vault",
+                    format!("required page {page} has {chars} characters (limit {REQUIRED_PAGE_LIMIT}): it is delivered whole"),
+                    "shorten it or split it into pages the role reads on demand",
+                );
+                problems += 1;
+            }
+        }
+    }
+    if checked > 0 && problems == 0 {
+        out.ok("vault", format!("{checked} required page(s) are within {REQUIRED_PAGE_LIMIT} characters"));
+    }
+}
+
 fn channels(out: &mut Out, cfg: &Config) {
     match &cfg.telegram {
         Some(t) if !t.token.trim().is_empty() => out.ok("channels", "Telegram bot configured"),
@@ -929,6 +978,28 @@ mod tests {
         let c = cfg(json(serde_json::json!({ "input": 1.0, "output": 2.0, "cacheRead": 0.1, "cacheWrite": 1.25 })));
         agents_and_models(&mut out, data.path(), &c, &agents(&c));
         assert!(out.0.iter().all(|c| c.area != "budgets"), "{:?}", out.0);
+    }
+
+    #[test]
+    fn required_pages_over_the_limit_or_missing_warn() {
+        let data = tempfile::tempdir().unwrap();
+        let root = data.path().join("vault");
+        std::fs::create_dir_all(root.join(".genie")).unwrap();
+        std::fs::create_dir_all(root.join("shop")).unwrap();
+        std::fs::write(root.join("shop/long.md"), format!("# Long\n\n{}", "word ".repeat(REQUIRED_PAGE_LIMIT))).unwrap();
+        let config = serde_json::json!({
+            "spaces": { "shop": { "project": "shop", "required": [
+                { "page": "shop/long.md", "roles": ["all"] },
+                { "page": "shop/gone.md", "roles": ["executor"] }
+            ] } }
+        });
+        std::fs::write(root.join(".genie/vault.json"), config.to_string()).unwrap();
+        let c = cfg(serde_json::json!({}));
+        let mut out = Out(Vec::new());
+        required_reading(&mut out, data.path(), &c);
+        assert_eq!(levels(&out.0, "vault"), [Level::Warn, Level::Warn], "{:?}", out.0);
+        assert!(out.0[0].text.contains("shop/long.md") && out.0[0].text.contains("delivered whole"), "{:?}", out.0[0]);
+        assert!(out.0[1].text.contains("shop/gone.md") && out.0[1].text.contains("missing"), "{:?}", out.0[1]);
     }
 
     #[test]

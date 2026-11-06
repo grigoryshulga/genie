@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { articleTitle, BookIcon, DocSaveError, DocTypeBadge, docAgo, fetchDocPage, fieldsFromPage,  sectionTrail, serializeDoc, useRemoveDocSection, useRenameDoc, useSaveDoc, type DocPage, type DocSection } from "@/entities/doc";
+import { articleTitle, BookIcon, DocTypeBadge, docAgo, fetchDocPage, fieldsFromPage,  sectionTrail, serializeDoc, useRemoveDocSection, useRenameDoc, useSaveDoc, type DocPage, type DocSection } from "@/entities/doc";
 import { canAdminProject, useSession } from "@/entities/session";
 import { ConfirmDialog, Icon, IconButton, RenameButton, RenameField, SearchField, Select, Tag, Textarea, useToast } from "@/shared/ui";
 
@@ -80,8 +80,7 @@ export function DocsOverview({ root, section, toolbar, onSection, onOpen, onCrea
       }
       setEditing(false);
     } catch (error) {
-      const approval = error instanceof DocSaveError && error.status === 202;
-      toast(error instanceof Error ? error.message : String(error), approval ? "ok" : "error");
+      toast(error instanceof Error ? error.message : String(error), "error");
     }
   };
 

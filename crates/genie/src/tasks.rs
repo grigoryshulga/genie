@@ -392,6 +392,20 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
 pub fn set_status(app: &App, caller: &Caller, id: &str, body: StatusBody) -> AppResult<Task> {
     authorize(app, caller, id, Touch::Edit)?;
     let to = body.status;
+    // An agent's documentation stays in a changeset: the task is not done while it is open.
+    if to == Status::Done && !caller.is_person() {
+        let task = app.with_tracker(&caller.project, |t| t.normalize_id(id))?;
+        let open = app.with_server(|db| {
+            db.changesets(&genie_core::changesets::ChangesetFilter {
+                task: Some(task),
+                statuses: vec![genie_core::changesets::ChangesetStatus::Open, genie_core::changesets::ChangesetStatus::Merging],
+                ..Default::default()
+            })
+        })?;
+        if let Some(cs) = open.first() {
+            return Err(AppError::Conflict(format!("publish or discard documentation changeset #{} before closing the task", cs.id)));
+        }
+    }
     if to == Status::Done && !caller.is_person() && app.with_tracker(&caller.project, |t| t.management().has_blocking_questions(id))? {
         return Err(AppError::Conflict("answer blocking clarifications before accepting the result".into()));
     }

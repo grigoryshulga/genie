@@ -1,5 +1,5 @@
 /*
- * Genie component styles ("ink and paper"): the reference implementation of docs/assets/brand/design-system.md.
+ * Genie component styles ("ink and paper"): the reference implementation of design-system/brand/design-system.md.
  * Pure CSS on g-tokens.css, `g-` prefixed so it can load next to the legacy stylesheet during migration.
  * Every component works in both themes and never reads a raw colour; see components.html for each state.
  */

@@ -1,0 +1,82 @@
+/* A navigation tab with sibling pages: the label and a chevron share one pill, and the chevron opens a
+   rounded panel of those pages. The panel grows out of the tab and the pages follow it in a short cascade. */
+
+.g-tabs > .g-tab-split { position: relative; display: inline-flex; align-items: center; border-radius: var(--g-radius-pill); }
+.g-tabs > .g-tab-split > a { display: inline-flex; align-items: center; gap: var(--g-space-2); height: 30px; padding: 0 var(--g-space-1) 0 var(--g-space-4); border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-2); font: 600 var(--g-text-dense)/1 var(--g-font-sans); text-decoration: none; }
+.g-tabs > .g-tab-split:hover { background: var(--g-surface-hover); }
+.g-tabs > .g-tab-split:hover > a { color: var(--g-text); }
+.g-tabs > .g-tab-split[data-current] { background: var(--g-accent); }
+.g-tabs > .g-tab-split[data-current] > a, .g-tabs > .g-tab-split[data-current] > .g-nav-menu-toggle { color: var(--g-on-accent); }
+.g-tabs > .g-tab-split[data-current] .g-caption { color: inherit; }
+.g-tabs-motion > .g-tab-split { z-index: 1; transition: color var(--g-duration) var(--g-ease); }
+.g-tabs-motion > .g-tab-split[data-current] { background: transparent; }
+
+.g-nav-menu-toggle { display: inline-grid; place-items: center; width: var(--g-space-5); height: var(--g-space-5); margin-right: var(--g-space-1); padding: 0; border: 0; border-radius: var(--g-radius-pill); background: transparent; color: var(--g-text-muted); cursor: pointer; transition: background var(--g-duration) var(--g-ease), color var(--g-duration) var(--g-ease); }
+.g-nav-menu-toggle:hover { background: var(--g-surface-hover); color: var(--g-text); }
+.g-tab-split[data-current] .g-nav-menu-toggle:hover { background: color-mix(in srgb, var(--g-on-accent) 16%, transparent); }
+.g-nav-menu-toggle svg { transform: rotate(90deg); transition: transform calc(2 * var(--g-duration)) var(--g-ease); }
+.g-nav-menu-toggle[aria-expanded="true"] svg { transform: rotate(-90deg); }
+
+.g-nav-menu {
+  position: fixed;
+  top: var(--nav-menu-top, 0);
+  left: var(--nav-menu-left, 0);
+  z-index: var(--g-z-dropdown);
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-1);
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 2 * var(--g-space-4)));
+  max-height: var(--nav-menu-max, 70vh);
+  overflow-y: auto;
+  padding: var(--g-space-2);
+  border: 1px solid var(--g-border-strong);
+  border-radius: var(--g-radius-lg);
+  background: var(--g-surface-raised);
+  box-shadow: var(--g-shadow-overlay);
+  transform-origin: top left;
+  animation: g-nav-menu-in calc(2 * var(--g-duration)) var(--g-ease) both;
+}
+/* Opening upwards from the phone's dock, the panel grows from its bottom edge. */
+.g-nav-menu[data-side="top"] { --g-nav-menu-rise: 1; transform-origin: bottom left; }
+.g-nav-menu[data-state="closing"] { pointer-events: none; animation: g-nav-menu-out var(--g-duration) var(--g-ease) both; }
+
+.g-nav-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--g-space-3);
+  min-height: var(--g-control);
+  padding: var(--g-space-2) var(--g-space-4) var(--g-space-2) var(--g-space-3);
+  border-radius: var(--g-radius-pill);
+  color: var(--g-text);
+  font: 500 var(--g-text-ui) var(--g-font-sans);
+  text-decoration: none;
+  animation: g-nav-menu-item-in calc(2 * var(--g-duration)) var(--g-ease) both;
+  animation-delay: calc(var(--g-nav-menu-index, 0) * var(--g-duration) / 5);
+  transition: background var(--g-duration) var(--g-ease), color var(--g-duration) var(--g-ease);
+}
+.g-nav-menu-item:hover, .g-nav-menu-item:focus-visible { background: var(--g-surface-hover); }
+.g-nav-menu-item:focus-visible { outline: 2px solid var(--g-focus); outline-offset: -2px; }
+.g-nav-menu-item[aria-current="page"] { background: var(--g-accent-soft); color: var(--g-accent-soft-text); font-weight: 600; }
+.g-nav-menu-icon { display: inline-grid; place-items: center; flex: none; width: var(--g-space-5); height: var(--g-space-5); border-radius: var(--g-radius-pill); background: var(--g-surface-hover); color: var(--g-text-2); }
+.g-nav-menu-item[aria-current="page"] .g-nav-menu-icon { background: var(--g-accent); color: var(--g-on-accent); }
+.g-nav-menu-text { display: flex; flex: 1; flex-direction: column; gap: var(--g-space-1); min-width: 0; }
+.g-nav-menu-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-nav-menu-hint { color: var(--g-text-muted); font-size: var(--g-text-caption); font-weight: 400; line-height: 1.35; }
+
+@keyframes g-nav-menu-in {
+  from { opacity: 0; transform: translateY(calc(var(--g-nav-menu-rise, -1) * var(--g-space-2))) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes g-nav-menu-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(calc(var(--g-nav-menu-rise, -1) * var(--g-space-1))) scale(0.98); }
+}
+@keyframes g-nav-menu-item-in {
+  from { opacity: 0; transform: translateY(calc(-1 * var(--g-space-1))); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .g-nav-menu, .g-nav-menu[data-state="closing"], .g-nav-menu-item { animation: none; }
+  .g-nav-menu-toggle svg { transition: none; }
+}

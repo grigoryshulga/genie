@@ -127,11 +127,11 @@ fn kinds(t: &Tracker, id: i64) -> Vec<String> {
 }
 
 #[test]
-fn a_fresh_tracker_records_schema_8_with_every_observation_table() {
+fn a_fresh_tracker_records_schema_9_with_every_observation_table() {
     let (_dir, t) = fresh();
-    assert_eq!(SCHEMA_VERSION, 8);
+    assert_eq!(SCHEMA_VERSION, 9);
     let recorded: String = t.conn().query_row("SELECT value FROM meta WHERE key = 'schema'", [], |r| r.get(0)).unwrap();
-    assert_eq!(recorded, "8");
+    assert_eq!(recorded, "9");
     assert_eq!(
         names(&t, "table"),
         [
@@ -907,7 +907,7 @@ fn a_revision_after_the_start_moves_the_first_evaluation_to_the_revised_minimum_
 }
 
 #[test]
-fn a_schema_7_tracker_upgrades_to_schema_8_with_every_observation_table() {
+fn a_schema_7_tracker_upgrades_to_the_current_schema_with_every_observation_table() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join(".genie");
     let t = Tracker::init(&root, None, None).unwrap();
@@ -930,7 +930,7 @@ fn a_schema_7_tracker_upgrades_to_schema_8_with_every_observation_table() {
     drop(t);
 
     let t = Tracker::open(&root).unwrap();
-    assert_eq!(migrate::version(&root.join("genie.db")).unwrap(), Some(8), "the upgrade records schema 8");
+    assert_eq!(migrate::version(&root.join("genie.db")).unwrap(), Some(SCHEMA_VERSION), "the upgrade records the current schema");
     assert_eq!(
         names(&t, "table"),
         [

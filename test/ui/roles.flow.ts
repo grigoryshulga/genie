@@ -11,7 +11,7 @@ test("role workspace saves one draft across tabs and provides a paginated audit 
   const created = await request.put(`/api/roles/${id}`, { headers, data: { content: ROLE_FILE, baseHash: "" } });
   expect(created.ok(), await created.text()).toBe(true);
   try {
-    await page.goto(`/agents?id=${id}`);
+    await page.goto(`/manage/agents/roles?id=${id}`);
     await expect(page.getByRole("region", { name: "Промпт роли", exact: true })).toContainText("Investigate the task");
     await page.getByRole("tab", { name: "Настройки", exact: true }).click();
     const connections = page.locator(".ag-mcp-connection");
@@ -90,7 +90,7 @@ test("role workspace saves one draft across tabs and provides a paginated audit 
     expect(older).toHaveLength(6);
     expect(older.every((row: { item: string; id: number }) => row.item === `role:${id}` && row.id < first[19].id)).toBe(true);
     expect((await request.get(`/api/agent-config/history?before=0`)).status()).toBe(400);
-    await page.goto(`/agents?id=${id}&view=history`);
+    await page.goto(`/manage/agents/roles?id=${id}&view=history`);
     await expect(page.locator(".config-history-table > tbody > tr")).toHaveCount(20);
     await page.getByRole("button", { name: "Старее", exact: true }).click();
     await expect(page.locator(".config-history-pagination")).toContainText("Страница 2");

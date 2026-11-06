@@ -5,6 +5,8 @@
 
 pub mod agent_config;
 pub mod budget;
+pub mod changesets;
+pub mod changesets_migrate;
 pub mod channels;
 pub mod cli;
 pub mod clock;
@@ -39,6 +41,7 @@ pub mod stats;
 pub mod tasks;
 pub mod telegram;
 pub mod vault_sync;
+pub mod work_loop;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

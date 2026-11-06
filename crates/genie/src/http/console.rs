@@ -37,18 +37,25 @@ fn bearer(headers: &HeaderMap) -> Option<String> {
     v.strip_prefix("Bearer ").map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
 }
 
-/// While a console is held, only its session takes the orchestrator's mail.
-pub(crate) async fn may_take_orchestrator_mail(app: &Arc<App>, project: &str, headers: &HeaderMap) -> ApiResult<()> {
+/// While a console is held, only its session takes the orchestrator's mail. Returns whether the caller
+/// is that session: a person at the console takes all of it, even in a `manual` project.
+pub(crate) async fn may_take_orchestrator_mail(app: &Arc<App>, project: &str, headers: &HeaderMap) -> ApiResult<bool> {
     let (slug, token) = (project.to_string(), bearer(headers).unwrap_or_default());
-    let held = app
-        .blocking(move |app| app.with_server(|db| Ok(db.console(&slug)?.filter(|_| !db.is_console_token(&slug, &token).unwrap_or(false)))))
+    let (held, mine) = app
+        .blocking(move |app| {
+            app.with_server(|db| {
+                let console = db.console(&slug)?;
+                let mine = console.is_some() && db.is_console_token(&slug, &token).unwrap_or(false);
+                Ok((console.filter(|_| !mine), mine))
+            })
+        })
         .await?;
     match held {
         Some(c) => Err(ApiError::new(
             StatusCode::CONFLICT,
             format!("the orchestrator console of {} is held by {}: the server's orchestrator waits", c.project, c.user),
         )),
-        None => Ok(()),
+        None => Ok(mine),
     }
 }
 

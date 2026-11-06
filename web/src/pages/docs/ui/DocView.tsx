@@ -5,13 +5,16 @@
 
 import { DocBreadcrumbs } from "./DocBreadcrumbs.tsx";
 import { useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import type { DocPage, DocReadResult, DocSection } from "@/entities/doc";
 import {
+  canReviewChangeset,
   fieldsFromPage,
+  pageMarkers,
   sectionTrail,
   serializeDoc,
   slugify,
+  useChangesets,
   useRemoveDocPage,
   useRenameDoc,
   useSaveDoc,
@@ -31,7 +34,9 @@ import {
 import { BacklinkIcon, DeprecatedIcon, DiagIcon, OkIcon, PathsIcon, StaleIcon } from "@/entities/doc";
 import { canWriteProject, useSession } from "@/entities/session";
 import { DocViewSwitch } from "@/widgets/docs-view-switch";
-import { Button, ConfirmDialog, DisclosureCard, Icon, IconButton, RenameButton, RenameField, Tag, useToast } from "@/shared/ui";
+import { Button, ConfirmDialog, DisclosureCard, Icon, IconButton, MenuButton, RenameButton, RenameField, Tag, useToast } from "@/shared/ui";
+import { DocChangesetBar } from "./DocChangesetBar.tsx";
+import { DocHistoryDialog } from "./DocHistoryDialog.tsx";
 
 export function DocView({
   page,
@@ -62,8 +67,26 @@ export function DocView({
   const remove = useRemoveDocPage();
   const [removing, setRemoving] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const rename = useRenameDoc();
   const writable = canWriteProject(session.data);
+  const navigate = useNavigate();
+  const role = session.data?.projects.find((project) => project.slug === session.data?.project)?.role;
+  // The page read carries others' open drafts and the review queue; merging changesets
+  // come from the same feed query filtered by path, since the read has no merge field.
+  const pageChanges = useChangesets({ view: "all", path: page.path });
+  const merging = (pageChanges.data ?? [])
+    .filter((changeset) => changeset.status === "merging")
+    .map((changeset) => ({ id: 0, status: "pending" as const, changeset: changeset.id }));
+  const marks = pageMarkers({
+    openChangesets: page.openChangesets,
+    unreviewed: canReviewChangeset(role) ? page.unreviewed : undefined,
+    merges: merging,
+  });
+  const openMark = (mark: (typeof marks)[number]) => {
+    if (mark.merge) navigate(`/docs/changes/merge/${mark.merge}`);
+    else if (mark.changeset) navigate(`/docs/changes?view=all&changeset=${mark.changeset}`);
+  };
 
   // A copy lives beside the original, as a draft with its own title, slug and no aliases or verification date.
   const clone = async () => {
@@ -134,9 +157,18 @@ export function DocView({
             <Icon.trash size={14} />
           </IconButton>
         )}
+        <MenuButton
+          label="Действия страницы"
+          icon={<Icon.dots size={14} />}
+          items={[
+            { id: "history", label: "История версий", hint: "версии, сравнение и восстановление", onSelect: () => setHistoryOpen(true) },
+            { id: "changes", label: "Изменения документации", hint: "весь список", onSelect: () => navigate("/docs/changes") },
+          ]}
+        />
         <DocViewSwitch />
       </header>
       <div className="docs-content">
+        <DocChangesetBar page={page} />
         <div className="docs-view doc-reader scroll" ref={scrollRef}>
           <article className="doc-reading">
           <div className="doc-head">
@@ -146,6 +178,11 @@ export function DocView({
               {page.status && <DocStatusBadge status={page.status} />}
               {page.stale && <DocStaleBadge count={page.staleReasons.length} />}
               {page.diagnostics.length > 0 && <DocDiagBadge count={page.diagnostics.length} />}
+              {marks.map((mark) => (
+                <button key={mark.id} type="button" className={`doc-mark-link ${mark.tone}`} title={mark.title} onClick={() => openMark(mark)}>
+                  <Tag tone={mark.tone === "outline" ? "outline" : mark.tone === "accent" ? "accent" : "neutral"}>{mark.label}</Tag>
+                </button>
+              ))}
             </div>
             {page.tags.length > 0 && <div className="doc-tags" aria-label="Теги статьи">
               {page.tags.map((tag) => <Tag key={tag} className="doc-tag">{tag}</Tag>)}
@@ -331,6 +368,7 @@ export function DocView({
           Статья будет удалена из пространства. Из интерфейса это не отменить.
         </ConfirmDialog>
       )}
+      {historyOpen && <DocHistoryDialog page={page} onClose={() => setHistoryOpen(false)} />}
     </>
   );
 }

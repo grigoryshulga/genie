@@ -10,6 +10,7 @@ import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
 import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
+import { HubActions } from "@/widgets/settings-shell";
 import "@/shared/ui/settings.css";
 
 export function ProvidersAdminSection() {
@@ -95,12 +96,11 @@ export function ProvidersAdminSection() {
 
   return (
     <div className="st-body">
-      <div className="st-head">
-        <div className="provider-headline">
-          <h1 className="g-page-title">Провайдеры и ключи сервера</h1>
-          {providers.length > 0 && <button type="button" className="g-btn secondary provider-add" aria-label="Добавить провайдера" title="Добавить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
-        </div>
-      </div>
+      {providers.length > 0 && (
+        <HubActions>
+          <button type="button" className="g-btn secondary" onClick={() => setConnecting(true)}><Icon.plus size={14} />Добавить провайдера</button>
+        </HubActions>
+      )}
       {shown.map(card)}
       {connecting && <ProviderConnectDialog providers={providers} scope="server" onClose={() => setConnecting(false)} />}
     </div>

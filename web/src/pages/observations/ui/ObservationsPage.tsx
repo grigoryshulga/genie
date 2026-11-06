@@ -16,7 +16,8 @@ import {
   useObservationIncidents,
 } from "@/entities/observation";
 import "@/shared/ui/agents.css";
-import { EmptyState, LoadingState, PageHeader, Segmented } from "@/shared/ui";
+import { EmptyState, LoadingState, Segmented } from "@/shared/ui";
+import { HubActions } from "@/widgets/settings-shell";
 import { TaskLinks, when } from "./parts.tsx";
 import "./observations.css";
 
@@ -43,11 +44,9 @@ export function ObservationsPage() {
 
   return (
     <main className="main">
-      <PageHeader
-        className="obs-topbar"
-        title={OBSERVATION_TEXT.nav}
-        toolbar={<Segmented label="Какие наблюдения показать" value={filter} onChange={choose} items={FILTERS.map((f) => ({ id: f, label: FILTER_LABEL[f] }))} />}
-      />
+      <HubActions>
+        <Segmented label="Какие наблюдения показать" value={filter} onChange={choose} items={FILTERS.map((f) => ({ id: f, label: FILTER_LABEL[f] }))} />
+      </HubActions>
       <div className="scroll obs-body">
         {incidents.isError && (
           <p className="obs-error" role="alert">
@@ -84,7 +83,7 @@ export function ObservationsPage() {
                       <tr key={c.id}>
                         <td className="mono">{c.key}</td>
                         <td>
-                          <Link className="obs-table-cell-link" to={`/manage/project/observation/${c.id}`}>
+                          <Link className="obs-table-cell-link" to={`/manage/agents/automations/observation/${c.id}`}>
                             {c.title}
                           </Link>
                         </td>

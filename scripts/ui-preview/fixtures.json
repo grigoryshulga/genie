@@ -4855,161 +4855,6 @@
       "title": "Задача закрыта → знания, чейнджлог и уведомление"
     },
     {
-      "id": "new-task-triage",
-      "spec": {
-        "limits": {
-          "concurrency": 3,
-          "maxRunsPerHour": 30
-        },
-        "name": "Разбор новой задачи",
-        "on": {
-          "event": "task.created",
-          "where": {
-            "actor.role": "human",
-            "status": "inbox"
-          }
-        },
-        "steps": [
-          {
-            "id": "take",
-            "task.status": {
-              "note": "Взята в разбор автоматически: аналитик готовит вопросы автору",
-              "to": "refining"
-            }
-          },
-          {
-            "agent": {
-              "goal": "Analyse task {{ event.task.id }}: study the project (code if any, knowledge base with `genie docs search`), draft scope and verifiable acceptance criteria, and list only the questions that the task's author must answer (product decisions, missing facts). Do not guess product answers. Write the questions in the owner's language, offer options when the answer is a choice. Save your analysis as an `analysis` artifact on the task.",
-              "output": {
-                "draft_acceptance": [
-                  "criterion"
-                ],
-                "questions": [
-                  {
-                    "options": [
-                      "optional choices"
-                    ],
-                    "text": "question",
-                    "why": "why it matters"
-                  }
-                ]
-              },
-              "role": "analyst",
-              "workspace": "read-only"
-            },
-            "id": "analyse",
-            "timeout": "45m"
-          },
-          {
-            "id": "criteria",
-            "if": "{{ steps.analyse.output.draft_acceptance | length }}",
-            "task.comment": {
-              "kind": "decision",
-              "text": "Черновик критериев приёмки от аналитика:\n{{ steps.analyse.output.draft_acceptance | lines }}"
-            }
-          },
-          {
-            "ask": {
-              "from": "аналитика",
-              "onTimeout": "needs_owner",
-              "questions": "{{ steps.analyse.output.questions }}",
-              "remindAfter": "24h",
-              "timeout": "72h",
-              "to": [
-                "event.actor"
-              ]
-            },
-            "id": "ask",
-            "if": "{{ steps.analyse.output.questions | length }}"
-          },
-          {
-            "id": "continue",
-            "wake_orchestrator": {
-              "text": "Triage of {{ event.task.id }} is complete: the analysis artifact and draft criteria are on the task, the author's answers are in its comments. Finish refinement (description, acceptance criteria), then move it to ready if the Definition of Ready is met."
-            }
-          }
-        ]
-      },
-      "title": "Новая задача от человека → аналитик → вопросы автору"
-    },
-    {
-      "id": "auto-ready",
-      "spec": {
-        "limits": {
-          "concurrency": 1,
-          "maxRunsPerHour": 200
-        },
-        "name": "Задачу ничего не держит — в «Готово к работе»",
-        "on": {
-          "event": "task.*",
-          "where": {
-            "task.status": [
-              "draft",
-              "refining",
-              "done"
-            ]
-          }
-        },
-        "steps": [
-          {
-            "id": "ready",
-            "task.ready": {}
-          }
-        ]
-      },
-      "title": "Задачу ничего не держит → «Готово к работе»"
-    },
-    {
-      "id": "ready-start",
-      "spec": {
-        "limits": {
-          "concurrency": 3,
-          "maxRunsPerHour": 60
-        },
-        "name": "«Готово к работе» — оркестратор запускает работу",
-        "on": {
-          "event": "task.status_changed",
-          "where": {
-            "task.type": {
-              "not": "epic"
-            },
-            "to": "ready"
-          }
-        },
-        "steps": [
-          {
-            "id": "start",
-            "wake_orchestrator": {
-              "text": "Task {{ event.task.id }} ({{ event.task.title }}) is now ready: start work on it. If a team already works on it, do nothing. Check the Definition of Ready first: if something only the owner can settle is missing (the integration, the repositories), ask the owner instead of dispatching. Otherwise compose its team and spawn it now. If the server refuses the spawn because a limit is reached (active teams per project or per epic), do not retry and do not force it: the task stays in ready and starts when a team stops."
-            }
-          }
-        ]
-      },
-      "title": "«Готово к работе» → оркестратор запускает работу"
-    },
-    {
-      "id": "ready-next",
-      "spec": {
-        "limits": {
-          "concurrency": 1,
-          "maxRunsPerHour": 60
-        },
-        "name": "Команда остановилась — следующая готовая задача",
-        "on": {
-          "event": "team.stopped"
-        },
-        "steps": [
-          {
-            "id": "next",
-            "wake_orchestrator": {
-              "text": "A team stopped, so there may be room for work. List the tasks that wait in `ready` without a team (`genie task list --status ready`), take them in order of priority and start work on as many as the limits allow: spawn a team for each. If the server refuses a spawn because a limit is reached, stop there: the rest stay in ready. If nothing waits, do nothing."
-            }
-          }
-        ]
-      },
-      "title": "Команда остановилась → оркестратор берёт следующую готовую задачу"
-    },
-    {
       "id": "needs-owner-escalation",
       "spec": {
         "name": "Эскалация решения",
@@ -9340,5 +9185,64 @@
     "task": "TASK-1",
     "template": "standard",
     "warnings": []
+  },
+  "/api/chat": {
+    "messages": [
+      {
+        "id": 1,
+        "at": "2026-05-01T12:00:00Z",
+        "author": "owner",
+        "authorRole": "human",
+        "text": "Что сейчас в работе по проекту?",
+        "mentions": [
+          "manager"
+        ],
+        "replyTo": null
+      },
+      {
+        "id": 2,
+        "at": "2026-05-01T12:00:00Z",
+        "author": "orchestrator",
+        "authorRole": "orchestrator",
+        "text": "Сейчас в работе **три задачи**:\n\n- GNE-12 — ждёт ревью\n- GNE-14 — агент пишет код\n- GNE-19 — менеджер готовит описание",
+        "mentions": [],
+        "replyTo": 1
+      },
+      {
+        "id": 3,
+        "at": "2026-05-01T12:00:00Z",
+        "author": "owner",
+        "authorRole": "human",
+        "text": "Создай задачу: проверить поиск по документации на мобильном",
+        "mentions": [
+          "manager"
+        ],
+        "replyTo": null
+      },
+      {
+        "id": 4,
+        "at": "2026-05-01T12:00:00Z",
+        "author": "orchestrator",
+        "authorRole": "orchestrator",
+        "text": "Создал **GNE-23** в подготовке. Когда описание будет готово, переведу её в очередь.",
+        "mentions": [],
+        "replyTo": 3
+      },
+      {
+        "id": 5,
+        "at": "2026-05-01T12:00:00Z",
+        "author": "owner",
+        "authorRole": "human",
+        "text": "Поставь её после GNE-14: поиск зависит от него. Когда закроется GNE-14?",
+        "mentions": [
+          "manager"
+        ],
+        "replyTo": null
+      }
+    ],
+    "manager": {
+      "state": "working",
+      "pending": 0
+    }
   }
 }

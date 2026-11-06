@@ -1,6 +1,6 @@
 /*
  * Genie design tokens ("ink and paper" visual language).
- * Specification: docs/assets/brand/design-system.md. Contrast pairs are enforced by test/design-tokens.test.ts.
+ * Specification: design-system/brand/design-system.md. Contrast pairs are enforced by test/design-tokens.test.ts.
  *
  * Layer 1 holds raw brand values and never changes between themes. Layer 2 is semantic; components consume
  * only layer 2. `:root` is the ink (dark) theme to match the current app; `[data-theme="paper"]` is light.
@@ -201,7 +201,6 @@
   --g-board-lane-maybe: var(--g-text-muted);
   --g-board-lane-decision: var(--g-signal-text);
   --g-board-lane-prep: #9db8da;
-  --g-board-lane-queue: #d7c579;
   --g-board-lane-work: var(--g-accent-soft-text);
   --g-board-lane-done: #a4b7a9;
   --g-shadow-overlay: 0 20px 50px rgb(0 0 0 / 0.55);
@@ -267,7 +266,6 @@
   --g-board-lane-maybe: var(--g-text-muted);
   --g-board-lane-decision: var(--g-signal-text);
   --g-board-lane-prep: #456388;
-  --g-board-lane-queue: #806300;
   --g-board-lane-work: var(--g-accent-soft-text);
   --g-board-lane-done: #4a6556;
   --g-shadow-overlay: 0 20px 50px rgb(9 9 13 / 0.18);

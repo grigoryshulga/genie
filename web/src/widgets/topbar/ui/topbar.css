@@ -48,3 +48,22 @@
 @media (max-width: 900px) {
   .g-topbar .g-tabs-indicator { border-radius: var(--g-radius-lg); }
 }
+
+/* The three destinations are label-and-chevron pairs: the pair is the pill, the label keeps the bar's height. */
+.g-topbar .g-tabs > .g-tab-split > a { height: var(--g-control); }
+.g-topbar .g-tabs > .g-tab-split > a > svg { flex: none; }
+.g-topbar .g-tabs > .g-tab-split[data-current] .g-topbar-open { color: var(--g-on-accent); }
+@media (max-width: 1100px) and (min-width: 901px) {
+  .g-topbar .g-tabs > .g-tab-split:not([data-current]) .g-tab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .g-topbar .g-tabs > .g-tab-split:not([data-current]) > a { padding-left: var(--g-space-3); }
+}
+/* In the phone dock each pair fills a third of the row; the chevron rides on the cell's right edge. */
+@media (max-width: 900px) {
+  .g-topbar .g-tabs > .g-tab-split { flex: 1 1 0; min-width: 0; height: calc(var(--g-control) + var(--g-space-3)); border-radius: var(--g-radius-lg); }
+  .g-topbar .g-tabs > .g-tab-split > a { position: relative; flex: 1; min-width: 0; height: 100%; flex-direction: column; justify-content: center; gap: var(--g-space-1); padding: 0; border-radius: var(--g-radius-lg); font-size: var(--g-text-eyebrow); line-height: 1; }
+  .g-topbar .g-tabs > .g-tab-split > a > svg { width: var(--g-space-5); height: var(--g-space-5); }
+  .g-topbar .g-tabs > .g-tab-split > a .g-tag, .g-topbar .g-tabs > .g-tab-split > a .g-topbar-open { position: absolute; top: 0; left: calc(50% + var(--g-space-2)); }
+  .g-topbar .g-tabs > .g-tab-split > a .g-tag { min-width: var(--g-space-4); height: var(--g-space-4); justify-content: center; padding: 0 var(--g-space-1); font-size: var(--g-text-eyebrow); }
+  .g-topbar .g-tabs > .g-tab-split > a .g-tag ~ .g-topbar-open { display: none; }
+  .g-topbar .g-tab-split > .g-nav-menu-toggle { position: absolute; top: 50%; right: var(--g-space-1); margin: 0; transform: translateY(-50%); }
+}

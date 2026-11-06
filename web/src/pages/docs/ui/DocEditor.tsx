@@ -73,7 +73,7 @@ function Chips({ value, onChange, placeholder, mono, label }: { value: string[];
   );
 }
 
-export function DocEditor({ path, pages, onSaved }: { path: string; pages: { path: string; title: string }[]; onSaved: (path: string) => void }) {
+export function DocEditor({ path, pages, onSaved }: { path: string; pages: { path: string; title: string }[]; onSaved: (path: string, changeset?: number) => void }) {
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   useEffect(() => {
@@ -193,13 +193,26 @@ export function DocEditor({ path, pages, onSaved }: { path: string; pages: { pat
     // Never overwrite silently: re-read the file first (mode "update" only).
     if (mode === "update" && !force && (await checkDisk())) return;
     try {
-      await save.mutateAsync({ path, content: serializeDoc(fields, body), mode });
-      onSaved(path);
+      const saved = await save.mutateAsync({ path, content: serializeDoc(fields, body), mode });
+      onSaved(path, saved.changeset?.id);
     } catch (error) {
       if (error instanceof DocSaveError) {
-        // 404 = the file was deleted/moved, 409 = somebody created it meanwhile.
-        if (error.status === 404 || error.status === 409) {
-          setConflict(error.status === 409 ? { kind: "exists" } : { kind: "gone" });
+        // 404 = the page was deleted/moved; 409 = the changeset is in the wrong state
+        // (or, for a create, somebody created the page meanwhile); 403 = locked or not the owner.
+        if (error.status === 404) {
+          setConflict({ kind: "gone" });
+          return;
+        }
+        if (error.status === 409) {
+          if (mode === "create") {
+            setConflict({ kind: "exists" });
+            return;
+          }
+          setSaveError("Черновик изменился: его уже опубликовали или отменили. Обновите страницу и повторите правку.");
+          return;
+        }
+        if (error.status === 403) {
+          setSaveError("Сохранить нельзя: страница заблокирована или вы не владелец раздела.");
           return;
         }
         setServerDiags(error.diagnostics);

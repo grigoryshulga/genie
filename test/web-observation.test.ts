@@ -56,11 +56,11 @@ import type { IncidentStatus } from "../web/src/shared/api/generated/IncidentSta
 import type { SourceView } from "../web/src/shared/api/generated/SourceView.ts";
 import { matchesAny } from "../web/src/shared/api/invalidation.ts";
 
-/** The rows of the "Observation plane" section of GLOSSARY.md: key, the middle cell, and the label. */
+/** The rows of the "Observation plane" section of the project glossary: key, the middle cell, and the label. */
 function glossaryRows(): { key: string; middle: string; label: string }[] {
-  const text = readFileSync(new URL("../GLOSSARY.md", import.meta.url), "utf8");
+  const text = readFileSync(new URL("./fixtures/observation-labels.md", import.meta.url), "utf8");
   const start = text.indexOf("\n## Observation plane");
-  assert.ok(start >= 0, "GLOSSARY.md has the observation section");
+  assert.ok(start >= 0, "the label fixture has the observation section");
   const next = text.indexOf("\n## ", start + 1);
   const section = text.slice(start, next < 0 ? undefined : next);
   return section
@@ -82,7 +82,7 @@ function glossary(uiKey: string): Record<string, string> {
 /** The text of a UI key whose row has no code value, such as `nav` or `newTitle`. */
 function glossaryText(uiKey: string): string {
   const row = glossaryRows().find((r) => r.key === uiKey && !r.middle.startsWith("`"));
-  assert.ok(row, `GLOSSARY.md has a ${uiKey} row`);
+  assert.ok(row, `the label fixture has a ${uiKey} row`);
   return row.label;
 }
 
@@ -158,8 +158,8 @@ test("the action, heading and field labels are the glossary's words, one per act
 });
 
 test("the evidence record is a measurement in Russian, as the glossary and the pages name it", () => {
-  const row = readFileSync(new URL("../GLOSSARY.md", import.meta.url), "utf8").split("\n").find((l) => l.startsWith("| **Evidence record**"));
-  assert.ok(row, "GLOSSARY.md names the evidence record");
+  const row = readFileSync(new URL("./fixtures/observation-labels.md", import.meta.url), "utf8").split("\n").find((l) => l.startsWith("| **Evidence record**"));
+  assert.ok(row, "the label fixture names the evidence record");
   assert.match(row, /Russian: измерение\.\s*\|$/);
   assert.equal(HEADING_LABEL.evidence, "Измерения");
   assert.equal(ACTION_LABEL.evidence, "Записать измерение");

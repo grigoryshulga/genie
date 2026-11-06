@@ -3,7 +3,6 @@ node_modules
 .design/
 web/dist/
 test-results/
-docs/migration.md
 migration/
 /target/
 secrets/
@@ -14,6 +13,8 @@ docker/secrets/
 __pycache__/
 docker/docker-compose.local.yml
 
-# Documentation build output
-docs/.vitepress/cache/
-docs/.vitepress/dist/
+# Documentation site: assembled content and the local knowledge vault checkout
+site/content/
+site/.vault/
+site/.vitepress/cache/
+site/.vitepress/dist/

@@ -27,6 +27,8 @@ pub const TASK_TEAM_ASSIGNED: &str = "task.team_assigned";
 /// A task was deleted for good (its earlier events stay in the journal).
 pub const TASK_DELETED: &str = "task.deleted";
 pub const MAIL_SENT: &str = "mail.sent";
+/// A message was posted to the project chat. No subject; payload `{id, mentions}`.
+pub const CHAT_POSTED: &str = "chat.posted";
 /// A tool call through the MCP gateway.
 pub const MCP_CALLED: &str = "mcp.called";
 /// An agent pushed to a repository through the repository proxy.

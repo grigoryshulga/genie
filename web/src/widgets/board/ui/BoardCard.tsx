@@ -1,9 +1,13 @@
 import { useDraggable } from "@dnd-kit/core";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { agentTone, displayName } from "@/entities/member";
-import { EpicChip, EpicIcon, epicTone, laneOf, moveTargets, PriorityIcon, type Status, STATUS_NAME, type TaskSummary, useEpicMap } from "@/entities/task";
+import { awaitsTeam, EpicChip, EpicIcon, epicTone, laneOf, moveTargets, PriorityIcon, type Status, STATUS_NAME, type TaskSummary, useEpicMap } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { Avatar, cx, Icon, Segments, Tag, WorkingArcs, ActionMenu, type MenuEntry } from "@/shared/ui";
+
+const AWAITING_TEAM = "Ждёт запуска: команда соберётся, когда освободится место и будут готовы зависимости";
+/** Three agent tiles, the size and overlap of a small avatar group. */
+const TEAM_PLACEHOLDER = [0, 1, 2];
 
 /** The epic link and move menu stay outside the draggable task button. */
 export function CardBody({ t, team, onSelect, selected, drag }: {
@@ -17,6 +21,11 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
   const members = team?.members ?? [];
   const shown = members.slice(0, 2);
   const rest = members.length - shown.length;
+  const waiting = awaitsTeam(t.status, members.length);
+  // dnd-kit's drag instructions fill aria-describedby, which overrides aria-description, so the
+  // card's notes are a hidden element the button references alongside them.
+  const noteId = useId();
+  const note = [t.needsOwner?.question ?? t.blocked?.reason, waiting && AWAITING_TEAM].filter(Boolean).join(". ");
   const content = (
     <>
       <span className="bd-title" title={t.title}>
@@ -40,6 +49,7 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
           ) : t.openDeps.length > 0 && <span className="bd-note" title={`Ждёт ${t.openDeps.join(", ")}`}>Ждёт {t.openDeps.join(", ")}</span>}
         </span>
       )}
+      {note && <span id={noteId} className="bd-hint">{note}</span>}
     </>
   );
   return (
@@ -56,11 +66,11 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
         )}
       </div>
       {onSelect ? (
-        <button type="button" className="bd-main" onClick={onSelect} {...drag?.attributes} {...drag?.listeners} aria-label={`${t.id}: ${t.title}`} aria-description={t.needsOwner?.question ?? t.blocked?.reason} aria-pressed={selected} aria-roledescription="карточка задачи">
+        <button type="button" className="bd-main" onClick={onSelect} {...drag?.attributes} {...drag?.listeners} aria-label={`${t.id}: ${t.title}`} aria-describedby={[drag?.attributes["aria-describedby"], note && noteId].filter(Boolean).join(" ") || undefined} aria-pressed={selected} aria-roledescription="карточка задачи">
           {content}
         </button>
       ) : <div className="bd-main">{content}</div>}
-      {(t.acceptanceTotal > 0 || t.labels.length > 0 || members.length > 0 || t.assignee) && <div className="bd-foot">
+      {(t.acceptanceTotal > 0 || t.labels.length > 0 || members.length > 0 || t.assignee || waiting) && <div className="bd-foot">
         {t.acceptanceTotal > 0 && (
           <span className="bd-ac">
             <Segments total={t.acceptanceTotal} done={t.acceptanceDone} label="Критерии приёмки" />
@@ -72,6 +82,11 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
           {t.labels.length > 1 && <span className="bd-more">+{t.labels.length - 1}</span>}
         </span>
         <span className="bd-who">
+          {waiting && (
+            <span className="bd-team-wait" aria-hidden="true" title={AWAITING_TEAM}>
+              {TEAM_PLACEHOLDER.map((slot) => <span key={slot} className="g-avatar sm g-skeleton bd-team-dot" />)}
+            </span>
+          )}
           {shown.map((m) => <Avatar key={m.name} kind={m.role === "human" ? "human" : "agent"} name={displayName(m.name)} sm tone={agentTone(m.role)} />)}
           {rest > 0 && <span className="bd-more">+{rest}</span>}
           {t.assignee && <Avatar kind="human" name={t.assignee} sm />}

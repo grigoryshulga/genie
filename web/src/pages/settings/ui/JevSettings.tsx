@@ -20,7 +20,7 @@ const toggle = (values: string[], id: string) => values.includes(id) ? values.fi
 export function JevSettings({ slug, admin }: { slug: string; admin: boolean }) {
   const settings = useDecisionSettings(slug);
   return <div className="st-body">
-    <div className="st-head"><h2>Решения с Jev</h2><p>Участие в подборе новой команды и инструмент, к которому агенты могут обратиться за дополнительной оценкой.</p></div>
+    <div className="st-head"><p>Участие в подборе новой команды и инструмент, к которому агенты могут обратиться за дополнительной оценкой.</p></div>
     {settings.data ? <PolicyForm key={`${slug}:${JSON.stringify(settings.data.policy)}`} slug={slug} admin={admin} settings={settings.data} />
       : settings.error ? <div className="g-muted">{settings.error.message}</div> : <SettingsLoading />}
     <DecisionHistory slug={slug} />

@@ -58,6 +58,8 @@ const run = (args: string[], input: string | undefined, dataDir: string) => geni
 function seed(dataDir: string, extra: SeedTask[] = []) {
   run(["user", "add", OWNER.login, "--name", OWNER.name, "--admin", "--password-stdin"], `${OWNER.password}\n`, dataDir);
   run(["project", "add", PROJECT.id, "--name", PROJECT.name, "--prefix", PROJECT.prefix], undefined, dataDir);
+  // In `manual` the work loop leaves the seeded statuses alone, so lanes and screenshots stay stable.
+  run(["project", "update", PROJECT.id, "--autonomy", "manual"], undefined, dataDir);
   run(["member", PROJECT.id, OWNER.login, "owner"], undefined, dataDir);
   seedDocs(bin, dataDir, PROJECT.id, [FLOW_DOC, ...(capture ? CAPTURE_DOCS : [])]);
   const ids: string[] = [];

@@ -1289,6 +1289,14 @@ impl Tracker {
         events::last_id(self.conn())
     }
 
+    /// When the journal last recorded an event about `subject` (a task ID), if ever.
+    pub fn last_event_at(&self, subject: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row("SELECT at FROM events WHERE subject = ?1 ORDER BY id DESC LIMIT 1", [subject], |r| r.get(0))
+            .optional()?)
+    }
+
     pub fn event_cursor(&self, subscriber: &str) -> Result<i64> {
         events::cursor(self.conn(), subscriber)
     }

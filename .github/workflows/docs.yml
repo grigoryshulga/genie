@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
+      - 'site/**'
+      - 'design-system/brand/**'
       - 'bench/**/*.md'
       - 'README.md'
       - 'CHANGELOG.md'
@@ -12,13 +13,20 @@ on:
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
-      - 'docs/**'
+      - 'site/**'
+      - 'design-system/brand/**'
       - 'bench/**/*.md'
       - 'README.md'
       - 'CHANGELOG.md'
       - 'package.json'
       - '.github/workflows/docs.yml'
+  # The pages live in the private knowledge vault, so the site is also rebuilt from it on a schedule
+  # and when the tracker or a vault push asks for it (repository_dispatch: vault-updated).
+  schedule:
+    - cron: '17 4 * * *'
   workflow_dispatch:
+  repository_dispatch:
+    types: [vault-updated]
 
 permissions:
   contents: read
@@ -34,18 +42,24 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # The pages come from the genie space of the private knowledge vault. The deploy key is read-only.
+      - uses: actions/checkout@v4
+        with:
+          repository: grigoryshulga/genie-vault
+          ssh-key: ${{ secrets.GENIE_VAULT_DEPLOY_KEY }}
+          path: site/.vault
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: docs/package-lock.json
-      - run: npm ci --prefix docs
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci --prefix site
       - run: npm run docs:check
       - run: npm run docs:build
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
-          path: docs/.vitepress/dist
+          path: site/.vitepress/dist
 
   deploy:
     name: Publish to GitHub Pages

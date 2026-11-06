@@ -2,8 +2,8 @@
 //! and a fake Telegram Bot API:
 //! 1. a PM files a task → an analyst job drafts questions → the PM answers in
 //!    Telegram → the answers land in the task and wake the orchestrator;
-//! 2. a task is done → a documenter job updates the knowledge base (as a
-//!    proposal, per section policy) → a changelog entry → the owners are told.
+//! 2. a task is done → a documenter job updates the knowledge base (in a
+//!    changeset, per section policy) → a changelog entry → the owners are told.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -57,6 +57,8 @@ async fn live(telegram: Option<String>) -> Live {
     let mut cfg = Config::load(dir.path()).unwrap();
     // Test files live in the data directory, which a sandboxed agent does not see.
     cfg.runtime.sandbox.mode = "off".into();
+    // Documentation writes are changesets, and changesets need a git vault.
+    cfg.vault.commit = Some(true);
     cfg.port = listener.local_addr().unwrap().port();
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-agent.sh");
     cfg.runtime.command = vec![vec!["bash".into(), script.to_string_lossy().into_owned()], vec!["{message}".into()]];
@@ -108,7 +110,40 @@ async fn wait_for(app: &Arc<App>, what: &str, secs: u64, mut done: impl FnMut(&A
 
 fn install(app: &App, name: &str) {
     let spec = genie::engine::playbooks().into_iter().find(|(id, ..)| *id == name).unwrap().2;
-    app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
+    install_spec(app, &spec);
+}
+
+fn install_spec(app: &App, spec: &Value) {
+    app.with_server(|db| db.create_automation("shop", spec, "anna")).unwrap();
+}
+
+/// A person's rule that triages new tasks: the analyst studies the task and asks its author. The
+/// built-in work loop no longer ships it (see `engine::RETIRED_PLAYBOOKS`); the steps stay supported.
+fn new_task_triage_rule() -> Value {
+    json!({
+        "name": "Разбор новой задачи",
+        "on": { "event": "task.created", "where": { "status": "inbox", "actor.role": "human" } },
+        "limits": { "concurrency": 3, "maxRunsPerHour": 30 },
+        "steps": [
+            { "id": "take", "task.status": { "to": "refining", "note": "Взята в разбор автоматически: аналитик готовит вопросы автору" } },
+            { "id": "analyse", "timeout": "45m", "agent": {
+                "role": "analyst",
+                "workspace": "read-only",
+                "goal": "Analyse task {{ event.task.id }}: study the project (code if any, knowledge base with `genie docs search`), draft scope and verifiable acceptance criteria, and list only the questions that the task's author must answer (product decisions, missing facts). Do not guess product answers. Write the questions in the owner's language, offer options when the answer is a choice. Save your analysis as an `analysis` artifact on the task.",
+                "output": { "questions": [{ "text": "question", "why": "why it matters", "options": ["optional choices"] }], "draft_acceptance": ["criterion"] }
+            } },
+            { "id": "criteria", "if": "{{ steps.analyse.output.draft_acceptance | length }}", "task.comment": { "kind": "decision", "text": "Черновик критериев приёмки от аналитика:\n{{ steps.analyse.output.draft_acceptance | lines }}" } },
+            { "id": "ask", "if": "{{ steps.analyse.output.questions | length }}", "ask": {
+                "to": ["event.actor"],
+                "from": "аналитика",
+                "questions": "{{ steps.analyse.output.questions }}",
+                "remindAfter": "24h",
+                "timeout": "72h",
+                "onTimeout": "needs_owner"
+            } },
+            { "id": "continue", "wake_orchestrator": { "text": "Triage of {{ event.task.id }} is complete: the analysis artifact and draft criteria are on the task, the author's answers are in its comments. Finish refinement (description, acceptance criteria), then move it to ready if the Definition of Ready is met." } }
+        ]
+    })
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -126,7 +161,7 @@ async fn new_task_triage_asks_the_author_in_telegram() {
             Ok(pm)
         })
         .unwrap();
-    install(app, "new-task-triage");
+    install_spec(app, &new_task_triage_rule());
 
     // The PM files a task (through Telegram: /new …).
     let update = json!({ "update_id": 1, "message": { "message_id": 1, "chat": { "id": 4242 }, "text": "/new Экспорт заказов\nНужна выгрузка для бухгалтерии" } });
@@ -198,17 +233,34 @@ async fn done_task_updates_knowledge_changelog_and_tells_the_owners() {
     })
     .await;
 
-    let proposals = app.with_server(|db| db.proposals(Some("open"), 10)).unwrap();
-    assert_eq!(proposals.len(), 1, "agents' pages go to review by default");
-    assert_eq!(proposals[0].path, "shop/features/export.md");
-    assert_eq!(proposals[0].task.as_deref(), Some("SHOP-1"), "the proposal names the task it documents");
+    let open = app
+        .with_server(|db| {
+            db.changesets(&genie_core::changesets::ChangesetFilter {
+                statuses: vec![genie_core::changesets::ChangesetStatus::Open],
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    assert_eq!(open.len(), 1, "the documenter edits a changeset");
+    assert_eq!(open[0].paths, vec!["shop/features/export.md".to_string()]);
+    assert_eq!(open[0].task.as_deref(), Some("SHOP-1"), "the changeset names the task it documents");
     let changelog = std::fs::read_to_string(app.cfg.vault_path(&app.data).join("shop/changelog.md")).unwrap();
     assert!(changelog.contains("### Добавлено") && changelog.contains("- Экспорт заказов в CSV (SHOP-1)"), "{changelog}");
     let notes = app.with_server(|db| db.notifications(anna.id, false, 10)).unwrap();
     assert!(notes.iter().any(|n| n.title.contains("SHOP-1 готова") && n.body.contains("Описан экспорт")), "{notes:#?}");
-    assert!(notes.iter().any(|n| n.kind == "proposal"), "section owners/admins hear about the proposal");
-    // Approving the proposal publishes the page.
-    genie::knowledge::decide(app, proposals[0].id, true, "anna", None, false).unwrap();
+    let events = app.with_tracker("shop", |t| t.events_after(0, 200)).unwrap();
+    assert!(events.iter().any(|e| e.kind == "doc.changeset_edited"), "the edit is journaled");
+    // Publishing the changeset puts the page on main.
+    let ed = genie::changesets::Editor {
+        name: open[0].author_name.clone(),
+        login: open[0].author.clone(),
+        kind: genie_core::vault::AuthorKind::Agent,
+        task: open[0].task.clone(),
+        project: "shop".into(),
+        admin: true,
+        role: None,
+    };
+    genie::changesets::publish(app, open[0].id, &ed).unwrap();
     let page = app.with_vault(|v| v.read("shop/features/export.md", None, None)).unwrap();
     assert!(page.content.contains("CSV"));
 }

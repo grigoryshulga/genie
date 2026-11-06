@@ -32,7 +32,7 @@ export function TelegramSettings({ project, admin = false }: { project: string; 
   return (
     <div className="st-body">
       <div className="st-head">
-        <h1 className="g-page-title">Telegram</h1>
+        <p>Куда проект отправляет уведомления. Сейчас доступен Telegram; Slack и Mattermost планируются.</p>
       </div>
       {query.isPending ? (
         <SettingsLoading />

@@ -10,7 +10,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   groupByLane,
   epicTone,
@@ -31,6 +31,7 @@ import {
 import type { Team } from "@/entities/team";
 import { plural } from "@/shared/lib";
 import { Button, Chip, Dialog, Field, Icon, Textarea, cx, useToast } from "@/shared/ui";
+import { leadingOffset } from "../model/centering.ts";
 import { BoardCard, CardBody } from "./BoardCard.tsx";
 import { StackedList } from "./StackedList.tsx";
 import "./board.css";
@@ -223,6 +224,33 @@ export function Board({
   );
 
   const isShut = (lane: Lane) => (lane.id === "done" ? !showDone : folded.has(lane.id));
+  // The row is centred on its open lanes. Folding changes the lanes' widths and the viewport changes the
+  // scroller's width; both are measured here and written to the scroller, never through React state.
+  // One "1" or "0" per lane, in lane order: a fold or unfold is the only input the measurement needs.
+  const openKey = LANES.map((lane) => (isShut(lane) ? "0" : "1")).join("");
+  useLayoutEffect(() => {
+    const box = scroller.current;
+    if (!box) return;
+    const place = () => {
+      const style = getComputedStyle(box);
+      const lead = leadingOffset({
+        viewport: box.clientWidth,
+        paddingStart: parseFloat(style.paddingInlineStart) || 0,
+        paddingEnd: parseFloat(style.paddingInlineEnd) || 0,
+        gap: parseFloat(style.columnGap) || 0,
+        lanes: LANES.map((lane, i) => ({ width: lanes.current[lane.id]?.offsetWidth ?? 0, open: openKey[i] === "1" })),
+      });
+      box.style.setProperty("--bd-lead", `${lead}px`);
+    };
+    place();
+    const resize = new ResizeObserver(place);
+    resize.observe(box);
+    for (const lane of LANES) {
+      const node = lanes.current[lane.id];
+      if (node) resize.observe(node);
+    }
+    return () => resize.disconnect();
+  }, [openKey]);
   const toggleLane = (lane: Lane) => {
     if (lane.id === "done") {
       onDoneVisibilityChange(!showDone);

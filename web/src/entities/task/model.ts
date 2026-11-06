@@ -33,8 +33,8 @@ export const PRESETS: { id: PresetId; name: string; statuses: Status[] }[] = [
   { id: "open", name: "Открытые", statuses: OPEN },
   { id: "decisions", name: "Нужно решение", statuses: ["needs_owner"] },
   { id: "inbox", name: "Входящие", statuses: ["inbox"] },
-  { id: "working", name: "В работе", statuses: ["in_progress", "changes_requested", "review", "approved"] },
-  { id: "prep", name: "Подготовка", statuses: ["draft", "refining", "ready"] },
+  { id: "working", name: "В работе", statuses: ["ready", "in_progress", "changes_requested", "review", "approved"] },
+  { id: "prep", name: "Подготовка", statuses: ["draft", "refining"] },
   { id: "done", name: "Завершённые", statuses: ["done", "cancelled"] },
 ];
 
@@ -167,7 +167,7 @@ export const LEGACY_VIEWS: Record<string, { statuses?: Status[]; who?: string }>
   inbox: { statuses: ["inbox"] },
   decisions: { statuses: ["needs_owner"] },
   active: {},
-  prep: { statuses: ["draft", "refining", "ready"] },
+  prep: { statuses: ["draft", "refining"] },
   done: { statuses: ["done", "cancelled"] },
 };
 

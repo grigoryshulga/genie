@@ -1,4 +1,5 @@
 // A role has three workspaces: its prompt, settings and a paginated audit trail.
+import { plural } from "@/shared/lib";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { exportRole, roleSchema, useDeleteConfig, useRole, type Catalogue, type RoleDef } from "@/entities/agent-config";
@@ -54,7 +55,7 @@ export function RolesTab({
     <div className="split ag-roles-layout config-workspace">
       <section className="split-list ag-list" aria-label="Роли">
         <div className="side-head">
-          <span className="side-title">Роли</span>
+          <span className="side-title">{cfg.roles.length} {plural(cfg.roles.length, "роль", "роли", "ролей")}</span>
           <div className="config-icon-group" role="group" aria-label="Действия со списком ролей">
             {!readOnly && onCreate && <IconButton label="Новая роль" onClick={onCreate}><Icon.plus /></IconButton>}
             {!readOnly && cfg.admin && <><IconButton label="Импорт роли" disabled={editingRole === current} onClick={() => setImporting(true)}><Icon.upload /></IconButton><IconButton label="Скачать схему роли" onClick={() => downloadConfigJson("genie-role.schema.json", roleSchema)}><Icon.file /></IconButton></>}

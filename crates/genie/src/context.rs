@@ -16,7 +16,7 @@
 use std::collections::HashSet;
 
 use genie_core::Task;
-use genie_core::vault::DocPage;
+use genie_core::vault::{DocPage, REQUIRED_PAGE_LIMIT};
 
 use crate::knowledge::glob_matches;
 use crate::state::App;
@@ -143,6 +143,134 @@ fn project_pages(app: &App, project: &str) -> Vec<DocPage> {
 /// The L0 section of an agent's prompt, when the project has pages.
 pub fn l0(app: &App, project: &str) -> Option<String> {
     l0_index(&project_pages(app, project)).map(|l| l.text)
+}
+
+// --- required reading -------------------------------------------------------------
+
+const REQUIRED_HEADER: &str = "## Required reading";
+const REQUIRED_HINT: &str =
+    "Follow these pages of the project's knowledge base. They are complete; versions are listed so you can tell when one changes.";
+
+/// A required page as delivered: its whole body, without frontmatter.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequiredPageView {
+    pub path: String,
+    pub title: String,
+    /// The first 12 characters of the page's content hash.
+    pub version: String,
+    pub content: String,
+    /// Longer than [`REQUIRED_PAGE_LIMIT`]; still delivered whole.
+    pub oversize: bool,
+}
+
+/// The required pages of a role and the paths that could not be read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredReading {
+    pub role: String,
+    pub pages: Vec<RequiredPageView>,
+    pub missing: Vec<String>,
+}
+
+/// The Markdown of the required section, or `None` when no page is required.
+pub fn required_section(pages: &[RequiredPageView], missing: &[String]) -> Option<String> {
+    if pages.is_empty() && missing.is_empty() {
+        return None;
+    }
+    let mut out = format!("{REQUIRED_HEADER}\n\n{REQUIRED_HINT}");
+    for p in pages {
+        out.push_str(&format!("\n\n### {} (`{}`, version {})\n\n{}", p.title, p.path, p.version, p.content.trim_end()));
+    }
+    if !missing.is_empty() {
+        out.push_str("\n\nMissing required pages:");
+        for path in missing {
+            out.push_str(&format!("\n- {path}: missing"));
+        }
+    }
+    Some(out)
+}
+
+/// Read the pages the project requires for a role: whole bodies, with versions,
+/// and the paths that are missing. `None` when the role reads nothing.
+pub fn required_reading(app: &App, project: &str, role: &str) -> Option<RequiredReading> {
+    let paths = app.with_vault(|v| Ok(v.required_for(project, role))).ok()?;
+    if paths.is_empty() {
+        return None;
+    }
+    let mut pages = Vec::new();
+    let mut missing = Vec::new();
+    for path in paths {
+        match app.with_vault(|v| v.read(&path, None, None)) {
+            Ok(r) => pages.push(RequiredPageView {
+                version: r.page.content_hash.chars().take(12).collect(),
+                oversize: r.content.chars().count() > REQUIRED_PAGE_LIMIT,
+                path,
+                title: r.page.title,
+                content: r.content,
+            }),
+            Err(_) => missing.push(path),
+        }
+    }
+    Some(RequiredReading { role: role.into(), pages, missing })
+}
+
+/// The required-reading section of an agent's prompt.
+pub fn required(app: &App, project: &str, role: &str) -> Option<String> {
+    let reading = required_reading(app, project, role)?;
+    required_section(&reading.pages, &reading.missing)
+}
+
+/// Roles that must read `path` in a project (`all` stays as it is).
+pub fn roles_requiring(app: &App, project: &str, path: &str) -> Vec<String> {
+    app.with_vault(|v| {
+        Ok(v.config
+            .spaces
+            .values()
+            .filter(|s| s.project.as_deref() == Some(project))
+            .flat_map(|s| s.required.iter())
+            .filter(|r| r.page == path)
+            .flat_map(|r| r.roles.iter().map(|role| role.to_lowercase()))
+            .collect())
+    })
+    .unwrap_or_default()
+}
+
+/// The notice a member gets when one of its required pages changed on main.
+pub fn required_change_notice(path: &str, changeset: i64, diff: &str) -> String {
+    const MAX: usize = 6000;
+    let shown: String = diff.chars().take(MAX).collect();
+    let cut = if diff.chars().count() > MAX { "\n… (diff cut; read the page with `genie docs read`)" } else { "" };
+    format!(
+        "Required page `{path}` changed (changeset #{changeset}). Follow the new version from now on; the change:\n\n```diff\n{shown}{cut}\n```"
+    )
+}
+
+/// Tell the members of running teams whose role must read `path` that it changed on main.
+pub fn notify_required_changed(app: &App, project: &str, path: &str, changeset: i64, diff: &str) {
+    let roles = roles_requiring(app, project, path);
+    if roles.is_empty() {
+        return;
+    }
+    let text = required_change_notice(path, changeset, diff);
+    let topic = format!("required:{path}");
+    let _ = app.with_tracker(project, |t| {
+        for team in t.bus().list(false)? {
+            for m in team.members.iter().filter(|m| roles.iter().any(|r| r == "all" || *r == m.role.to_lowercase())) {
+                let _ = t.bus().send(genie_core::team::SendMail {
+                    team: &team.id,
+                    from: "genie",
+                    from_role: "system",
+                    to: &m.name,
+                    text: &text,
+                    level: Some("normal"),
+                    kind: "message",
+                    topic: Some(&topic),
+                    ..Default::default()
+                });
+            }
+        }
+        Ok(())
+    });
 }
 
 // --- L1 --------------------------------------------------------------------------
@@ -730,6 +858,37 @@ mod tests {
         );
         assert!(text.contains("page clipped at section boundaries"));
         assert!(l1_context(&pages, &[], |_| None).is_none());
+    }
+
+    #[test]
+    fn required_reading_is_delivered_whole_with_versions_and_missing_pages() {
+        let body: String = (0..400).map(|i| format!("## Part {i}\n\n{}\n\n", "Long enough text. ".repeat(10))).collect();
+        assert!(units(&body) > L1_TOTAL_UNITS, "the body must exceed the L1 total on purpose");
+        let page = RequiredPageView {
+            path: "shop/agent-guide.md".into(),
+            title: "Agent guide".into(),
+            version: "abcdef123456".into(),
+            content: body.clone(),
+            oversize: false,
+        };
+        let text = required_section(&[page], &["shop/missing.md".into()]).unwrap();
+        assert!(text.starts_with("## Required reading\n\nFollow these pages"), "{text}");
+        assert!(text.contains("### Agent guide (`shop/agent-guide.md`, version abcdef123456)"), "{text}");
+        assert!(text.contains(body.trim_end()), "the whole body, beyond any L1 page limit");
+        assert!(text.contains("- shop/missing.md: missing"), "{text}");
+        assert!(!text.contains("clipped") && !text.contains("page clipped"), "required pages are never cut: {text}");
+        assert!(required_section(&[], &[]).is_none(), "no required pages means no section");
+        let only_missing = required_section(&[], &["shop/gone.md".into()]).unwrap();
+        assert!(only_missing.contains("- shop/gone.md: missing") && !only_missing.contains("###"), "{only_missing}");
+    }
+
+    #[test]
+    fn a_required_change_notice_names_the_page_and_carries_a_bounded_diff() {
+        let small = required_change_notice("shop/guide.md", 7, "-old\n+new");
+        assert!(small.starts_with("Required page `shop/guide.md` changed (changeset #7)"), "{small}");
+        assert!(small.contains("```diff\n-old\n+new\n```") && !small.contains("diff cut"), "{small}");
+        let big = required_change_notice("shop/guide.md", 7, &"+line\n".repeat(5000));
+        assert!(big.contains("diff cut") && big.chars().count() < 6300, "the diff is bounded");
     }
 
     #[test]

@@ -5,7 +5,7 @@
 // (the brand handoff's open decision 4), and the checks below are the promises the design system
 // itself makes — named controls, sound roles, readable contrast, focus that is visible and stays
 // inside a dialog, and motion that stops when the person asked for less of it. What it does not
-// check is written down beside the harness in docs/development.md.
+// check is written down beside the harness in the development guide.
 
 export type Severity = "critical" | "serious" | "moderate";
 

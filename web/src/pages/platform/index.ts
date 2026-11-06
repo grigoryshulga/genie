@@ -1,1 +1,1 @@
-export { AnswerPage, AutomationsPage, NotificationsPage, ProposalsPage } from "./ui/PlatformPages.tsx";
+export { AnswerPage, AutomationsPage, NotificationsPage } from "./ui/PlatformPages.tsx";

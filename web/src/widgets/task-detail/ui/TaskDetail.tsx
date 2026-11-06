@@ -1,13 +1,12 @@
 import { TaskIntelligence } from "./TaskIntelligence.tsx";
-import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useId, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
-import { agentTone, Avatars, displayName, ROLE_TITLE_RU } from "@/entities/member";
+import { agentTone, displayName, ROLE_TITLE_RU } from "@/entities/member";
 import type { DocsImpact, DocsImpactReason } from "@/shared/api";
 import {
   ArtifactThumb,
   EpicIcon,
-  EpicProgress,
   historyText,
   Labels,
   PRIORITY_NAME,
@@ -85,6 +84,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
 }) {
   useTick();
   const q = useTask(id);
+  const navigate = useNavigate();
   const toast = useToast();
   const move = useMoveTask();
   const patch = usePatchTask();
@@ -92,8 +92,12 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const check = useCheck();
   const del = useDeleteTask();
   const [deleting, setDeleting] = useState(false);
+  const tabsId = useId();
+  const [moreProperties, setMoreProperties] = useState(false);
   const [draft, setDraft] = useState("");
+  const [contentTab, setContentTab] = useState<"description" | "activity" | "artifacts" | "team">("description");
   const [editDesc, setEditDesc] = useState<string | undefined>();
+  const [editLabels, setEditLabels] = useState<string | undefined>();
   const [spawning, setSpawning] = useState(false);
   const agents = useAgentConfig();
   const epics = useEpicMap();
@@ -109,14 +113,15 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
 
   useEffect(() => {
     setDraft("");
+    setContentTab("description");
+    setMoreProperties(false);
     setEditDesc(undefined);
+    setEditLabels(undefined);
     setDeleting(false);
   }, [id]);
 
   const fail = (e: Error) => toast(`Не удалось: ${e.message}`, "error");
   const viewer = useArtifactViewer(fail);
-  // Every hook runs before the early returns below, or React loses the order between renders.
-  const narrow = useNarrow();
 
   const Shell = variant === "page" ? "main" : "aside";
   if (q.isPending) return <Shell className={variant === "page" ? "main task-page" : "detail"} aria-busy="true" aria-label="Задача загружается"><TaskSkeleton page={variant === "page"} /></Shell>;
@@ -161,6 +166,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const page = variant === "page";
   const pageLink = `/task/${encodeURIComponent(t.id)}`;
   const last = activity.at(-1);
+  const sameStatusTasks = (allTasks ?? []).filter((task) => task.id !== t.id && task.status === t.status && task.type === t.type);
 
   // On its own page the task title is the screen's title; in the side panel it stays a section heading.
   const TitleTag = page ? "h1" : "h2";
@@ -235,10 +241,11 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     <div className="td-headline">
       <div className="td-meta">
         {page ? crumbs : <span className="mono td-id">{t.id}</span>}
-        <span className="g-status">
+        {page && <span className="g-status">
           <StatusIcon status={t.status} size={16} />
           {STATUS_NAME[t.status]}
-        </span>
+        </span>}
+        {!page && epic && <Link className="td-header-epic" to={`/epic/${encodeURIComponent(epic.id)}`} title={`${epic.id} · ${epic.title}`}><EpicIcon size={13} />{epic.id} · {epic.title}</Link>}
         {isEpic && <Tag tone="outline">эпик</Tag>}
         {!page && (
           <span className="td-meta-more">
@@ -247,21 +254,21 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           </span>
         )}
       </div>
-      {title}
+      {page ? title : <div className="td-title-row">{title}{t.labels.length > 0 && <div className="td-header-labels" aria-label="Метки задачи"><Labels labels={t.labels} /></div>}</div>}
     </div>
   );
 
   // The properties read top-down as fields: a label with the value's shape, then the value itself,
   // which is a control only for someone allowed to write. The page keeps the whole set; the
   // preview only what a glance needs.
-  const props = (
-    <div className={page ? "td-fields rail" : "td-fields"}>
+  const primaryProperties = (
+    <>
       <Prop label="Статус" icon={<StatusIcon status={t.status} size={13} />}>
         {writable ? (
           <Select sm aria-label="Статус" value={t.status} onChange={(e) => setStatus(e.target.value as Status)}>
             {(Object.keys(STATUS_NAME) as Status[]).map((s) => (
               <option key={s} value={s}>
-                {STATUS_NAME[s]}
+                {!page && CSS.supports("appearance", "base-select") ? <><span aria-hidden="true"><StatusIcon status={s} size={14} /></span><span>{STATUS_NAME[s]}</span></> : STATUS_NAME[s]}
               </option>
             ))}
           </Select>
@@ -298,23 +305,10 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           )}
         </Prop>
       )}
-      {!page && (
-        <Prop label="Команда">
-          {team ? (
-            <span className="td-team">
-              <Avatars members={team.members} max={6} />
-              <Link to={teamLink(team)}>{team.state === "active" ? workingText(team.members.filter((m) => m.activity === "working").length) : "остановлена"}</Link>
-            </span>
-          ) : canSpawn && writable ? (
-            <Button variant="ghost" sm onClick={() => setSpawning(true)}>
-              <Icon.userPlus size={12} />
-              Собрать команду
-            </Button>
-          ) : (
-            <span className="td-val muted">не собрана</span>
-          )}
-        </Prop>
-      )}
+    </>
+  );
+  const epicProperty = (
+    <>
       {!isEpic && (
         <Prop label="Эпик" icon={<EpicIcon size={13} empty={!epic} />}>
           {writable ? (
@@ -345,6 +339,13 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           )}
         </Prop>
       )}
+    </>
+  );
+
+  const props = (
+    <div className={page ? "td-fields rail" : "td-fields"}>
+      {page && primaryProperties}
+      {page && epicProperty}
       {(t.deps.length > 0 || (!isEpic && t.children.length > 0)) && (
         <Prop label="Связи">
           <span className="td-val muted">
@@ -362,8 +363,27 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           </span>
         </Prop>
       )}
-      {(page || t.labels.length > 0) && (
-        <Prop label="Метки">{t.labels.length ? <Labels labels={t.labels} /> : <span className="td-val muted">нет</span>}</Prop>
+      {page && (
+        <Prop label="Метки">
+          {editLabels === undefined ? (
+            <>
+              {t.labels.length ? <Labels labels={t.labels} /> : <span className="td-val muted">нет</span>}
+              {writable && <IconButton label="Изменить метки" onClick={() => setEditLabels(t.labels.join(", "))}><Icon.pencil size={14} /></IconButton>}
+            </>
+          ) : (
+            <form className="td-label-editor" onSubmit={(event) => {
+              event.preventDefault();
+              const labels = [...new Set(editLabels.split(",").map((label) => label.trim()).filter(Boolean))];
+              patch.mutate({ id: t.id, patch: { labels } }, { onSuccess: () => setEditLabels(undefined), onError: fail });
+            }}>
+              <Input sm autoFocus aria-label="Метки через запятую" placeholder="Метки через запятую" value={editLabels} onChange={(event) => setEditLabels(event.target.value)} />
+              <div className="td-label-actions">
+                <Button type="button" variant="ghost" sm onClick={() => setEditLabels(undefined)}>Отмена</Button>
+                <Button type="submit" variant="secondary" sm disabled={patch.isPending}>Сохранить метки</Button>
+              </div>
+            </form>
+          )}
+        </Prop>
       )}
       {page && (
         <>
@@ -493,6 +513,121 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   );
 
 
+  const contentTabs = (
+            <div className="tp-content-tabs" role="tablist" aria-label="Содержимое задачи">
+              {([ ["description", "Описание"], ["activity", "Активность"], ["artifacts", "Вложения"], ...(!page && !isEpic ? [["team", "Команда"] as const] : []) ] as const).map(([value, label], index, tabs) => (
+                <button key={value} type="button" role="tab" id={`${tabsId}-tab-${value}`} aria-controls={`${tabsId}-content-${value}`} aria-selected={contentTab === value} tabIndex={contentTab === value ? 0 : -1} onClick={() => setContentTab(value)} onKeyDown={(event) => {
+                  if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1) + tabs.length) % tabs.length;
+                  setContentTab(tabs[next][0]);
+                  document.getElementById(`${tabsId}-tab-${tabs[next][0]}`)?.focus();
+                }}>{label}{value === "artifacts" && t.artifacts.length > 0 && <span>{t.artifacts.length}</span>}</button>
+              ))}
+            </div>
+  );
+
+  const contentPanels = (
+    <>
+            <div className="tp-tab-content" role="tabpanel" id={`${tabsId}-content-description`} aria-labelledby={`${tabsId}-tab-description`} hidden={contentTab !== "description"}>
+            {description}
+            {criteria}
+            {!isEpic && <TaskDelivery task={t.id} />}
+            {!isEpic && <TaskManager key={`manager-${t.id}`} task={t} />}
+            {!isEpic && <TaskObservation key={`observation-${t.id}`} task={t} />}
+            {!isEpic && <TaskIntelligence task={t.id} />}
+            {t.plan.trim() && (
+              <CollapsibleSection title={isEpic ? "Дорожная карта" : "План"}>
+                <Markdown text={t.plan} />
+              </CollapsibleSection>
+            )}
+            {t.notes.trim() && (
+              <CollapsibleSection className="notes" title="Заметки">
+                <Markdown text={readableStamps(t.notes)} />
+              </CollapsibleSection>
+            )}
+            </div>
+            <div className="tp-tab-content" role="tabpanel" id={`${tabsId}-content-artifacts`} aria-labelledby={`${tabsId}-tab-artifacts`} hidden={contentTab !== "artifacts"}>
+            {t.artifacts.length > 0 ? (
+              <CollapsibleSection title="Артефакты" badge={<span className="n">{t.artifacts.length}</span>}>
+                <div className="artifacts">
+                  {t.artifacts.map((a) => (
+                    <button type="button" key={a.id} className="artifact g-card flush" onClick={() => viewer.show(t.id, a.id)}>
+                      <span className="thumb">
+                        <ArtifactThumb task={t.id} artifact={a} />
+                      </span>
+                      <span className="cap">
+                        <span className="nm">{a.name}</span>
+                        <span className="who">
+                          {a.kind} · {a.author}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </CollapsibleSection>
+            ) : <p className="muted">Вложений пока нет</p>}
+            </div>
+            <div className="tp-tab-content tp-activity-panel" role="tabpanel" id={`${tabsId}-content-activity`} aria-labelledby={`${tabsId}-tab-activity`} hidden={contentTab !== "activity"}>
+            <section className="tp-activity">
+              <div className="timeline">
+                {activity.map((a) =>
+                  a.kind === "event" ? (
+                    <div key={`h${a.at}${a.h.event}`} className="ev">
+                      <i />
+                      <span className="txt">
+                        <span className="who">{a.h.actor}</span> {historyText(a.h, isEpic)}
+                      </span>
+                      <span className="when">{timeAgo(a.at)}</span>
+                    </div>
+                  ) : (
+                    <div key={`c${a.c.id}`} className={`comment g-sheet${a.c.role === "human" ? " mine" : ""}`}>
+                      <div className="head">
+                        <KitAvatar kind={a.c.role === "human" ? "human" : "agent"} name={a.c.author} sm tone={agentTone(a.c.role)} />
+                        <span className="who">{a.c.author}</span>
+                        <span className="k">{KIND_NAME[a.c.kind] ?? a.c.kind}</span>
+                        <span className="when">{timeAgo(a.c.at)}</span>
+                      </div>
+                      <Markdown text={a.c.text} />
+                    </div>
+                  ),
+                )}
+              </div>
+              {writable ? (
+                <div className="composer">
+                  <textarea
+                    className="g-textarea"
+                    aria-label="Комментарий"
+                    placeholder="Написать комментарий"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail });
+                    }}
+                  />
+                  <div className="bar">
+                    <span className="grow" />
+                    <Button
+                      variant="secondary"
+                      sm
+                      disabled={!draft.trim() || comment.isPending}
+                      onClick={() => comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
+                    >
+                      Отправить
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="muted">У вас доступ только для чтения: комментировать нельзя.</p>
+              )}
+            </section>
+            </div>
+            {!page && !isEpic && <div className="tp-tab-content" role="tabpanel" id={`${tabsId}-content-team`} aria-labelledby={`${tabsId}-tab-team`} hidden={contentTab !== "team"}>
+              <TeamCard task={t.id} status={t.status} team={team} canSpawn={canSpawn && writable} onSpawn={() => setSpawning(true)} compact />
+            </div>}
+    </>
+  );
+
   if (!page)
     return (
       <aside className="detail" aria-label={`Задача ${t.id}`}>
@@ -513,25 +648,24 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
         </header>
 
         <div className="detail-body">
-          <div className="detail-head">
-            {states}
-            <details className="td-props" open={!narrow}>
-              <summary>Свойства</summary>
-              {props}
-            </details>
+          <div className="detail-property-bar" aria-label="Основные свойства задачи">
+            {primaryProperties}
+            {(t.deps.length > 0 || (!isEpic && t.children.length > 0)) && <IconButton label="Ещё свойства" aria-expanded={moreProperties} aria-controls={`${tabsId}-more-properties`} onClick={() => setMoreProperties(!moreProperties)}><Icon.dots size={16} /></IconButton>}
           </div>
-          {epicLink}
-          {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
-          {description}
-          {criteria}
-          {!isEpic && <TaskDelivery task={t.id} />}
-          {!isEpic && <TaskManager key={`manager-${t.id}`} task={t} />}
-          {!isEpic && <TaskObservation key={`observation-${t.id}`} task={t} />}
-          {!isEpic && <TaskIntelligence task={t.id} />}
+          <div className="detail-extra-properties tp-card" id={`${tabsId}-more-properties`} hidden={!moreProperties}>
+            {props}
+          </div>
+          <div className="detail-main">
+            {states}
+            {epicLink}
+            {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
+            {contentTabs}
+            {contentPanels}
+          </div>
           <footer className="detail-more">
             {last && <span className="muted">Последнее: {last.kind === "event" ? `${last.h.actor} ${historyText(last.h, isEpic)}` : `${last.c.author}, ${KIND_NAME[last.c.kind] ?? last.c.kind}`} · {timeAgo(last.at)}</span>}
             <span className="grow" />
-            <Link to={pageLink}>Вся задача и активность →</Link>
+            <Link to={pageLink}>Открыть страницу задачи →</Link>
           </footer>
         </div>
         {dialogs}
@@ -541,9 +675,13 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   return (
     <main className="main task-page" aria-label={`Задача ${t.id}`}>
       <header className="td-bar tp-page-header">
-        <Link to={tab === "team" ? pageLink : "/tasks"} className={`g-icon-btn ${tab === "team" ? "tp-back" : "m-only"}`} aria-label={tab === "team" ? "К описанию задачи" : "Назад"} title={tab === "team" ? "К описанию задачи" : "Назад"}>
+        <IconButton label={tab === "team" ? "К описанию задачи" : "Назад"} className="tp-back" onClick={() => {
+          if (tab === "team") navigate(pageLink);
+          else if (typeof window.history.state?.idx === "number" && window.history.state.idx > 0) navigate(-1);
+          else navigate("/tasks");
+        }}>
           <Icon.back />
-        </Link>
+        </IconButton>
         {headline}
         <div className="td-header-actions">
           <FollowTask task={t.id} />
@@ -573,110 +711,51 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
         ))
       ) : (
         <div className="tp-body">
+          <aside className="tp-navigation" aria-label="Навигация по задаче">
+            {contentTabs}
+            {epic && (
+              <section className="tp-related" aria-label="Родительский эпик">
+                <h2>Эпик</h2>
+                <Link className="tp-related-task" to={`/epic/${encodeURIComponent(epic.id)}`}>
+                  <span>{epic.id}</span><b>{epic.title}</b>
+                </Link>
+              </section>
+            )}
+            {sameStatusTasks.length > 0 && (
+              <section className="tp-related" aria-label="Задачи с тем же статусом">
+                <h2>Тот же статус <span>{sameStatusTasks.length}</span></h2>
+                <div className="tp-related-list">
+                  {sameStatusTasks.slice(0, 3).map((task) => (
+                    <Link key={task.id} className="tp-related-task" to={`/task/${encodeURIComponent(task.id)}`}>
+                      <span>{task.id}</span><b>{task.title}</b>
+                    </Link>
+                  ))}
+                  {sameStatusTasks.length > 3 && (
+                    <details>
+                      <summary>Ещё {sameStatusTasks.length - 3}</summary>
+                      {sameStatusTasks.slice(3).map((task) => (
+                        <Link key={task.id} className="tp-related-task" to={`/task/${encodeURIComponent(task.id)}`}>
+                          <span>{task.id}</span><b>{task.title}</b>
+                        </Link>
+                      ))}
+                    </details>
+                  )}
+                </div>
+              </section>
+            )}
+          </aside>
           <div className="tp-main">
             {states}
             {epicLink}
             {impactEnabled && <DocsImpactBlock result={impact.data} />}
             {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
-            {description}
-            {criteria}
-            {!isEpic && <TaskDelivery task={t.id} />}
-            {!isEpic && <TaskManager key={`manager-${t.id}`} task={t} />}
-            {!isEpic && <TaskObservation key={`observation-${t.id}`} task={t} />}
-            {!isEpic && <TaskIntelligence task={t.id} />}
-            {t.plan.trim() && (
-              <CollapsibleSection title={isEpic ? "Дорожная карта" : "План"}>
-                <Markdown text={t.plan} />
-              </CollapsibleSection>
-            )}
-            {t.notes.trim() && (
-              <CollapsibleSection className="notes" title="Заметки">
-                <Markdown text={readableStamps(t.notes)} />
-              </CollapsibleSection>
-            )}
-            {t.artifacts.length > 0 && (
-              <CollapsibleSection title="Артефакты" badge={<span className="n">{t.artifacts.length}</span>}>
-                <div className="artifacts">
-                  {t.artifacts.map((a) => (
-                    <button type="button" key={a.id} className="artifact g-card flush" onClick={() => viewer.show(t.id, a.id)}>
-                      <span className="thumb">
-                        <ArtifactThumb task={t.id} artifact={a} />
-                      </span>
-                      <span className="cap">
-                        <span className="nm">{a.name}</span>
-                        <span className="who">
-                          {a.kind} · {a.author}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </CollapsibleSection>
-            )}
-            <CollapsibleSection className="tp-activity" title="Активность">
-              <div className="timeline">
-                {activity.map((a) =>
-                  a.kind === "event" ? (
-                    <div key={`h${a.at}${a.h.event}`} className="ev">
-                      <i />
-                      <span className="txt">
-                        <span className="who">{a.h.actor}</span> {historyText(a.h, isEpic)}
-                      </span>
-                      <span className="when">{timeAgo(a.at)}</span>
-                    </div>
-                  ) : (
-                    <div key={`c${a.c.id}`} className={`comment g-sheet${a.c.role === "human" ? " mine" : ""}`}>
-                      <div className="head">
-                        <KitAvatar kind={a.c.role === "human" ? "human" : "agent"} name={a.c.author} sm tone={agentTone(a.c.role)} />
-                        <span className="who">{a.c.author}</span>
-                        <span className="k">{KIND_NAME[a.c.kind] ?? a.c.kind}</span>
-                        <span className="when">{timeAgo(a.c.at)}</span>
-                      </div>
-                      <Markdown text={a.c.text} />
-                    </div>
-                  ),
-                )}
-              </div>
-              {writable ? (
-                <div className="composer">
-                  <textarea
-                    className="g-textarea"
-                    aria-label="Комментарий"
-                    placeholder="Комментарий для оркестратора и команды"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail });
-                    }}
-                  />
-                  <div className="bar">
-                    <span>⌘↵ отправить · оркестратор получит уведомление</span>
-                    <span className="grow" />
-                    <Button
-                      variant="secondary"
-                      sm
-                      disabled={!draft.trim() || comment.isPending}
-                      onClick={() => comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
-                    >
-                      Отправить
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <p className="muted">У вас доступ только для чтения: комментировать нельзя.</p>
-              )}
-            </CollapsibleSection>
+            {contentPanels}
           </div>
           <aside className="tp-rail" aria-label="Свойства задачи">
             <RailCard id="properties" title="Свойства" className="tp-properties">
               {props}
             </RailCard>
             <TeamCard task={t.id} status={t.status} team={team} canSpawn={canSpawn && writable} onSpawn={() => setSpawning(true)} />
-            {epic && (
-              <RailCard id="epic" title="Эпик">
-                <EpicBox id={epic.id} onArtifact={viewer.show} />
-              </RailCard>
-            )}
           </aside>
         </div>
       )}
@@ -704,18 +783,20 @@ function useNarrow(): boolean {
 }
 
 /** A rail card that folds to its title; the choice is remembered per card. */
-function RailCard({ id, title, className, children }: { id: string; title: string; className?: string; children: ReactNode }) {
+function RailCard({ id, title, className, children, collapsible = true }: { id: string; title: string; className?: string; children: ReactNode; collapsible?: boolean }) {
   const key = `genie.railCard.${id}`;
+  const contentId = useId();
   // On a phone the properties fold under the headline like an accordion until opened.
   const narrow = useNarrow();
   const [open, setOpen] = useState(() => readPref(key, id === "properties" && narrow ? "closed" : "open") === "open");
+  if (!collapsible) return <section className={`tp-card${className ? ` ${className}` : ""}`}>{title && <h3 className="tp-card-title">{title}</h3>}<div className="tp-card-body">{children}</div></section>;
   return (
     <section className={`tp-card${className ? ` ${className}` : ""}${open ? "" : " collapsed"}`}>
       <button
         type="button"
         className="tp-card-toggle"
         aria-expanded={open}
-        aria-controls={`rail-card-${id}`}
+        aria-controls={contentId}
         title={open ? `Свернуть «${title}»` : `Развернуть «${title}»`}
         onClick={() => {
           writePref(key, open ? "closed" : "open");
@@ -725,21 +806,21 @@ function RailCard({ id, title, className, children }: { id: string; title: strin
         <span className="tp-card-title">{title}</span>
         <Icon.chevron size={12} />
       </button>
-      <div className="tp-card-body" id={`rail-card-${id}`} hidden={!open}>
+      <div className="tp-card-body" id={contentId} hidden={!open}>
         {children}
       </div>
     </section>
   );
 }
 
-function TeamCard({ task, status, team, canSpawn, onSpawn }: { task: string; status: Status; team?: Team; canSpawn: boolean; onSpawn: () => void }) {
+function TeamCard({ task, status, team, canSpawn, onSpawn, compact = false }: { task: string; status: Status; team?: Team; canSpawn: boolean; onSpawn: () => void; compact?: boolean }) {
   const detail = useTeam(team?.id).data;
   const current = detail ?? team;
   const spec = detail?.spec;
   const active = current?.state === "active";
   const live = current && spec ? liveTeam(spec, current.members, status, active, displayName).live : {};
   return (
-    <RailCard id="team" title="Команда" className="tp-team-card">
+    <RailCard id="team" title={compact ? "" : "Команда"} className={`tp-team-card${compact ? " tp-team-compact" : ""}`} collapsible={!compact}>
       {current?.members.length ? (
         <>
           <div className="tp-team-roster" aria-label="Участники команды">
@@ -763,6 +844,11 @@ function TeamCard({ task, status, team, canSpawn, onSpawn }: { task: string; sta
             Перейти к команде <Icon.chevron size={12} />
           </Link>
         </>
+      ) : compact ? (
+        <div className="tp-team-compact-empty">
+          <span className="muted">Команда не собрана</span>
+          {canSpawn && <Button variant="secondary" sm onClick={onSpawn}><Icon.userPlus size={12} />Собрать команду</Button>}
+        </div>
       ) : (
         <div className="tp-team-empty">
           <Character state="sleep" size={56} />
@@ -887,48 +973,6 @@ function DocsImpactBlock({ result }: { result: DocsImpact | undefined }) {
   );
 }
 
-
-/** The epic a task belongs to, in the page's rail: its progress, goal and shared artifacts. */
-function EpicBox({ id, onArtifact }: { id: string; onArtifact: (task: string, n: number) => void }) {
-  const epic = useTask(id).data;
-  const tasks = (useTasks().data ?? []).filter((x) => x.parent === id);
-  if (!epic) return null;
-  const goal = epic.description.trim().split(/\n\s*\n/)[0];
-  const closed = tasks.filter((x) => x.status === "done" || x.status === "cancelled").length;
-  // The same file attached twice shows once.
-  const artifacts = epic.artifacts.filter((a, i, all) => all.findIndex((b) => b.name === a.name) === i);
-  return (
-    <section className="epic-box" aria-label={`Эпик ${epic.id}`}>
-      <Link to={`/epic/${encodeURIComponent(epic.id)}`} className="h">
-        <EpicIcon size={12} />
-        <span className="kind mono">{epic.id}</span>
-        <span className="nm">{epic.title}</span>
-      </Link>
-      {tasks.length > 0 && (
-        <span className="mini">
-          <EpicProgress tasks={tasks} compact />
-          {closed} из {tasks.length} закрыто
-        </span>
-      )}
-      {goal && <div className="goal">{goal}</div>}
-      {artifacts.length > 0 && (
-        <div className="files">
-          {artifacts.map((a) => (
-            <button type="button" key={a.id} className="artifact small" onClick={() => onArtifact(epic.id, a.id)} title={a.note ?? `${a.kind} · ${a.author}`}>
-              <Icon.file size={13} />
-              <span className="nm">{a.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** How many members of a running team work right now, in words. */
-function workingText(n: number): string {
-  return n ? `${n} ${plural(n, "работает", "работают", "работают")}` : "сейчас никто не работает";
-}
 
 /** A property of the task: the label with the value's shape, then the value under it. */
 function Prop({ label, icon, children }: { label: string; icon?: ReactNode; children: ReactNode }) {
