@@ -157,6 +157,10 @@ struct TextPart {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ChatBody {
+    max_completion_tokens: Option<usize>,
+    max_tokens: Option<usize>,
+    tools: Option<Vec<Value>>,
+    tool_choice: Option<String>,
     model: String,
     messages: Vec<InputMessage>,
     #[serde(default)]
@@ -262,9 +266,11 @@ fn submission(
         return Err(Error::bad("conversation and X-Genie-Conversation disagree"));
     }
     let conversation = conversation.or(conversation_header);
-    let canonical = json!({"protocol":protocol,"input":input,"conversation":conversation,"previous_response_id":previous});
+    let client_session = optional_header(headers, "x-opencode-session-id")?.map(|id| format!("opencode:{id}"));
+    let canonical = json!({"protocol":protocol,"input":input,"conversation":conversation,"previous_response_id":previous,"client_session":client_session});
     let fingerprint = Sha256::digest(canonical.to_string().as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect();
     Ok(Submit {
+        client_session,
         messages: input,
         conversation_id: conversation,
         previous_response_id: previous,
@@ -286,17 +292,35 @@ async fn chat(
     Body(body): Body<ChatBody>,
 ) -> Result<HttpResponse, Error> {
     check_model(&body.model)?;
-    let input = messages(body.messages, false)?;
-    let response = submit(&app, &ctx, &project, submission(&headers, input, None, None, "chat")?).await?;
+    if body.tools.as_ref().is_some_and(|tools| !tools.is_empty()) || body.tool_choice.as_deref().is_some_and(|v| v != "none") {
+        return Err(Error::bad("Genie executes tools on the server; disable client tools and use tool_choice=none"));
+    }
+    if body.max_completion_tokens.is_some() && body.max_tokens.is_some() && body.max_completion_tokens != body.max_tokens {
+        return Err(Error::bad("max_tokens and max_completion_tokens disagree"));
+    }
+    let cap = body.max_completion_tokens.or(body.max_tokens);
+    if cap.is_some_and(|v| v == 0 || v > 1_048_576) {
+        return Err(Error::bad("completion token limit must be between 1 and 1048576"));
+    }
+    let mut input = messages(body.messages, false)?;
+    // OpenCode 2.2.5 JSON-quotes text. Unwrap only its current user message, never history.
+    if optional_header(&headers, "x-opencode-session-id")?.is_some()
+        && let Some(last) = input.last_mut()
+        && let Ok(text) = serde_json::from_str::<String>(&last.content)
+        && !text.trim().is_empty()
+    {
+        last.content = text;
+    }
+    let response = submit(&app, &ctx, &project, submission(&headers, input, None, None, &format!("chat:{cap:?}"))?).await?;
     let receipt = receipt(&response)?;
     if body.stream {
-        return Ok((receipt, streaming(app, ctx, project, response, Protocol::Chat)).into_response());
+        return Ok((receipt, streaming(app, ctx, project, response, Protocol::Chat(cap))).into_response());
     }
     let response = wait(&app, &ctx, &project, response).await?;
     if response.status != ResponseStatus::Completed {
         return Err(turn_error(&response));
     }
-    Ok((receipt, Json(chat_body(&response))).into_response())
+    Ok((receipt, Json(chat_body(&response, cap)?)).into_response())
 }
 
 async fn respond(
@@ -388,9 +412,30 @@ fn chat_id(response: &Response) -> String {
     format!("chatcmpl_{}", response.id.trim_start_matches("resp_"))
 }
 
-fn chat_body(response: &Response) -> Value {
-    json!({"id":chat_id(response),"object":"chat.completion","created":response.created_at,"model":MODEL,
-        "choices":[{"index":0,"message":{"role":"assistant","content":response.output},"finish_reason":"stop","logprobs":null}],"usage":null})
+/// Genie defines its wire output limit in cl100k_base tokens, independently of
+/// worker model usage. Full output remains in the durable response receipt.
+fn limited_output(text: &str, cap: Option<usize>) -> Result<(String, &'static str), Error> {
+    let Some(cap) = cap else { return Ok((text.into(), "stop")) };
+    static BPE: std::sync::OnceLock<Result<tiktoken_rs::CoreBPE, String>> = std::sync::OnceLock::new();
+    let bpe = BPE
+        .get_or_init(|| tiktoken_rs::cl100k_base().map_err(|e| e.to_string()))
+        .as_ref()
+        .map_err(|_| Error::new(StatusCode::INTERNAL_SERVER_ERROR, "cannot initialize output tokenizer"))?;
+    let tokens = bpe.encode_ordinary(text);
+    if tokens.len() <= cap {
+        return Ok((text.into(), "stop"));
+    }
+    let bytes =
+        bpe.decode_bytes(&tokens[..cap]).map_err(|_| Error::new(StatusCode::INTERNAL_SERVER_ERROR, "cannot decode output tokens"))?;
+    // A BPE boundary can split a UTF-8 scalar. Return only the valid prefix.
+    let end = std::str::from_utf8(&bytes).err().map_or(bytes.len(), |e| e.valid_up_to());
+    Ok((text[..end].into(), "length"))
+}
+
+fn chat_body(response: &Response, cap: Option<usize>) -> Result<Value, Error> {
+    let (text, finish) = limited_output(&response.output, cap)?;
+    Ok(json!({"id":chat_id(response),"object":"chat.completion","created":response.created_at,"model":MODEL,
+        "choices":[{"index":0,"message":{"role":"assistant","content":text},"finish_reason":finish,"logprobs":null}],"usage":null}))
 }
 
 fn message_item(response: &Response) -> Value {
@@ -413,7 +458,7 @@ fn response_body(response: &Response) -> Value {
 
 #[derive(Clone, Copy)]
 enum Protocol {
-    Chat,
+    Chat(Option<usize>),
     Responses,
 }
 
@@ -445,7 +490,7 @@ impl StreamState {
 
     fn fail(&mut self, error: Error) {
         match self.protocol {
-            Protocol::Chat => {
+            Protocol::Chat(_) => {
                 self.pending.push_back(Event::default().data(error.body().to_string()));
                 self.pending.push_back(Event::default().data("[DONE]"));
             }
@@ -457,12 +502,20 @@ impl StreamState {
     fn complete(&mut self) {
         self.finished = true;
         match self.protocol {
-            Protocol::Chat if self.response.status == ResponseStatus::Completed => {
-                self.chat_chunk(json!({"content":self.response.output}), None);
-                self.chat_chunk(json!({}), Some("stop"));
+            Protocol::Chat(cap) if self.response.status == ResponseStatus::Completed => {
+                match limited_output(&self.response.output, cap) {
+                    Ok((text, finish)) => {
+                        self.chat_chunk(json!({"content":text}), None);
+                        self.chat_chunk(json!({}), Some(finish));
+                    }
+                    Err(error) => {
+                        self.fail(error);
+                        return;
+                    }
+                }
                 self.pending.push_back(Event::default().data("[DONE]"));
             }
-            Protocol::Chat => self.fail(turn_error(&self.response)),
+            Protocol::Chat(_) => self.fail(turn_error(&self.response)),
             Protocol::Responses if self.response.status == ResponseStatus::Completed => {
                 let item = message_item(&self.response);
                 let id = item["id"].clone();
@@ -511,7 +564,7 @@ fn streaming(app: Arc<App>, ctx: Ctx, project: String, response: Response, proto
     let mut state =
         StreamState { app, ctx, project, response, protocol, pending: VecDeque::new(), sequence: 0, finished: false, started: false };
     match protocol {
-        Protocol::Chat => state.chat_chunk(json!({"role":"assistant","content":""}), None),
+        Protocol::Chat(_) => state.chat_chunk(json!({"role":"assistant","content":""}), None),
         Protocol::Responses => state.event("response.created", json!({"response":state.initial_body()})),
     }
     let events = stream::unfold(state, |mut state| async move {
@@ -542,4 +595,21 @@ fn streaming(app: Arc<App>, ctx: Ctx, project: String, response: Response, proto
         }
     });
     Sse::new(events).keep_alive(KeepAlive::new().interval(Duration::from_secs(10))).into_response()
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+    #[test]
+    fn token_caps_preserve_unicode_and_treat_special_tokens_as_text() {
+        let bpe = tiktoken_rs::cl100k_base().unwrap();
+        for text in ["🙂 Привет, мир!", "hello <|endoftext|> world"] {
+            for cap in 1..10 {
+                let (prefix, reason) = limited_output(text, Some(cap)).unwrap();
+                assert!(text.starts_with(&prefix));
+                assert!(bpe.encode_ordinary(&prefix).len() <= cap);
+                assert_eq!(reason, if prefix == text { "stop" } else { "length" });
+            }
+        }
+    }
 }

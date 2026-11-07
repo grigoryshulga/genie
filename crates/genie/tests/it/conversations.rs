@@ -89,7 +89,7 @@ fn result_evidence(h: &Harness, task: &str) {
 }
 
 #[tokio::test]
-async fn intake_creates_one_primary_task_and_cannot_edit_other_work_or_approve() {
+async fn intake_creation_retries_are_stable_and_unselected_work_is_forbidden() {
     let h = harness();
     let anna = person(&h, "anna");
     let boris = person(&h, "boris");
@@ -135,6 +135,12 @@ async fn intake_creates_one_primary_task_and_cannot_edit_other_work_or_approve()
     let from_mcp: Value = serde_json::from_str(v["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(from_mcp["id"], p["id"], "CLI/MCP and native proposal creation share one operation");
     assert_eq!(decide(&h, &a, p["id"].as_str().unwrap()).await.0, StatusCode::FORBIDDEN);
+    h.app
+        .with_server(|db| {
+            let user = db.user_by_login("boris")?.unwrap();
+            db.set_membership("shop", user.id, ProjectRole::Viewer)
+        })
+        .unwrap();
     assert_eq!(decide(&h, &boris, p["id"].as_str().unwrap()).await.0, StatusCode::FORBIDDEN);
     assert_eq!(
         call(&h.remote, "GET", &format!("/api/conversations/{c}?project=shop")).bearer(&boris).send().await.0,
@@ -155,6 +161,17 @@ async fn manual_dispatch_uses_versioned_requester_decision_and_preserves_manager
     let old = proposal(&h, &r, &a, &t, "dispatch").await;
     call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop")).bearer(&a).json(json!({"description":"Changed scope"})).send().await;
     assert!(!decide(&h, &anna, old["id"].as_str().unwrap()).await.0.is_success());
+    let (s, receipt, _) = call(&h.remote, "GET", &format!("/api/conversations/{r}?project=shop")).bearer(&anna).send().await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(receipt["proposals"][0]["stale"], true);
+    let (s, reply, _) = call(&h.remote, "POST", "/openai/projects/shop/v1/chat/completions")
+        .bearer(&anna)
+        .json(json!({"model":"genie","messages":[{"role":"user","content":format!("/status {t}")}]}))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(!reply["choices"][0]["message"]["content"].as_str().unwrap().contains(old["id"].as_str().unwrap()));
+
     assert!(h.app.with_tracker("shop", |tr| tr.management().manager(&t)).unwrap().is_none());
     let p = proposal(&h, &r, &a, &t, "dispatch").await;
     for _ in 0..2 {
@@ -190,6 +207,12 @@ async fn questions_and_result_acceptance_follow_the_originating_conversation() {
             .any(|mail| mail.text.contains("Which timezone?")),
         "the originating requester receives the question directly"
     );
+    h.app
+        .with_server(|db| {
+            let user = db.user_by_login("boris")?.unwrap();
+            db.set_membership("shop", user.id, ProjectRole::Viewer)
+        })
+        .unwrap();
     let body = json!({"task":t,"question":q.id,"text":"UTC"});
     assert!(
         !call(&h.remote, "POST", &format!("/api/conversations/{other_c}/answer?project=shop"))
@@ -273,7 +296,7 @@ async fn cancelled_or_revoked_intake_cannot_keep_writing_but_can_report_usage() 
 }
 
 #[tokio::test]
-async fn explicit_chat_approval_requires_the_real_proposal_and_the_same_conversation() {
+async fn explicit_chat_approval_requires_the_real_proposal_and_current_project_rights() {
     let h = harness();
     let anna = person(&h, "anna");
     let (r, c, a) = incoming(&h, &anna).await;
@@ -450,6 +473,7 @@ async fn telegram_proposal_callback_is_bound_to_the_message_and_current_user() {
             let bot = db.project_bot("shop")?.unwrap();
             let user = db.user_by_login("anna")?.unwrap();
             db.link_channel(user.id, &bot.scope, "42")?;
+            db.rename_user(user.id, "anna-renamed")?;
             Ok(bot)
         })
         .unwrap();
@@ -472,4 +496,193 @@ async fn telegram_proposal_callback_is_bound_to_the_message_and_current_user() {
         genie_core::conversations::ProposalStatus::Approved
     );
     assert!(genie::interactions::telegram_reply(&h.app, &bot, 42, 42, "отклоняю").is_err());
+}
+
+#[tokio::test]
+async fn selected_tasks_cross_private_conversations_without_granting_chat_access() {
+    let h = harness();
+    let anna = person(&h, "anna");
+    let boris = person(&h, "boris");
+    let (r, c, a) = incoming(&h, &anna).await;
+    let t = task(&h, &r, &a).await;
+    let (_, new_c, new_agent) = incoming(&h, &anna).await;
+    let (br, bc, ba) = incoming(&h, &boris).await;
+    let select = format!("/api/conversations/{bc}/references?project=shop");
+    assert_eq!(call(&h.remote, "POST", &select).bearer(&ba).json(json!({"task":t})).send().await.0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop")).bearer(&ba).json(json!({"plan":"Not selected"})).send().await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(call(&h.remote, "POST", &select).bearer(&boris).json(json!({"task":t})).send().await.0, StatusCode::OK);
+    let (s, v, _) = call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
+        .bearer(&ba)
+        .json(json!({"plan":"Selected by current user"}))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(
+        call(&h.remote, "GET", &format!("/api/conversations/{c}?project=shop")).bearer(&boris).send().await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(call(&h.remote, "GET", &format!("/api/conversations/{c}?project=shop")).bearer(&ba).send().await.0, StatusCode::FORBIDDEN);
+    let p = proposal(&h, &br, &ba, &t, "dispatch").await;
+    assert_eq!(decide(&h, &boris, p["id"].as_str().unwrap()).await.0, StatusCode::OK);
+    let q = h
+        .app
+        .with_tracker("shop", |tr| tr.management().ask(&Actor::new("task-manager", Role::Orchestrator), &t, "Timezone?", true))
+        .unwrap();
+    for conv in [&new_c, &c] {
+        let (s, v, _) = call(&h.remote, "POST", &format!("/api/conversations/{conv}/answer?project=shop"))
+            .bearer(&anna)
+            .json(json!({"task":t,"question":q.id,"text":"UTC"}))
+            .send()
+            .await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+    }
+    assert_eq!(
+        call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
+            .bearer(&new_agent)
+            .json(json!({"notes":"Continued"}))
+            .send()
+            .await
+            .0,
+        StatusCode::OK
+    );
+    h.app
+        .with_server(|db| {
+            let u = db.user_by_login("boris")?.unwrap();
+            db.set_membership("shop", u.id, ProjectRole::Viewer)
+        })
+        .unwrap();
+    assert_eq!(
+        call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop")).bearer(&ba).json(json!({"plan":"Revoked"})).send().await.0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn explicit_continuation_selects_shared_work_and_creation_keys_allow_multiple_tasks() {
+    let h = harness();
+    let anna = person(&h, "anna");
+    let boris = person(&h, "boris");
+    let (r, c, a) = incoming(&h, &anna).await;
+    let first = task(&h, &r, &a).await;
+    let create = format!("/api/conversations/{r}/tasks?project=shop");
+    let body = json!({"title":"Independent second task","requestKey":"second"});
+    let (s, second, _) = call(&h.remote, "POST", &create).bearer(&a).json(body.clone()).send().await;
+    assert_eq!(s, StatusCode::OK, "{second}");
+    assert_ne!(second["id"], first);
+    assert_eq!(call(&h.remote, "POST", &create).bearer(&a).json(body).send().await.1["id"], second["id"]);
+    assert_eq!(h.app.with_tracker("shop", |tr| tr.conversations().tasks(&c)).unwrap().len(), 2);
+    let (s, v, _) = call(&h.remote, "POST", "/openai/projects/shop/v1/responses")
+        .bearer(&boris)
+        .json(json!({"model":"genie","input":format!("/continue {first} Review current work"),"background":true}))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let id = v["id"].as_str().unwrap();
+    let context = genie::conversations::prepare_run(&h.app, "shop", id).unwrap().unwrap();
+    assert!(context.message.contains(&first));
+    let rc = h.app.with_tracker("shop", |tr| Ok(tr.conversations().get(id)?.conversation_id)).unwrap();
+    assert_ne!(rc, c);
+    assert_eq!(h.app.with_tracker("shop", |tr| tr.conversations().tasks(&rc)).unwrap(), vec![first]);
+}
+
+#[tokio::test]
+async fn cross_channel_cycle_accepts_result_after_switching_conversations() {
+    let (base, sent, _) = super::telegram::fake().await;
+    let h = Harness::with_config(|cfg| cfg.telegram = Some(genie::config::TelegramConfig { token: "LEGACY".into(), api_base: Some(base) }));
+    h.project("shop");
+    h.app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let anna = person(&h, "anna");
+    let (r, c, a) = incoming(&h, &anna).await;
+    let t = task(&h, &r, &a).await;
+    let p = proposal(&h, &r, &a, &t, "dispatch").await;
+    assert_eq!(decide(&h, &anna, p["id"].as_str().unwrap()).await.0, StatusCode::OK);
+    h.app.with_tracker("shop", |tr| tr.conversations().complete(&r, "Task launched")).unwrap();
+    let bot = h
+        .app
+        .with_server(|db| {
+            db.set_project_bot("shop", 123, "project_bot", "123:test")?;
+            let bot = db.project_bot("shop")?.unwrap();
+            let user = db.user_by_login("anna")?.unwrap();
+            db.link_channel(user.id, &bot.scope, "42")?;
+            Ok(bot)
+        })
+        .unwrap();
+    // No active response/client request is needed for delivery or durable continuation.
+    let q = h
+        .app
+        .with_tracker("shop", |tr| tr.management().ask(&Actor::new("task-manager", Role::Orchestrator), &t, "Which timezone?", true))
+        .unwrap();
+    genie::engine::tick(&h.app).unwrap();
+    genie::channels::dispatch(&h.app).await;
+    assert_eq!(sent.lock().unwrap().len(), 1);
+    let (_, new_c, new_agent) = incoming(&h, &anna).await;
+    genie::telegram::handle_update(
+        &h.app,
+        &bot,
+        &json!({"message":{
+            "chat":{"id":42,"type":"private"},"text":"UTC","reply_to_message":{"message_id":42}
+        }}),
+    )
+    .await
+    .unwrap();
+    let (s, error, _) = call(&h.remote, "POST", &format!("/api/conversations/{new_c}/answer?project=shop"))
+        .bearer(&anna)
+        .json(json!({"task":t,"question":q.id,"text":"UTC"}))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK, "{error}");
+    let mail = h.app.with_tracker("shop", |tr| tr.bus().pending(None, &genie_core::management::manager_name(&t))).unwrap();
+    assert!(mail.iter().any(|m| m.text.contains("UTC")));
+    let n = mail.len();
+    assert!(genie::interactions::telegram_reply(&h.app, &bot, 42, 42, "UTC").unwrap());
+    assert_eq!(h.app.with_tracker("shop", |tr| tr.bus().pending(None, &genie_core::management::manager_name(&t))).unwrap().len(), n);
+    // Explicit fixture result, not an LLM-generated artifact.
+    h.app
+        .with_tracker("shop", |tr| {
+            tr.set_status(
+                &Actor::new("anna", Role::Human),
+                &t,
+                Status::NeedsOwner,
+                StatusOptions { force: true, note: Some("Inspect fixture CSV".into()), ..Default::default() },
+            )
+        })
+        .unwrap();
+    result_evidence(&h, &t);
+    let (s, error, _) = call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
+        .bearer(&new_agent)
+        .json(json!({"notes":"Continue in new session"}))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK, "{error}");
+    let (s, response, _) = call(&h.remote, "POST", "/openai/projects/shop/v1/responses")
+        .bearer(&anna)
+        .json(json!({"model":"genie","input":"Prepare result for acceptance","previous_response_id":r,"background":true}))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let r = response["id"].as_str().unwrap();
+    h.app.with_tracker("shop", |tr| tr.conversations().claim(r)).unwrap();
+    let a = h
+        .app
+        .with_server(|db| {
+            db.create_role_token("shop", Role::Analyst, Some("intake"), &format!("request:{r}"), None, None, chrono::Duration::hours(1))
+        })
+        .unwrap();
+    let p = proposal(&h, r, &a, &t, "accept").await;
+    genie::engine::tick(&h.app).unwrap();
+    genie::channels::dispatch(&h.app).await;
+    let idx =
+        sent.lock().unwrap().iter().position(|m| m["body"]["text"].as_str().unwrap_or("").contains(p["id"].as_str().unwrap())).unwrap();
+    let message_id = 42 + idx as i64;
+    let update = json!({"callback_query":{"id":"accept-result","from":{"id":42},"data":"interaction:approve",
+        "message":{"message_id":message_id,"chat":{"id":42,"type":"private"}}}});
+    genie::telegram::handle_update(&h.app, &bot, &update).await.unwrap();
+    genie::telegram::handle_update(&h.app, &bot, &update).await.unwrap();
+    assert_eq!(h.app.with_tracker("shop", |tr| Ok(tr.get(&t)?.status)).unwrap(), Status::Done);
+    let (s, v, _) = call(&h.remote, "GET", &format!("/api/conversations/{c}?project=shop")).bearer(&anna).send().await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["tasks"][0]["task"]["status"], "done");
 }

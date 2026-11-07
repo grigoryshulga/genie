@@ -385,3 +385,119 @@ print(f"openai {openai.__version__}: models; Chat JSON/SSE/helper/continuation; 
     assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
     println!("{}", String::from_utf8_lossy(&output.stdout));
 }
+
+#[tokio::test]
+async fn opencode_sessions_are_principal_scoped_and_caps_preserve_full_receipts() {
+    let h = harness();
+    let anna = person(&h, "anna", ProjectRole::Member);
+    let boris = person(&h, "boris", ProjectRole::Member);
+    let path = format!("{BASE}/chat/completions");
+    let mut conversations = Vec::new();
+    for (who, session, stream) in [(&anna, "s1", false), (&anna, "s1", true), (&boris, "s1", false), (&anna, "fork", false)] {
+        let request=call(&h.remote,"POST",&path).bearer(who).header("x-opencode-session-id",session)
+            .header("x-session-affinity","shared-parent")
+            .json(json!({"model":"genie","messages":[{"role":"user","content":"\"Hello\""}],"max_completion_tokens":1,"tools":[],"tool_choice":"none","stream":stream})).send_raw();
+        let ((status, headers, bytes), id) = tokio::join!(request, finish_pending(h.app.clone(), "Hello world"));
+        assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+        conversations.push(headers["x-genie-conversation"].to_str().unwrap().to_owned());
+        if stream {
+            let events = sse_events(&bytes);
+            assert_eq!(events[1]["choices"][0]["delta"]["content"], "Hello");
+            assert_eq!(events[2]["choices"][0]["finish_reason"], "length");
+        } else {
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(value["choices"][0]["message"]["content"], "Hello");
+            assert_eq!(value["choices"][0]["finish_reason"], "length");
+        }
+        let saved = h.app.with_tracker("shop", |t| t.conversations().get(&id)).unwrap();
+        assert_eq!(saved.output, "Hello world");
+        assert_eq!(saved.input.last().unwrap().content, "Hello");
+    }
+    assert_eq!(conversations[0], conversations[1]);
+    assert_ne!(conversations[0], conversations[2]);
+    assert_ne!(conversations[0], conversations[3]);
+    assert_eq!(
+        h.app.with_tracker("shop", |t| t.conversations().history(&conversations[0])).unwrap().len(),
+        2,
+        "identical deliberate messages are distinct activations"
+    );
+    for extra in [
+        json!({"max_completion_tokens":0}),
+        json!({"max_tokens":1,"max_completion_tokens":2}),
+        json!({"tools":[{"type":"function"}]}),
+        json!({"tool_choice":"auto"}),
+    ] {
+        let mut body = json!({"model":"genie","messages":[{"role":"user","content":"hi"}]});
+        body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        assert_eq!(call(&h.remote, "POST", &path).bearer(&anna).json(body).send().await.0, StatusCode::BAD_REQUEST);
+    }
+}
+
+/// Real OpenCode process against this revision's HTTP server; no plugin, proxy or live LLM.
+#[tokio::test]
+#[ignore = "set GENIE_OPENCODE_BIN to OpenCode 2.2.5"]
+async fn opencode_cli_without_plugin_uses_quoted_commands_and_same_session() {
+    let binary = std::env::var("GENIE_OPENCODE_BIN").expect("set GENIE_OPENCODE_BIN");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let h = Harness::with_config(|cfg| cfg.allow_hosts.push(address.to_string()));
+    h.project("shop");
+    let token = person(&h, "opencode", ProjectRole::Member);
+    let task = h
+        .app
+        .with_tracker("shop", |t| {
+            t.create(
+                &genie_core::Actor::new("opencode", Role::Human),
+                genie_core::CreateInput { title: "Client interoperability".into(), ..Default::default() },
+            )
+        })
+        .unwrap();
+    let router = h.remote.clone();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let dir = tempfile::tempdir().unwrap();
+    let config = json!({
+        "model":"genie/genie","default_agent":"genie","share":"disabled","update":"disable","plugins":["-opencode.tool.*"],
+        "agents":{"genie":{"mode":"primary","system":"You are a text client for Genie. Present its responses.","permissions":[{"action":"*","resource":"*","effect":"deny"}]},"title":{"disabled":true},"summary":{"disabled":true},"compaction":{"disabled":true}},
+        "providers":{"genie":{"name":"Genie","env":["GENIE_API_TOKEN"],"package":"@opencode/ai/providers/openai-compatible","settings":{"baseURL":format!("http://{address}{BASE}"),"retries":0,"encoding":"none"},"models":{"genie":{"name":"Genie","capabilities":{"tools":false,"temperature":false,"reasoning":{"supported":false},"input":["text"],"output":["text"]}}},"compatibility":{"streamUsage":false}}}
+    });
+    std::fs::write(dir.path().join("opencode.json"), config.to_string()).unwrap();
+    let mut session: Option<String> = None;
+    for _ in 0..2 {
+        let mut command = tokio::process::Command::new(&binary);
+        command.args(["--standalone", "run", "--model", "genie/genie", "--agent", "genie", "--format", "json"]);
+        if let Some(id) = &session {
+            command.args(["--session", id]);
+        }
+        command
+            .arg(format!("/status {}", task.id))
+            .current_dir(dir.path())
+            .env("PWD", dir.path())
+            .env("GENIE_API_TOKEN", &token)
+            .kill_on_drop(true);
+        for name in ["CONFIG", "DATA", "STATE", "CACHE"] {
+            command.env(format!("XDG_{name}_HOME"), dir.path().join(name.to_lowercase()));
+        }
+        let result = tokio::time::timeout(Duration::from_secs(45), command.output()).await.expect("OpenCode finishes").unwrap();
+        let text = String::from_utf8_lossy(&result.stdout);
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        let events: Vec<Value> = text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+        assert!(!events.iter().any(|v| v["type"] == "error"), "{text}");
+        assert!(text.contains("Client interoperability"), "{text}");
+        let id = events.iter().find_map(|v| v["sessionID"].as_str()).expect("session id").to_owned();
+        if let Some(previous) = &session {
+            assert_eq!(previous, &id);
+        }
+        session = Some(id);
+    }
+    let (conversations, responses) = h
+        .app
+        .with_tracker("shop", |t| {
+            Ok((
+                t.conn().query_row("SELECT count(*) FROM conversations", [], |r| r.get::<_, i64>(0))?,
+                t.conn().query_row("SELECT count(*) FROM conversation_responses", [], |r| r.get::<_, i64>(0))?,
+            ))
+        })
+        .unwrap();
+    assert_eq!((conversations, responses), (1, 2), "auxiliary requests must not start work");
+    server.abort();
+}

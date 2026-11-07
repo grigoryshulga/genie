@@ -34,7 +34,7 @@ pub(super) async fn fake() -> (String, Messages, Messages) {
             }
             "sendMessage" => {
                 sent.lock().unwrap().push(json!({"token": token, "body": body}));
-                json!({"message_id": 42})
+                json!({"message_id": 41 + sent.lock().unwrap().len()})
             }
             _ => json!([]),
         };
