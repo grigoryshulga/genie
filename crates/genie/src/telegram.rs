@@ -73,8 +73,13 @@ pub fn start(app: Arc<App>) {
 
 async fn poll(app: Arc<App>, mut bot: ProjectBot) {
     loop {
-        let updates =
-            call(&app, &bot.token.0, "getUpdates", json!({"offset": bot.offset, "timeout": 25, "allowed_updates": ["message"]})).await;
+        let updates = call(
+            &app,
+            &bot.token.0,
+            "getUpdates",
+            json!({"offset": bot.offset, "timeout": 25, "allowed_updates": ["message", "callback_query"]}),
+        )
+        .await;
         let Ok(Value::Array(updates)) = updates else {
             tokio::time::sleep(Duration::from_secs(10)).await;
             continue;
@@ -99,6 +104,30 @@ async fn poll(app: Arc<App>, mut bot: ProjectBot) {
 
 /// Linking is allowed only in private chats and only against the currently configured bot.
 pub async fn handle_update(app: &Arc<App>, bot: &ProjectBot, update: &Value) -> Result<(), String> {
+    let callback = &update["callback_query"];
+    if !callback.is_null() {
+        let message = &callback["message"];
+        let Some(chat) = message["chat"]["id"].as_i64() else {
+            return Ok(());
+        };
+        let Some(id) = message["message_id"].as_i64() else {
+            return Ok(());
+        };
+        if message["chat"]["type"] != "private" || callback["from"]["id"].as_i64() != Some(chat) {
+            return Ok(());
+        }
+        let answer = match callback["data"].as_str() {
+            Some("interaction:approve") => "approve",
+            Some("interaction:reject") => "reject",
+            _ => return Ok(()),
+        };
+        let copy = bot.clone();
+        let result = app.blocking(move |app| crate::interactions::telegram_decision(app, &copy, chat, id, answer)).await;
+        let reply = interaction_result(result)?;
+        // Expired callback toasts must not poison the update queue after a committed decision.
+        let _ = call(app, &bot.token.0, "answerCallbackQuery", json!({"callback_query_id":callback["id"],"text":reply})).await;
+        return Ok(());
+    }
     let msg = &update["message"];
     if msg["chat"]["type"] != "private" {
         return Ok(());
@@ -113,17 +142,7 @@ pub async fn handle_update(app: &Arc<App>, bot: &ProjectBot, update: &Value) -> 
         let bot_copy = bot.clone();
         let answer = text.to_string();
         let result = app.blocking(move |app| crate::interactions::telegram_reply(app, &bot_copy, chat, message, &answer)).await;
-        let reply = match result {
-            Ok(true) => "Ответ сохранён. Задача получила ваше решение.",
-            Ok(false) => "Вопрос недоступен. Проверьте подключение аккаунта и права на проект.",
-            Err(
-                crate::state::AppError::Internal(_)
-                | crate::state::AppError::Genie(
-                    genie_core::GenieError::Db(_) | genie_core::GenieError::Io(_) | genie_core::GenieError::Json(_),
-                ),
-            ) => return Err("Cannot persist the answer; retry this update".into()),
-            Err(_) => "Ответ не принят: вопрос уже решён, устарел или недоступен. Проверьте актуальное состояние задачи в Genie.",
-        };
+        let reply = interaction_result(result)?;
         call(app, &bot.token.0, "sendMessage", json!({"chat_id":chat,"text":reply})).await?;
         return Ok(());
     }
@@ -144,4 +163,17 @@ pub async fn handle_update(app: &Arc<App>, bot: &ProjectBot, update: &Value) -> 
     };
     let _ = call(app, &bot.token.0, "sendMessage", json!({"chat_id": chat, "text": reply})).await;
     Ok(())
+}
+
+fn interaction_result(result: crate::state::AppResult<bool>) -> Result<&'static str, String> {
+    match result {
+        Ok(true) => Ok("Решение сохранено. Задача получила ваш ответ."),
+        Ok(false) => Ok("Вопрос недоступен. Проверьте аккаунт и права на проект."),
+        Err(
+            crate::state::AppError::Internal(_)
+            | crate::state::AppError::Genie(genie_core::GenieError::Db(_) | genie_core::GenieError::Io(_) | genie_core::GenieError::Json(_)),
+        ) => Err("Cannot persist the answer; retry this update".into()),
+        Err(crate::state::AppError::Bad(_)) => Ok("Для решения ответьте «одобряю» или «отклоняю» на предложение."),
+        Err(_) => Ok("Ответ не принят: вопрос уже решён, устарел или недоступен. Проверьте задачу в Genie."),
+    }
 }
