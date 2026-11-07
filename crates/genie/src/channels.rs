@@ -128,7 +128,10 @@ async fn send_telegram(app: &Arc<App>, item: &OutboxItem) -> Result<Option<Strin
     } else {
         tg(app, "sendMessage", body).await?
     };
-    Ok(sent["message_id"].as_i64().map(|m| format!("{}:{m}", item.address)))
+    Ok(sent["message_id"].as_i64().map(|m| match item.payload["telegramScope"].as_str() {
+        Some(scope) => format!("{scope}:{}:{m}", item.address),
+        None => format!("{}:{m}", item.address),
+    }))
 }
 
 async fn send_email(app: &App, item: &OutboxItem) -> Result<Option<String>, String> {

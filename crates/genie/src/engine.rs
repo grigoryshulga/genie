@@ -781,6 +781,7 @@ fn notify_intake(app: &App, project: &str) -> AppResult<()> {
     let events = app.with_tracker(project, |t| t.events_after(cursor, 200))?;
     let Some(last) = events.last().map(|e| e.id) else { return Ok(()) };
     for e in &events {
+        crate::interactions::notify_event(app, project, e)?;
         let to = e.payload["to"].as_str().unwrap_or_default();
         let task_id = e.subject.clone();
         let title_of = |id: &str| app.with_tracker(project, |t| Ok(t.get(id)?.title)).unwrap_or_default();

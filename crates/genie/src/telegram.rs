@@ -107,6 +107,26 @@ pub async fn handle_update(app: &Arc<App>, bot: &ProjectBot, update: &Value) -> 
     let text = msg["text"].as_str().unwrap_or_default();
     let mut parts = text.split_whitespace();
     let command = parts.next().unwrap_or_default();
+    if let Some(message) = msg["reply_to_message"]["message_id"].as_i64()
+        && !text.trim().is_empty()
+    {
+        let bot_copy = bot.clone();
+        let answer = text.to_string();
+        let result = app.blocking(move |app| crate::interactions::telegram_reply(app, &bot_copy, chat, message, &answer)).await;
+        let reply = match result {
+            Ok(true) => "Ответ сохранён. Задача получила ваше решение.",
+            Ok(false) => "Вопрос недоступен. Проверьте подключение аккаунта и права на проект.",
+            Err(
+                crate::state::AppError::Internal(_)
+                | crate::state::AppError::Genie(
+                    genie_core::GenieError::Db(_) | genie_core::GenieError::Io(_) | genie_core::GenieError::Json(_),
+                ),
+            ) => return Err("Cannot persist the answer; retry this update".into()),
+            Err(_) => "Ответ не принят: вопрос уже решён, устарел или недоступен. Проверьте актуальное состояние задачи в Genie.",
+        };
+        call(app, &bot.token.0, "sendMessage", json!({"chat_id":chat,"text":reply})).await?;
+        return Ok(());
+    }
     let reply = if command == "/start" || command == format!("/start@{}", bot.username) {
         let code = parts.next().unwrap_or_default().to_string();
         let scope = bot.scope.clone();

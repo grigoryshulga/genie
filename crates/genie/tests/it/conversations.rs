@@ -370,3 +370,64 @@ async fn an_owner_result_creates_a_reviewable_proposal_after_the_response_has_en
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(h.app.with_tracker("shop", |tr| Ok(tr.get(&t)?.status)).unwrap(), Status::Done);
 }
+
+#[tokio::test]
+async fn telegram_reply_resumes_the_same_question_once_and_rechecks_identity() {
+    let (base, sent, _) = super::telegram::fake().await;
+    let h = Harness::with_config(|cfg| cfg.telegram = Some(genie::config::TelegramConfig { token: "LEGACY".into(), api_base: Some(base) }));
+    h.project("shop");
+    let anna = person(&h, "anna");
+    let (r, c, a) = incoming(&h, &anna).await;
+    let t = task(&h, &r, &a).await;
+    let p = proposal(&h, &r, &a, &t, "dispatch").await;
+    assert_eq!(decide(&h, &anna, p["id"].as_str().unwrap()).await.0, StatusCode::OK);
+    let bot = h
+        .app
+        .with_server(|db| {
+            db.set_project_bot("shop", 123, "project_bot", "123:test")?;
+            let bot = db.project_bot("shop")?.unwrap();
+            let user = db.user_by_login("anna")?.unwrap();
+            db.link_channel(user.id, &bot.scope, "42")?;
+            Ok(bot)
+        })
+        .unwrap();
+    let q = h
+        .app
+        .with_tracker("shop", |tr| tr.management().ask(&Actor::new("task-manager", Role::Orchestrator), &t, "Which timezone?", true))
+        .unwrap();
+    let event = h
+        .app
+        .with_tracker("shop", |tr| Ok(tr.events_after(0, 1000)?.into_iter().find(|e| e.kind == "conversation.question").unwrap()))
+        .unwrap();
+    // Replay of the event after a crash cannot enqueue another copy.
+    genie::interactions::notify_event(&h.app, "shop", &event).unwrap();
+    genie::engine::tick(&h.app).unwrap();
+    genie::channels::dispatch(&h.app).await;
+    assert_eq!(sent.lock().unwrap().len(), 1);
+    assert!(sent.lock().unwrap()[0]["body"]["text"].as_str().unwrap().contains("Which timezone?"));
+    assert!(!genie::interactions::telegram_reply(&h.app, &bot, 43, 42, "UTC").unwrap());
+    genie::telegram::handle_update(
+        &h.app,
+        &bot,
+        &json!({"message": {
+            "chat":{"id":42,"type":"private"},"text":"UTC","reply_to_message":{"message_id":42}
+        }}),
+    )
+    .await
+    .unwrap();
+    let pending = || h.app.with_tracker("shop", |tr| tr.bus().pending(None, &genie_core::management::manager_name(&t))).unwrap();
+    let before = pending().len();
+    assert!(genie::interactions::telegram_reply(&h.app, &bot, 42, 42, "UTC").unwrap());
+    assert_eq!(pending().len(), before);
+    assert!(genie::interactions::telegram_reply(&h.app, &bot, 42, 42, "Europe/Paris").is_err());
+    let (_, receipt, _) = call(&h.remote, "GET", &format!("/api/conversations/{c}?project=shop")).bearer(&anna).send().await;
+    assert_eq!(receipt["tasks"][0]["clarifications"][0]["id"], q.id);
+    assert_eq!(receipt["tasks"][0]["clarifications"][0]["answer"], "UTC");
+    h.app
+        .with_server(|db| {
+            let user = db.user_by_login("anna")?.unwrap();
+            db.set_membership("shop", user.id, ProjectRole::Viewer)
+        })
+        .unwrap();
+    assert!(!genie::interactions::telegram_reply(&h.app, &bot, 42, 42, "UTC").unwrap());
+}
