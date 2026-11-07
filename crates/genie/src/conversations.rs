@@ -149,8 +149,9 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
         Command::Answer { task, question, text } => {
             answer(app, a, &r.conversation_id, &task, question, &text).map(|_| format!("Clarification #{question} answered for {task}."))
         }
-        Command::Status(_) => show(app, a, &r.conversation_id)
-            .map(|v| json!({"conversation_id":r.conversation_id,"tasks":v["tasks"],"proposals":v["proposals"]}).to_string()),
+        Command::Status(_) => {
+            show(app, a, &r.conversation_id).map(|v| status_summary(&v, app.cfg.language.user.to_lowercase().starts_with("rus")))
+        }
         Command::Continue(_) => unreachable!(),
     };
     match result {
@@ -160,6 +161,76 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
             Err(e)
         }
     }
+}
+
+/// Chat receipts contain a compact summary; the native conversation endpoint retains full records.
+fn status_summary(receipt: &Value, russian: bool) -> String {
+    let mut lines = Vec::new();
+    for entry in receipt["tasks"].as_array().into_iter().flatten() {
+        let task = &entry["task"];
+        let id = task["id"].as_str().unwrap_or("?");
+        let title = task["title"].as_str().unwrap_or("").replace(['\n', '\r'], " ");
+        let status = task["status"].as_str().unwrap_or("unknown");
+        let label = if russian {
+            match status {
+                "draft" => "черновик",
+                "inbox" => "входящая",
+                "refining" => "уточняется",
+                "ready" => "готова к запуску",
+                "in_progress" => "в работе",
+                "review" => "на проверке",
+                "needs_owner" => "ожидает владельца",
+                "approved" => "одобрена",
+                "done" => "завершена",
+                "blocked" => "заблокирована",
+                "cancelled" => "отменена",
+                _ => status,
+            }
+        } else {
+            status
+        };
+        lines.push(format!("**{id} — {title}**"));
+        lines.push(format!("{}: {label}.", if russian { "Статус" } else { "Status" }));
+        let criteria = task["acceptance"].as_array().map(Vec::as_slice).unwrap_or_default();
+        let done = criteria.iter().filter(|c| c["done"] == true).count();
+        let artifacts = task["artifacts"].as_array().map_or(0, Vec::len);
+        lines.push(if russian {
+            format!("Критерии: {done}/{}. Артефактов: {artifacts}.", criteria.len())
+        } else {
+            format!("Criteria: {done}/{}. Artifacts: {artifacts}.", criteria.len())
+        });
+        for proposal in receipt["proposals"].as_array().into_iter().flatten().filter(|p| p["task"] == id) {
+            let action = proposal["action"].as_str().unwrap_or("unknown");
+            let action = match (russian, action) {
+                (true, "dispatch") => "запуск",
+                (true, "accept") => "приёмка",
+                _ => action,
+            };
+            let state = proposal["status"].as_str().unwrap_or("unknown");
+            let state_label = match (russian, state) {
+                (true, "pending") => "ожидает решения",
+                (true, "rejected") => "отклонено",
+                (true, "approved") => "одобрено",
+                _ => state,
+            };
+            lines.push(format!("{} ({action}): {state_label}.", if russian { "Предложение" } else { "Proposal" }));
+            if state == "pending"
+                && let Some(pid) = proposal["id"].as_str()
+            {
+                lines.push(format!("`/approve {pid}` · `/reject {pid}`"));
+            }
+        }
+        lines.push(if russian {
+            format!("Уточнить задачу: `/continue {id} <сообщение>`.")
+        } else {
+            format!("Update the task: `/continue {id} <message>`.")
+        });
+        lines.push(String::new());
+    }
+    if lines.is_empty() {
+        return if russian { "В этом разговоре пока нет задач." } else { "No tasks in this conversation yet." }.into();
+    }
+    lines.join("\n").trim().to_owned()
 }
 
 enum Command {
@@ -518,4 +589,25 @@ pub fn recover(app: &App) -> AppResult<()> {
         app.with_tracker(&p.slug, |t| t.conversations().recover())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+    #[test]
+    fn chat_status_is_readable_and_keeps_native_receipt_intact() {
+        let receipt = json!({"tasks":[{"task":{"id":"LAB-1","title":"Guide","status":"ready",
+            "acceptance":[{"done":true},{"done":false}],"artifacts":[],"history":["private details"]}}],
+            "proposals":[{"task":"LAB-1","action":"dispatch","status":"rejected"},
+            {"task":"LAB-1","id":"proposal_1","action":"accept","status":"pending"}]});
+        let text = status_summary(&receipt, true);
+        assert!(text.contains("готова к запуску"));
+        assert!(text.contains("Критерии: 1/2"));
+        assert!(text.contains("отклонено"));
+        assert!(text.contains("/approve proposal_1"));
+        assert!(!text.contains("private details"));
+        assert_eq!(receipt["tasks"][0]["task"]["history"][0], "private details");
+        assert!(status_summary(&receipt, false).contains("Criteria: 1/2"));
+        assert_eq!(status_summary(&json!({"tasks":[]}), false), "No tasks in this conversation yet.");
+    }
 }

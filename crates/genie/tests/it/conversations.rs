@@ -302,7 +302,10 @@ async fn explicit_chat_approval_requires_the_real_proposal_and_the_same_conversa
         .send()
         .await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    assert!(v["choices"][0]["message"]["content"].as_str().unwrap().contains(&t));
+    let text = v["choices"][0]["message"]["content"].as_str().unwrap();
+    assert!(text.contains(&t));
+    assert!(text.starts_with("**"), "status should be readable Markdown: {text}");
+    assert!(!text.contains("conversation_id"));
 }
 
 #[tokio::test]
