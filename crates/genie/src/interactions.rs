@@ -52,16 +52,7 @@ pub fn notify_event(app: &App, project: &str, event: &Event) -> AppResult<()> {
     let Some(q) = q.filter(|q| q.state == "owner") else {
         return Ok(());
     };
-    let Some(login) = c.initiator else {
-        return Ok(());
-    };
-    let user = app.with_server(|db| db.user_by_login(&login))?;
-    let Some(user) = user.filter(|u| !u.disabled) else {
-        return Ok(());
-    };
-    if !app.with_server(|db| Ok(db.project_role(project, &user)?.is_some_and(|r| r.can_write())))? {
-        return Ok(());
-    }
+    let Some(user) = recipient(app, project, &c.principal)? else { return Ok(()) };
     notify::send(
         app,
         &[user.id],
@@ -171,15 +162,7 @@ fn notify_proposal(app: &App, project: &str, event: &Event) -> AppResult<()> {
         Ok(None) | Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => return Ok(()),
         Err(error) => return Err(error),
     };
-    let Some(login) = c.initiator else {
-        return Ok(());
-    };
-    let Some(user) = app.with_server(|db| db.user_by_login(&login))?.filter(|u| !u.disabled) else {
-        return Ok(());
-    };
-    if !app.with_server(|db| Ok(db.project_role(project, &user)?.is_some_and(|r| r.can_write())))? {
-        return Ok(());
-    }
+    let Some(user) = recipient(app, project, &c.principal)? else { return Ok(()) };
     let action = match p.action {
         genie_core::conversations::ProposalAction::Dispatch => "Запустить задачу",
         genie_core::conversations::ProposalAction::Accept => "Принять результат",
@@ -210,4 +193,18 @@ fn notify_proposal(app: &App, project: &str, event: &Event) -> AppResult<()> {
         Some(&format!("interaction:{project}:proposal:{id}")),
     )?;
     Ok(())
+}
+
+// Display logins may change or be reused. Delivery follows the immutable authenticated principal.
+fn recipient(app: &App, project: &str, principal: &str) -> AppResult<Option<genie_core::server_db::User>> {
+    let Some(id) = principal.strip_prefix("user:").and_then(|s| s.parse::<i64>().ok()) else { return Ok(None) };
+    app.with_server(|db| {
+        let user = match db.user(id) {
+            Ok(user) => user,
+            Err(genie_core::GenieError::NotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let allowed = !user.disabled && db.project_role(project, &user)?.is_some_and(|r| r.can_write());
+        Ok(allowed.then_some(user))
+    })
 }

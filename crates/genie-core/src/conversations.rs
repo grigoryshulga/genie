@@ -45,6 +45,23 @@ CREATE TABLE IF NOT EXISTS conversation_tasks (
   conversation_id TEXT NOT NULL REFERENCES conversations(id)
 );
 CREATE INDEX IF NOT EXISTS conversation_tasks_conversation ON conversation_tasks(conversation_id);
+CREATE TABLE IF NOT EXISTS conversation_clients (
+  principal TEXT NOT NULL,
+  client_session TEXT NOT NULL,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  PRIMARY KEY(principal, client_session)
+);
+CREATE TABLE IF NOT EXISTS conversation_task_refs (
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  PRIMARY KEY(conversation_id, task)
+);
+CREATE TABLE IF NOT EXISTS conversation_created_tasks (
+  response TEXT NOT NULL REFERENCES conversation_responses(id),
+  key TEXT NOT NULL,
+  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  PRIMARY KEY(response, key)
+);
 CREATE TABLE IF NOT EXISTS conversation_proposals (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   id TEXT NOT NULL UNIQUE,
@@ -196,6 +213,38 @@ const PROPOSAL_SELECT: &str = "SELECT id, conversation_id, task, action, version
     FROM conversation_proposals";
 
 impl Conversations<'_> {
+    /// Bind a transport session within this project and authenticated principal, atomically
+    /// with admission. A client identifier never grants another person's conversation.
+    pub fn submit_for_client(&self, mut request: Submission, client: Option<&str>) -> Result<Response> {
+        let Some(client) = client else { return self.submit(request) };
+        if client.is_empty() || client.len() > 256 {
+            return Err(GenieError::invalid("invalid client session identifier"));
+        }
+        self.0.tx(|| {
+            let mapped: Option<String> = self
+                .0
+                .conn()
+                .query_row(
+                    "SELECT conversation_id FROM conversation_clients WHERE principal=?1 AND client_session=?2",
+                    params![request.principal, client],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(mapped) = mapped {
+                if request.conversation_id.as_ref().is_some_and(|c| c != &mapped) {
+                    return Err(GenieError::invalid("client session and conversation disagree"));
+                }
+                request.conversation_id = Some(mapped);
+            }
+            let response = self.submit(request)?;
+            self.0.conn().execute(
+                "INSERT OR IGNORE INTO conversation_clients(principal,client_session,conversation_id) VALUES (?1,?2,?3)",
+                params![response.principal, client, response.conversation_id],
+            )?;
+            Ok(response)
+        })
+    }
+
     /// Commit admission and its event together. A retry is checked before the conversation's
     /// active-response guard, so the same accepted request is returned even while it is running.
     pub fn submit(&self, request: Submission) -> Result<Response> {
@@ -388,13 +437,51 @@ impl Conversations<'_> {
                 };
             }
             self.0.conn().execute("INSERT INTO conversation_tasks(task, conversation_id) VALUES (?1, ?2)", params![task, conversation])?;
+            self.reference_task(conversation, &task)?;
             self.event("conversation.task_linked", json!({"conversation_id": conversation, "task": task}))
         })
     }
 
+    /// References expose shared task state, never another conversation's history.
+    /// The application must authorize the person adding this reference.
+    pub fn reference_task(&self, conversation: &str, task: &str) -> Result<()> {
+        self.0.tx(|| {
+            self.conversation(conversation)?;
+            let task = self.0.get(task)?.id;
+            let inserted = self.0.conn().execute(
+                "INSERT OR IGNORE INTO conversation_task_refs(conversation_id,task) VALUES (?1,?2)",
+                params![conversation, task],
+            )?;
+            if inserted > 0 {
+                self.event("conversation.task_referenced", json!({"conversation_id":conversation,"task":task}))?;
+            }
+            Ok(())
+        })
+    }
+
+    pub fn has_task(&self, conversation: &str, task: &str) -> Result<bool> {
+        let task = self.0.normalize_id(task)?;
+        Ok(self.tasks(conversation)?.contains(&task))
+    }
+
+    pub fn created_task(&self, response: &str, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .0
+            .conn()
+            .query_row("SELECT task FROM conversation_created_tasks WHERE response=?1 AND key=?2", params![response, key], |r| r.get(0))
+            .optional()?)
+    }
+
+    pub fn record_created_task(&self, response: &str, key: &str, task: &str) -> Result<()> {
+        self.0
+            .conn()
+            .execute("INSERT INTO conversation_created_tasks(response,key,task) VALUES (?1,?2,?3)", params![response, key, task])?;
+        Ok(())
+    }
+
     pub fn tasks(&self, conversation: &str) -> Result<Vec<String>> {
         self.conversation(conversation)?;
-        let mut q = self.0.conn().prepare("SELECT task FROM conversation_tasks WHERE conversation_id = ?1 ORDER BY task")?;
+        let mut q = self.0.conn().prepare("SELECT task FROM conversation_task_refs WHERE conversation_id = ?1 UNION SELECT task FROM conversation_tasks WHERE conversation_id = ?1 ORDER BY task")?;
         Ok(q.query_map([conversation], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
     }
 
@@ -410,7 +497,7 @@ impl Conversations<'_> {
         self.0.tx(|| {
             self.conversation(conversation)?;
             let task = self.0.get(task)?.id;
-            if self.conversation_for_task(&task)?.as_deref() != Some(conversation) {
+            if !self.has_task(conversation, &task)? {
                 return Err(GenieError::invalid("proposal task is not linked to this conversation"));
             }
             let existing = self.0.conn().query_row(
@@ -442,6 +529,20 @@ impl Conversations<'_> {
         self.conversation(conversation)?;
         let mut q = self.0.conn().prepare(&format!("{PROPOSAL_SELECT} WHERE conversation_id = ?1 ORDER BY seq"))?;
         Ok(q.query_map([conversation], proposal)?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Public decisions for selected tasks, without private conversation identifiers or text.
+    pub fn task_proposals(&self, conversation: &str) -> Result<Vec<serde_json::Value>> {
+        let mut output = Vec::new();
+        for task in self.tasks(conversation)? {
+            let mut q = self.0.conn().prepare(&format!("{PROPOSAL_SELECT} WHERE task=?1 ORDER BY seq"))?;
+            for p in q.query_map([task], proposal)? {
+                let p = p?;
+                output.push(json!({"id":p.id,"task":p.task,"action":p.action,"version":p.version,
+                    "status":p.status,"created_at":p.created_at,"decided_at":p.decided_at}));
+            }
+        }
+        Ok(output)
     }
 
     /// Persist the decision in the same outer transaction as the application's checked

@@ -16,4 +16,4 @@ draft?: boolean,
 /**
  * An automation's task goes to the inbox instead of the drafts.
  */
-inbox?: boolean, };
+inbox?: boolean, requestKey?: string, };

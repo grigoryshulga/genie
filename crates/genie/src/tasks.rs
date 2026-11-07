@@ -146,6 +146,9 @@ pub struct CreateBody {
     /// An automation's task goes to the inbox instead of the drafts.
     #[serde(default)]
     pub inbox: Option<bool>,
+    // Stable creation identity within an incoming activation.
+    #[serde(default)]
+    pub request_key: Option<String>,
 }
 
 /// Fields of a task to change; absent ones stay.
@@ -295,6 +298,10 @@ mod lenient {
 
 pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
     let mut incoming_initiator = None;
+    let key = body.request_key.as_deref().unwrap_or("primary");
+    if key.trim().is_empty() || key.len() > 200 {
+        return Err(AppError::Bad("requestKey must be nonempty and at most 200 bytes".into()));
+    }
     if matches!(caller.kind, Kind::Ingress { .. }) {
         crate::conversations::validate_agent(app, &caller.project, &caller.actor.name)?;
         if let Kind::Ingress { response } = &caller.kind {
@@ -302,7 +309,7 @@ pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
             incoming_initiator = Some(crate::conversations::current_principal(app, &caller.project, &r.principal, true)?);
         }
         if body.parent.is_some() {
-            return Err(AppError::Bad("incoming conversations create one primary task; continue its existing work".into()));
+            return Err(AppError::Bad("incoming requests create independent tasks; use explicit task operations for hierarchy".into()));
         }
     }
     if genie_core::management::managed_task(&caller.actor.name).is_some() {
@@ -342,12 +349,13 @@ pub fn create(app: &App, caller: &Caller, body: CreateBody) -> AppResult<Task> {
                 if r.status != genie_core::conversations::ResponseStatus::InProgress {
                     return Err(genie_core::GenieError::Denied("this request is no longer running".into()));
                 }
-                // Retrying a worker after a crash must not create a second primary task.
-                if let Some(id) = t.conversations().tasks(&r.conversation_id)?.first() {
-                    return t.get(id);
+                // Creation identity is per activation/key, independent of its conversation's other work.
+                if let Some(id) = t.conversations().created_task(response, key)? {
+                    return t.get(&id);
                 }
                 let task = t.create(&caller.actor, input)?;
                 t.conversations().link_task(&r.conversation_id, &task.id)?;
+                t.conversations().record_created_task(response, key, &task.id)?;
                 // The durable requester supplies the task manager's identity and keys too.
                 return t.update(
                     &Actor::new("genie", Role::Orchestrator),

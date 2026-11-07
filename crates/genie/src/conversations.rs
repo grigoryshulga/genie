@@ -14,6 +14,7 @@ use crate::state::{App, AppError, AppResult};
 use crate::tasks::{self, Caller, CreateBody, Kind, StatusBody};
 
 pub struct Submit {
+    pub client_session: Option<String>,
     pub messages: Vec<Message>,
     pub conversation_id: Option<String>,
     pub previous_response_id: Option<String>,
@@ -96,39 +97,41 @@ pub(crate) fn ensure_active(t: &Tracker, name: &str) -> genie_core::Result<()> {
     Ok(())
 }
 
-pub fn submit(app: &App, a: &Access, mut input: Submit) -> AppResult<Response> {
+pub fn submit(app: &App, a: &Access, input: Submit) -> AppResult<Response> {
     let principal = person(a)?;
     let initiator = current_principal(app, &a.project, &principal, true)?;
     let command = input.messages.last().filter(|m| m.role == "user").map(|m| Command::parse(&m.content)).transpose()?.flatten();
-    if let Some(command) = &command {
-        let target = app.with_tracker(&a.project, |t| {
-            let id = match command {
-                Command::Decide { proposal, .. } => t.conversations().proposal(proposal)?.conversation_id,
-                Command::Answer { task, .. } | Command::Status(task) | Command::Continue(task) => t
-                    .conversations()
-                    .conversation_for_task(&t.normalize_id(task)?)?
-                    .ok_or_else(|| GenieError::not_found("the task has no incoming conversation"))?,
-            };
-            t.conversations().conversation(&id)
-        })?;
-        authorize(app, a, &target, true)?;
-        if input.conversation_id.as_ref().is_some_and(|id| id != &target.id) {
-            return Err(AppError::Conflict("the command targets a different conversation".into()));
-        }
-        input.conversation_id = Some(target.id);
-    }
+    // A task identifier selects shared work, never its originating private conversation.
+    let target_task = command
+        .as_ref()
+        .map(|command| {
+            app.with_tracker(&a.project, |t| {
+                let task = match command {
+                    Command::Decide { proposal, .. } => t.conversations().proposal(proposal)?.task,
+                    Command::Answer { task, .. } | Command::Status(task) | Command::Continue(task) => task.clone(),
+                };
+                Ok(t.get(&task)?.id)
+            })
+        })
+        .transpose()?;
     let direct = command.as_ref().is_some_and(|c| !matches!(c, Command::Continue(_)));
     let (r, claimed) = app.with_tracker(&a.project, |t| {
         t.tx(|| {
-            let r = t.conversations().submit(Submission {
-                principal,
-                initiator: Some(initiator),
-                conversation_id: input.conversation_id,
-                previous_response_id: input.previous_response_id,
-                input: input.messages,
-                idempotency_key: input.idempotency_key,
-                fingerprint: input.fingerprint,
-            })?;
+            let r = t.conversations().submit_for_client(
+                Submission {
+                    principal,
+                    initiator: Some(initiator),
+                    conversation_id: input.conversation_id,
+                    previous_response_id: input.previous_response_id,
+                    input: input.messages,
+                    idempotency_key: input.idempotency_key,
+                    fingerprint: input.fingerprint,
+                },
+                input.client_session.as_deref(),
+            )?;
+            if let Some(task) = &target_task {
+                t.conversations().reference_task(&r.conversation_id, task)?;
+            }
             let claimed = direct && t.conversations().claim(&r.id)?;
             Ok((r, claimed))
         })
@@ -149,8 +152,9 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
         Command::Answer { task, question, text } => {
             answer(app, a, &r.conversation_id, &task, question, &text).map(|_| format!("Clarification #{question} answered for {task}."))
         }
-        Command::Status(_) => show(app, a, &r.conversation_id)
-            .map(|v| json!({"conversation_id":r.conversation_id,"tasks":v["tasks"],"proposals":v["proposals"]}).to_string()),
+        Command::Status(_) => {
+            show(app, a, &r.conversation_id).map(|v| status_summary(&v, app.cfg.language.user.to_lowercase().starts_with("rus")))
+        }
         Command::Continue(_) => unreachable!(),
     };
     match result {
@@ -160,6 +164,87 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
             Err(e)
         }
     }
+}
+
+fn public_proposals(t: &Tracker, conversation: &str) -> genie_core::Result<Vec<Value>> {
+    let mut proposals = t.conversations().task_proposals(conversation)?;
+    for p in &mut proposals {
+        if let Some(task) = p["task"].as_str() {
+            p["stale"] = json!(p["status"] == "pending" && p["version"] != task_version(t, task)?);
+        }
+    }
+    Ok(proposals)
+}
+
+/// Chat receipts contain a compact summary; the native conversation endpoint retains full records.
+fn status_summary(receipt: &Value, russian: bool) -> String {
+    let mut lines = Vec::new();
+    for entry in receipt["tasks"].as_array().into_iter().flatten() {
+        let task = &entry["task"];
+        let id = task["id"].as_str().unwrap_or("?");
+        let title = task["title"].as_str().unwrap_or("").replace(['\n', '\r'], " ");
+        let status = task["status"].as_str().unwrap_or("unknown");
+        let label = if russian {
+            match status {
+                "draft" => "черновик",
+                "inbox" => "входящая",
+                "refining" => "уточняется",
+                "ready" => "готова к запуску",
+                "in_progress" => "в работе",
+                "review" => "на проверке",
+                "needs_owner" => "ожидает владельца",
+                "approved" => "одобрена",
+                "done" => "завершена",
+                "blocked" => "заблокирована",
+                "cancelled" => "отменена",
+                _ => status,
+            }
+        } else {
+            status
+        };
+        lines.push(format!("**{id} — {title}**"));
+        lines.push(format!("{}: {label}.", if russian { "Статус" } else { "Status" }));
+        let criteria = task["acceptance"].as_array().map(Vec::as_slice).unwrap_or_default();
+        let done = criteria.iter().filter(|c| c["done"] == true).count();
+        let artifacts = task["artifacts"].as_array().map_or(0, Vec::len);
+        lines.push(if russian {
+            format!("Критерии: {done}/{}. Артефактов: {artifacts}.", criteria.len())
+        } else {
+            format!("Criteria: {done}/{}. Artifacts: {artifacts}.", criteria.len())
+        });
+        for proposal in receipt["proposals"].as_array().into_iter().flatten().filter(|p| p["task"] == id) {
+            let action = proposal["action"].as_str().unwrap_or("unknown");
+            let action = match (russian, action) {
+                (true, "dispatch") => "запуск",
+                (true, "accept") => "приёмка",
+                _ => action,
+            };
+            let state = if proposal["stale"] == true { "stale" } else { proposal["status"].as_str().unwrap_or("unknown") };
+            let state_label = match (russian, state) {
+                (true, "pending") => "ожидает решения",
+                (true, "stale") => "устарело",
+                (true, "rejected") => "отклонено",
+                (true, "approved") => "одобрено",
+                _ => state,
+            };
+            lines.push(format!("{} ({action}): {state_label}.", if russian { "Предложение" } else { "Proposal" }));
+            if state == "pending"
+                && let Some(pid) = proposal["id"].as_str()
+            {
+                lines.push(format!("`/approve {pid}` · `/reject {pid}`"));
+            }
+        }
+        lines.push(if russian {
+            format!("Уточнить задачу: `/continue {id} <сообщение>`.")
+        } else {
+            format!("Update the task: `/continue {id} <message>`.")
+        });
+        lines.push(String::new());
+    }
+    if lines.is_empty() {
+        return if russian { "В этом разговоре пока нет задач." } else { "No tasks in this conversation yet." }.into();
+    }
+    lines.join("\n").trim().to_owned()
 }
 
 enum Command {
@@ -241,8 +326,9 @@ pub fn show(app: &App, a: &Access, id: &str) -> AppResult<Value> {
             .iter()
             .map(|id| Ok(json!({"task":t.get(id)?,"clarifications":t.management().clarifications(id)?})))
             .collect::<genie_core::Result<Vec<_>>>()?;
+        let proposals = public_proposals(t, &c.id)?;
         Ok(json!({"conversation":c,"responses":t.conversations().history(&c.id)?,
-            "tasks":tasks,"proposals":t.conversations().proposals(&c.id)?}))
+            "tasks":tasks,"proposals":proposals}))
     })
 }
 
@@ -279,9 +365,13 @@ pub fn authorize_task(app: &App, caller: &Caller, response: &str, task: &str) ->
     validate_agent(app, &caller.project, &caller.actor.name)?;
     let owned = app.with_tracker(&caller.project, |t| {
         let r = t.conversations().get(response)?;
-        Ok(t.conversations().conversation_for_task(&t.normalize_id(task)?)?.as_deref() == Some(&r.conversation_id))
+        t.conversations().has_task(&r.conversation_id, task)
     })?;
-    if owned { Ok(()) } else { Err(AppError::Forbidden("the task belongs to another conversation".into())) }
+    if owned {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden("the task is not linked to this conversation; ask the requester to use /continue TASK-ID".into()))
+    }
 }
 
 /// Exact, portable result evidence: immutable artifacts and the requirements they answer.
@@ -365,12 +455,8 @@ pub fn dispatch(app: &App, a: &Access, response: &str, task: &str) -> AppResult<
 
 pub fn decide(app: &App, a: &Access, proposal: &str, approved: bool) -> AppResult<Proposal> {
     person(a)?;
-    let (p, c) = app.with_tracker(&a.project, |t| {
-        let p = t.conversations().proposal(proposal)?;
-        let c = t.conversations().conversation(&p.conversation_id)?;
-        Ok((p, c))
-    })?;
-    authorize(app, a, &c, true)?;
+    current_principal(app, &a.project, &person(a)?, true)?;
+    let p = app.with_tracker(&a.project, |t| t.conversations().proposal(proposal))?;
     let wanted = if approved { ProposalStatus::Approved } else { ProposalStatus::Rejected };
     if p.status == wanted {
         return Ok(p);
@@ -398,12 +484,22 @@ pub fn answer(app: &App, a: &Access, conversation: &str, task: &str, question: i
     let c = resolve(app, &a.project, conversation)?;
     authorize(app, a, &c, true)?;
     app.with_tracker(&a.project, |t| {
-        if t.conversations().conversation_for_task(&t.normalize_id(task)?)?.as_deref() != Some(&c.id) {
-            return Err(GenieError::Denied("the question belongs to another conversation".into()));
-        }
-        t.management().answer(&a.actor, task, question, text, &format!("conversation:{} requester:{}", c.id, a.actor.name))
+        t.tx(|| {
+            t.conversations().reference_task(&c.id, task)?;
+            // Stable provenance across channels/conversations for the same authenticated person.
+            t.management().answer(&a.actor, task, question, text, &format!("requester:{}", c.principal))
+        })
     })?;
     tasks::changed(app);
+    show(app, a, &c.id)
+}
+
+/// A person explicitly selects shared work for a private conversation. Agents cannot grant scope.
+pub fn reference_task(app: &App, a: &Access, conversation: &str, task: &str) -> AppResult<Value> {
+    person(a)?;
+    let c = resolve(app, &a.project, conversation)?;
+    authorize(app, a, &c, true)?;
+    app.with_tracker(&a.project, |t| t.conversations().reference_task(&c.id, task))?;
     show(app, a, &c.id)
 }
 
@@ -464,7 +560,7 @@ pub fn prepare_run(app: &App, project: &str, response: &str) -> AppResult<Option
         Ok(Some(json!({"conversation":r.conversation_id,"response":r.id,
             "history":recent_context(history.iter().rev().filter(|past| past.id != r.id && past.status == ResponseStatus::Completed)
                 .map(|past| json!({"input":past.input,"answer":past.output})),16,96*1024,true),
-            "input":r.input,"tasks":tasks,"proposals":t.conversations().proposals(&r.conversation_id)?,
+            "input":r.input,"tasks":tasks,"proposals":public_proposals(t, &r.conversation_id)?,
             "project_memory":recent_context(t.management().memory("")?.into_iter(),32,32*1024,false),
             "context_note":"History and project memory are bounded recent excerpts; use conversation show, task show and manager memory for full evidence."})))
     })?;

@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -435,6 +435,14 @@ impl Db {
         self.add_columns(COLUMN_MIGRATIONS)?;
         self.conn.execute_batch(crate::intelligence::SCHEMA)?;
         self.conn.execute_batch(crate::conversations::SCHEMA)?;
+        // Preserve legacy worker retries: every old activation reused its conversation's task.
+        self.conn.execute_batch(
+            "INSERT OR IGNORE INTO conversation_created_tasks(response,key,task)
+            SELECT r.id, 'primary', ct.task FROM conversation_responses r
+            JOIN conversation_tasks ct ON ct.conversation_id=r.conversation_id
+            WHERE (SELECT CAST(value AS INTEGER) FROM meta WHERE key='schema') < 11;",
+        )?;
+
         // Indexes on migrated columns (an old database gets the columns just above), and on the
         // ones the loops of the background poller query every couple of seconds: the mailbox
         // pass, the open-delivery sweep and the quiet-team streak. Without them these scan

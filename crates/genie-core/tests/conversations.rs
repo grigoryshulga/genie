@@ -233,3 +233,47 @@ fn a_tracker_from_a_newer_binary_is_rejected_without_running_this_migration() {
         conn.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'conversations'", [], |r| r.get(0)).unwrap();
     assert_eq!(tables, 0, "the unsupported database must not be migrated");
 }
+
+#[test]
+fn shared_references_preserve_origin_and_survive_a_version_ten_upgrade() {
+    let (dir, t) = fresh();
+    let a = t.conversations().submit(input("alice", "private A")).unwrap();
+    let b = t.conversations().submit(input("bob", "private B")).unwrap();
+    let id = task(&t, "Shared work");
+    t.conversations().link_task(&a.conversation_id, &id).unwrap();
+    t.conn()
+        .execute_batch(
+            "DROP TABLE conversation_task_refs; DROP TABLE conversation_created_tasks; UPDATE meta SET value='10' WHERE key='schema';",
+        )
+        .unwrap();
+    drop(t);
+    let t = Tracker::open(dir.path().join(".genie")).unwrap();
+    assert_eq!(t.conversations().created_task(&a.id, "primary").unwrap(), Some(id.clone()));
+    t.conversations().reference_task(&b.conversation_id, &id).unwrap();
+    t.conversations().reference_task(&b.conversation_id, &id).unwrap();
+    assert_eq!(t.conversations().conversation_for_task(&id).unwrap(), Some(a.conversation_id));
+    assert_eq!(t.conversations().tasks(&b.conversation_id).unwrap(), vec![id.clone()]);
+    assert_eq!(t.conversations().history(&b.conversation_id).unwrap().len(), 1);
+    t.conversations().propose(&b.conversation_id, &id, ProposalAction::Dispatch, "v1").unwrap();
+    drop(t);
+    let t = Tracker::open(dir.path().join(".genie")).unwrap();
+    assert!(t.conversations().has_task(&b.conversation_id, &id).unwrap());
+}
+
+#[test]
+fn client_sessions_survive_restart_and_cannot_switch_principals_or_conversations() {
+    let (dir, t) = fresh();
+    let first = t.conversations().submit_for_client(input("alice", "one"), Some("opencode:s1")).unwrap();
+    t.conversations().complete(&first.id, "answer").unwrap();
+    drop(t);
+    let t = Tracker::open(dir.path().join(".genie")).unwrap();
+    let next = t.conversations().submit_for_client(input("alice", "two"), Some("opencode:s1")).unwrap();
+    assert_eq!(first.conversation_id, next.conversation_id);
+    t.conversations().complete(&next.id, "answer").unwrap();
+    let other = t.conversations().submit_for_client(input("bob", "one"), Some("opencode:s1")).unwrap();
+    assert_ne!(first.conversation_id, other.conversation_id);
+    let mut forged = input("alice", "switch");
+    forged.conversation_id = Some(other.conversation_id);
+    assert!(t.conversations().submit_for_client(forged, Some("opencode:s1")).is_err());
+    assert_eq!(t.conversations().history(&first.conversation_id).unwrap().len(), 2);
+}

@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 pub fn register(all: &mut Vec<Entry>) {
-    register!(all, Show, Reply, Task, Propose, Dispatch, Decide, Answer);
+    register!(all, Show, Reply, Task, Propose, Dispatch, Decide, Answer, Reference);
 }
 fn out(v: Value) -> Out {
     Out::new(serde_json::to_string_pretty(&v).unwrap_or_default(), v)
@@ -43,10 +43,12 @@ impl Op for Reply {
     }
 }
 
-/// Create the conversation's primary task; retries return the same task. Update it with task commands.
+/// Create a task with a stable key within this request; retrying the same key returns that task.
 #[derive(clap::Args, Deserialize, JsonSchema)]
 pub struct Task {
     pub response: String,
+    #[arg(long)]
+    pub key: Option<String>,
     #[arg(long)]
     pub title: String,
     #[arg(long)]
@@ -68,7 +70,7 @@ impl Op for Task {
                 "POST",
                 &format!("/conversations/{}/tasks", self.response),
                 Some(json!({
-                    "title":self.title,"description":self.description,"acceptance":self.acceptance,"plan":self.plan
+                    "title":self.title,"description":self.description,"acceptance":self.acceptance,"plan":self.plan,"requestKey":self.key
                 })),
             )
             .await?))
@@ -166,5 +168,21 @@ impl Op for Answer {
                 Some(json!({"task":self.task,"question":self.question,"text":self.text})),
             )
             .await?))
+    }
+}
+
+/// Select an existing task for your private conversation; this never imports another chat's history.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Reference {
+    pub conversation: String,
+    #[arg(long)]
+    pub task: String,
+}
+impl Op for Reference {
+    const GROUP: &'static str = "conversation";
+    const NAME: &'static str = "reference";
+    const NEED: Need = Need::Person;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        Ok(out(cx.call("POST", &format!("/conversations/{}/references", self.conversation), Some(json!({"task":self.task}))).await?))
     }
 }

@@ -20,6 +20,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/conversations/{id}/proposals", post(propose))
         .route("/conversations/{id}/dispatch", post(dispatch))
         .route("/conversations/{id}/answer", post(answer))
+        .route("/conversations/{id}/references", post(reference_task))
         .route("/conversation-proposals/{id}/decide", post(decide))
 }
 
@@ -89,4 +90,9 @@ struct DecisionBody {
 async fn decide(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Body(b): Body<DecisionBody>) -> ApiResult<Json<Value>> {
     let a = ctx.access(&app, None).await?;
     Ok(Json(app.blocking(move |app| Ok(json!(conversations::decide(app, &a, &id, b.approved)?))).await?))
+}
+
+async fn reference_task(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Body(b): Body<TaskBody>) -> ApiResult<Json<Value>> {
+    let a = ctx.access(&app, None).await?;
+    Ok(Json(app.blocking(move |app| conversations::reference_task(app, &a, &id, &b.task)).await?))
 }
