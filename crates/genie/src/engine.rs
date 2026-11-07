@@ -116,6 +116,9 @@ pub fn pass(app: &App) -> AppResult<Plan> {
         if let Err(e) = intake(app, &p.slug) {
             eprintln!("genie engine: {}: {e}", p.slug);
         }
+        if let Err(e) = crate::interactions::tick(app, &p.slug) {
+            eprintln!("genie interactions: {}: {e}", p.slug);
+        }
         if let Err(e) = notify_intake(app, &p.slug) {
             eprintln!("genie notifier: {}: {e}", p.slug);
         }

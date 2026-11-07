@@ -22,6 +22,8 @@ pub struct Message {
     pub buttons: Vec<(String, String)>,
     /// Only these channels (`web`, `telegram`, `email`); empty = web + preferred channel.
     pub channels: Vec<String>,
+    /// Reference to an authoritative interaction; never a second answer store.
+    pub interaction: Option<Value>,
 }
 
 /// Resolve recipient specs to user ids.
@@ -127,7 +129,8 @@ pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> Ap
                 else { db.channel_address(user, "telegram")?.filter(|_| app.cfg.telegram.is_some()) };
             let email = db.channel_address(user, "email")?.or(u.email.clone()).filter(|_| app.cfg.smtp.is_some() && wants("email"));
             let text = format!("{}\n\n{}{}", msg.title, msg.body, link.as_ref().map(|l| format!("\n\n{l}")).unwrap_or_default());
-            let payload = json!({ "buttons": msg.buttons, "link": link, "kind": msg.kind, "project": msg.project, "task": msg.task, "telegramScope": telegram_scope });
+            let buttons = if msg.interaction.is_some() && telegram_scope.is_none() { Vec::new() } else { msg.buttons.clone() };
+            let payload = json!({ "buttons": buttons, "link": link, "kind": msg.kind, "project": msg.project, "task": msg.task, "telegramScope": telegram_scope, "interaction": msg.interaction, "recipient": user, "forceReply": msg.interaction.is_some() && telegram_scope.is_some() });
             let key = |ch: &str| dedupe.map(|d| format!("{d}:{user}:{ch}"));
             // One channel per person: Telegram when linked, otherwise e-mail.
             if let Some(chat) = telegram {

@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 type Messages = Arc<Mutex<Vec<Value>>>;
-async fn fake() -> (String, Messages, Messages) {
+pub(super) async fn fake() -> (String, Messages, Messages) {
     let sent = Arc::new(Mutex::new(Vec::new()));
     let updates: Messages = Arc::new(Mutex::new(Vec::new()));
     async fn api(
