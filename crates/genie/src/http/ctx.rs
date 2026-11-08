@@ -210,6 +210,19 @@ impl FromRequestParts<Arc<App>> for Ctx {
                 app.blocking(move |app| crate::conversations::validate_agent(app, &project, &name)).await?;
             }
         }
+        if !matches!(parts.method.as_str(), "GET" | "HEAD" | "OPTIONS")
+            && !matches!(parts.uri.path(), "/api/agent/usage" | "/agent/usage")
+            && let Who::Agent { project, name, team, job, .. } = &who
+        {
+            let (project, name, team, job) = (project.clone(), name.clone(), team.clone(), *job);
+            app.blocking(move |app| {
+                if let Some(task) = crate::runtime::agent_task(app, &project, &name, team.as_deref(), job)? {
+                    app.with_tracker(&project, |t| t.execution().ensure_running(&task))?;
+                }
+                Ok(())
+            })
+            .await?;
+        }
         Ok(Ctx { who, project_hint, project_strict, session })
     }
 }

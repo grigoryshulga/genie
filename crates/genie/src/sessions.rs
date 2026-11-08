@@ -167,6 +167,8 @@ pub struct Live {
     /// Start again once the running step ends (the model changed).
     #[serde(skip)]
     reload: bool,
+    #[serde(skip)]
+    force_stop: bool,
 }
 
 impl Live {
@@ -200,6 +202,7 @@ impl Live {
             repeat: (String::new(), 0),
             tool_at: None,
             reload: false,
+            force_stop: false,
         }
     }
     fn set_state(&mut self, state: &str) {
@@ -230,6 +233,10 @@ pub struct Session {
     /// The person it works for: its `LITELLM_API_KEY` is theirs ([`crate::llm_key`]).
     pub initiator: Option<String>,
     token: String,
+    slots: Arc<tokio::sync::Semaphore>,
+    slot_gate: Arc<Mutex<()>>,
+    slot: Mutex<Option<tokio::sync::OwnedSemaphorePermit>>,
+    reserve_last: bool,
     stdin: Mutex<Option<mpsc::UnboundedSender<String>>>,
     replies: Mutex<HashMap<String, oneshot::Sender<Value>>>,
     seq: AtomicU64,
@@ -245,10 +252,29 @@ impl Session {
         f(&mut self.live.lock().unwrap_or_else(|e| e.into_inner()))
     }
     fn send(&self, cmd: Value) -> bool {
-        match &*self.stdin.lock().unwrap_or_else(|e| e.into_inner()) {
+        let _gate = self.slot_gate.lock().unwrap_or_else(|e| e.into_inner());
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        let acquire = cmd["type"] == "prompt";
+        // Every prompt owns a run slot. A duplicate nudge cannot queue another
+        // prompt just before the previous settled event releases its permit.
+        if acquire && slot.is_some() {
+            return false;
+        }
+        if acquire {
+            if self.reserve_last && self.slots.available_permits() <= 1 {
+                return false;
+            }
+            let Ok(permit) = self.slots.clone().try_acquire_owned() else { return false };
+            *slot = Some(permit);
+        }
+        let sent = match &*self.stdin.lock().unwrap_or_else(|e| e.into_inner()) {
             Some(tx) => tx.send(format!("{cmd}\n")).is_ok(),
             None => false,
+        };
+        if !sent && acquire {
+            slot.take();
         }
+        sent
     }
     /// An RPC command with a response (`get_messages`, `get_state`…).
     pub async fn request(&self, mut cmd: Value, timeout: Duration) -> Option<Value> {
@@ -288,11 +314,13 @@ impl Session {
             l.note(format!("■ stopping: {why}"));
         });
         self.stdin.lock().unwrap_or_else(|e| e.into_inner()).take();
-        let pid = self.pid;
+        let (pid, project, name) = (self.pid, self.key.project().to_string(), self.name.clone());
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                kill(pid, "-KILL");
+                if runtime::is_our_agent(i64::from(pid), &project, &name) {
+                    kill(pid, "-KILL");
+                }
             });
         }
     }
@@ -517,6 +545,8 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
     };
     let program = cmd.as_std().get_program().to_string_lossy().into_owned();
     cmd.env("GENIE_SESSION", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    #[cfg(unix)]
+    cmd.process_group(0);
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
@@ -538,6 +568,10 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
         task: spec.task.clone(),
         initiator: spec.initiator.clone(),
         token,
+        slots: app.slots.clone(),
+        slot_gate: app.slot_gate.clone(),
+        slot: Mutex::new(None),
+        reserve_last: app.cfg.runtime.max_concurrent > 1 && !matches!(key, AgentKey::Orchestrator { .. }),
         stdin: Mutex::new(Some(tx)),
         replies: Mutex::new(HashMap::new()),
         seq: AtomicU64::new(1),
@@ -545,7 +579,24 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
         dir: dir.clone(),
     });
     s.with_live(|l| l.note(format!("▶ session started (pid {pid})")));
-    app.sessions.insert(s.clone());
+    let (slug, registered) = (key.project().to_string(), s.clone());
+    if let Err(error) = app
+        .blocking(move |app| {
+            spec.with_current_execution(app, &slug, || {
+                app.sessions.insert(registered);
+                Ok(())
+            })
+        })
+        .await
+    {
+        runtime::kill_process_group(pid);
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+        let token = s.token.clone();
+        let _ = app.blocking(move |app| app.with_server(|db| db.revoke_token(&token))).await;
+        let _ = tokio::fs::remove_file(dir.join("session.pid")).await;
+        return Err(error);
+    }
     // pi prints nothing until it is asked something: a state query gets an answer without a model
     // call, and that answer is the session's first event (its readiness, see `on_event`).
     s.send(json!({ "type": "get_state" }));
@@ -809,25 +860,51 @@ async fn on_event(app: &Arc<App>, s: &Arc<Session>, e: &Value) {
 
 /// A run ended: record it, retry a failed one, then deliver whatever is waiting.
 async fn settled(app: &Arc<App>, s: &Arc<Session>) {
-    let (turn, failed, error, log, interrupted, stalled) = s.with_live(|l| {
-        l.set_state("idle");
-        l.tool = None;
-        let interrupted = std::mem::take(&mut l.interrupting);
-        let stalled = l.stall_abort.take().is_some();
-        let we_aborted = interrupted || stalled;
-        // A run we aborted (interrupt, stuck step) ends with an error or an abort: not a failure.
-        let failed = l.last_stop.as_deref() == Some("error") && !we_aborted;
-        (l.turn.take(), failed, l.last_error.clone(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n"), interrupted, stalled)
-    });
+    let (turn, failed, error, log, interrupted, stalled) = {
+        let _gate = s.slot_gate.lock().unwrap_or_else(|e| e.into_inner());
+        let state = s.with_live(|l| {
+            if l.state != "stopping" {
+                l.set_state("idle");
+            }
+            l.tool = None;
+            let interrupted = std::mem::take(&mut l.interrupting);
+            let stalled = l.stall_abort.take().is_some();
+            let we_aborted = interrupted || stalled;
+            // A run we aborted (interrupt, stuck step) ends with an error or an abort: not a failure.
+            let failed = l.last_stop.as_deref() == Some("error") && !we_aborted;
+            (l.turn.take(), failed, l.last_error.clone(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n"), interrupted, stalled)
+        });
+        s.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
+        state
+    };
     let (k, task) = (s.key.clone(), s.task.clone());
+    let force = s.with_live(|l| l.force_stop);
     let verdict = app
         .blocking(move |app| {
             if let Some(turn) = turn {
                 app.with_server(|db| {
-                    db.finish_turn(turn, if failed { "failed" } else { "succeeded" }, None, error.as_deref().filter(|_| failed), Some(&log))
+                    db.finish_turn(
+                        turn,
+                        if force {
+                            "interrupted"
+                        } else if failed {
+                            "failed"
+                        } else {
+                            "succeeded"
+                        },
+                        None,
+                        error.as_deref().filter(|_| failed),
+                        Some(&log),
+                    )
                 })?;
             }
-            let outcome = if failed { Outcome::Failed { error: error.as_deref().unwrap_or("error"), log: &log } } else { Outcome::Ran };
+            let outcome = if force {
+                Outcome::Stopped
+            } else if failed {
+                Outcome::Failed { error: error.as_deref().unwrap_or("error"), log: &log }
+            } else {
+                Outcome::Ran
+            };
             Ok(outcome::record(app, &k, task.as_deref(), outcome))
         })
         .await
@@ -841,10 +918,7 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
     }
     if stalled && !interrupted {
         let secs = app.cfg.runtime.turn_timeout_secs;
-        s.send(json!({
-            "type": "prompt",
-            "message": format!("[genie] Your last step showed no sign of life for {secs}s and was stopped. Continue your work; run long commands with a timeout or in the background with their output in a file.")
-        }));
+        prompt_or_mail(app,s,format!("[genie] Your last step showed no sign of life for {secs}s and was stopped. Continue your work; run long commands with a timeout or in the background with their output in a file.")).await;
     }
     if interrupted {
         // The interrupt usually waits in the mailbox and wakes the session next. If it
@@ -860,7 +934,7 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
             .await
             .unwrap_or(true);
         if !waiting {
-            s.send(json!({ "type": "prompt", "message": "[genie] Your step was interrupted: act on the INTERRUPT message above." }));
+            prompt_or_mail(app, s, "[genie] Your step was interrupted: act on the INTERRUPT message above.".into()).await;
         }
     }
     if verdict.is_some_and(|v| v.failures > 0 && !v.gave_up) {
@@ -872,15 +946,22 @@ async fn settled(app: &Arc<App>, s: &Arc<Session>) {
         tokio::spawn(async move {
             app.clock.sleep_until(retry_at).await;
             if s.is("idle") {
-                s.send(json!({
-                    "type": "prompt",
-                    "message": format!("[genie] Your previous step failed ({error}). Continue where you left off.")
-                }));
+                prompt_or_mail(&app, &s, format!("[genie] Your previous step failed ({error}). Continue where you left off.")).await;
             }
         });
     }
     app.wake_runtime.notify_one();
     app.wake_engine.notify_one();
+}
+
+/// A continuation waiting for capacity must survive a process loss or restart.
+async fn prompt_or_mail(app: &Arc<App>, session: &Arc<Session>, message: String) {
+    if !session.send(json!({"type":"prompt","message":message})) {
+        let key = session.key.clone();
+        if let Err(error) = app.blocking(move |app| runtime::note_to_self(app, &key, &message)).await {
+            eprintln!("genie runtime: cannot persist deferred continuation: {error}");
+        }
+    }
 }
 
 async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
@@ -889,7 +970,12 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
     }
     let (state, turn, log) = s.with_live(|l| (l.state.clone(), l.turn.take(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n")));
     let expected = state == "stopping";
+    let force = s.with_live(|l| l.force_stop);
+    if force {
+        runtime::kill_process_group(s.pid);
+    }
     app.sessions.remove(&s.key, s.pid);
+    s.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
     s.replies.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let _ = std::fs::remove_file(s.dir.join("session.pid"));
     let (k, token, task) = (s.key.clone(), s.token.clone(), s.task.clone());
@@ -904,7 +990,13 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
                 app.with_server(|db| {
                     db.finish_turn(
                         turn,
-                        if expected { "succeeded" } else { "failed" },
+                        if force {
+                            "interrupted"
+                        } else if expected {
+                            "succeeded"
+                        } else {
+                            "failed"
+                        },
                         code.map(i64::from),
                         Some("the session ended"),
                         Some(&log),
@@ -1015,6 +1107,19 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
                 l.stall_abort,
             )
         });
+        let hard = app.cfg.runtime.run_timeout_secs;
+        if state == "working" && hard > 0 && idle_for >= Duration::from_secs(hard) {
+            if let Some(task) = s.task.clone() {
+                let (project, note) = (s.key.project().to_string(), format!("Active run reached the configured {hard}s limit"));
+                app.blocking(move |app| crate::tasks::pause_for_limit(app, &project, &task, "time", &note)).await?;
+            } else {
+                halt(app, &s.key, "hard run time limit");
+            }
+            continue;
+        }
+        if state == "working" && hard > 0 {
+            next.within(Duration::from_secs(hard).saturating_sub(idle_for) + Duration::from_millis(50));
+        }
         let idle_stop = idle_window(app, &s.key);
         if state == "idle" && idle_for >= idle_stop {
             s.stop("idle");
@@ -1141,6 +1246,19 @@ pub fn reset(app: &App, key: &AgentKey) {
     app.attempts.clear(key);
     if let Some(s) = app.sessions.get(key) {
         s.stop("restart");
+    }
+}
+
+/// Explicit execution stop aborts in-flight work before closing the harness.
+pub fn halt(app: &App, key: &AgentKey, reason: &str) {
+    app.attempts.clear(key);
+    if let Some(s) = app.sessions.get(key) {
+        s.with_live(|l| l.force_stop = true);
+        s.abort(reason);
+        s.stop(reason);
+        if runtime::is_our_agent(i64::from(s.pid), s.key.project(), &s.name) {
+            kill(s.pid, "-TERM");
+        }
     }
 }
 

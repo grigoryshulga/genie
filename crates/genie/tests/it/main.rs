@@ -22,6 +22,7 @@ mod engine;
 mod env_controller;
 mod env_host;
 mod env_podman;
+mod execution;
 mod git_flow;
 mod git_hosts;
 mod git_proxy;

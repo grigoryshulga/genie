@@ -73,6 +73,9 @@ pub enum Touch {
 /// its subtasks, and may leave notes on that task's epic. The orchestrator, automations and
 /// people are not limited here (the workflow rules still apply).
 pub fn authorize(app: &App, caller: &Caller, id: &str, touch: Touch) -> AppResult<()> {
+    if !caller.is_person() {
+        app.with_tracker(&caller.project, |t| t.execution().ensure_running(id))?;
+    }
     if let Kind::Ingress { response } = &caller.kind {
         return crate::conversations::authorize_task(app, caller, response, id);
     }
@@ -741,4 +744,74 @@ pub fn resolve_intelligence(
     body: crate::intelligence::ResolveBody,
 ) -> AppResult<genie_core::intelligence::Snapshot> {
     crate::intelligence::resolve(app, caller, id, body)
+}
+
+/// Common human-only execution control; workflow status and artifacts are retained.
+pub fn pause_execution(app: &App, caller: &Caller, task: &str, reason: &str, note: &str) -> AppResult<serde_json::Value> {
+    if !caller.is_person() {
+        return Err(AppError::Forbidden("only a person stops or resumes task execution".into()));
+    }
+    pause_inner(app, &caller.project, &caller.actor, task, reason, note)
+}
+
+pub(crate) fn pause_for_limit(app: &App, project: &str, task: &str, reason: &str, note: &str) -> AppResult<serde_json::Value> {
+    pause_inner(app, project, &Actor::new("genie", Role::Orchestrator), task, reason, note)
+}
+
+fn pause_inner(app: &App, project: &str, actor: &Actor, task: &str, reason: &str, note: &str) -> AppResult<serde_json::Value> {
+    let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    let state = app.with_tracker(project, |t| t.execution().pause(actor, task, reason, note))?;
+    let stopped = crate::runtime::halt_scope(app, project, Some(&state.task))?;
+    changed(app);
+    Ok(serde_json::json!({"execution":state,"stopped":stopped}))
+}
+
+pub fn resume_execution(app: &App, caller: &Caller, task: &str) -> AppResult<serde_json::Value> {
+    if !caller.is_person() {
+        return Err(AppError::Forbidden("only a person stops or resumes task execution".into()));
+    }
+    let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    if let Some(exceeded) = crate::budget::check(app, &caller.project, Some(task))? {
+        return Err(AppError::Conflict(exceeded.explain()));
+    }
+    let state = app.with_tracker(&caller.project, |t| {
+        t.tx(|| {
+            let was_paused = t.execution().state(task)?.is_some_and(|s| s.paused);
+            let state = t.execution().resume(&caller.actor, task)?;
+            t.execution().ensure_running(task)?;
+            if t.bus().active_count()? as usize > app.cfg.limits.max_active_teams {
+                return Err(genie_core::GenieError::invalid("limit: resuming would exceed the project's active-team capacity"));
+            }
+            if app.cfg.limits.max_active_teams_per_epic > 0 {
+                let index = crate::spend::TaskIndex::load(t.conn())?;
+                let epics =
+                    t.bus().list(false)?.iter().filter_map(|team| index.epic_of(&team.task)).collect::<std::collections::BTreeSet<_>>();
+                for epic in epics {
+                    if t.bus().active_count_in_epic(&epic)? as usize > app.cfg.limits.max_active_teams_per_epic {
+                        return Err(genie_core::GenieError::invalid("limit: resuming would exceed active-team capacity in an epic"));
+                    }
+                }
+            }
+            if !was_paused {
+                return Ok(state);
+            }
+            // Mail already exists for interrupted turns. Settled sessions need one explicit wake-up.
+            let index = crate::spend::TaskIndex::load(t.conn())?;
+            for manager in t.management().managers()? {
+                if index.is_under(&manager.task, &t.normalize_id(task)?) && manager.state != "completed" {
+                    t.bus().notify_manager(
+                        &genie_core::management::manager_name(&manager.task),
+                        &caller.actor.name,
+                        "human",
+                        "system",
+                        "Execution explicitly resumed. Read current task state and continue retained work.",
+                        Some(&manager.task),
+                    )?;
+                }
+            }
+            Ok(state)
+        })
+    })?;
+    changed(app);
+    Ok(serde_json::json!({"execution":state}))
 }

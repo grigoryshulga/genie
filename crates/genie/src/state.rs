@@ -117,9 +117,11 @@ pub struct App {
     pub git_connect: crate::http::connections::Registry,
     /// The scheduler of agent turns (whose turn is running).
     pub sched: crate::runtime::Sched,
+    pub execution_gate: Mutex<()>,
     /// Turn slots (`runtime.maxConcurrent`), shared with the scheduler loop; members
     /// and jobs leave the last one for the orchestrator. `GET /api/runtime` reads it.
     pub slots: Arc<tokio::sync::Semaphore>,
+    pub slot_gate: Arc<Mutex<()>>,
     /// Failures in a row of each agent, turns and sessions alike, and their backoff.
     pub attempts: crate::outcome::Attempts,
     /// Roles, team templates, skills and MCP connections (reloaded when their files change).
@@ -183,7 +185,9 @@ impl App {
             social_auth: Default::default(),
             git_connect: Default::default(),
             sched: Default::default(),
+            execution_gate: Default::default(),
             slots,
+            slot_gate: Default::default(),
             agents: RwLock::new(Arc::new(agents)),
             prices,
             mcp: Default::default(),
@@ -204,6 +208,21 @@ impl App {
             cache_read: Some(0.0),
             cache_write: Some(0.0),
         });
+        prices.insert(model, price);
+        Ok(prices)
+    }
+
+    pub(crate) fn budget_prices(&self) -> AppResult<crate::spend::Prices> {
+        let mut prices = self.prices.read().map_err(|_| AppError::Internal("prices lock poisoned".into()))?.budget_prices.clone();
+        let model = self.cfg.decisions.usage_model();
+        let bare = model.rsplit_once('/').map_or(model.as_str(), |(_, tail)| tail);
+        let price =
+            self.cfg.model_prices.get(&model).or_else(|| self.cfg.model_prices.get(bare)).copied().unwrap_or(crate::config::ModelPrice {
+                input: self.cfg.decisions.input_price,
+                output: 0.0,
+                cache_read: Some(0.0),
+                cache_write: Some(0.0),
+            });
         prices.insert(model, price);
         Ok(prices)
     }

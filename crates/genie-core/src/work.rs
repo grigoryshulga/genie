@@ -258,6 +258,15 @@ impl ServerDb {
         self.job(id)
     }
 
+    /// An intentional execution pause preserves a job and its retry allowance.
+    pub fn interrupt_job(&self, id: i64) -> Result<()> {
+        self.conn().execute(
+            "UPDATE agent_jobs SET status='queued', attempts=MAX(0,attempts-1), finished=NULL, error=NULL WHERE id=?1 AND status='running'",
+            [id],
+        )?;
+        Ok(())
+    }
+
     pub fn cancel_job(&self, id: i64) -> Result<()> {
         self.conn().execute(
             "UPDATE agent_jobs SET status = 'cancelled', finished = ?1 WHERE id = ?2 AND status IN ('queued', 'running')",

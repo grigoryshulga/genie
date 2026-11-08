@@ -351,13 +351,27 @@ impl Bus<'_> {
     }
 
     pub fn active_count(&self) -> Result<i64> {
-        Ok(self.conn().query_row("SELECT COUNT(*) FROM teams WHERE state = 'active'", [], |r| r.get(0))?)
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*) FROM teams tm WHERE state='active' AND NOT EXISTS (
+            WITH RECURSIVE ancestors(id,parent) AS (
+                SELECT id,parent FROM tasks WHERE id=tm.task
+                UNION SELECT t.id,t.parent FROM tasks t JOIN ancestors a ON t.id=a.parent
+            ) SELECT 1 FROM ancestors a JOIN task_execution e ON e.task=a.id WHERE e.paused=1
+        )",
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     /// Active teams whose task is a child of `epic`.
     pub fn active_count_in_epic(&self, epic: &str) -> Result<i64> {
         Ok(self.conn().query_row(
-            "SELECT COUNT(*) FROM teams t JOIN tasks k ON k.id = t.task WHERE t.state = 'active' AND k.parent = ?1",
+            "SELECT COUNT(*) FROM teams tm JOIN tasks k ON k.id=tm.task WHERE tm.state='active' AND k.parent=?1 AND NOT EXISTS (
+                WITH RECURSIVE ancestors(id,parent) AS (
+                    SELECT id,parent FROM tasks WHERE id=tm.task
+                    UNION SELECT t.id,t.parent FROM tasks t JOIN ancestors a ON t.id=a.parent
+                ) SELECT 1 FROM ancestors a JOIN task_execution e ON e.task=a.id WHERE e.paused=1
+            )",
             [epic],
             |r| r.get(0),
         )?)

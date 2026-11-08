@@ -796,12 +796,17 @@ async fn a_budget_used_up_stops_the_teams_it_covers_and_keeps_new_ones_away() {
     // The task's budget is used up: its team stops, and another one for it does not start.
     assert_eq!(report(team_a.clone(), member_a.clone(), 600).await, StatusCode::OK);
     let tm = state(&team_a);
-    assert_eq!((tm.state.as_str(), tm.stop_reason.as_deref()), ("stopped", Some("budget")));
+    assert_eq!(tm.state, TeamState::Active, "retain the team for explicit resume");
+    assert_eq!(h.app.with_tracker("shop", |t| t.execution().blocking(&a)).unwrap().unwrap().reason, "budget");
     let (s, err, _) = spawn(a.clone()).await;
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
     assert!(err["error"].as_str().unwrap().contains("budget") && err["error"].as_str().unwrap().contains(&a), "{err}");
-    let told = h.app.with_tracker("shop", |t| t.bus().pending(None, "orchestrator")).unwrap();
-    assert!(told.iter().any(|m| m.text.contains("budget") && m.text.contains(&team_a)), "the orchestrator is told: {told:?}");
+    genie::interactions::tick(&h.app, "shop").unwrap();
+    let events = h.app.with_tracker("shop", |t| t.events_after(0, 1000)).unwrap();
+    assert!(
+        events.iter().any(|e| e.kind == "task.execution_paused" && e.subject.as_deref() == Some(&a)),
+        "durable pause event drives owner notification"
+    );
 
     // The epic's budget ($3) covers its tasks together: A spent $1.1, B and C ($0.99 each, under their own limits) bring it over.
     let (_, tb, _) = spawn(b.clone()).await;
@@ -811,8 +816,11 @@ async fn a_budget_used_up_stops_the_teams_it_covers_and_keeps_new_ones_away() {
     let (team_c, member_c) = (tc["id"].as_str().unwrap().to_string(), tc["members"][0]["name"].as_str().unwrap().to_string());
     assert_eq!(state(&team_b).state, TeamState::Active);
     assert_eq!(report(team_c.clone(), member_c, 990).await, StatusCode::OK);
-    assert_eq!(state(&team_c).state, TeamState::Stopped, "the epic is over its budget");
-    assert_eq!(state(&team_b).state, TeamState::Stopped, "and so are the other teams of the epic");
+    assert_eq!(state(&team_c).state, TeamState::Active, "teams stay available for resume");
+    assert_eq!(state(&team_b).state, TeamState::Active);
+    for id in [&b, &c] {
+        assert_eq!(h.app.with_tracker("shop", |t| t.execution().blocking(id)).unwrap().unwrap().task, epic);
+    }
 }
 
 /// G-81: the day's budget covers every team of the project.
@@ -848,7 +856,14 @@ async fn the_budget_of_the_day_stops_every_team() {
     assert_eq!(post(1500).await.0, StatusCode::OK);
     assert_eq!(active(), 2, "$1.5 of $2");
     assert_eq!(post(600).await.0, StatusCode::OK);
-    assert_eq!(active(), 0, "the day's budget is used up: no team of the project goes on");
+    assert_eq!(active(), 0, "paused teams release execution capacity");
+    assert_eq!(app.with_tracker("shop", |t| t.bus().list(false)).unwrap().len(), 2, "team state and workspaces are retained");
+    for (team, _) in &teams {
+        assert!(
+            app.with_tracker("shop", |t| t.execution().blocking(&t.bus().get(team)?.task)).unwrap().is_some(),
+            "daily budget fences every active task"
+        );
+    }
     let id = call(r, "POST", "/api/tasks").json(json!({ "title": "C" })).send().await.1["id"].as_str().unwrap().to_string();
     call(r, "POST", &format!("/api/tasks/{id}/status")).json(json!({ "status": "ready" })).send().await;
     let (s, err, _) = call(r, "POST", "/api/teams").json(json!({ "task": id, "members": [{ "role": "executor" }] })).send().await;

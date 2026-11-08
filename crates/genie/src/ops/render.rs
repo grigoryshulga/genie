@@ -94,6 +94,14 @@ pub fn task(t: &Value, history: bool) -> String {
         format!("# {}{} — {}", if s(t, "type") == "epic" { "Epic " } else { "" }, s(t, "id"), s(t, "title")),
         format!("type {} · status {} · priority P{}", s(t, "type"), s(t, "status"), t["priority"]),
     ];
+    if t["execution"]["paused"] == true {
+        out.push(format!(
+            "EXECUTION PAUSED ({}): {} · resume with /resume {}",
+            s(&t["execution"], "reason"),
+            s(&t["execution"], "note"),
+            s(&t["execution"], "task")
+        ));
+    }
     if let Some(p) = t["parent"].as_str() {
         out.push(format!("epic/parent: {p}"));
     }

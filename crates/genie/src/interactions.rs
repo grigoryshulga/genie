@@ -26,6 +26,9 @@ pub fn tick(app: &App, project: &str) -> AppResult<()> {
 }
 
 pub fn notify_event(app: &App, project: &str, event: &Event) -> AppResult<()> {
+    if event.kind == "task.execution_paused" {
+        return notify_execution_pause(app, project, event);
+    }
     if event.kind == "conversation.proposal_created" {
         return notify_proposal(app, project, event);
     }
@@ -207,4 +210,37 @@ fn recipient(app: &App, project: &str, principal: &str) -> AppResult<Option<geni
         let allowed = !user.disabled && db.project_role(project, &user)?.is_some_and(|r| r.can_write());
         Ok(allowed.then_some(user))
     })
+}
+
+fn notify_execution_pause(app: &App, project: &str, event: &Event) -> AppResult<()> {
+    let Some(task) = event.subject.as_deref() else { return Ok(()) };
+    let state = match app.with_tracker(project, |t| t.execution().state(task)) {
+        Ok(Some(s)) if s.paused && s.reason != "owner" => s,
+        Ok(_) | Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let users = notify::resolve(
+        app,
+        project,
+        &["task.author".into(), "task.assignee".into(), "project.owners".into()],
+        &json!({"task":{"id":task}}),
+    )?;
+    notify::send(
+        app,
+        &users,
+        &notify::Message {
+            kind: "execution_paused".into(),
+            title: format!("{task} · Выполнение остановлено"),
+            body: format!(
+                "{}\n\nПрогресс и артефакты сохранены. Проверьте ограничения, затем отправьте /resume {task} в Genie. Возобновление проверяет текущие лимиты.",
+                state.note
+            ),
+            project: Some(project.into()),
+            task: Some(task.into()),
+            link: Some(format!("/task/{task}")),
+            ..Default::default()
+        },
+        Some(&format!("execution:{project}:{task}:{}", state.generation)),
+    )?;
+    Ok(())
 }
