@@ -131,6 +131,7 @@ pub struct App {
     pub prices: RwLock<crate::model_prices::State>,
     /// The agents' connections through the MCP gateway.
     pub mcp: crate::mcp_gateway::Gateway,
+    pub model_gateway: crate::model_gateway::Gateway,
     /// Locks and fetch times of the repository mirrors and workspaces.
     pub git: crate::git::Git,
     /// The journal pollers behind the live streams of the web UI.
@@ -163,6 +164,7 @@ impl App {
         let agents = AgentConfig::load(data, &cfg, None);
         let prices = RwLock::new(crate::model_prices::State::load(&cfg, &server));
         let slots = Arc::new(tokio::sync::Semaphore::new(cfg.runtime.max_concurrent.max(1)));
+        let model_gateway = crate::model_gateway::Gateway::new(cfg.runtime.max_concurrent)?;
         Ok(Arc::new(App {
             attempts: crate::outcome::Attempts::new(clock.clone()),
             clock,
@@ -191,6 +193,7 @@ impl App {
             agents: RwLock::new(Arc::new(agents)),
             prices,
             mcp: Default::default(),
+            model_gateway,
             git: Default::default(),
             live: Default::default(),
             envs: Default::default(),

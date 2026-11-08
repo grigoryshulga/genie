@@ -242,6 +242,7 @@ pub fn recover(app: &App) -> AppResult<()> {
         db.interrupt_running_turns()
     })?;
     for p in app.with_server(|db| db.projects())? {
+        app.with_tracker(&p.slug, |t| t.model_calls().recover())?;
         match app.with_tracker(&p.slug, |t| t.bus().release_all_leases()) {
             Ok(n) if n > 0 => println!("genie runtime: {}: {n} message(s) from interrupted turns offered again", p.slug),
             Err(e) => eprintln!("genie runtime: {}: {e}", p.slug),
@@ -1081,7 +1082,7 @@ fn seed_pi_profile(dir: &Path, legacy: Option<&Path>) -> bool {
 /// but for the command template (`runtime.command` / `runtime.sessionCommand`) and what
 /// it is given (`{message}` / `{extension}`). Returns it with the agent's runtime directory.
 pub(crate) async fn agent_process(
-    app: &App,
+    app: &Arc<App>,
     key: &AgentKey,
     spec: &AgentSpec,
     mode: Mode<'_>,
@@ -1142,7 +1143,16 @@ pub(crate) async fn agent_process(
         vars.insert("message", "Use the complete incoming request context supplied on standard input.".into());
         argv = build_command(template, &vars, &lists);
     }
-    let mut cmd = agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), token)?;
+    let bounded = if crate::model_gateway::enabled(app) {
+        if !argv.first().is_some_and(|program| Path::new(program).file_name().is_some_and(|n| n == "pi" || n == "pi-bolt")) {
+            return Err("monetary budgets require the supported Pi harness".into());
+        }
+        argv.extend(["--no-extensions".into(), "--no-approve".into(), "--offline".into()]);
+        Some(crate::model_gateway::prepare(app, key, spec, llm, token, &dir).await?)
+    } else {
+        None
+    };
+    let mut cmd = agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), token, bounded.as_ref())?;
     match stdin {
         Some(path) => {
             let file = tokio::fs::File::open(path).await.map_err(|e| e.to_string())?.into_std().await;
@@ -1153,6 +1163,9 @@ pub(crate) async fn agent_process(
         }
     }
     llm.apply(&mut cmd);
+    if let Some(profile) = bounded {
+        profile.apply(app, &mut cmd, token);
+    }
     kit_env(&mut cmd, &files);
     Ok((cmd, dir))
 }
@@ -1176,7 +1189,8 @@ fn harness_sessions(app: &App, project: &str, agent: &str, dir: &Path) -> PathBu
 /// The harness command with the agent's environment (`GENIE_URL`, `GENIE_TOKEN`…),
 /// in the agent's sandbox when agents run in one. `dir` is the agent's runtime
 /// directory (its prompt, rules and MCP config).
-pub(crate) fn agent_command(
+#[allow(clippy::too_many_arguments)]
+fn agent_command(
     app: &App,
     argv: &[String],
     cwd: &Path,
@@ -1184,13 +1198,14 @@ pub(crate) fn agent_command(
     project: &str,
     who: &Identity<'_>,
     token: &str,
+    bounded: Option<&crate::model_gateway::Prepared>,
 ) -> Result<tokio::process::Command, String> {
     let path = std::env::var("PATH").unwrap_or_default();
     let exe_dir = app.exe.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
     let (program, args) = argv.split_first().ok_or("the agent command is empty")?;
     let is_pi = Path::new(program).file_name().is_some_and(|n| n == "pi");
     let sessions = harness_sessions(app, project, who.name, dir);
-    let (program, args) = match sandbox_plan(app, project, cwd, dir, &sessions)? {
+    let (program, args) = match sandbox_plan(app, project, cwd, dir, &sessions, bounded)? {
         Some(plan) => plan.wrap(program, args),
         None => (program.to_string(), args.to_vec()),
     };
@@ -1261,7 +1276,14 @@ fn heap_cap(own: Option<&str>, mb: u64) -> Option<String> {
 
 /// The sandbox of an agent working in `cwd` (`dir`: its runtime directory), or
 /// `None` when agents run without one ([`crate::sandbox`]).
-fn sandbox_plan(app: &App, project: &str, cwd: &Path, dir: &Path, sessions: &Path) -> Result<Option<sandbox::Plan>, String> {
+fn sandbox_plan(
+    app: &App,
+    project: &str,
+    cwd: &Path,
+    dir: &Path,
+    sessions: &Path,
+    bounded: Option<&crate::model_gateway::Prepared>,
+) -> Result<Option<sandbox::Plan>, String> {
     use sandbox::Access::{Hidden, ReadOnly, Writable};
     let cfg = &app.cfg.runtime.sandbox;
     if !sandbox::enabled(cfg)? {
@@ -1318,6 +1340,18 @@ fn sandbox_plan(app: &App, project: &str, cwd: &Path, dir: &Path, sessions: &Pat
     // pi keeps its logs and login refreshes there.
     let pi = pi_dir(app);
     sandbox::defaults(&mut plan, cfg, &home, Some(&pi));
+    if let Some(bounded) = bounded {
+        // Credential-bearing source profiles cannot be reached through the
+        // usual writable ~/.pi or an operator's explicit profile override.
+        for source in [Some(pi), legacy_pi_dir(), Some(bounded.source.clone())].into_iter().flatten() {
+            plan.set(&source, Hidden);
+        }
+        plan.set(&bounded.path, Writable);
+        for file in ["models.json", "auth.json", "settings.json"] {
+            plan.set(&bounded.path.join(file), ReadOnly);
+        }
+        bounded.protect_files(app, &mut plan);
+    }
     Ok(Some(plan))
 }
 
@@ -1959,6 +1993,13 @@ fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, 
         crate::conversations::finish_run(app, slug, response, ok, error.as_deref())?;
         let response = app.with_tracker(slug, |t| t.conversations().get(response))?;
         ok = ok && response.status == genie_core::conversations::ResponseStatus::Completed;
+        // Budgeted intake loses provider access as soon as its durable reply
+        // completes. A harness epilogue cannot turn that delivered result into
+        // a failed request merely because its next model call was denied.
+        if crate::model_gateway::enabled(app) && response.status == genie_core::conversations::ResponseStatus::Completed {
+            ok = true;
+            error = None;
+        }
         if !ok && error.is_none() {
             error = Some(response.error.unwrap_or_else(|| format!("response {}", response.status.as_str())));
         }
@@ -3377,6 +3418,40 @@ mod tests {
         })
         .unwrap()
         .id
+    }
+
+    #[test]
+    fn a_budgeted_intake_reply_remains_successful_when_the_harness_epilogue_is_denied() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("agents")).unwrap();
+        std::fs::write(dir.path().join("agents/project-manager.md"), "---\nmodel: fake/project\n---\n").unwrap();
+        let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+        cfg.runtime.enabled = false;
+        cfg.budgets.per_day = 1.0;
+        cfg.model_prices.insert(
+            "fake/project".into(),
+            crate::config::ModelPrice { input: 1.0, output: 2.0, cache_read: Some(0.5), cache_write: Some(0.0) },
+        );
+        let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+        app.create_project("shop", "Shop", None, None, None).unwrap();
+        let project = app.with_server(|db| db.project("shop")).unwrap();
+        let response = incoming(&app, "owner");
+        let key = AgentKey::Request { project: "shop".into(), response: response.clone() };
+        let turn = app.with_server(|db| db.start_turn("shop", &key.label(), None, None, None)).unwrap();
+        let spec = request_spec(&app, &project, &response, turn, Some("owner".into())).unwrap();
+        let token = spec.token(&app, "shop", chrono::Duration::hours(1)).unwrap();
+        app.with_tracker("shop", |t| {
+            t.conversations().claim(&response)?;
+            t.conversations().complete(&response, "Delivered and saved")
+        })
+        .unwrap();
+        let prepared = Prepared { spec, turn, message: "test".into(), token: token.clone(), llm: crate::llm_key::Keys::Server };
+        finish(&app, &key, &prepared, false, Some(1), Some("provider access denied after reply"), "private epilogue").unwrap();
+        let finished = app.with_server(|db| db.turn(turn)).unwrap();
+        assert_eq!(finished.status, "succeeded");
+        assert!(finished.error.is_none());
+        assert!(app.with_server(|db| db.resolve_token(&token)).unwrap().is_none());
+        assert_eq!(app.with_tracker("shop", |t| t.conversations().get(&response)).unwrap().output, "Delivered and saved");
     }
 
     #[test]

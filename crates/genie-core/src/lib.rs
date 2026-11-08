@@ -20,6 +20,7 @@ pub mod intelligence;
 pub mod management;
 pub mod migrate;
 pub mod model;
+pub mod model_calls;
 pub mod observation;
 pub mod repos;
 pub mod secrets;

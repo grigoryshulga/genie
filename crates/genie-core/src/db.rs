@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 
-pub const SCHEMA_VERSION: i64 = 12;
+pub const SCHEMA_VERSION: i64 = 13;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -436,6 +436,7 @@ impl Db {
         self.conn.execute_batch(crate::intelligence::SCHEMA)?;
         self.conn.execute_batch(crate::conversations::SCHEMA)?;
         self.conn.execute_batch(crate::execution::SCHEMA)?;
+        self.conn.execute_batch(crate::model_calls::SCHEMA)?;
         // Preserve legacy worker retries: every old activation reused its conversation's task.
         self.conn.execute_batch(
             "INSERT OR IGNORE INTO conversation_created_tasks(response,key,task)

@@ -2,38 +2,16 @@
 //! epic, one day of a project. Enabled budgets fail closed on unknown prices and
 //! pause affected execution without discarding its teams or progress. A person
 //! explicitly resumes it after correcting the limit or tariff. Thresholds use
-//! reported usage; per-request financial reservations are not implemented here.
+//! reported legacy usage and immutable model-call receipts; in-flight reservations
+//! are handled by financial admission rather than killed as exhausted work.
 
+use genie_core::model_calls::Money;
+pub use genie_core::model_calls::Scope;
 use genie_core::usage::usage_since;
 
 use crate::notify::{self, Message};
-use crate::spend::{Spend, TaskIndex};
+use crate::spend::{Prices, Spend};
 use crate::state::{App, AppResult};
-
-/// What a used-up budget covers.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Scope {
-    Task(String),
-    Epic(String),
-    Day,
-}
-
-impl Scope {
-    fn key(&self) -> String {
-        match self {
-            Scope::Task(t) => format!("task:{t}"),
-            Scope::Epic(e) => format!("epic:{e}"),
-            Scope::Day => "day".into(),
-        }
-    }
-    fn words(&self) -> String {
-        match self {
-            Scope::Task(t) => format!("the task {t}"),
-            Scope::Epic(e) => format!("the epic {e}"),
-            Scope::Day => "today".into(),
-        }
-    }
-}
 
 /// A budget that is used up.
 #[derive(Debug, Clone, PartialEq)]
@@ -62,17 +40,16 @@ impl Exceeded {
     }
 }
 
-fn budget_price<'a>(prices: &'a crate::spend::Prices, model: &str) -> Option<&'a crate::config::ModelPrice> {
+pub(crate) fn budget_price<'a>(prices: &'a crate::spend::Prices, model: &str) -> Option<&'a crate::config::ModelPrice> {
     // A tariff from another provider with the same model name is not authority
     // for spending. An explicit unqualified operator tariff remains supported.
     prices.get(model).or_else(|| prices.get(model.rsplit_once('/').map_or(model, |(_, tail)| tail)))
 }
 
-fn spend(app: &App, rows: &[genie_core::usage::UsageRow]) -> Spend {
-    let prices = app.budget_prices().unwrap_or_else(|_| app.cfg.model_prices.clone());
+fn spend(prices: &Prices, rows: &[genie_core::usage::UsageRow]) -> Spend {
     let mut spent = Spend::default();
     for row in rows {
-        match budget_price(&prices, &row.model) {
+        match budget_price(prices, &row.model) {
             Some(price)
                 if [Some(price.input), Some(price.output), price.cache_read, price.cache_write]
                     .into_iter()
@@ -83,20 +60,55 @@ fn spend(app: &App, rows: &[genie_core::usage::UsageRow]) -> Spend {
                 spent.cost += cost;
                 spent.unpriced_tokens = spent.unpriced_tokens.saturating_add(unpriced);
             }
-            _ => spent.unpriced_tokens = spent.unpriced_tokens.saturating_add(row.tokens.total().max(1)),
+            _ => {
+                spent.unpriced_tokens = spent.unpriced_tokens.saturating_add(
+                    [row.tokens.input, row.tokens.output, row.tokens.cache_read, row.tokens.cache_write]
+                        .into_iter()
+                        .fold(0_u64, u64::saturating_add)
+                        .max(1),
+                )
+            }
         }
     }
     // Display rounding must never create extra budget headroom.
     spent
 }
 
-fn exceeded(scope: Scope, spent: Spend, limit: f64) -> Option<Exceeded> {
-    (spent.unpriced_tokens > 0 || spent.cost >= limit).then_some(Exceeded {
-        scope,
-        spent: spent.cost,
-        limit,
-        unpriced_tokens: spent.unpriced_tokens,
-    })
+pub(crate) fn legacy_spend(t: &genie_core::Tracker, prices: &Prices, scope: &Scope, day: &str) -> genie_core::Result<Spend> {
+    let rows = match scope {
+        Scope::Task(task) | Scope::Epic(task) => t.usage_of_task(task)?,
+        Scope::Day => usage_since(t.conn(), day)?.into_iter().filter(|r| r.day == day).collect(),
+    };
+    Ok(spend(prices, &t.model_calls().legacy_rows(rows)?))
+}
+
+pub(crate) fn scope_limit(b: &crate::config::Budgets, scope: &Scope) -> f64 {
+    match scope {
+        Scope::Task(_) => b.per_task,
+        Scope::Epic(_) => b.per_epic,
+        Scope::Day => b.per_day,
+    }
+}
+
+pub(crate) fn allowance(
+    t: &genie_core::Tracker,
+    prices: &Prices,
+    b: &crate::config::Budgets,
+    scope: &Scope,
+    day: &str,
+) -> genie_core::Result<(Money, Money)> {
+    let limit = Money::limit(scope_limit(b, scope))?;
+    if limit.value() == 0 {
+        return Ok((limit, Money::default()));
+    }
+    let spent = legacy_spend(t, prices, scope, day)?;
+    if spent.unpriced_tokens > 0 {
+        return Err(genie_core::GenieError::Denied(
+            Exceeded { scope: scope.clone(), spent: spent.cost, limit: scope_limit(b, scope), unpriced_tokens: spent.unpriced_tokens }
+                .explain(),
+        ));
+    }
+    Ok((limit, Money::charge(spent.cost)?))
 }
 
 /// Every enabled scope needs usable prices before an agent starts, not only after usage.
@@ -125,46 +137,60 @@ pub(crate) fn admit_model(app: &App, slug: &str, task: Option<&str>, model: Opti
 
 /// The first used-up budget that covers work on `task` (its task, its epic, the day), if any.
 pub fn check(app: &App, slug: &str, task: Option<&str>) -> AppResult<Option<Exceeded>> {
+    Ok(check_scopes(app, slug, task, None)?.into_iter().next())
+}
+
+fn check_scopes(app: &App, slug: &str, task: Option<&str>, frozen: Option<&[Scope]>) -> AppResult<Vec<Exceeded>> {
     let b = app.cfg.budgets;
     if b.per_task <= 0.0 && b.per_epic <= 0.0 && b.per_day <= 0.0 {
-        return Ok(None);
+        return Ok(Vec::new());
     }
+    let prices = app.budget_prices()?;
     app.with_tracker(slug, |t| {
-        if let Some(task) = task {
-            if b.per_task > 0.0 {
-                let index = TaskIndex::load(t.conn())?;
-                let mut cursor = Some(t.get(task)?.id);
-                for _ in 0..32 {
-                    let Some(id) = cursor else { break };
-                    if index.0.get(&id).is_some_and(|row| row.1 != "epic")
-                        && let Some(over) = exceeded(Scope::Task(id.clone()), spend(app, &t.usage_of_task(&id)?), b.per_task)
-                    {
-                        return Ok(Some(over));
-                    }
-                    cursor = index.0.get(&id).and_then(|row| row.2.clone());
-                }
+        let day = genie_core::db::now()[..10].to_string();
+        let scopes = match frozen {
+            Some(scopes) => scopes.to_vec(),
+            None => t.model_calls().scopes(task)?,
+        };
+        let mut exceeded = Vec::new();
+        for scope in scopes {
+            let limit = scope_limit(&b, &scope);
+            if limit <= 0.0 {
+                continue;
             }
-            if b.per_epic > 0.0
-                && let Some(epic) = TaskIndex::load(t.conn())?.epic_of(task)
-                && let Some(over) = exceeded(Scope::Epic(epic.clone()), spend(app, &t.usage_of_task(&epic)?), b.per_epic)
-            {
-                return Ok(Some(over));
+            let spent = legacy_spend(t, &prices, &scope, &day)?;
+            if spent.unpriced_tokens > 0 {
+                exceeded.push(Exceeded { scope, spent: spent.cost, limit, unpriced_tokens: spent.unpriced_tokens });
+                continue;
             }
-        }
-        if b.per_day > 0.0 {
-            let today = genie_core::db::now()[..10].to_string();
-            let rows: Vec<_> = usage_since(t.conn(), &today)?.into_iter().filter(|r| r.day == today).collect();
-            if let Some(over) = exceeded(Scope::Day, spend(app, &rows), b.per_day) {
-                return Ok(Some(over));
+            let used = Money::charge(spent.cost)?.checked_add(t.model_calls().committed(&scope)?)?;
+            if used >= Money::limit(limit)? {
+                exceeded.push(Exceeded { scope, spent: used.as_dollars(), limit, unpriced_tokens: 0 });
             }
         }
-        Ok(None)
+        Ok(exceeded)
     })
 }
 
 /// After a report of usage on `task`: when a budget is used up, stop the teams it covers and tell people once.
 pub fn enforce(app: &App, slug: &str, task: Option<&str>) -> AppResult<()> {
-    let Some(over) = check(app, slug, task)? else { return Ok(()) };
+    for over in check_scopes(app, slug, task, None)? {
+        apply_limit(app, slug, task, &over)?;
+    }
+    Ok(())
+}
+
+/// Settlements and human reconciliations enforce the scopes captured at
+/// admission, including an old epic after a task moves while a call runs.
+pub(crate) fn enforce_call(app: &App, slug: &str, call: &genie_core::model_calls::Call) -> AppResult<()> {
+    let scopes = app.with_tracker(slug, |t| t.model_calls().call_scopes(&call.id))?;
+    for over in check_scopes(app, slug, call.task.as_deref(), Some(&scopes))? {
+        apply_limit(app, slug, call.task.as_deref(), &over)?;
+    }
+    Ok(())
+}
+
+fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> AppResult<()> {
     let _gate = app.execution_gate.lock().map_err(|_| crate::state::AppError::Internal("execution gate poisoned".into()))?;
     let root = match &over.scope {
         Scope::Task(id) | Scope::Epic(id) => Some(id.as_str()),

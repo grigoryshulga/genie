@@ -323,7 +323,7 @@ fn intake_route(method: &str, path: &str) -> bool {
     let segments: Vec<_> = path.trim_start_matches('/').split('/').collect();
     matches!(
         (method, segments.as_slice()),
-        ("POST", ["mcp"] | ["agent", "usage"])
+        ("POST", ["mcp"] | ["agent", "usage"] | ["agent", "model-gateway", _, "v1", "chat", "completions"])
             | (
                 "GET",
                 ["meta"]

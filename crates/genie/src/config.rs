@@ -623,6 +623,9 @@ impl Config {
         if [cfg.budgets.per_task, cfg.budgets.per_epic, cfg.budgets.per_day].into_iter().any(|v| !v.is_finite() || v < 0.0) {
             return Err("config: budgets must be finite nonnegative dollar amounts; zero means unlimited".into());
         }
+        for value in [cfg.budgets.per_task, cfg.budgets.per_epic, cfg.budgets.per_day] {
+            genie_core::model_calls::Money::limit(value).map_err(|e| format!("config: budgets: {e}"))?;
+        }
         Ok(cfg)
     }
 
