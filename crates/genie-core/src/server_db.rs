@@ -1282,11 +1282,13 @@ impl ServerDb {
         Ok(())
     }
 
-    /// Fence an earlier process of this exact agent before retrying its durable work.
-    /// Other agents, projects and personal tokens retain their credentials.
-    pub fn revoke_named_agent_tokens(&self, project: &str, name: &str) -> Result<()> {
-        self.conn()
-            .execute("UPDATE api_tokens SET revoked = 1 WHERE kind = 'agent' AND project = ?1 AND member = ?2", params![project, name])?;
+    /// Fence this exact agent, retaining its team/job identity. Absent scope
+    /// fields match NULL rather than selecting every scope with the same name.
+    pub fn revoke_named_agent_tokens(&self, project: &str, name: &str, team: Option<&str>, job: Option<i64>) -> Result<()> {
+        self.conn().execute(
+            "UPDATE api_tokens SET revoked = 1 WHERE kind = 'agent' AND project = ?1 AND member = ?2 AND team IS ?3 AND job IS ?4",
+            params![project, name, team, job],
+        )?;
         Ok(())
     }
 
@@ -1775,7 +1777,7 @@ mod tests {
         let second = token("shop", "request:one");
         let neighbor = token("shop", "request:two");
         let foreign = token("other", "request:one");
-        db.revoke_named_agent_tokens("shop", "request:one").unwrap();
+        db.revoke_named_agent_tokens("shop", "request:one", None, None).unwrap();
         assert!(db.resolve_token(&first).unwrap().is_none());
         assert!(db.resolve_token(&second).unwrap().is_none());
         for preserved in [personal, neighbor, foreign] {
@@ -1783,6 +1785,24 @@ mod tests {
         }
         let replacement = token("shop", "request:one");
         assert!(db.resolve_token(&replacement).unwrap().is_some());
+    }
+
+    #[test]
+    fn named_agent_revocation_matches_team_and_job_even_when_scope_is_absent() {
+        let (_d, db) = db();
+        db.create_project("shop", "Shop", "/tmp/shop", None, None).unwrap();
+        let scopes = [(Some("G-1"), None), (Some("G-2"), None), (None, Some(1)), (None, Some(2)), (None, None)];
+        for target in scopes {
+            let tokens = scopes
+                .map(|(team, job)| db.create_agent_token("shop", Role::Executor, "worker", team, job, ChronoDuration::hours(1)).unwrap());
+            let duplicate = db.create_agent_token("shop", Role::Executor, "worker", target.0, target.1, ChronoDuration::hours(1)).unwrap();
+            db.revoke_named_agent_tokens("shop", "worker", target.0, target.1).unwrap();
+            db.revoke_named_agent_tokens("shop", "worker", target.0, target.1).unwrap();
+            assert!(db.resolve_token(&duplicate).unwrap().is_none());
+            for (scope, token) in scopes.into_iter().zip(tokens) {
+                assert_eq!(db.resolve_token(&token).unwrap().is_none(), scope == target, "revoking {target:?} affects {scope:?}");
+            }
+        }
     }
 
     #[test]

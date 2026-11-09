@@ -1046,6 +1046,116 @@ async fn task_stop_kills_one_shot_tools_retains_files_and_preserves_job_retry_al
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stopping_a_task_preserves_same_named_workers_in_other_teams() {
+    same_named_worker_stop(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stopping_a_live_task_preserves_same_named_workers_in_other_teams() {
+    same_named_worker_stop(true).await;
+}
+
+async fn same_named_worker_stop(sessions: bool) {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 3;
+        cfg.runtime.mode = if sessions { "sessions" } else { "turns" }.into();
+        let record = r#"printf '%s' "$GENIE_TOKEN" > "$GENIE_MARK.$GENIE_TEAM.token"; echo "$$" > "$GENIE_MARK.$GENIE_TEAM.pid";"#;
+        cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), format!("{record} sleep 120")]];
+        cfg.runtime.session_command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            format!(
+                r#"{record}
+            while IFS= read -r line; do
+              case "$line" in
+                *'"get_state"'*) printf '%s\n' '{{"type":"response","success":true}}' ;;
+                *'"prompt"'*) printf '%s\n' '{{"type":"agent_start"}}' ;;
+              esac
+            done"#
+            ),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let tasks = app
+        .with_tracker("shop", |t| {
+            let mut tasks = Vec::new();
+            for title in ["Stopped worker", "Independent worker"] {
+                let task = t.create(
+                    &Actor::new("owner", Role::Human),
+                    CreateInput { title: title.into(), quiet: true, status: Some(Status::Ready), ..Default::default() },
+                )?;
+                t.bus().create(
+                    "owner",
+                    "human",
+                    NewTeam {
+                        id: task.id.clone(),
+                        task: task.id.clone(),
+                        cwd: l._dir.path().to_string_lossy().into_owned(),
+                        members: vec![NewMember { name: "worker".into(), role: "executor".into(), ..Default::default() }],
+                        ..Default::default()
+                    },
+                )?;
+                t.bus().send(SendMail {
+                    team: &task.id,
+                    from: "owner",
+                    from_role: "human",
+                    to: "worker",
+                    text: "Work independently",
+                    kind: "owner",
+                    ..Default::default()
+                })?;
+                tasks.push(task.id);
+            }
+            Ok(tasks)
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    let token_path = |task: &str| l._dir.path().join(format!("failed-once.{task}.token"));
+    wait_for(app, "both same-named processes started", Duration::from_secs(10), |_| {
+        tasks.iter().all(|task| {
+            std::fs::read_to_string(token_path(task)).is_ok_and(|token| token.starts_with("gna_"))
+                && std::fs::read_to_string(l._dir.path().join(format!("failed-once.{task}.pid")))
+                    .is_ok_and(|pid| pid.trim().parse::<u32>().is_ok())
+        })
+    })
+    .await;
+    if sessions {
+        wait_for(app, "both same-named sessions ready", Duration::from_secs(5), |app| {
+            app.sessions.all().iter().filter(|session| session.name == "worker" && session.live().startup.ready_ms.is_some()).count() == 2
+        })
+        .await;
+        genie::runtime::tick(app).await.unwrap();
+        wait_for(app, "both same-named sessions working", Duration::from_secs(5), |app| {
+            app.sessions.all().iter().filter(|session| session.name == "worker" && session.live().state == "working").count() == 2
+        })
+        .await;
+    }
+    let tokens: Vec<_> = tasks.iter().map(|task| std::fs::read_to_string(token_path(task)).unwrap()).collect();
+    let pids: Vec<u32> = tasks
+        .iter()
+        .map(|task| std::fs::read_to_string(l._dir.path().join(format!("failed-once.{task}.pid"))).unwrap().trim().parse().unwrap())
+        .collect();
+    let client = reqwest::Client::new();
+    let url = |task: &str| format!("http://127.0.0.1:{}/api/tasks/{task}?project=shop", app.cfg.port);
+    for (task, token) in tasks.iter().zip(&tokens) {
+        assert_eq!(client.get(url(task)).bearer_auth(token).send().await.unwrap().status(), reqwest::StatusCode::OK);
+    }
+    let caller = genie::tasks::Caller::person("shop", "owner");
+    genie::tasks::pause_execution(app, &caller, &tasks[0], "owner", "Stop only this team").unwrap();
+    wait_for(app, "selected worker stopped", Duration::from_secs(5), |_| !process_running(pids[0])).await;
+    assert_eq!(client.get(url(&tasks[0])).bearer_auth(&tokens[0]).send().await.unwrap().status(), reqwest::StatusCode::UNAUTHORIZED);
+    assert_eq!(client.get(url(&tasks[1])).bearer_auth(&tokens[1]).send().await.unwrap().status(), reqwest::StatusCode::OK);
+    assert!(process_running(pids[1]));
+    assert!(app.with_tracker("shop", |t| t.execution().blocking(&tasks[1])).unwrap().is_none());
+    assert!(app.with_server(|db| db.resolve_token(&tokens[1])).unwrap().is_some());
+    genie::tasks::pause_execution(app, &caller, &tasks[1], "owner", "Finish fixture").unwrap();
+    wait_for(app, "remaining worker stopped", Duration::from_secs(5), |_| !process_running(pids[1])).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_deleted_unrelated_team_does_not_prevent_stopping_running_task_members() {
     let l = live_cfg(&[], |cfg| {
         cfg.runtime.enabled = false;

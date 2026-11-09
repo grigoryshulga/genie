@@ -84,6 +84,16 @@ impl AgentKey {
         }
     }
 
+    /// A member name is local to its team; a job's credential name differs from
+    /// its display label. Keep that complete identity at every stop boundary.
+    fn revoke_tokens(&self, db: &genie_core::server_db::ServerDb) -> genie_core::Result<()> {
+        match self {
+            Self::Member { project, team, member } => db.revoke_named_agent_tokens(project, member, Some(team), None),
+            Self::Job { project, job } => db.revoke_named_agent_tokens(project, &format!("job-{job}"), None, Some(*job)),
+            _ => db.revoke_named_agent_tokens(self.project(), &self.label(), None, None),
+        }
+    }
+
     pub fn mailbox(project: &str, recipient: &str) -> Self {
         if let Some(response) = recipient.strip_prefix("request:") {
             return Self::Request { project: project.into(), response: response.into() };
@@ -524,14 +534,9 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
                     let _ = cancel.send(true);
                 }
             });
-            let name = match &key {
-                AgentKey::Member { member, .. } => member.clone(),
-                AgentKey::Job { job, .. } => format!("job-{job}"),
-                _ => key.label(),
-            };
             if let Err(error) = app.with_server(|db| {
                 db.tx(|| {
-                    db.revoke_named_agent_tokens(project, &name)?;
+                    key.revoke_tokens(db)?;
                     if let AgentKey::Job { job, .. } = &key {
                         db.interrupt_job(*job)?;
                     }
@@ -548,7 +553,7 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
             let was_working = session.live().state == "working";
             // Process termination cannot depend on a continuation-mail write.
             crate::sessions::halt(app, &session.key, "execution paused");
-            if let Err(error) = app.with_server(|db| db.revoke_named_agent_tokens(project, &session.name)) {
+            if let Err(error) = app.with_server(|db| session.key.revoke_tokens(db)) {
                 failure.get_or_insert(error);
             }
             if was_working
@@ -1880,7 +1885,7 @@ impl AgentSpec {
         self.with_current_execution(app, project, || {
             app.with_server(|db| {
                 if self.role_id == "intake" {
-                    db.revoke_named_agent_tokens(project, &self.name)?;
+                    db.revoke_named_agent_tokens(project, &self.name, self.team.as_deref(), self.job)?;
                 }
                 db.create_role_token(project, self.role, Some(&self.role_id), &self.name, self.team.as_deref(), self.job, ttl)
             })
