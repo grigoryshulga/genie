@@ -20,7 +20,7 @@ pub struct Interaction {
     pub version: String,
     pub prompt: String,
     pub state: String,
-    pub actions: Vec<String>,
+    pub actions: Vec<Action>,
     pub recipient: Option<i64>,
     #[ts(type = "unknown")]
     pub resolution: Option<Value>,
@@ -28,7 +28,7 @@ pub struct Interaction {
     pub deliveries: Vec<genie_core::human_delivery::InteractionDeliveryReceipt>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema, clap::ValueEnum, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema, clap::ValueEnum, ts_rs::TS)]
 #[ts(export, rename = "HumanInteractionAction")]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -36,6 +36,17 @@ pub enum Action {
     Approve,
     Reject,
     Resume,
+}
+
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Answer => "answer",
+            Self::Approve => "approve",
+            Self::Reject => "reject",
+            Self::Resume => "resume",
+        })
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ts_rs::TS)]
@@ -187,7 +198,7 @@ pub fn show(app: &App, old: &Access, id: &str) -> AppResult<Interaction> {
             } else if q.state != "owner" || !current {
                 item.state = "stale".into();
             } else {
-                item.actions.push("answer".into());
+                item.actions.push(Action::Answer);
             }
         }
         Subject::Proposal(proposal) => {
@@ -219,7 +230,7 @@ pub fn show(app: &App, old: &Access, id: &str) -> AppResult<Interaction> {
             } else if !current {
                 item.state = "stale".into();
             } else {
-                item.actions = vec!["approve".into(), "reject".into()];
+                item.actions = vec![Action::Approve, Action::Reject];
             }
         }
         Subject::Questionnaire(id, n) => {
@@ -254,7 +265,7 @@ pub fn show(app: &App, old: &Access, id: &str) -> AppResult<Interaction> {
             } else if qn.due.is_some_and(|d| d <= genie_core::db::now()) {
                 item.state = "expired".into();
             } else {
-                item.actions.push("answer".into());
+                item.actions.push(Action::Answer);
             }
         }
         Subject::Pause(task, generation) => {
@@ -265,7 +276,7 @@ pub fn show(app: &App, old: &Access, id: &str) -> AppResult<Interaction> {
             item.version = generation.to_string();
             item.prompt = state.note;
             if generation == state.generation && state.paused {
-                item.actions.push("resume".into());
+                item.actions.push(Action::Resume);
             } else if !state.paused && generation.checked_add(1) == Some(state.generation) {
                 item.state = "resumed".into();
                 item.resolution = Some(json!({"actor":state.actor,"at":state.changed_at}));

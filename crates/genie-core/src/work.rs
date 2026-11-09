@@ -31,6 +31,22 @@ pub struct Turn {
     pub log: Option<String>,
 }
 
+/// A hard limit waits for its project-side pause before its turn can be released.
+#[derive(Debug, Clone)]
+pub struct TurnPause {
+    pub id: String,
+    pub turn: i64,
+    pub project: String,
+    pub task: String,
+    pub note: String,
+}
+
+impl TurnPause {
+    fn from_row(r: &Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self { id: r.get(0)?, turn: r.get(1)?, project: r.get(2)?, task: r.get(3)?, note: r.get(4)? })
+    }
+}
+
 impl Turn {
     fn from_row(r: &Row<'_>) -> rusqlite::Result<Turn> {
         Ok(Turn {
@@ -116,6 +132,37 @@ pub struct NewJob {
 }
 
 impl ServerDb {
+    pub fn queue_turn_pause(&self, turn: i64, task: &str, note: &str) -> Result<TurnPause> {
+        self.tx(|| {
+            self.turn(turn)?;
+            self.conn().execute(
+                "INSERT OR IGNORE INTO turn_pauses(id,turn,task,note) VALUES (?1,?2,?3,?4)",
+                params![crate::server_db::new_code(), turn, task, note],
+            )?;
+            let pause = self.conn().query_row(
+                "SELECT p.id,p.turn,t.project,p.task,p.note FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE p.turn=?1",
+                [turn],
+                TurnPause::from_row,
+            )?;
+            if pause.task != task || pause.note != note {
+                return Err(GenieError::invalid("a turn's hard-limit pause cannot change"));
+            }
+            Ok(pause)
+        })
+    }
+
+    pub fn pending_turn_pauses(&self, project: Option<&str>) -> Result<Vec<TurnPause>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT p.id,p.turn,t.project,p.task,p.note FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE p.applied=0 AND (?1 IS NULL OR t.project=?1) ORDER BY p.turn",
+        )?;
+        Ok(stmt.query_map([project], TurnPause::from_row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn turn_pause_applied(&self, id: &str) -> Result<()> {
+        self.conn().execute("UPDATE turn_pauses SET applied=1 WHERE id=?1", [id])?;
+        Ok(())
+    }
+
     pub fn start_turn(&self, project: &str, agent: &str, team: Option<&str>, member: Option<&str>, job: Option<i64>) -> Result<i64> {
         self.conn().execute(
             "INSERT INTO turns(project, agent, team, member, job, status, started) VALUES (?1, ?2, ?3, ?4, ?5, 'running', ?6)",
@@ -285,6 +332,28 @@ impl ServerDb {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn limit_intents_upgrade_survive_restart_and_keep_one_frozen_binding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.db");
+        let db = ServerDb::open(&path).unwrap();
+        let turn = db.start_turn("shop", "worker", None, None, None).unwrap();
+        db.conn().execute_batch("DROP TABLE turn_pauses; UPDATE meta SET value='13' WHERE key='schema';").unwrap();
+        drop(db);
+        let db = ServerDb::open(&path).unwrap();
+        let pause = db.queue_turn_pause(turn, "G-1", "run limit reached").unwrap();
+        assert_eq!(db.queue_turn_pause(turn, "G-1", "run limit reached").unwrap().id, pause.id);
+        assert!(db.queue_turn_pause(turn, "G-2", "run limit reached").is_err());
+        drop(db);
+        let db = ServerDb::open(&path).unwrap();
+        assert_eq!(db.pending_turn_pauses(Some("shop")).unwrap()[0].id, pause.id);
+        assert!(db.pending_turn_pauses(Some("other")).unwrap().is_empty());
+        db.turn_pause_applied(&pause.id).unwrap();
+        assert!(db.pending_turn_pauses(None).unwrap().is_empty());
+        assert_eq!(db.queue_turn_pause(turn, "G-1", "run limit reached").unwrap().id, pause.id);
+        assert!(db.pending_turn_pauses(None).unwrap().is_empty(), "retry cannot reopen an acknowledged intent");
+    }
 
     #[test]
     fn jobs_retry_then_fail_and_turns_recover() {

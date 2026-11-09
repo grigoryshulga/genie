@@ -41,3 +41,24 @@ fn version_eleven_upgrade_adds_execution_control_without_changing_tasks() {
     assert_eq!(t.get(&task.id).unwrap().status, task.status);
     t.execution().pause(&actor, &task.id, "owner", "New control").unwrap();
 }
+
+#[test]
+fn a_replayed_limit_receipt_never_pauses_a_later_execution_generation() {
+    let dir = tempfile::tempdir().unwrap();
+    let t = Tracker::init(dir.path().join(".genie"), None, None).unwrap();
+    let owner = Actor::new("owner", Role::Human);
+    let server = Actor::new("genie", Role::Orchestrator);
+    let task = t.create(&owner, CreateInput { title: "Timed work".into(), ..Default::default() }).unwrap();
+    let first = t.execution().pause_once(&server, &task.id, "run limit reached", "turn-one").unwrap();
+    t.execution().resume(&owner, &task.id).unwrap();
+    let resumed = t.execution().state(&task.id).unwrap();
+    let event = t.last_event_id().unwrap();
+    assert_eq!(t.execution().pause_once(&server, &task.id, "run limit reached", "turn-one").unwrap(), first);
+    assert_eq!(t.execution().state(&task.id).unwrap(), resumed);
+    assert_eq!(t.last_event_id().unwrap(), event);
+    assert!(t.execution().pause_once(&server, &task.id, "different limit", "turn-one").is_err());
+    let second = t.execution().pause_once(&server, &task.id, "another run limit", "turn-two").unwrap();
+    assert!(second.generation > first.generation);
+    assert_eq!(t.execution().pause_once(&server, &task.id, "run limit reached", "turn-one").unwrap(), first);
+    assert_eq!(t.execution().state(&task.id).unwrap(), Some(second));
+}

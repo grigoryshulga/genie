@@ -3,7 +3,7 @@
 
 use crate::{Actor, GenieError, Result, Role, Tracker};
 use rusqlite::{OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 pub(crate) const SCHEMA: &str = r#"
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS task_execution (
 );
 "#;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionState {
     pub task: String,
@@ -99,6 +99,28 @@ impl Execution<'_> {
                 return Ok(state);
             }
             self.write(actor, &task, true, reason, note)
+        })
+    }
+    /// The server DB acknowledges this effect separately. Keep its receipt with
+    /// the pause, so acknowledgement loss cannot pause a later resumed generation.
+    pub fn pause_once(&self, actor: &Actor, task: &str, note: &str, receipt: &str) -> Result<ExecutionState> {
+        self.0.tx(|| {
+            let task = self.0.get(task)?.id;
+            let old: Option<String> = self.0.conn().query_row(
+                "SELECT payload FROM events WHERE type='task.execution_limit_applied' AND json_extract(payload,'$.receipt')=?1 ORDER BY id LIMIT 1",
+                [receipt], |r| r.get(0),
+            ).optional()?;
+            if let Some(old) = old {
+                let old: serde_json::Value = serde_json::from_str(&old)?;
+                if old["task"] != task || old["note"] != note {
+                    return Err(GenieError::invalid("the limit receipt belongs to another pause"));
+                }
+                return Ok(serde_json::from_value(old["execution"].clone())?);
+            }
+            let state = self.pause(actor, &task, "time", note)?;
+            self.0.append_event("task.execution_limit_applied", Some(&task), &actor.name, actor.role.as_str(),
+                json!({"receipt":receipt,"task":task,"note":note,"execution":state}))?;
+            Ok(state)
         })
     }
     pub fn resume(&self, actor: &Actor, task: &str) -> Result<Option<ExecutionState>> {

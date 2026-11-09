@@ -191,10 +191,21 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
         Command::Status(_) => {
             show(app, a, &r.conversation_id).map(|v| status_summary(&v, app.cfg.language.user.to_lowercase().starts_with("rus")))
         }
-        Command::Stop { task, note } => tasks::pause_execution(app, &a.caller(), &task, "owner", &note)
-            .map(|_| format!("Task {task}: execution stopped; progress retained. Use /resume {task} to continue.")),
+        Command::Stop { task, note } => {
+            let text = format!("Task {task}: execution stopped; progress retained. Use /resume {task} to continue.");
+            tasks::pause_execution_inner(
+                app,
+                &a.caller(),
+                &task,
+                "owner",
+                &note,
+                Some(tasks::ControlReply { response: &r.id, text: &text }),
+            )
+            .map(|_| text)
+        }
         Command::Resume(task) => {
-            tasks::resume_execution(app, &a.caller(), &task).map(|_| format!("Task {task}: execution resumed within current limits."))
+            let text = format!("Task {task}: execution resumed within current limits.");
+            tasks::resume_execution_with_reply(app, &a.caller(), &task, tasks::ControlReply { response: &r.id, text: &text }).map(|_| text)
         }
         Command::Continue(_) => unreachable!(),
         Command::Interactions => crate::interactions::list(app, a, false).map(|items| {
@@ -224,7 +235,12 @@ fn interaction_summary(i: &crate::interactions::Interaction) -> String {
     if i.state == "open" {
         text.push_str(&format!("\n\nVersion: {}", i.version));
         for action in &i.actions {
-            text.push_str(&format!("\n/respond {} {} {action}{}", i.id, i.version, if action == "answer" { " YOUR ANSWER" } else { "" }));
+            text.push_str(&format!(
+                "\n/respond {} {} {action}{}",
+                i.id,
+                i.version,
+                if *action == crate::interactions::Action::Answer { " YOUR ANSWER" } else { "" }
+            ));
         }
     } else if let Some(resolution) = &i.resolution
         && let Some(answer) = resolution["answer"].as_str()
@@ -450,7 +466,7 @@ pub fn show(app: &App, a: &Access, id: &str) -> AppResult<Value> {
             .tasks(&c.id)?
             .iter()
             .map(|id| {
-                Ok(json!({"task":t.get(id)?,"clarifications":t.management().clarifications(id)?,"execution":t.execution().blocking(id)?}))
+                Ok(json!({"task":tasks::view(&t.get(id)?)?,"clarifications":t.management().clarifications(id)?,"execution":t.execution().blocking(id)?}))
             })
             .collect::<genie_core::Result<Vec<_>>>()?;
         let proposals = public_proposals(t, &c.id)?;
@@ -644,6 +660,19 @@ pub fn queued(app: &App, project: &str) -> AppResult<Vec<String>> {
     app.with_tracker(project, |t| Ok(t.conversations().queued()?.into_iter().map(|r| r.id).collect()))
 }
 
+/// Deterministic human controls do not spend model capacity or require a running
+/// task. In particular, a recovered resume must reach its own budget/authority gates.
+pub(crate) fn is_direct_response(app: &App, project: &str, response: &str) -> AppResult<bool> {
+    let r = app.with_tracker(project, |t| t.conversations().get(response))?;
+    Ok(r.input
+        .last()
+        .filter(|m| m.role == "user")
+        .map(|m| Command::parse(&m.content))
+        .transpose()?
+        .flatten()
+        .is_some_and(|c| !matches!(c, Command::Continue(_))))
+}
+
 pub fn prepare_run(app: &App, project: &str, response: &str) -> AppResult<Option<RunContext>> {
     let r = app.with_tracker(project, |t| t.conversations().get(response))?;
     if r.status != ResponseStatus::Queued {
@@ -692,7 +721,7 @@ pub fn prepare_run(app: &App, project: &str, response: &str) -> AppResult<Option
             .conversations()
             .tasks(&r.conversation_id)?
             .iter()
-            .map(|id| Ok(json!({"task":t.get(id)?,"questions":t.management().clarifications(id)?})))
+            .map(|id| Ok(json!({"task":tasks::view(&t.get(id)?)?,"questions":t.management().clarifications(id)?})))
             .collect::<genie_core::Result<Vec<_>>>()?;
         Ok(Some(json!({"conversation":r.conversation_id,"response":r.id,
             "history":recent_context(history.iter().rev().filter(|past| past.id != r.id && past.status == ResponseStatus::Completed)

@@ -218,8 +218,16 @@ pub fn start(app: &Arc<App>) {
 /// Explicit and background passes share the same serialization and scheduling rules.
 pub async fn tick(app: &Arc<App>) -> AppResult<Duration> {
     let _tick = app.sched.tick.lock().await;
+    let pause_retry = match app.blocking(flush_limit_pauses).await {
+        Ok(()) => false,
+        Err(e) => {
+            eprintln!("genie runtime: hard-limit pause pending: {e}");
+            true
+        }
+    };
     let next = schedule(app, &app.slots).await?;
-    Ok(next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET)).max(Duration::from_millis(50)))
+    let next = next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET));
+    Ok(if pause_retry { next.min(Duration::from_secs(1)) } else { next }.max(Duration::from_millis(50)))
 }
 
 /// When the scheduler has to look again without being woken: the soonest of the deadlines it
@@ -238,9 +246,22 @@ impl Next {
 /// and agents whose live session was lost mid-step are told to continue.
 pub fn recover(app: &App) -> AppResult<()> {
     let interrupted = app.with_server(|db| {
-        db.requeue_running_jobs()?;
-        db.interrupt_running_turns()
+        db.tx(|| {
+            // All process credentials belong to the previous runtime, including a
+            // worker that crashed before its turn or PID was registered. Revoke
+            // them before replay can create replacements or a person can resume.
+            for project in db.projects()? {
+                db.revoke_agent_tokens(&project.slug, None, None)?;
+            }
+            db.requeue_running_jobs()?;
+            db.interrupt_running_turns()
+        })
     })?;
+    if let Err(error) = flush_limit_pauses(app) {
+        // The persisted intent continues to fence its scope and tick retries it.
+        // Other interrupted work still needs its leases and continuation restored.
+        eprintln!("genie runtime: hard-limit recovery pending: {error}");
+    }
     for p in app.with_server(|db| db.projects())? {
         app.with_tracker(&p.slug, |t| t.model_calls().recover())?;
         match app.with_tracker(&p.slug, |t| t.bus().release_all_leases()) {
@@ -255,11 +276,6 @@ pub fn recover(app: &App) -> AppResult<()> {
     // An agent process may have outlived the server; its turn will run again, so
     // stop the stray one — only if /proc shows it is really that agent.
     for t in &interrupted {
-        if t.agent.starts_with("request:") {
-            // A restarted response keeps its identity. Revoke its former worker's
-            // credentials before reclaiming that identity, even if it ignores TERM.
-            app.with_server(|db| db.revoke_named_agent_tokens(&t.project, &t.agent))?;
-        }
         let Some(pid) = t.pid else { continue };
         let name = match (&t.member, t.job) {
             (Some(m), _) => m.clone(),
@@ -352,7 +368,17 @@ fn execution_stamp(app: &App, project: &str, task: Option<&str>) -> AppResult<Op
 }
 
 pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
+    if let AgentKey::Request { project, response } = key
+        && crate::conversations::is_direct_response(app, project, response)?
+    {
+        return Ok(true);
+    }
     let task = key_task(app, key)?;
+    if let Some(task) = &task
+        && pending_limit(app, key.project(), task)?
+    {
+        return Ok(false);
+    }
     if let Some(task) = &task
         && app.with_tracker(key.project(), |t| t.execution().blocking(task))?.is_some()
     {
@@ -363,6 +389,33 @@ pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
         return Ok(false);
     }
     Ok(true)
+}
+
+pub(crate) fn pending_limit(app: &App, project: &str, task: &str) -> AppResult<bool> {
+    let pending = app.with_server(|db| db.pending_turn_pauses(Some(project)))?;
+    if pending.is_empty() {
+        return Ok(false);
+    }
+    app.with_tracker(project, |t| {
+        let task = t.get(task)?.id;
+        let index = crate::spend::TaskIndex::load(t.conn())?;
+        Ok(pending.iter().any(|pause| index.is_under(&task, &pause.task)))
+    })
+}
+
+pub(crate) fn flush_limit_pauses(app: &App) -> AppResult<()> {
+    let mut failure = None;
+    for pause in app.with_server(|db| db.pending_turn_pauses(None))? {
+        if let Err(error) = apply_limit_pause(app, &pause) {
+            failure.get_or_insert(error);
+        }
+    }
+    failure.map_or(Ok(()), Err)
+}
+
+fn apply_limit_pause(app: &App, pause: &genie_core::work::TurnPause) -> AppResult<()> {
+    crate::tasks::apply_turn_pause(app, pause)?;
+    app.with_server(|db| db.turn_pause_applied(&pause.id))
 }
 
 /// Stop task-scoped processes without discarding teams, mail or artifacts. A caller
@@ -621,8 +674,25 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
     if error.as_deref().is_some_and(|e| e.starts_with("run limit reached"))
         && let Some(task) = p.spec.task.clone()
     {
-        let (slug, note) = (key.project().to_string(), error.clone().unwrap_or_default());
-        let _ = app.blocking(move |app| crate::tasks::pause_for_limit(app, &slug, &task, "time", &note)).await;
+        let note = error.clone().unwrap_or_default();
+        // Keep this turn and its slot until the intent and project effect are
+        // durable. A storage error must never become an ordinary retried job.
+        loop {
+            let (task, note) = (task.clone(), note.clone());
+            let result = app
+                .blocking(move |app| {
+                    let pause = app.with_server(|db| db.queue_turn_pause(turn, &task, &note))?;
+                    apply_limit_pause(app, &pause)
+                })
+                .await;
+            match result {
+                Ok(()) => break,
+                Err(e) => {
+                    eprintln!("genie runtime: turn {turn}: cannot persist hard-limit pause: {e}");
+                    app.clock.sleep_until(app.clock.now() + Duration::from_secs(1)).await;
+                }
+            }
+        }
     }
     let k = key.clone();
     let res = app.blocking(move |app| finish(app, &k, &p, ok, code, error.as_deref(), &log)).await;
@@ -1009,7 +1079,14 @@ impl Drop for ProcessGroup {
 
 pub(crate) fn kill_process_group(pid: u32) {
     #[cfg(unix)]
-    let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).stderr(Stdio::null()).status();
+    if let Ok(pid) = libc::pid_t::try_from(pid)
+        && pid > 1
+    {
+        // SAFETY: kill accepts an integer process-group ID and no pointers. The
+        // positive child PID is also its group ID (set at spawn); negation cannot
+        // target this server's group. ESRCH simply means the group already exited.
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
+    }
 }
 
 /// How an agent process runs: one turn on its mail, or a live session fed over RPC.
@@ -1117,7 +1194,10 @@ pub(crate) async fn agent_process(
                 // Linux limits each argv string separately, including JSON escapes. Keep
                 // the full input private and let custom harnesses opt into file delivery.
                 let path = dir.join("input.txt");
-                write_private(&path, message).map_err(|e| e.to_string())?;
+                let (input_path, input_text) = (path.clone(), message.to_string());
+                app.blocking(move |_| write_private(&input_path, &input_text).map_err(|e| AppError::from(GenieError::from(e))))
+                    .await
+                    .map_err(|e| e.to_string())?;
                 vars.insert("messageFile", path.to_string_lossy().into_owned());
                 if message.len() > 64 * 1024 {
                     vars.insert("message", format!(
@@ -1618,6 +1698,9 @@ impl AgentSpec {
     /// process may finish starting after its token was issued and then revoked.
     pub(crate) fn with_current_execution<T>(&self, app: &App, project: &str, action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
         let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        if let Some(task) = &self.task {
+            crate::tasks::ensure_running(app, project, task)?;
+        }
         if let Some(over) = crate::budget::check(app, project, self.task.as_deref())? {
             return Err(AppError::Conflict(over.explain()));
         }

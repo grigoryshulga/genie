@@ -217,7 +217,7 @@ impl FromRequestParts<Arc<App>> for Ctx {
             let (project, name, team, job) = (project.clone(), name.clone(), team.clone(), *job);
             app.blocking(move |app| {
                 if let Some(task) = crate::runtime::agent_task(app, &project, &name, team.as_deref(), job)? {
-                    app.with_tracker(&project, |t| t.execution().ensure_running(&task))?;
+                    crate::tasks::ensure_running(app, &project, &task)?;
                 }
                 Ok(())
             })

@@ -884,3 +884,114 @@ async fn task_stop_kills_one_shot_tools_retains_files_and_preserves_job_retry_al
     })
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.run_timeout_secs = 1;
+        cfg.runtime.turn_timeout_secs = 30;
+        cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), "sleep 120".into()]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let task = app
+        .with_tracker("shop", |t| {
+            let task = t.create(
+                &Actor::new("owner", Role::Human),
+                CreateInput { title: "Time limit storage failure".into(), quiet: true, ..Default::default() },
+            )?;
+            t.conn().execute_batch(
+                "CREATE TRIGGER fail_time_pause BEFORE INSERT ON task_execution BEGIN SELECT RAISE(ABORT,'pause storage fault'); END;",
+            )?;
+            Ok(task)
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Time-limited fixture".into(),
+                workspace: "none".into(),
+                inputs: json!({}),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "durable hard-limit intent", Duration::from_secs(10), |app| {
+        !app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty()
+    })
+    .await;
+    let retained = app.with_server(|db| db.job(job.id)).unwrap();
+    assert_eq!((retained.status.as_str(), retained.attempts), ("running", 1));
+    assert_eq!(app.sched.snapshot(app.cfg.runtime.max_concurrent, app.slots.available_permits()).running, 1);
+    let old = app.with_server(|db| db.pending_turn_pauses(None)).unwrap();
+    assert_eq!(old.len(), 1);
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_err());
+    // A failed pause write neither consumes another attempt nor blocks unrelated human control.
+    let other = app
+        .with_tracker("shop", |t| {
+            t.create(&Actor::new("owner", Role::Human), CreateInput { title: "Independent work".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &other.id).unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 1);
+    assert_eq!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap()[0].id, old[0].id);
+    app.with_tracker("shop", |t| {
+        t.conn().execute_batch("DROP TRIGGER fail_time_pause;")?;
+        Ok(())
+    })
+    .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "durable pause and retained retry", Duration::from_secs(5), |app| {
+        let job = app.with_server(|db| db.job(job.id)).unwrap();
+        job.status == "queued"
+            && job.attempts == 0
+            && app.sched.snapshot(app.cfg.runtime.max_concurrent, app.slots.available_permits()).running == 0
+    })
+    .await;
+    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "time");
+    genie::runtime::tick(app).await.unwrap();
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 0, "a timed-out job cannot restart before human resume");
+}
+
+#[tokio::test]
+async fn replay_after_a_lost_limit_ack_preserves_a_later_human_resume() {
+    let h = crate::common::Harness::new();
+    h.project("shop");
+    let owner = Actor::new("owner", Role::Human);
+    let task = h
+        .app
+        .with_tracker("shop", |t| {
+            t.create(&owner, CreateInput { title: "Limit acknowledgement gap".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    let intent = h
+        .app
+        .with_server(|db| {
+            let turn = db.start_turn("shop", "job/one", None, None, None)?;
+            db.queue_turn_pause(turn, &task.id, "run limit reached after 1s")
+        })
+        .unwrap();
+    genie::runtime::tick(&h.app).await.unwrap();
+    let first = h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap().unwrap();
+    // Recreate the lost acknowledgement, with a later decision already in the tracker.
+    h.app.with_tracker("shop", |t| t.execution().resume(&owner, &task.id)).unwrap();
+    let resumed = h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap();
+    h.app
+        .with_server(|db| {
+            db.conn().execute("UPDATE turn_pauses SET applied=0 WHERE id=?1", [&intent.id])?;
+            Ok(())
+        })
+        .unwrap();
+    genie::runtime::recover(&h.app).unwrap();
+    assert_eq!(h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap(), resumed);
+    assert!(h.app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert_eq!(first.generation + 1, resumed.unwrap().generation);
+}

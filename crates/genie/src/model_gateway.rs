@@ -216,6 +216,9 @@ fn validate_principal(app: &App, project: &str, worker: &Worker, principal: &Pri
     if token_project != project || agent != worker.agent || worker.closed {
         return Err(AppError::Forbidden("the model enrollment does not belong to this worker".into()));
     }
+    if let Some(task) = &worker.task {
+        crate::tasks::ensure_running(app, project, task)?;
+    }
     if crate::conversations::request_id(name).is_some() {
         crate::conversations::validate_agent(app, project, name)?;
     }

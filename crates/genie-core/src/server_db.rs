@@ -223,6 +223,13 @@ CREATE TABLE IF NOT EXISTS turns (
 );
 CREATE INDEX IF NOT EXISTS turns_status ON turns(status);
 CREATE INDEX IF NOT EXISTS turns_agent ON turns(project, agent, id);
+CREATE TABLE IF NOT EXISTS turn_pauses (
+  id TEXT PRIMARY KEY,
+  turn INTEGER NOT NULL UNIQUE REFERENCES turns(id) ON DELETE CASCADE,
+  task TEXT NOT NULL,
+  note TEXT NOT NULL,
+  applied INTEGER NOT NULL DEFAULT 0 CHECK(applied IN (0,1))
+);
 CREATE TABLE IF NOT EXISTS questionnaires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project TEXT NOT NULL,
@@ -495,7 +502,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 13;
+pub const SERVER_SCHEMA_VERSION: i64 = 14;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
