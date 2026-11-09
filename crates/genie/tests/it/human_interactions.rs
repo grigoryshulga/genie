@@ -209,6 +209,82 @@ async fn fallback_requires_explicit_preference_and_rechecks_recipient_rights() {
 }
 
 #[tokio::test]
+async fn resetting_preferences_cancels_a_queued_fallback_after_restart_and_keeps_legacy_routing() {
+    let (url, tg) = telegram().await;
+    tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let (port, mail) = super::channels::fake_smtp().await;
+    let h = Harness::with_config(|cfg| {
+        cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+        cfg.smtp = Some(genie::config::SmtpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            from: "genie@example.test".into(),
+            security: "none".into(),
+            ..Default::default()
+        });
+    });
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    assert_eq!(
+        call(&h.remote, "PUT", "/api/me/delivery")
+            .bearer(&token)
+            .json(json!({
+                "policy":{"order":["telegram","email"],"fallbackAfterAttempts":1}
+            }))
+            .send()
+            .await
+            .0,
+        200
+    );
+    let qn = ask(&h, uid);
+    genie::channels::dispatch(&h.app).await;
+    let email = h
+        .app
+        .with_server(|db| {
+            let items = db.due_outbox(50)?;
+            Ok(items.into_iter().find(|item| item.channel == "email").unwrap())
+        })
+        .unwrap();
+    assert!(mail.lock().unwrap().is_empty(), "the fallback is queued, not yet dispatched");
+    assert_eq!(call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(json!({"policy":null})).send().await.0, 200);
+
+    let recovered = genie::state::App::open(h.dir.path(), h.app.cfg.clone(), std::path::PathBuf::from("/nonexistent")).unwrap();
+    assert!(recovered.with_server(|db| db.delivery_policy(uid)).unwrap().is_none());
+    genie::channels::dispatch(&recovered).await;
+    assert!(mail.lock().unwrap().is_empty(), "reset withdraws email fallback while Telegram remains linked");
+    assert_eq!(recovered.with_server(|db| db.outbox_item(email.id)).unwrap().status, "cancelled");
+    assert_eq!(recovered.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+    assert_eq!(tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count(), 1);
+
+    // Reset restores Telegram-otherwise-email rather than disabling delivery.
+    h.app.with_server(|db| db.unlink_channel(uid, "telegram")).unwrap();
+    let legacy = ask(&h, uid);
+    genie::channels::dispatch(&recovered).await;
+    assert_eq!(mail.lock().unwrap().len(), 1, "email is still the default when Telegram is disconnected");
+    assert_eq!(recovered.with_server(|db| db.questionnaire(legacy)).unwrap().status, "open");
+
+    // A message's original channel restriction remains part of its authority.
+    h.app.with_server(|db| db.link_channel(uid, "telegram", "42")).unwrap();
+    genie::notify::send(
+        &h.app,
+        &[uid],
+        &genie::notify::Message {
+            kind: "test".into(),
+            title: "Explicit email".into(),
+            body: "Only this allowed channel".into(),
+            project: Some("shop".into()),
+            channels: vec!["email".into()],
+            ..Default::default()
+        },
+        Some("email-only-after-reset"),
+    )
+    .unwrap();
+    genie::channels::dispatch(&recovered).await;
+    assert_eq!(mail.lock().unwrap().len(), 2, "explicit email-only messages retain their original restriction");
+    assert_eq!(tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count(), 1);
+}
+
+#[tokio::test]
 async fn undeliverable_interaction_stays_open_and_failure_is_visible_only_to_its_person() {
     let (url, tg) = telegram().await;
     tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);

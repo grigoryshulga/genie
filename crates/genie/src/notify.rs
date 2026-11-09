@@ -5,6 +5,7 @@
 
 use std::collections::BTreeSet;
 
+use genie_core::human_delivery::DeliveryPolicy;
 use serde_json::{Value, json};
 
 use crate::state::{App, AppResult};
@@ -147,6 +148,31 @@ pub(crate) fn target(
     }
 }
 
+/// Default routing authorizes only the first connected allowed channel. A reset
+/// restores that choice even for old queued copies; it grants no failure fallback.
+fn effective_policy(
+    db: &genie_core::server_db::ServerDb,
+    app: &App,
+    user: i64,
+    project: Option<&str>,
+    interaction: bool,
+    allowed: &[String],
+) -> genie_core::Result<DeliveryPolicy> {
+    let wants = |channel: &str| allowed.is_empty() || allowed.iter().any(|c| c == channel);
+    if let Some(mut policy) = db.delivery_policy(user)? {
+        policy.order.retain(|c| wants(c));
+        return Ok(policy);
+    }
+    let mut order = Vec::new();
+    for channel in ["telegram", "email"] {
+        if wants(channel) && target(db, app, user, project, channel, interaction)?.is_some() {
+            order.push(channel.to_string());
+            break;
+        }
+    }
+    Ok(DeliveryPolicy { order, fallback_after_attempts: genie_core::inbox::MAX_DELIVERY_ATTEMPTS })
+}
+
 /// Notify people; a deduplicated group spans web, the preferred channel and explicit fallbacks.
 pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> AppResult<usize> {
     let base = app.cfg.public_url();
@@ -168,10 +194,9 @@ pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> Ap
                 use rusqlite::OptionalExtension;
                 db.conn().query_row("SELECT id FROM notifications WHERE dedupe_key=?1",[&web_key],|r|r.get::<_,i64>(0)).optional()?
             } else {None};
-            let policy=db.delivery_policy(user)?;
-            let mut order=policy.as_ref().map(|p|p.order.clone()).unwrap_or_else(||vec!["telegram".into(),"email".into()]);
-            order.retain(|c|wants(c));
-            let after=policy.as_ref().map_or(genie_core::inbox::MAX_DELIVERY_ATTEMPTS,|p|p.fallback_after_attempts);
+            let policy=effective_policy(db,app,user,msg.project.as_deref(),msg.interaction.is_some(),&msg.channels)?;
+            let order=policy.order;
+            let after=policy.fallback_after_attempts;
             let text=format!("{}\n\n{}{}",msg.title,msg.body,link.as_ref().map(|l|format!("\n\n{l}")).unwrap_or_default());
             let mut payload=json!({"buttons":msg.buttons,"link":link,"kind":msg.kind,"project":msg.project,"task":msg.task,"interaction":msg.interaction,"recipient":user,"notification":notification,
                 "delivery":{"group":group,"order":order,"afterAttempts":after,"allowed":msg.channels}});
@@ -181,7 +206,6 @@ pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> Ap
             }
             for channel in &order {
                 let Some(t)=target(db,app,user,msg.project.as_deref(),channel,msg.interaction.is_some())? else {continue};
-                if policy.is_none() {payload["delivery"]["order"]=json!([channel]);}
                 payload["telegramScope"]=json!(t.scope);
                 payload["forceReply"]=json!(msg.interaction.is_some());
                 return Ok(db.enqueue(Some(&format!("{group}:{channel}")),Some(user),channel,&t.address,&msg.title,&text,&payload)?.is_some() as usize);
@@ -235,7 +259,9 @@ pub(crate) fn fallback_in(
 pub(crate) fn valid_target(app: &App, item: &genie_core::inbox::OutboxItem) -> AppResult<bool> {
     let Some(user) = item.user else { return Ok(false) };
     app.with_server(|db| {
-        if db.delivery_policy(user)?.is_some_and(|p| !p.order.contains(&item.channel)) {
+        let allowed: Vec<String> = serde_json::from_value(item.payload["delivery"]["allowed"].clone()).unwrap_or_default();
+        let policy = effective_policy(db, app, user, item.payload["project"].as_str(), !item.payload["interaction"].is_null(), &allowed)?;
+        if !policy.order.contains(&item.channel) {
             return Ok(false);
         }
         let expected = target(db, app, user, item.payload["project"].as_str(), &item.channel, !item.payload["interaction"].is_null())?;
