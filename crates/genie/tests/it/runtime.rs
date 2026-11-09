@@ -938,9 +938,15 @@ async fn task_stop_kills_one_shot_tools_retains_files_and_preserves_job_retry_al
 async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure() {
     let l = live_cfg(&[], |cfg| {
         cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.sandbox.mode = "bwrap".into();
         cfg.runtime.run_timeout_secs = 1;
         cfg.runtime.turn_timeout_secs = 30;
-        cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), "sleep 120".into()]];
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"if [ "$GENIE_TASK" = "G-1" ]; then sleep 120; else "$GENIE_BIN" job output '{"ok":true}'; fi"#.into(),
+        ]];
     })
     .await;
     let app = &l.app;
@@ -977,18 +983,36 @@ async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure
     .await;
     let retained = app.with_server(|db| db.job(job.id)).unwrap();
     assert_eq!((retained.status.as_str(), retained.attempts), ("running", 1));
-    assert_eq!(app.sched.snapshot(app.cfg.runtime.max_concurrent, app.slots.available_permits()).running, 1);
+    assert_eq!(app.sched.snapshot(1, app.slots.available_permits()).running, 0, "dead work does not consume runtime capacity");
+    assert_eq!(app.slots.available_permits(), 1);
     let old = app.with_server(|db| db.pending_turn_pauses(None)).unwrap();
     assert_eq!(old.len(), 1);
     assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_err());
-    // A failed pause write neither consumes another attempt nor blocks unrelated human control.
+    // A failed pause write neither consumes another attempt nor blocks unrelated execution.
     let other = app
         .with_tracker("shop", |t| {
             t.create(&Actor::new("owner", Role::Human), CreateInput { title: "Independent work".into(), quiet: true, ..Default::default() })
         })
         .unwrap();
     genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &other.id).unwrap();
+    let independent = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(other.id),
+                role: "executor".into(),
+                goal: "Independent execution during a pause outage".into(),
+                workspace: "none".into(),
+                inputs: json!({}),
+                ..Default::default()
+            })
+        })
+        .unwrap();
     genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "independent job uses the only slot during the pause outage", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(independent.id)).unwrap().status == "succeeded"
+    })
+    .await;
     assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 1);
     assert_eq!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap()[0].id, old[0].id);
     app.with_tracker("shop", |t| {
@@ -1008,6 +1032,125 @@ async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure
     assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "time");
     genie::runtime::tick(app).await.unwrap();
     assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 0, "a timed-out job cannot restart before human resume");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_hard_timeout_retains_the_project_pause_across_server_intent_failure_and_restart() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.sandbox.mode = "bwrap".into();
+        cfg.runtime.run_timeout_secs = 1;
+        cfg.runtime.turn_timeout_secs = 30;
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"if [ -f partial.txt ]; then "$GENIE_BIN" job output '{"retained":"kept"}'; else echo kept > partial.txt; sleep 120; fi"#
+                .into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| {
+        db.set_autonomy("shop", "manual")?;
+        db.conn().execute_batch(
+            "CREATE TRIGGER fail_time_intent BEFORE INSERT ON turn_pauses BEGIN SELECT RAISE(ABORT,'intent storage fault'); END;",
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let task = app
+        .with_tracker("shop", |t| {
+            t.create(
+                &Actor::new("owner", Role::Human),
+                CreateInput { title: "One-shot pause survives server intent failure".into(), quiet: true, ..Default::default() },
+            )
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Retain workspace and require resume".into(),
+                workspace: "none".into(),
+                inputs: json!({}),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "durable project fallback while the server intent cannot be stored", Duration::from_secs(5), |app| {
+        app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().is_some_and(|pause| pause.reason == "time")
+    })
+    .await;
+    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert_eq!(app.sched.snapshot(1, app.slots.available_permits()).running, 0);
+    assert_eq!(app.slots.available_permits(), 1);
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_err());
+    // A fresh runtime has none of the previous scheduler's memory fences.
+    // Its durable recovery must still keep the interrupted job paused.
+    let reopened = App::open(l._dir.path(), app.cfg.clone(), PathBuf::from("/nonexistent")).unwrap();
+    genie::runtime::recover(&reopened).unwrap();
+    genie::runtime::tick(&reopened).await.unwrap();
+    let recovered = reopened.with_server(|db| db.job(job.id)).unwrap();
+    assert_eq!((recovered.status.as_str(), recovered.attempts), ("queued", 0));
+    genie::runtime::recover(&reopened).unwrap();
+    assert_eq!(reopened.with_server(|db| db.job(job.id)).unwrap().attempts, 0, "repeated recovery cannot refund an attempt twice");
+    assert_eq!(reopened.sched.snapshot(1, reopened.slots.available_permits()).running, 0);
+    assert!(reopened.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().is_some());
+    app.with_server(|db| db.conn().execute_batch("DROP TRIGGER fail_time_intent").map_err(Into::into)).unwrap();
+    wait_for(app, "old timeout turn finalization", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.turns("shop", None, 10))
+            .unwrap()
+            .iter()
+            .any(|turn| turn.job == Some(job.id) && turn.status == "interrupted")
+            && app.with_server(|db| db.job(job.id)).unwrap().status == "queued"
+            && genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_ok()
+    })
+    .await;
+    // Resume above is the first explicit human release. New work reuses the
+    // retained workspace and returns its progress rather than sleeping again.
+    genie::runtime::tick(&reopened).await.unwrap();
+    wait_for(&reopened, "explicitly resumed job completes with retained progress", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(job.id)).unwrap().status == "succeeded"
+    })
+    .await;
+    assert_eq!(reopened.with_server(|db| db.job(job.id)).unwrap().output, Some(json!({"retained":"kept"})));
+}
+
+#[test]
+fn recovery_cancels_running_jobs_whose_task_was_deleted_before_server_cleanup() {
+    let h = crate::common::Harness::new();
+    h.project("shop");
+    let actor = Actor::new("owner", Role::Human);
+    let task = h
+        .app
+        .with_tracker("shop", |t| {
+            t.create(&actor, CreateInput { title: "Deleted across the recovery boundary".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    let job = h
+        .app
+        .with_server(|db| {
+            let job = db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Interrupted cleanup".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })?;
+            db.start_job(job.id)?;
+            db.start_turn("shop", &format!("job/{}", job.id), None, None, Some(job.id))?;
+            Ok(job)
+        })
+        .unwrap();
+    h.app.with_tracker("shop", |t| t.delete_tasks(&actor, &task.id, false)).unwrap();
+    genie::runtime::recover(&h.app).unwrap();
+    assert_eq!(h.app.with_server(|db| db.job(job.id)).unwrap().status, "cancelled");
+    assert!(h.app.with_server(|db| db.queued_jobs()).unwrap().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -1061,6 +1204,18 @@ async fn deletion_during_a_timed_run_releases_the_only_slot_and_closes_the_obsol
     })
     .await;
     assert_eq!(app.with_server(|db| db.job(jobs[0])).unwrap().status, "cancelled");
+    wait_for(app, "obsolete deleted-task pause acknowledged", Duration::from_secs(5), |app| {
+        app.with_server(|db| {
+            Ok(db.conn().query_row(
+                "SELECT COUNT(*) FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
+                [jobs[0]],
+                |r| r.get::<_, i64>(0),
+            )?)
+        })
+        .unwrap()
+            == 1
+    })
+    .await;
     assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
     assert_eq!(
         app.with_server(|db| Ok(db.conn().query_row(

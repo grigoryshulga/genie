@@ -983,40 +983,18 @@ async fn prompt_or_mail(app: &Arc<App>, session: &Arc<Session>, message: String)
 fn queue_run_limit(app: &App, s: &Session) -> AppResult<genie_core::work::TurnPause> {
     let limit = s.with_live(|live| live.limit.clone()).ok_or_else(|| AppError::Internal("session has no pending run limit".into()))?;
     let task = s.task.as_deref().ok_or_else(|| AppError::Internal("taskless session has a task limit".into()))?;
-    let queued = {
-        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
-        app.with_server(|db| {
-            db.tx(|| {
-                let turn = match limit.turn.map(|turn| db.turn(turn)).transpose() {
-                    Ok(Some(turn)) => turn.id,
-                    Ok(None) | Err(genie_core::GenieError::NotFound(_)) => {
-                        let turn = db.start_turn(
-                            s.key.project(),
-                            &s.key.label(),
-                            s.team.as_deref(),
-                            s.team.as_ref().map(|_| s.name.as_str()),
-                            None,
-                        )?;
-                        db.set_turn_pid(turn, s.pid)?;
-                        turn
-                    }
-                    Err(error) => return Err(error),
-                };
-                db.queue_turn_pause(turn, task, &limit.note)
-            })
-        })
-    };
-    let pause = match queued {
-        Ok(pause) => pause,
-        Err(error) => {
-            // The project DB can still retain the pause if only the server
-            // intent write is unavailable. Repeating an existing pause is inert.
-            if let Err(pause_error) = crate::tasks::pause_for_limit(app, s.key.project(), task, "time", &limit.note) {
-                eprintln!("genie runtime: {}: project hard-limit fallback pending: {pause_error}", s.key.label());
+    let pause = crate::tasks::queue_turn_pause(app, s.key.project(), task, &limit.note, |db| {
+        match limit.turn.map(|turn| db.turn(turn)).transpose() {
+            Ok(Some(turn)) => Ok(turn.id),
+            Ok(None) | Err(genie_core::GenieError::NotFound(_)) => {
+                let turn =
+                    db.start_turn(s.key.project(), &s.key.label(), s.team.as_deref(), s.team.as_ref().map(|_| s.name.as_str()), None)?;
+                db.set_turn_pid(turn, s.pid)?;
+                Ok(turn)
             }
-            return Err(error);
+            Err(error) => Err(error),
         }
-    };
+    })?;
     s.with_live(|live| {
         if let Some(limit) = &mut live.limit {
             limit.turn = Some(pause.turn);

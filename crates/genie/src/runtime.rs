@@ -29,7 +29,7 @@ use genie_core::work::Job;
 use genie_core::{Actor, CLOSED, Capability, GenieError, Role, Status, StatusOptions, Task, TeamState};
 use serde_json::json;
 use tokio::io::AsyncReadExt;
-use tokio::sync::{Semaphore, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
 
 use crate::agent_config::{AgentConfig, FileAccess, MailMode, RelKind, Relation, RoleDef, SpecMember, Stage, TeamDef, TeamSpec, Workspace};
 use crate::config::MemberSpec;
@@ -109,6 +109,9 @@ struct SchedState {
     /// Cancellation is kept separate from the durable response state; losing the server
     /// drops these handles, while recovery rebuilds runnable work from the tracker.
     cancels: HashMap<AgentKey, watch::Sender<bool>>,
+    /// Dead turns finishing a hard-limit pause fence their task without holding
+    /// an execution slot. This also covers failure to store the server intent.
+    pending_limits: HashMap<AgentKey, String>,
     /// What the last pass saw waiting for a slot, by kind — the queue the web and
     /// `genie server runtime` show (`waiting`).
     waiting: [usize; 4],
@@ -245,7 +248,7 @@ impl Next {
 /// After a restart: interrupted turns give their mail back, running jobs are requeued,
 /// and agents whose live session was lost mid-step are told to continue.
 pub fn recover(app: &App) -> AppResult<()> {
-    let interrupted = app.with_server(|db| {
+    let jobs = app.with_server(|db| {
         db.tx(|| {
             // All process credentials belong to the previous runtime, including a
             // worker that crashed before its turn or PID was registered. Revoke
@@ -253,10 +256,40 @@ pub fn recover(app: &App) -> AppResult<()> {
             for project in db.projects()? {
                 db.revoke_agent_tokens(&project.slug, None, None)?;
             }
-            db.requeue_running_jobs()?;
-            db.interrupt_running_turns()
+            db.running_jobs()
         })
     })?;
+    let interrupted = {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        let mut stopped = Vec::new();
+        let mut deleted = Vec::new();
+        for job in jobs {
+            let Some(task) = &job.task else { continue };
+            let paused = pending_limit(app, &job.project, task).and_then(|pending| {
+                if pending { Ok(true) } else { app.with_tracker(&job.project, |t| Ok(t.execution().blocking(task)?.is_some())) }
+            });
+            match paused {
+                Ok(true) => stopped.push(job.id),
+                Ok(false) => {}
+                Err(AppError::Genie(GenieError::NotFound(_))) => deleted.push(job.id),
+                Err(error) => eprintln!("genie runtime: cannot inspect interrupted job {}: {error}", job.id),
+            }
+        }
+        // Refund stopped attempts in the same transaction that requeues and
+        // interrupts them. Recovery replay cannot debit the same retry twice.
+        app.with_server(|db| {
+            db.tx(|| {
+                for job in stopped {
+                    db.interrupt_job(job)?;
+                }
+                for job in deleted {
+                    db.cancel_job(job)?;
+                }
+                db.requeue_running_jobs()?;
+                db.interrupt_running_turns()
+            })
+        })?
+    };
     if let Err(error) = flush_limit_pauses(app) {
         // The persisted intent continues to fence its scope and tick retries it.
         // Other interrupted work still needs its leases and continuation restored.
@@ -401,6 +434,11 @@ pub(crate) fn pending_limit(app: &App, project: &str, task: &str) -> AppResult<b
     let mut roots = app.with_server(|db| db.pending_turn_pauses(Some(project)))?.into_iter().map(|pause| pause.task).collect::<Vec<_>>();
     roots
         .extend(app.sessions.all().into_iter().filter(|s| s.key.project() == project).filter_map(|s| s.limited_task().map(str::to_string)));
+    roots.extend(
+        app.sched.with(|s| {
+            s.pending_limits.iter().filter(|(key, _)| key.project() == project).map(|(_, task)| task.clone()).collect::<Vec<_>>()
+        }),
+    );
     if roots.is_empty() {
         return Ok(false);
     }
@@ -635,15 +673,15 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
         });
         let app = app.clone();
         tokio::spawn(async move {
-            run_turn(&app, &key, cancel).await;
+            run_turn(&app, &key, cancel, permit).await;
             app.sched.with(|s| {
                 s.running.remove(&key);
                 s.cancels.remove(&key);
+                s.pending_limits.remove(&key);
             });
             if matches!(key, AgentKey::Request { .. }) {
                 app.attempts.clear(&key);
             }
-            drop(permit);
             app.wake_runtime.notify_one();
             app.wake_engine.notify_one();
         });
@@ -664,7 +702,8 @@ struct Prepared {
 }
 
 /// Run one turn and persist its result.
-async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver<bool>>) {
+async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver<bool>>, permit: OwnedSemaphorePermit) {
+    let mut permit = Some(permit);
     let k = key.clone();
     let prepared = app.blocking(move |app| prepare(app, &k)).await;
     let mut p = match prepared {
@@ -711,14 +750,24 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
         && let Some(task) = p.spec.task.clone()
     {
         let note = error.clone().unwrap_or_default();
-        // Keep this turn and its slot until the intent and project effect are
-        // durable. A storage error must never become an ordinary retried job.
+        // The process has ended. Retain its scope/turn/retry accounting until
+        // persistence recovers, while letting unrelated work use the run slot.
+        app.sched.with(|s| {
+            s.pending_limits.insert(key.clone(), task.clone());
+            s.running.remove(key);
+        });
+        drop(permit.take());
+        app.wake_runtime.notify_one();
         loop {
-            let (task, note) = (task.clone(), note.clone());
+            let (project, task, note, token) = (key.project().to_string(), task.clone(), note.clone(), p.token.clone());
             let result = app
                 .blocking(move |app| {
-                    let pause = app.with_server(|db| db.queue_turn_pause(turn, &task, &note))?;
-                    apply_limit_pause(app, &pause)
+                    let revoked = app.with_server(|db| db.revoke_token(&token));
+                    let paused = crate::tasks::queue_turn_pause(app, &project, &task, &note, |_| Ok(turn))
+                        .and_then(|pause| apply_limit_pause(app, &pause));
+                    paused?;
+                    revoked?;
+                    Ok(())
                 })
                 .await;
             match result {

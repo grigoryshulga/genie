@@ -254,8 +254,16 @@ impl ServerDb {
     }
 
     pub fn queued_jobs(&self) -> Result<Vec<Job>> {
-        let mut stmt = self.conn().prepare("SELECT * FROM agent_jobs WHERE status = 'queued' ORDER BY id")?;
-        Ok(stmt.query_map([], Job::from_row)?.collect::<rusqlite::Result<_>>()?)
+        self.jobs_in_state("queued")
+    }
+
+    pub fn running_jobs(&self) -> Result<Vec<Job>> {
+        self.jobs_in_state("running")
+    }
+
+    fn jobs_in_state(&self, state: &str) -> Result<Vec<Job>> {
+        let mut stmt = self.conn().prepare("SELECT * FROM agent_jobs WHERE status = ?1 ORDER BY id")?;
+        Ok(stmt.query_map([state], Job::from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn jobs(&self, project: &str, limit: i64) -> Result<Vec<Job>> {

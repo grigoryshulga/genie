@@ -826,6 +826,30 @@ pub(crate) fn pause_for_limit(app: &App, project: &str, task: &str, reason: &str
     pause_inner(app, project, &Actor::new("genie", Role::Orchestrator), task, reason, note, None)
 }
 
+/// Stage a hard-limit intent and, if its server write fails, retain the pause in
+/// the project DB. Live and one-shot workers use the same persistence policy.
+pub(crate) fn queue_turn_pause(
+    app: &App,
+    project: &str,
+    task: &str,
+    note: &str,
+    prepare_turn: impl FnOnce(&genie_core::server_db::ServerDb) -> genie_core::Result<i64>,
+) -> AppResult<genie_core::work::TurnPause> {
+    let queued = {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        app.with_server(|db| db.tx(|| db.queue_turn_pause(prepare_turn(db)?, task, note)))
+    };
+    match queued {
+        Ok(pause) => Ok(pause),
+        Err(error) => {
+            if let Err(pause_error) = pause_for_limit(app, project, task, "time", note) {
+                eprintln!("genie runtime: {project}/{task}: project hard-limit fallback pending: {pause_error}");
+            }
+            Err(error)
+        }
+    }
+}
+
 pub(crate) fn apply_turn_pause(app: &App, pause: &genie_core::work::TurnPause) -> AppResult<()> {
     let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
     let halt = app.with_tracker(&pause.project, |t| {
