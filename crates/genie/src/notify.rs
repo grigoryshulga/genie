@@ -219,10 +219,6 @@ pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> Ap
 
 /// Select only fallbacks captured for this delivery and still allowed by the person's current
 /// policy. Resolving addresses again cannot expand the recipient or project authority.
-pub(crate) fn fallback(app: &App, item: &genie_core::inbox::OutboxItem) -> AppResult<bool> {
-    app.with_server(|db| fallback_in(db, app, item))
-}
-
 /// The failed-attempt transition and fallback enqueue belong to the same server transaction.
 pub(crate) fn fallback_in(
     db: &genie_core::server_db::ServerDb,
@@ -231,13 +227,28 @@ pub(crate) fn fallback_in(
 ) -> genie_core::Result<bool> {
     db.tx(|| {
         let Some(user) = item.user else { return Ok(false) };
+        let Some(policy) = db.delivery_policy(user)? else { return Ok(false) };
+        if item.attempts < policy.fallback_after_attempts {
+            return Ok(false);
+        }
+        queue_fallback(db, app, item, &policy)
+    })
+}
+
+fn queue_fallback(
+    db: &genie_core::server_db::ServerDb,
+    app: &App,
+    item: &genie_core::inbox::OutboxItem,
+    policy: &DeliveryPolicy,
+) -> genie_core::Result<bool> {
+    db.tx(|| {
+        let Some(user) = item.user else { return Ok(false) };
         let delivery = &item.payload["delivery"];
         let Some(group) = delivery["group"].as_str() else { return Ok(false) };
         let order: Vec<String> = serde_json::from_value(delivery["order"].clone()).unwrap_or_default();
         let Some(index) = order.iter().position(|c| c == &item.channel) else { return Ok(false) };
-        let current = db.delivery_policy(user)?;
         for channel in &order[index + 1..] {
-            if current.as_ref().is_none_or(|p| !p.order.contains(channel)) {
+            if !policy.order.contains(channel) {
                 continue;
             }
             let Some(t) = target(db, app, user, item.payload["project"].as_str(), channel, !item.payload["interaction"].is_null())? else {
@@ -256,19 +267,61 @@ pub(crate) fn fallback_in(
     })
 }
 
-pub(crate) fn valid_target(app: &App, item: &genie_core::inbox::OutboxItem) -> AppResult<bool> {
-    let Some(user) = item.user else { return Ok(false) };
+/// Reconcile a claimed copy with current recipient authority and fallback timing
+/// before any network call. Original channel restrictions remain in its payload.
+pub(crate) fn ready(app: &App, item: &genie_core::inbox::OutboxItem) -> AppResult<bool> {
     app.with_server(|db| {
-        let allowed: Vec<String> = serde_json::from_value(item.payload["delivery"]["allowed"].clone()).unwrap_or_default();
-        let policy = effective_policy(db, app, user, item.payload["project"].as_str(), !item.payload["interaction"].is_null(), &allowed)?;
-        if !policy.order.contains(&item.channel) {
-            return Ok(false);
-        }
-        let expected = target(db, app, user, item.payload["project"].as_str(), &item.channel, !item.payload["interaction"].is_null())?;
-        Ok(expected.is_some_and(|t| {
-            t.address == item.address && (item.channel != "telegram" || t.scope.as_deref() == item.payload["telegramScope"].as_str())
-        }))
+        db.tx(|| {
+            let Some(user) = item.user else {
+                db.outbox_cancelled(item.id, "delivery has no recipient")?;
+                return Ok(false);
+            };
+            let allowed: Vec<String> = serde_json::from_value(item.payload["delivery"]["allowed"].clone()).unwrap_or_default();
+            let policy =
+                effective_policy(db, app, user, item.payload["project"].as_str(), !item.payload["interaction"].is_null(), &allowed)?;
+            let valid = policy.order.contains(&item.channel) && current_target(db, app, item)?;
+            if !valid {
+                let fallback =
+                    db.delivery_policy(user)?.map(|current| queue_fallback(db, app, item, &current)).transpose()?.unwrap_or(false);
+                if !fallback {
+                    db.outbox_cancelled(item.id, "recipient, channel or project rights changed")?;
+                }
+                return Ok(false);
+            }
+            let delivery = &item.payload["delivery"];
+            let order: Vec<String> = serde_json::from_value(delivery["order"].clone()).unwrap_or_default();
+            if let (Some(group), Some(index)) = (delivery["group"].as_str(), order.iter().position(|c| c == &item.channel)) {
+                for channel in &order[..index] {
+                    let Some(preferred) = db.outbox_by_key(&format!("{group}:{channel}"))? else { continue };
+                    if preferred.status == "sent" {
+                        db.outbox_cancelled(item.id, "preferred delivery succeeded")?;
+                        return Ok(false);
+                    }
+                    let connected = policy.order.contains(channel) && current_target(db, app, &preferred)?;
+                    if connected
+                        && (preferred.status == "delivering"
+                            || matches!(preferred.status.as_str(), "pending" | "failed")
+                                && preferred.attempts < policy.fallback_after_attempts)
+                    {
+                        db.defer_outbox(item.id, preferred.id)?;
+                        return Ok(false);
+                    }
+                }
+            }
+            if item.attempts > 0 && fallback_in(db, app, item)? {
+                return Ok(false);
+            }
+            Ok(true)
+        })
     })
+}
+
+fn current_target(db: &genie_core::server_db::ServerDb, app: &App, item: &genie_core::inbox::OutboxItem) -> genie_core::Result<bool> {
+    let Some(user) = item.user else { return Ok(false) };
+    let expected = target(db, app, user, item.payload["project"].as_str(), &item.channel, !item.payload["interaction"].is_null())?;
+    Ok(expected.is_some_and(|t| {
+        t.address == item.address && (item.channel != "telegram" || t.scope.as_deref() == item.payload["telegramScope"].as_str())
+    }))
 }
 
 /// Exhausting delivery never resolves a question. Surface the failure in the person's web

@@ -62,10 +62,7 @@ pub async fn dispatch(app: &Arc<App>) {
                     app.with_server(|db| db.outbox_cancelled(copy.id, "interaction is closed"))?;
                     return Ok(false);
                 }
-                if copy.channel != "web" && !crate::notify::valid_target(app, &copy)? {
-                    if !crate::notify::fallback(app, &copy)? {
-                        app.with_server(|db| db.outbox_cancelled(copy.id, "recipient, channel or project rights changed"))?;
-                    }
+                if copy.channel != "web" && !crate::notify::ready(app, &copy)? {
                     return Ok(false);
                 }
                 Ok(true)
@@ -101,13 +98,7 @@ pub async fn dispatch(app: &Arc<App>) {
                                 db.outbox_failed(id, error)?;
                                 if item.channel != "interaction_sync" {
                                     let current = db.outbox_item(id)?;
-                                    let after = item.payload["delivery"]["afterAttempts"]
-                                        .as_i64()
-                                        .unwrap_or(genie_core::inbox::MAX_DELIVERY_ATTEMPTS);
-                                    if current.attempts >= after
-                                        && !crate::notify::fallback_in(db, app, &current)?
-                                        && current.status == "failed"
-                                    {
+                                    if !crate::notify::fallback_in(db, app, &current)? && current.status == "failed" {
                                         crate::notify::delivery_failed_in(db, &current)?;
                                     }
                                 }

@@ -303,6 +303,26 @@ impl ServerDb {
         Ok(self.conn().query_row("SELECT * FROM outbox WHERE id = ?1", [id], outbox_row)?)
     }
 
+    pub fn outbox_by_key(&self, key: &str) -> Result<Option<OutboxItem>> {
+        Ok(self.conn().query_row("SELECT * FROM outbox WHERE dedupe_key = ?1", [key], outbox_row).optional()?)
+    }
+
+    /// A raised fallback threshold continues the existing preferred-channel
+    /// attempts. Keep its backoff/lease and make this copy wait for that outcome.
+    pub fn defer_outbox(&self, id: i64, preferred: i64) -> Result<()> {
+        self.tx(|| {
+            self.conn().execute(
+                "UPDATE outbox SET status='pending' WHERE id=?1 AND status='failed' AND attempts<?2",
+                params![preferred, MAX_DELIVERY_ATTEMPTS],
+            )?;
+            self.conn().execute(
+                "UPDATE outbox SET status='pending',next_at=(SELECT next_at FROM outbox WHERE id=?2) WHERE id=?1",
+                params![id, preferred],
+            )?;
+            Ok(())
+        })
+    }
+
     /// Each network operation has a 60-second timeout or less. A two-minute lease prevents
     /// concurrent dispatch, and an interrupted send becomes retryable after restart.
     pub fn claim_outbox(&self, id: i64) -> Result<bool> {

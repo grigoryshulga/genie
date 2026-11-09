@@ -37,6 +37,7 @@ for (const type of ["task", "epic"] as const) {
         await heading.blur();
         const conflict = await response;
         expect(conflict.status()).toBe(409);
+        await expect(page.getByRole("status").filter({ hasText: "Не удалось:" })).toHaveText("Не удалось: Задача изменена другим участником. Отмените редактирование, сверьте актуальные данные и повторите правку.");
         expect(conflict.request().postDataJSON().expectedVersion).toBe(version);
         await expect(heading).toHaveText(draft);
       }
@@ -95,6 +96,7 @@ for (const scenario of [
     await editor.locator("..").getByRole("button", { name: "Сохранить", exact: true }).click();
     const conflict = await response;
     expect(conflict.status()).toBe(409);
+    await expect(page.getByRole("status").filter({ hasText: "Не удалось:" })).toHaveText("Не удалось: Задача изменена другим участником. Отмените редактирование, сверьте актуальные данные и повторите правку.");
     expect(conflict.request().postDataJSON().expectedVersion).toBe(oldVersion);
     await expect(editor).toBeVisible();
     await expect(editor).toHaveValue(draft);
@@ -143,6 +145,7 @@ for (const theme of ["ink", "paper"] as const) {
       await input.blur();
       const conflict = await response;
       expect(conflict.status()).toBe(409);
+      await expect(page.getByRole("status").filter({ hasText: "Не удалось:" })).toHaveText("Не удалось: Задача изменена другим участником. Отмените редактирование, сверьте актуальные данные и повторите правку.");
       expect(conflict.request().postDataJSON().expectedVersion).toBe(version);
       await expect(input).toHaveValue(draft);
     }
@@ -187,6 +190,7 @@ test("refocusing a conflicted inline edit cannot silently grant it a new version
     await input.blur();
     const conflict = await response;
     expect(conflict.status()).toBe(409);
+    await expect(page.getByRole("status").filter({ hasText: "Не удалось:" })).toHaveText("Не удалось: Задача изменена другим участником. Отмените редактирование, сверьте актуальные данные и повторите правку.");
     expect(conflict.request().postDataJSON().expectedVersion).toBe(version);
     await expect(input).toHaveValue("Мой черновик интеграции");
   }

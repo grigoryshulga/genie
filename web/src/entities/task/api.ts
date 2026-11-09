@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { invalidateKeys, keys, keysFor, request, useInvalidating } from "@/shared/api";
+import { ApiError, invalidateKeys, keys, keysFor, request, useInvalidating } from "@/shared/api";
 import type { CommentBody, CreateBody, DocsImpact, StatusBody, UpdateBody, TaskManagement, ManagerAction, Task as TaskRecord } from "@/shared/api";
 import type { Task, TaskSummary } from "./model.ts";
 
@@ -70,7 +70,14 @@ export const usePatchTask = () =>
       // take a fresh snapshot, then still compare atomically on the server.
       const path = `/api/tasks/${encodeURIComponent(v.id)}`;
       const expectedVersion = v.patch.expectedVersion ?? (await request<Task>("GET", path)).editVersion;
-      return request<Task>("PATCH", path, { ...v.patch, expectedVersion });
+      try {
+        return await request<Task>("PATCH", path, { ...v.patch, expectedVersion });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          throw new ApiError("Задача изменена другим участником. Отмените редактирование, сверьте актуальные данные и повторите правку.", error.status);
+        }
+        throw error;
+      }
     },
     keysFor({ type: "task.updated" }),
   );

@@ -285,6 +285,141 @@ async fn resetting_preferences_cancels_a_queued_fallback_after_restart_and_keeps
 }
 
 #[tokio::test]
+async fn raising_the_fallback_threshold_before_dispatch_applies_to_queued_messages() {
+    changed_fallback_threshold(ThresholdChange::RaiseBeforeSend).await;
+}
+
+#[tokio::test]
+async fn lowering_the_fallback_threshold_before_dispatch_applies_to_queued_messages() {
+    changed_fallback_threshold(ThresholdChange::LowerBeforeSend).await;
+}
+
+#[tokio::test]
+async fn lowering_the_fallback_threshold_reuses_completed_attempts_without_an_extra_send() {
+    changed_fallback_threshold(ThresholdChange::LowerAfterFailure).await;
+}
+
+#[tokio::test]
+async fn raising_the_fallback_threshold_defers_an_already_queued_copy_after_restart() {
+    changed_fallback_threshold(ThresholdChange::RaiseQueuedCopy).await;
+}
+
+#[tokio::test]
+async fn a_recovered_preferred_delivery_cancels_its_deferred_fallback_copy() {
+    changed_fallback_threshold(ThresholdChange::PreferredRecovers).await;
+}
+
+#[derive(Clone, Copy)]
+enum ThresholdChange {
+    RaiseBeforeSend,
+    LowerBeforeSend,
+    LowerAfterFailure,
+    RaiseQueuedCopy,
+    PreferredRecovers,
+}
+
+async fn changed_fallback_threshold(change: ThresholdChange) {
+    let (url, tg) = telegram().await;
+    tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let (port, mail) = super::channels::fake_smtp().await;
+    let h = Harness::with_config(|cfg| {
+        cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+        cfg.smtp = Some(genie::config::SmtpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            from: "genie@example.test".into(),
+            security: "none".into(),
+            ..Default::default()
+        });
+    });
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    let lowering = matches!(change, ThresholdChange::LowerBeforeSend | ThresholdChange::LowerAfterFailure);
+    let preferences = |attempts| json!({"policy":{"order":["telegram","email"],"fallbackAfterAttempts":attempts}});
+    assert_eq!(
+        call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(preferences(if lowering { 8 } else { 1 })).send().await.0,
+        200
+    );
+    let qn = ask(&h, uid);
+    let prior = i64::from(matches!(
+        change,
+        ThresholdChange::LowerAfterFailure | ThresholdChange::RaiseQueuedCopy | ThresholdChange::PreferredRecovers
+    ));
+    if prior > 0 {
+        genie::channels::dispatch(&h.app).await;
+    }
+    let after = if lowering { 1 } else { 8 };
+    assert_eq!(call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(preferences(after)).send().await.0, 200);
+    let recovered = genie::state::App::open(h.dir.path(), h.app.cfg.clone(), std::path::PathBuf::from("/nonexistent")).unwrap();
+    assert_eq!(recovered.with_server(|db| db.delivery_policy(uid)).unwrap().unwrap().fallback_after_attempts, after);
+    let sends = || tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count() as i64;
+    let retry_now = || {
+        recovered
+            .with_server(|db| {
+                db.conn().execute("UPDATE outbox SET next_at='2000-01-01' WHERE status='pending'", [])?;
+                Ok(())
+            })
+            .unwrap()
+    };
+    if matches!(change, ThresholdChange::RaiseQueuedCopy | ThresholdChange::PreferredRecovers) {
+        assert!(mail.lock().unwrap().is_empty());
+        genie::channels::dispatch(&recovered).await;
+        assert!(mail.lock().unwrap().is_empty(), "the already-queued email must wait for the raised threshold");
+        let preferred = recovered
+            .with_server(|db| {
+                Ok(db.conn().query_row("SELECT status,attempts FROM outbox WHERE channel='telegram'", [], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                })?)
+            })
+            .unwrap();
+        assert_eq!(preferred, ("pending".into(), 1), "continue the original attempts instead of resetting its retry accounting");
+    }
+    if matches!(change, ThresholdChange::PreferredRecovers) {
+        tg.fail.store(false, std::sync::atomic::Ordering::SeqCst);
+        retry_now();
+        genie::channels::dispatch(&recovered).await;
+        genie::channels::dispatch(&recovered).await;
+        assert_eq!(sends(), 2);
+        assert!(mail.lock().unwrap().is_empty(), "a successful preferred delivery cancels the waiting fallback");
+        assert_eq!(
+            recovered
+                .with_server(|db| Ok(db
+                    .conn()
+                    .query_row("SELECT status FROM outbox WHERE channel='email'", [], |r| r.get::<_, String>(0))?))
+                .unwrap(),
+            "cancelled"
+        );
+    } else {
+        for attempt in prior + 1..=after {
+            retry_now();
+            genie::channels::dispatch(&recovered).await;
+            assert_eq!(sends(), attempt);
+            if attempt < after {
+                assert!(mail.lock().unwrap().is_empty());
+                if prior == 0 {
+                    assert_eq!(
+                        recovered
+                            .with_server(|db| Ok(db
+                                .conn()
+                                .query_row("SELECT COUNT(*) FROM outbox WHERE channel='email'", [], |r| r.get::<_, i64>(0))?))
+                            .unwrap(),
+                        0
+                    );
+                }
+            }
+        }
+        if prior == after {
+            retry_now();
+            genie::channels::dispatch(&recovered).await;
+        }
+        genie::channels::dispatch(&recovered).await;
+        assert_eq!(sends(), after, "lowering the threshold must not require another failed network attempt");
+        assert_eq!(mail.lock().unwrap().len(), 1, "deliver one fallback at the current threshold");
+    }
+    assert_eq!(recovered.with_server(|db| db.questionnaire(qn)).unwrap().status, "open", "delivery never supplies an answer or approval");
+}
+
+#[tokio::test]
 async fn undeliverable_interaction_stays_open_and_failure_is_visible_only_to_its_person() {
     let (url, tg) = telegram().await;
     tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
