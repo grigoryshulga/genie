@@ -1454,15 +1454,37 @@ async fn hard_run_limit_pauses_productive_work_and_explicit_resume_keeps_progres
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn task_stop_releases_live_capacity_when_a_tool_inherits_stdout() {
-    inherited_stdout_stop(false).await;
+    inherited_stdout_stop(ToolStop::Owner, false).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_live_deadline_releases_capacity_when_a_tool_inherits_stdout() {
-    inherited_stdout_stop(true).await;
+    inherited_stdout_stop(ToolStop::Deadline, false).await;
 }
 
-async fn inherited_stdout_stop(deadline: bool) {
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn task_stop_releases_live_capacity_when_a_tool_clears_its_environment() {
+    inherited_stdout_stop(ToolStop::Owner, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_live_deadline_releases_capacity_when_a_tool_clears_its_environment() {
+    inherited_stdout_stop(ToolStop::Deadline, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn parent_exit_cleans_an_environment_cleared_tool_before_draining_stdout() {
+    inherited_stdout_stop(ToolStop::ParentExit, true).await;
+}
+
+#[derive(Clone, Copy)]
+enum ToolStop {
+    Owner,
+    Deadline,
+    ParentExit,
+}
+
+async fn inherited_stdout_stop(stop: ToolStop, clear_env: bool) {
     let clock = Arc::new(crate::common::ManualClock::default());
     let l = live_with_clock(
         PathBuf::from("/unused"),
@@ -1470,7 +1492,7 @@ async fn inherited_stdout_stop(deadline: bool) {
             cfg.runtime.enabled = false;
             cfg.runtime.sandbox.mode = "off".into();
             cfg.runtime.max_concurrent = 1;
-            cfg.runtime.run_timeout_secs = if deadline { 3 } else { 0 };
+            cfg.runtime.run_timeout_secs = if matches!(stop, ToolStop::Deadline) { 3 } else { 0 };
             cfg.runtime.session_command = vec![vec![
                 "bash".into(),
                 "-c".into(),
@@ -1480,8 +1502,17 @@ async fn inherited_stdout_stop(deadline: bool) {
                     *'"prompt"'*)
                       printf '%s\n' '{"type":"agent_start"}'
                       echo kept > partial.txt
-                      sleep 120 & echo "$!" > inherited-stdout-tool.pid
+                      if [ "$GENIE_TEST_CLEAR_TOOL_ENV" = "true" ]; then
+                        env -i /bin/sleep 120 &
+                      else
+                        sleep 120 &
+                      fi
+                      echo "$!" > inherited-stdout-tool.pid
                       printf '%s\n' '{"type":"tool_execution_start","toolName":"bash","args":{"command":"sleep 120"}}'
+                      if [ "$GENIE_TEST_PARENT_EXIT" = "true" ]; then
+                        while [ ! -f exit-parent ]; do sleep 0.02; done
+                        exit 0
+                      fi
                       ;;
                   esac
                 done"#
@@ -1489,6 +1520,8 @@ async fn inherited_stdout_stop(deadline: bool) {
             ]];
             cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), r#""$GENIE_BIN" job output '{"ok":true}'"#.into()]];
             cfg.runtime.env.insert("GENIE_BIN".into(), env!("CARGO_BIN_EXE_genie").into());
+            cfg.runtime.env.insert("GENIE_TEST_CLEAR_TOOL_ENV".into(), clear_env.to_string());
+            cfg.runtime.env.insert("GENIE_TEST_PARENT_EXIT".into(), matches!(stop, ToolStop::ParentExit).to_string());
         },
         clock.clone(),
     )
@@ -1506,6 +1539,15 @@ async fn inherited_stdout_stop(deadline: bool) {
     })
     .await;
     let session = app.sessions.get(&member("bender")).unwrap();
+    if clear_env {
+        until("tool exec cleared its environment", 5, || {
+            std::fs::read(format!("/proc/{tool}/environ")).is_ok_and(|env| env.is_empty()).then_some(())
+        })
+        .await;
+    }
+    let stat = std::fs::read_to_string(format!("/proc/{tool}/stat")).unwrap();
+    let group = stat.rsplit_once(") ").unwrap().1.split_whitespace().nth(2).unwrap().parse::<u32>().unwrap();
+    assert_eq!(group, session.pid, "the tool stays in the harness's owned group");
     assert_eq!(app.slots.available_permits(), 0);
     let next = app
         .with_tracker("shop", |t| {
@@ -1524,12 +1566,16 @@ async fn inherited_stdout_stop(deadline: bool) {
             })
         })
         .unwrap();
-    if deadline {
-        clock.advance(Duration::from_secs(3));
-        genie::runtime::tick(app).await.unwrap();
-    } else {
-        genie::tasks::pause_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1", "owner", "Stop inherited stdout")
-            .unwrap();
+    match stop {
+        ToolStop::Deadline => {
+            clock.advance(Duration::from_secs(3));
+            genie::runtime::tick(app).await.unwrap();
+        }
+        ToolStop::Owner => {
+            genie::tasks::pause_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1", "owner", "Stop inherited stdout")
+                .unwrap();
+        }
+        ToolStop::ParentExit => std::fs::write(work.join("exit-parent"), "exit").unwrap(),
     }
     until("parent and stdout-inheriting tool stopped and capacity released", 5, || {
         (!process_running(i64::from(session.pid))
@@ -1539,8 +1585,12 @@ async fn inherited_stdout_stop(deadline: bool) {
             .then_some(())
     })
     .await;
-    let pause = app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().unwrap();
-    assert_eq!(pause.reason, if deadline { "time" } else { "owner" });
+    let pause = app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap();
+    match stop {
+        ToolStop::Owner => assert_eq!(pause.unwrap().reason, "owner"),
+        ToolStop::Deadline => assert_eq!(pause.unwrap().reason, "time"),
+        ToolStop::ParentExit => assert!(pause.is_none()),
+    }
     assert_eq!(std::fs::read_to_string(work.join("partial.txt")).unwrap(), "kept\n");
     genie::runtime::tick(app).await.unwrap();
     until("independent job completes on the only run slot", 5, || {

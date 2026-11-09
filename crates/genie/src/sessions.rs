@@ -238,6 +238,7 @@ impl Live {
 pub struct Session {
     pub key: AgentKey,
     pub pid: u32,
+    group: Arc<runtime::ProcessGroup>,
     pub role: Role,
     /// The configured role (its rules are rewritten when the configuration changes).
     pub role_id: String,
@@ -331,14 +332,11 @@ impl Session {
             l.note(format!("■ stopping: {why}"));
         });
         self.stdin.lock().unwrap_or_else(|e| e.into_inner()).take();
-        let (pid, project, name) = (self.pid, self.key.project().to_string(), self.name.clone());
+        let group = self.group.clone();
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                let _ = tokio::task::spawn_blocking(move || {
-                    runtime::stop_stray_agent(i64::from(pid), &project, &name);
-                })
-                .await;
+                group.kill();
             });
         }
     }
@@ -567,11 +565,13 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
         }
     };
     let pid = child.id().unwrap_or_default();
+    let group = Arc::new(runtime::ProcessGroup::new(child.id()));
     let _ = tokio::fs::write(dir.join("session.pid"), format!("{pid} {}\n", spec.name)).await;
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let s = Arc::new(Session {
         key: key.clone(),
         pid,
+        group,
         role: spec.role,
         role_id: spec.role_id.clone(),
         name: spec.name.clone(),
@@ -600,7 +600,7 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
         })
         .await
     {
-        runtime::kill_process_group(pid);
+        s.group.kill();
         let _ = child.kill().await;
         let _ = child.wait().await;
         let token = s.token.clone();
@@ -653,19 +653,13 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
     });
     let (app2, s2) = (app.clone(), s.clone());
     tokio::spawn(async move {
-        let status = child.wait().await.ok().and_then(|s| s.code());
-        let exited = s2.clone();
-        // A tool may inherit stdout and keep it open after its parent exits.
-        // End the owned group before waiting for the final buffered events.
-        if let Err(error) = app2
-            .blocking(move |_| {
-                runtime::stop_stray_agent(i64::from(exited.pid), exited.key.project(), &exited.name);
-                Ok(())
-            })
-            .await
-        {
-            eprintln!("genie runtime: {}: cannot clean up exited process group: {error}", s2.key.label());
-        }
+        let status = match s2.group.wait(&mut child).await {
+            Ok(status) => status.code(),
+            Err(error) => {
+                eprintln!("genie runtime: {}: session process wait failed: {error}", s2.key.label());
+                None
+            }
+        };
         if let Err(error) = events.await {
             eprintln!("genie runtime: {}: session event reader failed: {error}", s2.key.label());
         }
@@ -1360,9 +1354,7 @@ pub fn halt(app: &App, key: &AgentKey, reason: &str) {
         s.with_live(|l| l.force_stop = true);
         s.abort(reason);
         s.stop(reason);
-        if runtime::is_our_agent(i64::from(s.pid), s.key.project(), &s.name) {
-            runtime::signal_process(s.pid, libc::SIGTERM);
-        }
+        s.group.kill();
     }
 }
 

@@ -1212,11 +1212,11 @@ async fn execute(
     #[cfg(unix)]
     cmd.process_group(0);
     let mut child = cmd.spawn().map_err(|e| format!("cannot start {program}: {e}"))?;
+    let group = ProcessGroup::new(child.id());
     if let Some(pid) = child.id() {
         let turn = p.turn;
         let _ = app.blocking(move |app| app.with_server(|db| db.set_turn_pid(turn, pid))).await;
     }
-    let group = ProcessGroup(child.id());
     let mut stdout = child.stdout.take();
     let mut stderr = child.stderr.take();
     let read = async {
@@ -1236,8 +1236,7 @@ async fn execute(
         app.cfg.runtime.turn_timeout_secs.max(1)
     });
     let run = tokio::time::timeout(timeout, async {
-        let (out, err) = read.await;
-        let status = child.wait().await;
+        let (status, (out, err)) = tokio::join!(group.wait(&mut child), read);
         (status, out, err)
     });
     let cancelled = async move {
@@ -1278,14 +1277,80 @@ async fn execute(
     Ok((status.map_err(|e| e.to_string())?.code(), tail))
 }
 
-/// A one-shot owns its tools until it ends, on success as well as interruption.
-struct ProcessGroup(Option<u32>);
+/// Ownership comes from spawning a dedicated group, not from its descendants'
+/// mutable environment. Closing it once also disarms delayed cleanup callbacks.
+pub(crate) struct ProcessGroup {
+    pid: Option<u32>,
+    closed: Mutex<bool>,
+}
+
+impl ProcessGroup {
+    pub(crate) fn new(pid: Option<u32>) -> Self {
+        Self { pid, closed: Mutex::new(false) }
+    }
+
+    pub(crate) fn kill(&self) {
+        let mut closed = self.closed.lock().unwrap_or_else(|e| e.into_inner());
+        if !*closed {
+            if let Some(pid) = self.pid {
+                kill_process_group(pid);
+            }
+            // Hold the lock through the signal: the waiter must not reap the
+            // leader while another thread is still closing its numeric group.
+            *closed = true;
+        }
+    }
+
+    /// Keep the unreaped leader's PID reserved until its group is closed. Tools
+    /// may clear their environment and keep stdout open after the leader exits.
+    pub(crate) async fn wait(&self, child: &mut tokio::process::Child) -> std::io::Result<std::process::ExitStatus> {
+        #[cfg(unix)]
+        let observed = self.observe_exit().await;
+        self.kill();
+        let status = child.wait().await;
+        #[cfg(unix)]
+        observed?;
+        status
+    }
+
+    #[cfg(unix)]
+    async fn observe_exit(&self) -> std::io::Result<()> {
+        use std::io::{Error, ErrorKind};
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let pid = self.pid.ok_or_else(|| Error::new(ErrorKind::InvalidInput, "missing owned child PID"))?;
+        // Register before checking: an exit before registration remains waitable,
+        // and one after the check wakes this listener. Notifications may coalesce.
+        let mut changed = signal(SignalKind::child())?;
+        loop {
+            // SAFETY: zero is a valid initial siginfo_t; waitid writes through a
+            // live pointer. WNOHANG cannot block, and WNOWAIT leaves reaping to Child.
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            let result = unsafe { libc::waitid(libc::P_PID, pid, &mut info, libc::WEXITED | libc::WNOHANG | libc::WNOWAIT) };
+            if result != 0 {
+                let error = Error::last_os_error();
+                if error.kind() == ErrorKind::Interrupted {
+                    continue;
+                }
+                if error.raw_os_error() == Some(libc::ECHILD) {
+                    // Someone else reaped it: its numeric PID no longer proves
+                    // ownership, including for a delayed shutdown callback.
+                    *self.closed.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                }
+                return Err(error);
+            }
+            // SAFETY: waitid initialized the siginfo_t, including its child PID.
+            if unsafe { info.si_pid() } != 0 {
+                return Ok(());
+            }
+            changed.recv().await.ok_or_else(|| Error::new(ErrorKind::BrokenPipe, "child-exit signal stream closed"))?;
+        }
+    }
+}
+
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        if let Some(pid) = self.0 {
-            kill_process_group(pid);
-        }
+        self.kill();
     }
 }
 
@@ -1302,8 +1367,8 @@ fn signal_target(pid: u32, group: bool, signal: i32) {
     if let Ok(pid) = libc::pid_t::try_from(pid)
         && pid > 1
     {
-        // SAFETY: kill takes an integer target and no pointers. Callers verify
-        // ownership; only a dedicated child-group ID is negated. ESRCH means exit.
+        // SAFETY: kill takes an integer target and no pointers. Callers own the
+        // spawned group or verify a recovery reference. ESRCH means exit.
         unsafe { libc::kill(if group { -pid } else { pid }, signal) };
     }
 }

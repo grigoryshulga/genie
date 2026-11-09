@@ -929,13 +929,26 @@ async fn a_manual_projects_manager_runs_for_chat_mail_and_not_for_the_owners() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn completed_one_shot_turns_stop_owned_tools_before_releasing_capacity() {
+    completed_turn_cleanup(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn completed_one_shot_turns_stop_environment_cleared_tools_holding_stdout() {
+    completed_turn_cleanup(true).await;
+}
+
+async fn completed_turn_cleanup(inherit_stdout: bool) {
     let l = live_cfg(&[], |cfg| {
         cfg.runtime.enabled = false;
         cfg.runtime.max_concurrent = 1;
         cfg.runtime.command = vec![vec![
             "bash".into(),
             "-c".into(),
-            r#"sleep 120 </dev/null >/dev/null 2>&1 & echo "$!" > "$GENIE_MARK.tool"; echo retained > progress.txt; "$GENIE_BIN" job output '{"ok":true}'"#.into(),
+            if inherit_stdout {
+                r#"env -i /bin/sleep 120 & echo "$!" > "$GENIE_MARK.tool"; echo retained > progress.txt; "$GENIE_BIN" job output '{"ok":true}'"#
+            } else {
+                r#"sleep 120 </dev/null >/dev/null 2>&1 & echo "$!" > "$GENIE_MARK.tool"; echo retained > progress.txt; "$GENIE_BIN" job output '{"ok":true}'"#
+            }.into(),
         ]];
     })
     .await;
