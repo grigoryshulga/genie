@@ -39,7 +39,7 @@ WHERE json_valid(o.payload) AND o.user=s.recipient;
 #[ts(export)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryPolicy {
-    /// Ordered external channels. Empty means web only; absent policy preserves legacy routing.
+    // Ordered external channels. Empty means web only; absent policy preserves legacy routing.
     pub order: Vec<String>,
     pub fallback_after_attempts: i64,
 }
