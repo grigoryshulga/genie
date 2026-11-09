@@ -318,20 +318,17 @@ impl Session {
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                if runtime::is_our_agent(i64::from(pid), &project, &name) {
-                    kill(pid, "-KILL");
-                }
+                let _ = tokio::task::spawn_blocking(move || {
+                    if runtime::is_our_agent(i64::from(pid), &project, &name) {
+                        runtime::signal_process(pid, libc::SIGKILL);
+                    }
+                })
+                .await;
             });
         }
     }
     fn is(&self, state: &str) -> bool {
         self.with_live(|l| l.state == state)
-    }
-}
-
-fn kill(pid: u32, signal: &str) {
-    if std::path::Path::new(&format!("/proc/{pid}")).exists() {
-        let _ = std::process::Command::new("kill").arg(signal).arg(pid.to_string()).stderr(Stdio::null()).status();
     }
 }
 
@@ -383,7 +380,7 @@ pub fn recover(app: &App) {
             let mut parts = raw.split_whitespace();
             let (Some(pid), Some(name)) = (parts.next().and_then(|x| x.parse::<i64>().ok()), parts.next()) else { continue };
             if runtime::is_our_agent(pid, &project, name) {
-                kill(pid as u32, "-TERM");
+                runtime::signal_process(pid as u32, libc::SIGTERM);
                 println!("genie runtime: stopped stray session process {pid} ({project}/{name})");
             }
             let _ = std::fs::remove_file(pid_file);
@@ -1113,7 +1110,12 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
                 let (project, note) = (s.key.project().to_string(), format!("Active run reached the configured {hard}s limit"));
                 app.blocking(move |app| crate::tasks::pause_for_limit(app, &project, &task, "time", &note)).await?;
             } else {
-                halt(app, &s.key, "hard run time limit");
+                let key = s.key.clone();
+                app.blocking(move |app| {
+                    halt(app, &key, "hard run time limit");
+                    Ok(())
+                })
+                .await?;
             }
             continue;
         }
@@ -1142,7 +1144,7 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
                 }
                 Some(at) if app.clock.now().saturating_duration_since(at) >= Duration::from_secs(60) => {
                     s.with_live(|l| l.note("■ killed: the abort did not stop it".into()));
-                    kill(s.pid, "-KILL");
+                    runtime::signal_process(s.pid, libc::SIGKILL);
                 }
                 _ => {}
             }
@@ -1257,7 +1259,7 @@ pub fn halt(app: &App, key: &AgentKey, reason: &str) {
         s.abort(reason);
         s.stop(reason);
         if runtime::is_our_agent(i64::from(s.pid), s.key.project(), &s.name) {
-            kill(s.pid, "-TERM");
+            runtime::signal_process(s.pid, libc::SIGTERM);
         }
     }
 }

@@ -181,6 +181,10 @@ async fn simultaneous_shared_intake_edits_require_a_fresh_snapshot_and_conflict_
         call(&h.remote, "PATCH", &path).bearer(&first_agent).json(json!({"description":"missing version"})).send().await.0,
         StatusCode::BAD_REQUEST
     );
+    assert_eq!(
+        call(&h.remote, "PATCH", &path).bearer(&anna).json(json!({"description":"unversioned native replacement"})).send().await.0,
+        StatusCode::BAD_REQUEST
+    );
     let version = edit_version(&h, &task, &first_agent).await;
     assert_eq!(version, edit_version(&h, &task, &second_agent).await);
     let (left, right) = tokio::join!(

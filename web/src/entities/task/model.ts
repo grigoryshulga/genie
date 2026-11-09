@@ -1,9 +1,12 @@
 // UI-side view of the tracker model. Types and constants come straight from the
 // server code, so the API contract is checked by the compiler on both sides.
 
-import type { Status, Task, TaskSummary } from "../../shared/api/types.ts";
+import type { Status, TaskSnapshot as Task, TaskSummary } from "../../shared/api/types.ts";
 
 export type { Status, Task, TaskSummary };
+
+/** The snapshot belongs to the opened editor, even when live data refreshes. */
+export type TaskDraft = { value: string; version: string };
 
 export const STATUS_NAME: Record<Status, string> = {
   inbox: "Входящие",

@@ -795,6 +795,55 @@ fn recovery_stops_only_verified_stray_agent_processes() {
     other.kill().unwrap();
 }
 
+#[test]
+fn recovery_stops_owned_tools_even_after_their_group_leader_has_exited() {
+    use std::os::unix::process::CommandExt;
+    for orphaned in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_with_team("turns", dir.path());
+        let child_file = dir.path().join("tool.pid");
+        let mut parent = std::process::Command::new("bash")
+            .args(["-c", "sleep 120 & echo $! > \"$TOOL_PID_FILE\"; wait"])
+            .env("GENIE_PROJECT", "shop")
+            .env("GENIE_AGENT_NAME", "bender")
+            .env("TOOL_PID_FILE", &child_file)
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        let child = loop {
+            if let Some(pid) = std::fs::read_to_string(&child_file).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+                break pid;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5), "owned tool did not start");
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        app.with_server(|db| {
+            let turn = db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)?;
+            db.set_turn_pid(turn, parent.id())
+        })
+        .unwrap();
+        app.with_tracker("shop", |t| t.execution().pause(&Actor::new("anna", Role::Human), "G-1", "owner", "Interrupted stop")).unwrap();
+        if orphaned {
+            parent.kill().unwrap();
+            parent.wait().unwrap();
+        }
+        genie::runtime::recover(&app).unwrap();
+        let stopped = Instant::now();
+        loop {
+            let running = std::fs::read_to_string(format!("/proc/{child}/stat"))
+                .is_ok_and(|s| !s.split(") ").nth(1).is_some_and(|s| s.starts_with('Z')));
+            if !running {
+                break;
+            }
+            assert!(stopped.elapsed() < Duration::from_secs(5), "owned child survived recovery (orphaned={orphaned})");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        parent.wait().unwrap();
+        assert!(app.with_tracker("shop", |t| t.execution().blocking("G-1")).unwrap().is_some());
+    }
+}
+
 /// The turns the project's manager has run (or is running), as their statuses.
 fn manager_turns(app: &App) -> Vec<String> {
     app.with_server(|db| db.turns("shop", None, 50)).unwrap().into_iter().filter(|t| t.agent == ORCHESTRATOR).map(|t| t.status).collect()
@@ -959,6 +1008,75 @@ async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure
     assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "time");
     genie::runtime::tick(app).await.unwrap();
     assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 0, "a timed-out job cannot restart before human resume");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn deletion_during_a_timed_run_releases_the_only_slot_and_closes_the_obsolete_pause() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.run_timeout_secs = 2;
+        cfg.runtime.turn_timeout_secs = 30;
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"if [ "$GENIE_TASK" = "G-1" ]; then sleep 120; else "$GENIE_BIN" job output '{"ok":true}'; fi"#.into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let mut tasks = Vec::new();
+    let mut jobs = Vec::new();
+    for title in ["Deleted while running", "Unrelated next job"] {
+        let task = app
+            .with_tracker("shop", |t| {
+                t.create(&Actor::new("owner", Role::Human), CreateInput { title: title.into(), quiet: true, ..Default::default() })
+            })
+            .unwrap();
+        let job = app
+            .with_server(|db| {
+                db.create_job(NewJob {
+                    project: "shop".into(),
+                    task: Some(task.id.clone()),
+                    role: "executor".into(),
+                    goal: title.into(),
+                    workspace: "none".into(),
+                    inputs: json!({}),
+                    ..Default::default()
+                })
+            })
+            .unwrap();
+        tasks.push(task.id);
+        jobs.push(job.id);
+    }
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "first process occupying the only slot", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.turns("shop", None, 10)).unwrap().iter().any(|turn| turn.job == Some(jobs[0]) && turn.pid.is_some())
+    })
+    .await;
+    genie::tasks::delete(app, &genie::tasks::Caller::person("shop", "owner"), &tasks[0], false).unwrap();
+    wait_for(app, "deleted run released its capacity", Duration::from_secs(5), |app| {
+        app.sched.snapshot(1, app.slots.available_permits()).running == 0
+    })
+    .await;
+    assert_eq!(app.with_server(|db| db.job(jobs[0])).unwrap().status, "cancelled");
+    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert_eq!(
+        app.with_server(|db| Ok(db.conn().query_row(
+            "SELECT COUNT(*) FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
+            [jobs[0]],
+            |r| r.get::<_, i64>(0)
+        )?))
+        .unwrap(),
+        1
+    );
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "unrelated work after deletion", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(jobs[1])).unwrap().status == "succeeded"
+    })
+    .await;
+    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
 }
 
 #[tokio::test]

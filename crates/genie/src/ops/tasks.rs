@@ -229,9 +229,9 @@ impl Op for Create {
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Update {
-    /// The editVersion read from task show; required for incoming-agent edits.
+    /// The editVersion read from task show; required for task edits.
     #[arg(long)]
-    pub expected_version: Option<String>,
+    pub expected_version: String,
     #[arg(long)]
     pub task: Option<String>,
     #[arg(long)]

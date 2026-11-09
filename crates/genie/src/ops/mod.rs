@@ -579,7 +579,7 @@ mod tests {
         let executor = command_table(AgentKind::Member, &caps(Role::Executor));
         assert!(
             executor
-                .contains("`genie task update [--expected-version …] [--task …] [--plan …] [--notes …] [--append-notes …] [--label …]...`"),
+                .contains("`genie task update --expected-version … [--task …] [--plan …] [--notes …] [--append-notes …] [--label …]...`"),
             "{executor}"
         );
         assert!(executor.contains("(your role may set: in_progress, review)") && !executor.contains("genie task check"));

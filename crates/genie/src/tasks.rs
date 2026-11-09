@@ -170,7 +170,7 @@ pub struct CreateBody {
 #[ts(export, optional_fields)]
 pub struct UpdateBody {
     #[serde(default)]
-    pub expected_version: Option<String>,
+    pub expected_version: String,
     #[serde(default, deserialize_with = "lenient::text")]
     pub title: Option<String>,
     #[serde(rename = "type", default, deserialize_with = "lenient::parsed_opt")]
@@ -424,8 +424,8 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
     {
         return Err(AppError::Forbidden("scope, requirements and priority changes belong to the project manager".into()));
     }
-    if matches!(caller.kind, Kind::Ingress { .. }) && body.expected_version.is_none() {
-        return Err(AppError::Bad("expectedVersion is required for incoming-agent edits; read the task's editVersion first".into()));
+    if body.expected_version.is_empty() {
+        return Err(AppError::Bad("expectedVersion is required for task edits; read the task's editVersion first".into()));
     }
     let expected_version = body.expected_version;
     let assignee = body.assignee.map(|a| a.map(|s| s.trim().trim_start_matches('@').to_lowercase()).filter(|s| !s.is_empty()));
@@ -461,11 +461,9 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
     let task = app.with_tracker(&caller.project, |t| {
         t.tx(|| {
             crate::conversations::ensure_active(t, &caller.actor.name)?;
-            if let Some(expected) = expected_version
-                && view(&t.get(id)?)?["editVersion"].as_str() != Some(&expected)
-            {
+            if view(&t.get(id)?)?["editVersion"].as_str() != Some(&expected_version) {
                 return Ok(Err(AppError::Conflict(
-                    "task changed since it was read; inspect its current editVersion before editing".into(),
+                    "task changed since it was read; reload it and reconcile the pending changes before saving".into(),
                 )));
             }
             t.update(&caller.actor, id, input).map(Ok)

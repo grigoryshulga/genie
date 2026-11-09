@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { invalidateKeys, keys, keysFor, request, useInvalidating } from "@/shared/api";
-import type { CommentBody, CreateBody, DocsImpact, StatusBody, UpdateBody, TaskManagement, ManagerAction } from "@/shared/api";
+import type { CommentBody, CreateBody, DocsImpact, StatusBody, UpdateBody, TaskManagement, ManagerAction, Task as TaskRecord } from "@/shared/api";
 import type { Task, TaskSummary } from "./model.ts";
 
 /** Every task, closed ones included; views and the board filter on the client. */
@@ -39,7 +39,7 @@ export const useDocsImpact = (id: string, enabled: boolean) =>
 export function useMoveTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string } & StatusBody) => request<Task>("POST", `/api/tasks/${encodeURIComponent(id)}/status`, body),
+    mutationFn: ({ id, ...body }: { id: string } & StatusBody) => request<TaskRecord>("POST", `/api/tasks/${encodeURIComponent(id)}/status`, body),
     // Optimistic: the card jumps to its column immediately.
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey: keys.tasks });
@@ -55,17 +55,23 @@ export function useMoveTask() {
 
 export const useComment = () =>
   useInvalidating(
-    ({ id, ...body }: { id: string } & CommentBody) => request<Task>("POST", `/api/tasks/${encodeURIComponent(id)}/comments`, body),
+    ({ id, ...body }: { id: string } & CommentBody) => request<TaskRecord>("POST", `/api/tasks/${encodeURIComponent(id)}/comments`, body),
     keysFor({ type: "task.commented" }),
   );
 export const useCheck = () =>
   useInvalidating(
-    (v: { id: string; n: number; done: boolean }) => request<Task>("POST", `/api/tasks/${encodeURIComponent(v.id)}/acceptance/${v.n}`, { done: v.done }),
+    (v: { id: string; n: number; done: boolean }) => request<TaskRecord>("POST", `/api/tasks/${encodeURIComponent(v.id)}/acceptance/${v.n}`, { done: v.done }),
     keysFor({ type: "task.criterion_checked" }),
   );
 export const usePatchTask = () =>
   useInvalidating(
-    (v: { id: string; patch: UpdateBody }) => request<Task>("PATCH", `/api/tasks/${encodeURIComponent(v.id)}`, v.patch),
+    async (v: { id: string; patch: Omit<UpdateBody, "expectedVersion"> & { expectedVersion?: string } }) => {
+      // Editors pass the version captured with their draft. Immediate commands
+      // take a fresh snapshot, then still compare atomically on the server.
+      const path = `/api/tasks/${encodeURIComponent(v.id)}`;
+      const expectedVersion = v.patch.expectedVersion ?? (await request<Task>("GET", path)).editVersion;
+      return request<Task>("PATCH", path, { ...v.patch, expectedVersion });
+    },
     keysFor({ type: "task.updated" }),
   );
 export const useCreateTask = () =>
@@ -87,7 +93,7 @@ export function useDeleteTask() {
 export const useAddArtifact = () =>
   useInvalidating(
     (v: { id: string; name: string; kind: string; text: string; note?: string }) =>
-      request<Task>("POST", `/api/tasks/${encodeURIComponent(v.id)}/artifacts`, { name: v.name, kind: v.kind, text: v.text, note: v.note }),
+      request<TaskRecord>("POST", `/api/tasks/${encodeURIComponent(v.id)}/artifacts`, { name: v.name, kind: v.kind, text: v.text, note: v.note }),
     keysFor({ type: "task.artifact_added" }),
   );
 

@@ -292,6 +292,9 @@ impl ServerDb {
     /// Finish a job attempt: succeeded, requeued for another attempt, or failed for good.
     pub fn finish_job(&self, id: i64, ok: bool, error: Option<&str>, max_attempts: i64) -> Result<Job> {
         let job = self.job(id)?;
+        if job.status == "cancelled" {
+            return Ok(job);
+        }
         let status = if ok {
             "succeeded"
         } else if job.attempts < max_attempts {

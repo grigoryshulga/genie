@@ -5,4 +5,4 @@ import type { TaskType } from "./TaskType.ts";
  * Fields of a task to change; absent ones stay. A null or empty assignee clears
  * the responsible person; a null or empty parent takes the task out of its epic.
  */
-export type UpdateBody = { expectedVersion?: string, title?: string, type?: TaskType, description?: string, plan?: string, appendNotes?: string, notes?: string, priority?: number, labels?: Array<string>, assignees?: Array<string>, mergeStrategy?: string, assignee?: string | null, addAcceptance?: Array<string>, removeAcceptance?: Array<number>, addDeps?: Array<string>, removeDeps?: Array<string>, parent?: string | null, };
+export type UpdateBody = { expectedVersion: string, title?: string, type?: TaskType, description?: string, plan?: string, appendNotes?: string, notes?: string, priority?: number, labels?: Array<string>, assignees?: Array<string>, mergeStrategy?: string, assignee?: string | null, addAcceptance?: Array<string>, removeAcceptance?: Array<number>, addDeps?: Array<string>, removeDeps?: Array<string>, parent?: string | null, };

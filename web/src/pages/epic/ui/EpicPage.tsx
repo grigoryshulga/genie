@@ -16,6 +16,7 @@ import {
   STATUS_NAME,
   StatusIcon,
   type Task,
+  type TaskDraft,
   type TaskSummary,
   useArtifactViewer,
   useCheck,
@@ -246,10 +247,14 @@ function EditableTitle({ epic, writable }: { epic: Task; writable: boolean }) {
       contentEditable={writable}
       suppressContentEditableWarning
       spellCheck={false}
+      onFocus={(e) => {
+        const node = e.currentTarget;
+        if (!node.dataset.editVersion || node.textContent?.trim() === epic.title) node.dataset.editVersion = epic.editVersion;
+      }}
       onBlur={(e) => {
         if (!writable) return;
         const title = e.currentTarget.textContent?.trim() ?? "";
-        if (title && title !== epic.title) patch.mutate({ id: epic.id, patch: { title } }, { onError: (err) => toast(`Не удалось: ${err.message}`, "error") });
+        if (title && title !== epic.title) patch.mutate({ id: epic.id, patch: { title, expectedVersion: e.currentTarget.dataset.editVersion } }, { onError: (err) => toast(`Не удалось: ${err.message}`, "error") });
       }}
       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
     >
@@ -276,13 +281,13 @@ function EditableText({
 }) {
   const patch = usePatchTask();
   const toast = useToast();
-  const [draft, setDraft] = useState<string | undefined>();
+  const [draft, setDraft] = useState<TaskDraft | undefined>();
   const body =
     draft === undefined ? (
       <Markdown text={epic[field]} empty={empty} />
     ) : (
       <div className="composer">
-        <textarea className="g-textarea" aria-label={title} rows={8} value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <textarea className="g-textarea" aria-label={title} rows={8} value={draft.value} onChange={(e) => { const value = e.target.value; setDraft((draft) => draft && { ...draft, value }); }} />
         <div className="bar">
           markdown
           <span className="grow" />
@@ -292,7 +297,7 @@ function EditableText({
           <Button
             variant="secondary"
             sm
-            onClick={() => patch.mutate({ id: epic.id, patch: { [field]: draft } }, { onSuccess: () => setDraft(undefined), onError: (e) => toast(`Не удалось: ${e.message}`, "error") })}
+            onClick={() => patch.mutate({ id: epic.id, patch: { [field]: draft.value, expectedVersion: draft.version } }, { onSuccess: () => setDraft(undefined), onError: (e) => toast(`Не удалось: ${e.message}`, "error") })}
           >
             Сохранить
           </Button>
@@ -304,7 +309,7 @@ function EditableText({
       <div className="epic-lede">
         {body}
         {draft === undefined && writable && (
-          <IconButton label={`Изменить: ${title.toLowerCase()}`} className="epic-lede-edit" onClick={() => setDraft(epic[field])}>
+          <IconButton label={`Изменить: ${title.toLowerCase()}`} className="epic-lede-edit" onClick={() => setDraft({ value: epic[field], version: epic.editVersion })}>
             <Icon.pencil size={14} />
           </IconButton>
         )}
@@ -315,7 +320,7 @@ function EditableText({
       <h3>
         {title}
         {draft === undefined && writable && (
-          <IconButton label={`Изменить: ${title.toLowerCase()}`} className="sec-edit" onClick={() => setDraft(epic[field])}>
+          <IconButton label={`Изменить: ${title.toLowerCase()}`} className="sec-edit" onClick={() => setDraft({ value: epic[field], version: epic.editVersion })}>
             <Icon.pencil size={14} />
           </IconButton>
         )}

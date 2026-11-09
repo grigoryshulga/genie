@@ -282,8 +282,14 @@ pub fn recover(app: &App) -> AppResult<()> {
             (None, Some(j)) => format!("job-{j}"),
             _ => t.agent.clone(),
         };
-        if is_our_agent(pid, &t.project, &name) {
-            let _ = std::process::Command::new("kill").arg("-TERM").arg(pid.to_string()).status();
+        let Ok(group) = u32::try_from(pid) else { continue };
+        if owned_process_group(group, &t.project, &name) {
+            kill_process_group(group);
+            println!("genie runtime: stopped stray agent group {pid} ({}/{name})", t.project);
+        } else if is_our_agent(pid, &t.project, &name) {
+            // Older harnesses did not create a dedicated group; signal only
+            // their verified parent, never the server's own process group.
+            signal_process(group, libc::SIGKILL);
             println!("genie runtime: stopped stray agent process {pid} ({}/{name})", t.project);
         }
     }
@@ -414,7 +420,14 @@ pub(crate) fn flush_limit_pauses(app: &App) -> AppResult<()> {
 }
 
 fn apply_limit_pause(app: &App, pause: &genie_core::work::TurnPause) -> AppResult<()> {
-    crate::tasks::apply_turn_pause(app, pause)?;
+    match crate::tasks::apply_turn_pause(app, pause) {
+        Ok(()) => {}
+        Err(AppError::Genie(GenieError::NotFound(_))) => {
+            // Deletion is permanent. Acknowledge obsolete work rather than
+            // retaining its run slot and retrying an impossible pause forever.
+        }
+        Err(error) => return Err(error),
+    }
     app.with_server(|db| db.turn_pause_applied(&pause.id))
 }
 
@@ -467,6 +480,18 @@ pub(crate) fn is_our_agent(pid: i64, project: &str, name: &str) -> bool {
     let vars: Vec<&[u8]> = env.split(|b| *b == 0).collect();
     let has = |kv: String| vars.contains(&kv.as_bytes());
     has(format!("GENIE_PROJECT={project}")) && has(format!("GENIE_AGENT_NAME={name}"))
+}
+
+/// A group may outlive its leader. Verify an inherited agent identity on a
+/// remaining member before signalling it, protecting reused/unrelated PIDs.
+fn owned_process_group(group: u32, project: &str, name: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir("/proc") else { return false };
+    entries.flatten().any(|entry| {
+        let Some(pid) = entry.file_name().to_str().and_then(|p| p.parse::<i64>().ok()) else { return false };
+        let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else { return false };
+        let Some((_, rest)) = stat.rsplit_once(") ") else { return false };
+        rest.split_whitespace().nth(2).and_then(|p| p.parse::<u32>().ok()) == Some(group) && is_our_agent(pid, project, name)
+    })
 }
 
 async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
@@ -687,6 +712,7 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
                 .await;
             match result {
                 Ok(()) => break,
+                Err(AppError::Genie(GenieError::NotFound(_))) => break,
                 Err(e) => {
                     eprintln!("genie runtime: turn {turn}: cannot persist hard-limit pause: {e}");
                     app.clock.sleep_until(app.clock.now() + Duration::from_secs(1)).await;
@@ -1078,14 +1104,21 @@ impl Drop for ProcessGroup {
 }
 
 pub(crate) fn kill_process_group(pid: u32) {
+    signal_target(pid, true, libc::SIGKILL);
+}
+
+pub(crate) fn signal_process(pid: u32, signal: i32) {
+    signal_target(pid, false, signal);
+}
+
+fn signal_target(pid: u32, group: bool, signal: i32) {
     #[cfg(unix)]
     if let Ok(pid) = libc::pid_t::try_from(pid)
         && pid > 1
     {
-        // SAFETY: kill accepts an integer process-group ID and no pointers. The
-        // positive child PID is also its group ID (set at spawn); negation cannot
-        // target this server's group. ESRCH simply means the group already exited.
-        unsafe { libc::kill(-pid, libc::SIGKILL) };
+        // SAFETY: kill takes an integer target and no pointers. Callers verify
+        // ownership; only a dedicated child-group ID is negated. ESRCH means exit.
+        unsafe { libc::kill(if group { -pid } else { pid }, signal) };
     }
 }
 
@@ -2066,7 +2099,11 @@ fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, 
     let slug = key.project();
     let stopped = match (&p.spec.task, &p.spec.execution_stamp) {
         (Some(task), Some(stamp)) => {
-            app.with_tracker(slug, |t| Ok(t.execution().blocking(task)?.is_some() || t.execution().stamp(task)? != *stamp))?
+            match app.with_tracker(slug, |t| Ok(t.execution().blocking(task)?.is_some() || t.execution().stamp(task)? != *stamp)) {
+                Ok(stopped) => stopped,
+                Err(AppError::Genie(GenieError::NotFound(_))) => true,
+                Err(error) => return Err(error),
+            }
         }
         _ => false,
     };
@@ -2243,6 +2280,7 @@ fn agent_prompt(
         }
     }
     out.push_str(&tools_section(live, role, reader, app.cfg.runtime.ask_timeout_secs));
+    out.push_str("\nTask edits require a snapshot version: read `genie task show <id>` and pass its `editVersion` to `genie task update --expected-version <version>` (MCP: `expectedVersion`). On conflict, reread the task and reconcile the intended change before retrying; never reuse stale requirements with a newer version blindly.\n");
     out.push_str(&mcp_section(agents, &project.slug, role));
     out.push_str(&format!(
         "\n## Project\n\nProject `{}` ({}). {}\n\nLanguage: write tasks, comments, artifacts and team mail in {}; anything addressed to people (questions for the owner, needs_owner notes) in {}.\n",
@@ -2298,7 +2336,7 @@ fn agent_prompt(
             })
             .collect();
         if !people.is_empty() {
-            out.push_str(&format!("\nPeople of the project: {}. Set a task's person responsible with `genie task update --assignee login` when someone owns the decision or the review.\n", people.join(", ")));
+            out.push_str(&format!("\nPeople of the project: {}. Set a task's person responsible with `genie task update --expected-version <version> --assignee login` when someone owns the decision or the review.\n", people.join(", ")));
         }
     }
     out

@@ -5295,7 +5295,8 @@
     "status": "inbox",
     "title": "Веб-интерфейс: проверка экранов",
     "type": "epic",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "4eaa5cbc158a62f7e01224424a0aa957b89f7207202c08b3460dfc49a408e35a"
   },
   "/api/tasks/DM-1/docs-impact": {
     "applicable": false,
@@ -5460,7 +5461,8 @@
     "status": "in_progress",
     "title": "Форма входа показывает ошибку при неверном пароле",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "28820ebac33ed0469b3eb3a5b55e1e26256b46edf1f038a1c1f5cc0f7d01eccc"
   },
   "/api/tasks/DM-2/docs-impact": {
     "applicable": false,
@@ -5627,7 +5629,8 @@
     "status": "ready",
     "title": "Список задач фильтруется по поиску",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "25e7581b7c1f3da106ec5b8b289087f3ab52e3e2813dd88e66e0a6e871ee5fc4"
   },
   "/api/tasks/DM-3/docs-impact": {
     "applicable": false,
@@ -5744,7 +5747,8 @@
     "status": "inbox",
     "title": "Кнопка закрытия диалога не реагирует на мобильном",
     "type": "bug",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "9605e21dd7ef18e1b4e2446c1b85d8a225daedf9c653665290d6b9c87b2e058e"
   },
   "/api/tasks/DM-4/docs-impact": {
     "applicable": false,
@@ -5839,7 +5843,8 @@
     "status": "draft",
     "title": "Изучить визуальную регрессию",
     "type": "spike",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "d2a601696350ad792b21837634bb4f1d3d0aed18e889afe229c1d9212e1696a1"
   },
   "/api/tasks/DM-5/docs-impact": {
     "applicable": false,
@@ -5934,7 +5939,8 @@
     "status": "inbox",
     "title": "Обновить документацию по запуску",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "51a3a90785a36ec2969412c5e3fbf40a9a79bb6c0f3f4639279b1534c235e8d5"
   },
   "/api/tasks/DM-6/docs-impact": {
     "applicable": false,
@@ -6029,7 +6035,8 @@
     "status": "draft",
     "title": "Черновик: описать правила уведомлений",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "9ffcea63dc78151bfe43242d80f50911a59fed16e1ff0dc5e292a58960611365"
   },
   "/api/tasks/DM-7/docs-impact": {
     "applicable": false,
@@ -6122,7 +6129,8 @@
     "status": "inbox",
     "title": "Входящая идея: тёмная тема для документации",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "6dfa9d0e0a2b4a6be4d3eb2929626d6f61a76b2cb2ae6a5866e4f842eed936b4"
   },
   "/api/tasks/DM-8/docs-impact": {
     "applicable": false,
@@ -6246,7 +6254,8 @@
     "status": "review",
     "title": "Проверить сборку образа",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "8794769eeba6ef60572a511fa05fbc36efb89958085e3a0538e348b09eba43fa"
   },
   "/api/tasks/DM-9/docs-impact": {
     "applicable": true,
@@ -6419,7 +6428,8 @@
     "status": "changes_requested",
     "title": "Исправить порядок колонок на доске",
     "type": "bug",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "38b77204b41b7bc9505e55dc4b832ea95e2b20838e46471b2ab95c65f4561bbb"
   },
   "/api/tasks/DM-10/docs-impact": {
     "applicable": false,
@@ -6600,7 +6610,8 @@
     "status": "approved",
     "title": "Добавить экспорт отчёта",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "449ea5228b26d41e6935ecbad0f266e365dd34def92e220616c84ac300bbd78b"
   },
   "/api/tasks/DM-11/docs-impact": {
     "applicable": false,
@@ -6785,7 +6796,8 @@
     "status": "needs_owner",
     "title": "Выбрать провайдера почты",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "98efb908299fade8e7a912695d90d9dc3ad7266fc05fe49250d4f972ff831af4"
   },
   "/api/tasks/DM-12/docs-impact": {
     "applicable": false,
@@ -6977,7 +6989,8 @@
     "status": "done",
     "title": "Обновить зависимости клиента",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "a6b05ba2fe802255acc45e5a929b2f6cabf7231b1603b2934bbee0c599f9f520"
   },
   "/api/tasks/DM-13/docs-impact": {
     "applicable": true,
@@ -7136,7 +7149,8 @@
     "status": "cancelled",
     "title": "Старая задача, отменена",
     "type": "task",
-    "updated": "2026-05-01T12:00:00Z"
+    "updated": "2026-05-01T12:00:00Z",
+    "editVersion": "9fc4edbde8a984419d0c34e70a3b66678663a67a3fc750247f42c25100f37ded"
   },
   "/api/tasks/DM-14/docs-impact": {
     "applicable": false,

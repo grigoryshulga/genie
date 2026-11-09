@@ -1200,6 +1200,51 @@ async fn a_manual_manager_interrupted_by_a_restart_finishes_its_chat_answer() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_taskless_project_manager_reaching_its_hard_limit_stops_its_live_session() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(
+        pi,
+        |cfg| {
+            cfg.runtime.turn_timeout_secs = 30;
+            cfg.runtime.run_timeout_secs = 3;
+        },
+        clock.clone(),
+    )
+    .await;
+    let app = &l.app;
+    app.with_tracker("shop", |t| t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "RUN: sleep 120", None)).unwrap();
+    app.wake_runtime.notify_one();
+    let session = until("project manager's long tool started", 20, || {
+        app.sessions.get(&orchestrator()).filter(|s| s.live().tool.as_ref().is_some_and(|tool| tool["name"] == "bash"))
+    })
+    .await;
+    assert!(session.task.is_none(), "exercise the taskless hard-limit path");
+    clock.advance(Duration::from_secs(3));
+    // The active session is responsive: its hard deadline, rather than silence,
+    // must trigger the stop and terminalize this turn.
+    assert!(session.request(json!({"type":"get_state"}), Duration::from_secs(5)).await.is_some());
+    genie::runtime::tick(app).await.unwrap();
+    until("project manager's limited turn interrupted", 10, || {
+        app.with_server(|db| db.turns("shop", Some(ORCHESTRATOR), 10))
+            .unwrap()
+            .iter()
+            .any(|turn| turn.pid == Some(i64::from(session.pid)) && turn.status == "interrupted")
+            .then_some(())
+    })
+    .await;
+    until("limited project-manager process removed", 10, || {
+        app.sessions.get(&orchestrator()).is_none_or(|next| next.pid != session.pid).then_some(())
+    })
+    .await;
+    assert!(app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_none());
+    genie::sessions::stop_all(app);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn hard_run_limit_pauses_productive_work_and_explicit_resume_keeps_progress() {
     let Some(pi) = pi_bin() else {
         assert!(std::env::var("CI").is_err(), "pi is required in CI");
