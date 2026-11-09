@@ -392,6 +392,13 @@ pub(crate) fn active_tasks(app: &App, project: &str) -> AppResult<Vec<String>> {
         tasks.extend(t.management().managers()?.into_iter().filter(|m| m.state != "completed").map(|m| m.task));
         Ok(tasks)
     })?);
+    // Job records and scheduler keys outlive deletion of their task. They must
+    // not make a project-wide budget pause fail before its process sweep.
+    app.with_tracker(project, |t| {
+        let index = crate::spend::TaskIndex::load(t.conn())?;
+        tasks.retain(|task| index.0.contains_key(task));
+        Ok(())
+    })?;
     tasks.sort();
     tasks.dedup();
     Ok(tasks)
@@ -476,6 +483,7 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
     let mut failure = None;
     for key in keys {
         let stop = match key_task(app, &key) {
+            Ok(Some(task)) if !index.0.contains_key(&task) => true,
             Ok(task) => covered(task.as_deref()),
             // A deleted scope cannot own valid work. Clean up its stale worker
             // without preventing termination of other, still-known scopes.
@@ -1285,11 +1293,17 @@ pub(crate) async fn agent_process(
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
     let prompt_file = dir.join("prompt.md");
     tokio::fs::write(&prompt_file, &spec.prompt).await.map_err(|e| e.to_string())?;
-    let files = spec.kit.write(app, &dir).map_err(|e| e.to_string())?;
-    // Agents run on genie's own pi profile (or the operator's chosen one): keep it clean
-    // before the harness reads it — no packages or extension lists, models seeded once.
-    let legacy = app.cfg.runtime.pi_dir_override().is_none().then(legacy_pi_dir).flatten();
-    seed_pi_profile(&pi_dir(app), legacy.as_deref());
+    let (kit, kit_dir) = (spec.kit.clone(), dir.clone());
+    let files = app
+        .blocking(move |app| {
+            let files = kit.write(app, &kit_dir).map_err(GenieError::from)?;
+            // Keep the agent profile clean before the harness reads it.
+            let legacy = app.cfg.runtime.pi_dir_override().is_none().then(legacy_pi_dir).flatten();
+            seed_pi_profile(&pi_dir(app), legacy.as_deref());
+            Ok(files)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     let sessions = harness_sessions(app, key.project(), &spec.name, &dir);
     tokio::fs::create_dir_all(&sessions).await.map_err(|e| e.to_string())?;
     let mut vars: HashMap<&str, String> = HashMap::from([
@@ -1347,7 +1361,24 @@ pub(crate) async fn agent_process(
     } else {
         None
     };
-    let mut cmd = agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), token, bounded.as_ref())?;
+    let (command_spec, command_dir, project, command_token, command_profile) =
+        (spec.clone(), dir.clone(), key.project().to_string(), token.to_string(), bounded.clone());
+    let mut cmd = app
+        .blocking(move |app| {
+            agent_command(
+                app,
+                &argv,
+                &command_spec.cwd,
+                &command_dir,
+                &project,
+                &command_spec.identity(),
+                &command_token,
+                command_profile.as_ref(),
+            )
+            .map_err(AppError::Internal)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     match stdin {
         Some(path) => {
             let file = tokio::fs::File::open(path).await.map_err(|e| e.to_string())?.into_std().await;

@@ -336,9 +336,7 @@ impl Session {
             rt.spawn(async move {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 let _ = tokio::task::spawn_blocking(move || {
-                    if runtime::is_our_agent(i64::from(pid), &project, &name) {
-                        runtime::signal_process(pid, libc::SIGKILL);
-                    }
+                    runtime::stop_stray_agent(i64::from(pid), &project, &name);
                 })
                 .await;
             });
@@ -638,7 +636,7 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
     });
     let stdout = child.stdout.take().expect("piped stdout");
     let (app2, s2) = (app.clone(), s.clone());
-    tokio::spawn(async move {
+    let events = tokio::spawn(async move {
         let mut reader = BufReader::new(stdout);
         let mut line = Vec::new();
         loop {
@@ -652,7 +650,25 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
                 }
             }
         }
+    });
+    let (app2, s2) = (app.clone(), s.clone());
+    tokio::spawn(async move {
         let status = child.wait().await.ok().and_then(|s| s.code());
+        let exited = s2.clone();
+        // A tool may inherit stdout and keep it open after its parent exits.
+        // End the owned group before waiting for the final buffered events.
+        if let Err(error) = app2
+            .blocking(move |_| {
+                runtime::stop_stray_agent(i64::from(exited.pid), exited.key.project(), &exited.name);
+                Ok(())
+            })
+            .await
+        {
+            eprintln!("genie runtime: {}: cannot clean up exited process group: {error}", s2.key.label());
+        }
+        if let Err(error) = events.await {
+            eprintln!("genie runtime: {}: session event reader failed: {error}", s2.key.label());
+        }
         on_exit(&app2, &s2, status).await;
     });
     Ok(Some(s))
@@ -1028,9 +1044,6 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
     });
     let expected = state == "stopping";
     let force = s.with_live(|l| l.force_stop);
-    if force {
-        runtime::kill_process_group(s.pid);
-    }
     s.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
     if s.limited_task().is_some() {
         // Capacity became available even while this dead session's scope fence

@@ -11,7 +11,7 @@ use genie_core::usage::usage_since;
 
 use crate::notify::{self, Message};
 use crate::spend::{Prices, Spend};
-use crate::state::{App, AppResult};
+use crate::state::{App, AppError, AppResult};
 
 /// A budget that is used up.
 #[derive(Debug, Clone, PartialEq)]
@@ -174,20 +174,24 @@ fn check_scopes(app: &App, slug: &str, task: Option<&str>, frozen: Option<&[Scop
 
 /// After a report of usage on `task`: when a budget is used up, stop the teams it covers and tell people once.
 pub fn enforce(app: &App, slug: &str, task: Option<&str>) -> AppResult<()> {
-    for over in check_scopes(app, slug, task, None)? {
-        apply_limit(app, slug, task, &over)?;
-    }
-    Ok(())
+    apply_limits(app, slug, task, check_scopes(app, slug, task, None)?)
 }
 
 /// Settlements and human reconciliations enforce the scopes captured at
 /// admission, including an old epic after a task moves while a call runs.
 pub(crate) fn enforce_call(app: &App, slug: &str, call: &genie_core::model_calls::Call) -> AppResult<()> {
     let scopes = app.with_tracker(slug, |t| t.model_calls().call_scopes(&call.id))?;
-    for over in check_scopes(app, slug, call.task.as_deref(), Some(&scopes))? {
-        apply_limit(app, slug, call.task.as_deref(), &over)?;
+    apply_limits(app, slug, call.task.as_deref(), check_scopes(app, slug, call.task.as_deref(), Some(&scopes))?)
+}
+
+fn apply_limits(app: &App, slug: &str, task: Option<&str>, limits: Vec<Exceeded>) -> AppResult<()> {
+    let mut failure = None;
+    for over in limits {
+        if let Err(error) = apply_limit(app, slug, task, &over) {
+            failure.get_or_insert(error);
+        }
     }
-    Ok(())
+    failure.map_or(Ok(()), Err)
 }
 
 fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> AppResult<()> {
@@ -196,19 +200,33 @@ fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> Ap
         Scope::Task(id) | Scope::Epic(id) => Some(id.as_str()),
         Scope::Day => None,
     };
-    if let Some(root) = root {
-        app.with_tracker(slug, |t| {
-            t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), root, "budget", &over.explain())
-        })?;
-    }
-    if root.is_none() {
-        for task in crate::runtime::active_tasks(app, slug)? {
-            app.with_tracker(slug, |t| {
-                t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), &task, "budget", &over.explain())
-            })?;
+    let mut failure = None;
+    let tasks = match root.map_or_else(|| crate::runtime::active_tasks(app, slug), |root| Ok(vec![root.to_string()])) {
+        Ok(tasks) => tasks,
+        Err(error) => {
+            failure.get_or_insert(error);
+            Vec::new()
+        }
+    };
+    for task in tasks {
+        match app.with_tracker(slug, |t| {
+            t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), &task, "budget", &over.explain())
+        }) {
+            Ok(_) | Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => {}
+            Err(error) => {
+                failure.get_or_insert(error);
+            }
         }
     }
-    let covered = crate::runtime::halt_scope(app, slug, root)?;
+    // Termination cannot depend on every pause write succeeding. The exhausted
+    // budget still fences admission while recoverable persistence errors surface.
+    let covered = match crate::runtime::halt_scope(app, slug, root) {
+        Ok(covered) => covered,
+        Err(error) => {
+            failure.get_or_insert(error);
+            Vec::new()
+        }
+    };
     let day = genie_core::db::now()[..10].to_string();
     let dedupe = format!("budget:{slug}:{}:{day}", over.scope.key());
     let ctx = serde_json::json!({ "task": { "id": task } });
@@ -226,8 +244,10 @@ fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> Ap
         link: task.map(|t| format!("/active?task={t}")),
         ..Default::default()
     };
-    if root.is_none() {
-        notify::send(app, &users, &msg, Some(&dedupe))?;
+    if root.is_none()
+        && let Err(error) = notify::send(app, &users, &msg, Some(&dedupe))
+    {
+        failure.get_or_insert(error);
     }
     app.wake_engine.notify_one();
     if !covered.is_empty() {
@@ -236,7 +256,9 @@ fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> Ap
             over.explain(),
             covered.join(", ")
         );
-        crate::runtime::tell_orchestrator(app, slug, task, &text)?;
+        if let Err(error) = crate::runtime::tell_orchestrator(app, slug, task, &text) {
+            failure.get_or_insert(error);
+        }
     }
-    Ok(())
+    failure.map_or(Ok(()), Err)
 }

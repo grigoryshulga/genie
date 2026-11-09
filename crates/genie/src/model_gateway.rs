@@ -51,6 +51,7 @@ pub(crate) fn enabled(app: &App) -> bool {
     b.per_task > 0.0 || b.per_epic > 0.0 || b.per_day > 0.0
 }
 
+#[derive(Clone)]
 pub(crate) struct Prepared {
     pub path: PathBuf,
     pub source: PathBuf,
