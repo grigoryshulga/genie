@@ -81,6 +81,13 @@ pub struct NewQuestion {
 
 pub const MAX_DELIVERY_ATTEMPTS: i64 = 8;
 
+// A scalar subquery shared by selection, claiming and wake-up calculation. Its
+// two dedupe-key lookups use the existing unique index and exclude this row.
+const OUTBOX_PEER_LEASE: &str = "(SELECT MAX(peer.next_at) FROM outbox peer
+  WHERE outbox.channel IN ('telegram','email') AND peer.id!=outbox.id
+    AND peer.dedupe_key IN (json_extract(outbox.payload,'$.delivery.group')||':telegram',json_extract(outbox.payload,'$.delivery.group')||':email')
+    AND peer.status='delivering')";
+
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS questionnaire_tokens (
   token_hash TEXT PRIMARY KEY,
@@ -287,8 +294,10 @@ impl ServerDb {
     }
 
     pub fn due_outbox(&self, limit: i64) -> Result<Vec<OutboxItem>> {
-        let mut stmt =
-            self.conn().prepare("SELECT * FROM outbox WHERE status IN ('pending','delivering') AND next_at <= ?1 ORDER BY id LIMIT ?2")?;
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT * FROM outbox WHERE status IN ('pending','delivering') AND next_at <= ?1
+             AND COALESCE({OUTBOX_PEER_LEASE},?1)<=?1 ORDER BY next_at,id LIMIT ?2"
+        ))?;
         let rows = stmt.query_map(params![now(), limit], outbox_row)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
@@ -296,7 +305,11 @@ impl ServerDb {
     /// When the earliest pending message falls due (`None`: nothing is pending): a failed
     /// delivery waits for its backoff, and nobody wakes the dispatcher when it ends.
     pub fn next_outbox_at(&self) -> Result<Option<String>> {
-        Ok(self.conn().query_row("SELECT MIN(next_at) FROM outbox WHERE status IN ('pending','delivering')", [], |r| r.get(0))?)
+        Ok(self.conn().query_row(
+            &format!("SELECT MIN(MAX(next_at,COALESCE({OUTBOX_PEER_LEASE},next_at))) FROM outbox WHERE status IN ('pending','delivering')"),
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     pub fn outbox_item(&self, id: i64) -> Result<OutboxItem> {
@@ -307,8 +320,8 @@ impl ServerDb {
         Ok(self.conn().query_row("SELECT * FROM outbox WHERE dedupe_key = ?1", [key], outbox_row).optional()?)
     }
 
-    /// A raised fallback threshold continues the existing preferred-channel
-    /// attempts. Keep its backoff/lease and make this copy wait for that outcome.
+    /// Wait for the selected channel without resetting its attempts/backoff or
+    /// active lease. Due-time ordering lets that channel run before this waiter.
     pub fn defer_outbox(&self, id: i64, preferred: i64) -> Result<()> {
         self.tx(|| {
             self.conn().execute(
@@ -316,8 +329,8 @@ impl ServerDb {
                 params![preferred, MAX_DELIVERY_ATTEMPTS],
             )?;
             self.conn().execute(
-                "UPDATE outbox SET status='pending',next_at=(SELECT next_at FROM outbox WHERE id=?2) WHERE id=?1",
-                params![id, preferred],
+                "UPDATE outbox SET status='pending',next_at=MAX((SELECT next_at FROM outbox WHERE id=?2),?3) WHERE id=?1",
+                params![id, preferred, time_in(ChronoDuration::seconds(1))],
             )?;
             Ok(())
         })
@@ -325,15 +338,33 @@ impl ServerDb {
 
     /// Each network operation has a 60-second timeout or less. A two-minute lease prevents
     /// concurrent dispatch, and an interrupted send becomes retryable after restart.
+    /// External copies of one group share this fence across channel reordering.
     pub fn claim_outbox(&self, id: i64) -> Result<bool> {
         Ok(self.conn().execute(
-            "UPDATE outbox SET status = 'delivering', next_at = ?2 WHERE id = ?1 AND status IN ('pending','delivering') AND next_at <= ?3",
+            &format!("UPDATE outbox SET status = 'delivering', next_at = ?2 WHERE id = ?1 AND status IN ('pending','delivering') AND next_at <= ?3
+             AND COALESCE({OUTBOX_PEER_LEASE},?3)<=?3"),
             params![id, time_in(ChronoDuration::seconds(120)), now()],
         )? > 0)
     }
 
     pub fn outbox_cancelled(&self, id: i64, reason: &str) -> Result<()> {
         self.conn().execute("UPDATE outbox SET status = 'cancelled', last_error = ?2 WHERE id = ?1", params![id, reason])?;
+        Ok(())
+    }
+
+    /// Current policy can restore its own cancellation while the authoritative
+    /// interaction stays open. Keep prior attempts and retry timing unchanged.
+    pub fn retry_cancelled_outbox(&self, id: i64, reason: &str) -> Result<bool> {
+        Ok(self.conn().execute(
+            "UPDATE outbox SET status='pending',last_error=NULL WHERE id=?1 AND status='cancelled' AND last_error=?2
+             AND NOT EXISTS (SELECT 1 FROM interaction_deliveries d WHERE d.outbox=outbox.id AND d.closed=1)",
+            params![id, reason],
+        )? > 0)
+    }
+
+    /// Stop retrying this channel without consuming another network attempt.
+    pub fn outbox_abandoned(&self, id: i64, reason: &str) -> Result<()> {
+        self.conn().execute("UPDATE outbox SET status='failed',last_error=COALESCE(last_error,?2) WHERE id=?1", params![id, reason])?;
         Ok(())
     }
 

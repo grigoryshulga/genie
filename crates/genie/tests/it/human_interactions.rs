@@ -123,12 +123,12 @@ async fn telegram() -> (String, std::sync::Arc<Telegram>) {
     ) -> Json<Value> {
         state.requests.lock().unwrap().push((method.clone(), body));
         if method == "sendMessage" {
-            if state.fail.load(std::sync::atomic::Ordering::SeqCst) {
-                return Json(json!({"ok":false,"description":"simulated unavailable recipient"}));
-            }
             if state.block.load(std::sync::atomic::Ordering::SeqCst) {
                 state.entered.notify_one();
                 state.release.notified().await;
+            }
+            if state.fail.load(std::sync::atomic::Ordering::SeqCst) {
+                return Json(json!({"ok":false,"description":"simulated unavailable recipient"}));
             }
         }
         Json(json!({"ok":true,"result":{"message_id":501}}))
@@ -417,6 +417,312 @@ async fn changed_fallback_threshold(change: ThresholdChange) {
         assert_eq!(mail.lock().unwrap().len(), 1, "deliver one fallback at the current threshold");
     }
     assert_eq!(recovered.with_server(|db| db.questionnaire(qn)).unwrap().status, "open", "delivery never supplies an answer or approval");
+}
+
+struct DeliveryLab {
+    h: Harness,
+    tg: std::sync::Arc<Telegram>,
+    mail: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    user: i64,
+    token: String,
+}
+
+impl DeliveryLab {
+    async fn new() -> Self {
+        let (url, tg) = telegram().await;
+        let (port, mail) = super::channels::fake_smtp().await;
+        let h = Harness::with_config(|cfg| {
+            cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+            cfg.smtp = Some(genie::config::SmtpConfig {
+                host: "127.0.0.1".into(),
+                port,
+                from: "genie@example.test".into(),
+                security: "none".into(),
+                ..Default::default()
+            });
+        });
+        h.project("shop");
+        let (user, token) = person(&h, "anna");
+        Self { h, tg, mail, user, token }
+    }
+
+    async fn policy(&self, order: &[&str], attempts: i64) {
+        assert_eq!(
+            call(&self.h.remote, "PUT", "/api/me/delivery")
+                .bearer(&self.token)
+                .json(json!({"policy":{"order":order,"fallbackAfterAttempts":attempts}}))
+                .send()
+                .await
+                .0,
+            200
+        );
+    }
+
+    fn reopen(&self) -> std::sync::Arc<genie::state::App> {
+        genie::state::App::open(self.h.dir.path(), self.h.app.cfg.clone(), std::path::PathBuf::from("/nonexistent")).unwrap()
+    }
+
+    fn sends(&self) -> usize {
+        self.tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count()
+    }
+
+    fn retry_now(&self) {
+        self.h
+            .app
+            .with_server(|db| {
+                db.conn().execute("UPDATE outbox SET next_at='2000-01-01' WHERE status='pending'", [])?;
+                Ok(())
+            })
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn reordered_priority_selects_email_before_the_first_send_after_restart() {
+    priority_before_send(false).await;
+}
+
+#[tokio::test]
+async fn reordered_priority_selects_telegram_before_the_first_send_after_restart() {
+    priority_before_send(true).await;
+}
+
+async fn priority_before_send(telegram_first: bool) {
+    let lab = DeliveryLab::new().await;
+    let before = if telegram_first { ["email", "telegram"] } else { ["telegram", "email"] };
+    let after = [before[1], before[0]];
+    lab.policy(&before, 8).await;
+    let qn = ask(&lab.h, lab.user);
+    lab.policy(&after, 8).await;
+    let app = lab.reopen();
+    for _ in 0..3 {
+        genie::channels::dispatch(&app).await;
+    }
+    assert_eq!(lab.sends(), usize::from(telegram_first));
+    assert_eq!(lab.mail.lock().unwrap().len(), usize::from(!telegram_first));
+    assert_eq!(app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_after_failure_preserves_attempts_and_cannot_repeat_a_known_delivery() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 8).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let qn = ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    assert_eq!(lab.sends(), 1);
+    lab.policy(&["email", "telegram"], 8).await;
+    let app = lab.reopen();
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    genie::channels::dispatch(&app).await;
+    assert_eq!(lab.sends(), 1, "do not finish the obsolete eight-attempt Telegram order");
+    assert_eq!(lab.mail.lock().unwrap().len(), 1);
+    lab.policy(&["telegram", "email"], 8).await;
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    let tg = app
+        .with_server(|db| {
+            Ok(db.conn().query_row("SELECT status,attempts FROM outbox WHERE channel='telegram'", [], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })?)
+        })
+        .unwrap();
+    assert_eq!(tg, ("cancelled".into(), 1), "a successful peer remains authoritative even after priorities reverse again");
+    assert_eq!(lab.sends(), 1);
+    assert_eq!(app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_is_rechecked_when_an_in_flight_send_fails() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 8).await;
+    lab.tg.block.store(true, std::sync::atomic::Ordering::SeqCst);
+    let qn = ask(&lab.h, lab.user);
+    let app = lab.h.app.clone();
+    let sending = tokio::spawn(async move { genie::channels::dispatch(&app).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), lab.tg.entered.notified()).await.unwrap();
+    lab.policy(&["email", "telegram"], 8).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    lab.tg.release.notify_one();
+    sending.await.unwrap();
+    genie::channels::dispatch(&lab.reopen()).await;
+    assert_eq!(lab.sends(), 1);
+    assert_eq!(lab.mail.lock().unwrap().len(), 1, "use the new priority in the failed-attempt transaction");
+    assert_eq!(lab.h.app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_makes_an_already_queued_fallback_the_primary() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.policy(&["email", "telegram"], 8).await;
+    genie::channels::dispatch(&lab.reopen()).await;
+    assert_eq!(lab.sends(), 1, "do not revive the former primary under its old priority");
+    assert_eq!(lab.mail.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn reordered_priority_cannot_expand_the_original_channel_restriction() {
+    for allowed in ["telegram", "email"] {
+        let lab = DeliveryLab::new().await;
+        let other = if allowed == "telegram" { "email" } else { "telegram" };
+        lab.policy(&[allowed, other], 8).await;
+        genie::notify::send(
+            &lab.h.app,
+            &[lab.user],
+            &genie::notify::Message {
+                kind: "test".into(),
+                title: "Restricted delivery".into(),
+                body: "Keep the sender's channel restriction".into(),
+                project: Some("shop".into()),
+                channels: vec![allowed.into()],
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+        lab.policy(&[other, allowed], 8).await;
+        let app = lab.reopen();
+        for _ in 0..3 {
+            genie::channels::dispatch(&app).await;
+        }
+        assert_eq!(lab.sends(), usize::from(allowed == "telegram"));
+        assert_eq!(lab.mail.lock().unwrap().len(), usize::from(allowed == "email"));
+    }
+}
+
+#[tokio::test]
+async fn reordered_priority_waits_for_a_peer_send_without_blocking_another_person() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.policy(&["telegram", "email"], 8).await;
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.retry_now();
+    lab.tg.fail.store(false, std::sync::atomic::Ordering::SeqCst);
+    lab.tg.block.store(true, std::sync::atomic::Ordering::SeqCst);
+    let app = lab.h.app.clone();
+    let sending = tokio::spawn(async move { genie::channels::dispatch(&app).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), lab.tg.entered.notified()).await.unwrap();
+    lab.policy(&["email", "telegram"], 8).await;
+    let (bob, token) = person(&lab.h, "bob");
+    assert_eq!(
+        call(&lab.h.remote, "PUT", "/api/me/delivery")
+            .bearer(&token)
+            .json(json!({"policy":{"order":["email"],"fallbackAfterAttempts":8}}))
+            .send()
+            .await
+            .0,
+        200
+    );
+    ask(&lab.h, bob);
+    let recovered = lab.reopen();
+    genie::channels::dispatch(&recovered).await;
+    let messages = lab.mail.lock().unwrap().clone();
+    assert_eq!(messages.len(), 1, "a peer lease blocks only its own delivery group");
+    assert!(messages[0].contains("bob@example.test"));
+    lab.tg.release.notify_one();
+    sending.await.unwrap();
+    lab.retry_now();
+    genie::channels::dispatch(&recovered).await;
+    assert_eq!(lab.sends(), 2);
+    assert_eq!(lab.mail.lock().unwrap().len(), 1, "no email duplicate goes to Anna while her Telegram send is accepted");
+}
+
+#[tokio::test]
+async fn active_peer_leases_cannot_fill_the_dispatch_batch_or_force_a_busy_wake() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    for _ in 0..50 {
+        ask(&lab.h, lab.user);
+    }
+    // Each question also has a web copy: two batches drain the original 100
+    // rows before any subsequently enqueued email copy becomes the next batch.
+    genie::channels::dispatch(&lab.h.app).await;
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.policy(&["telegram", "email"], 8).await;
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.retry_now();
+    lab.h
+        .app
+        .with_server(|db| {
+            let mut stmt = db.conn().prepare("SELECT id FROM outbox WHERE channel='telegram' AND status='pending'")?;
+            let ids = stmt.query_map([], |r| r.get::<_, i64>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            assert_eq!(ids.len(), 50);
+            for id in ids {
+                assert!(db.claim_outbox(id)?);
+            }
+            Ok(())
+        })
+        .unwrap();
+    let (bob, token) = person(&lab.h, "bob");
+    assert_eq!(
+        call(&lab.h.remote, "PUT", "/api/me/delivery")
+            .bearer(&token)
+            .json(json!({"policy":{"order":["email"],"fallbackAfterAttempts":8}}))
+            .send()
+            .await
+            .0,
+        200
+    );
+    ask(&lab.h, bob);
+    let app = lab.reopen();
+    genie::channels::dispatch(&app).await;
+    let messages = lab.mail.lock().unwrap().clone();
+    assert_eq!(messages.len(), 1, "fifty blocked copies must not hide another person's runnable message");
+    assert!(messages[0].contains("bob@example.test"));
+    let next = app.with_server(|db| db.next_outbox_at()).unwrap().unwrap();
+    assert!(next > genie_core::db::now(), "with only blocked copies left, wait for the peer lease instead of spinning");
+}
+
+#[tokio::test]
+async fn reordered_priority_can_restore_a_policy_cancelled_copy_of_still_pending_work() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let qn = ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    assert_eq!(call(&lab.h.remote, "PUT", "/api/me/delivery").bearer(&lab.token).json(json!({"policy":null})).send().await.0, 200);
+    genie::channels::dispatch(&lab.h.app).await;
+    assert_eq!(
+        lab.h
+            .app
+            .with_server(|db| Ok(db.conn().query_row("SELECT status FROM outbox WHERE channel='email'", [], |r| r.get::<_, String>(0))?))
+            .unwrap(),
+        "cancelled"
+    );
+    lab.policy(&["email", "telegram"], 8).await;
+    let app = lab.reopen();
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    assert_eq!(lab.sends(), 1, "the now-preferred email must not remain disabled by an obsolete policy cancellation");
+    assert_eq!(lab.mail.lock().unwrap().len(), 1);
+    assert_eq!(app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_does_not_starve_new_copies_behind_a_full_old_batch() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 8).await;
+    for _ in 0..60 {
+        ask(&lab.h, lab.user);
+    }
+    lab.policy(&["email", "telegram"], 8).await;
+    let app = lab.reopen();
+    for _ in 0..8 {
+        genie::channels::dispatch(&app).await;
+    }
+    assert_eq!(lab.sends(), 0);
+    assert_eq!(lab.mail.lock().unwrap().len(), 60, "newly selected channels must progress through the bounded dispatcher batch");
 }
 
 #[tokio::test]

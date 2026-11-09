@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 
 use crate::state::{App, AppResult};
 
+const POLICY_CANCELLED: &str = "channel no longer allowed";
+
 #[derive(Debug, Clone, Default)]
 pub struct Message {
     pub kind: String,
@@ -217,102 +219,105 @@ pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> Ap
     Ok(queued)
 }
 
-/// Select only fallbacks captured for this delivery and still allowed by the person's current
-/// policy. Resolving addresses again cannot expand the recipient or project authority.
-/// The failed-attempt transition and fallback enqueue belong to the same server transaction.
+/// Failure accounting and the next current-policy decision share a transaction.
 pub(crate) fn fallback_in(
     db: &genie_core::server_db::ServerDb,
     app: &App,
     item: &genie_core::inbox::OutboxItem,
 ) -> genie_core::Result<bool> {
-    db.tx(|| {
-        let Some(user) = item.user else { return Ok(false) };
-        let Some(policy) = db.delivery_policy(user)? else { return Ok(false) };
-        if item.attempts < policy.fallback_after_attempts {
-            return Ok(false);
-        }
-        queue_fallback(db, app, item, &policy)
-    })
+    reconcile_in(db, app, item).map(|current| !current)
 }
 
-fn queue_fallback(
-    db: &genie_core::server_db::ServerDb,
-    app: &App,
-    item: &genie_core::inbox::OutboxItem,
-    policy: &DeliveryPolicy,
-) -> genie_core::Result<bool> {
-    db.tx(|| {
-        let Some(user) = item.user else { return Ok(false) };
-        let delivery = &item.payload["delivery"];
-        let Some(group) = delivery["group"].as_str() else { return Ok(false) };
-        let order: Vec<String> = serde_json::from_value(delivery["order"].clone()).unwrap_or_default();
-        let Some(index) = order.iter().position(|c| c == &item.channel) else { return Ok(false) };
-        for channel in &order[index + 1..] {
-            if !policy.order.contains(channel) {
-                continue;
-            }
-            let Some(t) = target(db, app, user, item.payload["project"].as_str(), channel, !item.payload["interaction"].is_null())? else {
-                continue;
-            };
-            let mut payload = item.payload.clone();
-            payload["telegramScope"] = json!(t.scope);
-            db.enqueue(Some(&format!("{group}:{channel}")), Some(user), channel, &t.address, &item.subject, &item.body, &payload)?;
-            db.conn().execute(
-                "UPDATE outbox SET status='failed',last_error=COALESCE(last_error,'preferred channel unavailable') WHERE id=?1",
-                [item.id],
-            )?;
-            return Ok(true);
-        }
-        Ok(false)
-    })
-}
-
-/// Reconcile a claimed copy with current recipient authority and fallback timing
-/// before any network call. Original channel restrictions remain in its payload.
+/// Reconcile a claimed copy before its network call. The same decision is used
+/// after a failure, so changing priority cannot leave a separate stale fallback path.
 pub(crate) fn ready(app: &App, item: &genie_core::inbox::OutboxItem) -> AppResult<bool> {
-    app.with_server(|db| {
-        db.tx(|| {
-            let Some(user) = item.user else {
-                db.outbox_cancelled(item.id, "delivery has no recipient")?;
-                return Ok(false);
-            };
-            let allowed: Vec<String> = serde_json::from_value(item.payload["delivery"]["allowed"].clone()).unwrap_or_default();
-            let policy =
-                effective_policy(db, app, user, item.payload["project"].as_str(), !item.payload["interaction"].is_null(), &allowed)?;
+    app.with_server(|db| reconcile_in(db, app, item))
+}
+
+fn reconcile_in(db: &genie_core::server_db::ServerDb, app: &App, item: &genie_core::inbox::OutboxItem) -> genie_core::Result<bool> {
+    db.tx(|| {
+        let Some(user) = item.user else {
+            db.outbox_cancelled(item.id, "delivery has no recipient")?;
+            return Ok(false);
+        };
+        let allowed: Vec<String> = serde_json::from_value(item.payload["delivery"]["allowed"].clone()).unwrap_or_default();
+        let policy = effective_policy(db, app, user, item.payload["project"].as_str(), !item.payload["interaction"].is_null(), &allowed)?;
+        let Some(group) = item.payload["delivery"]["group"].as_str() else {
             let valid = policy.order.contains(&item.channel) && current_target(db, app, item)?;
             if !valid {
-                let fallback =
-                    db.delivery_policy(user)?.map(|current| queue_fallback(db, app, item, &current)).transpose()?.unwrap_or(false);
-                if !fallback {
-                    db.outbox_cancelled(item.id, "recipient, channel or project rights changed")?;
+                db.outbox_cancelled(item.id, "recipient, channel or project rights changed")?;
+            }
+            return Ok(valid);
+        };
+        let mut copies = Vec::new();
+        for channel in ["telegram", "email"] {
+            if let Some(copy) = db.outbox_by_key(&format!("{group}:{channel}"))? {
+                copies.push(copy);
+            }
+        }
+        // A reorder cannot duplicate a known delivery or race an already claimed
+        // peer, even when that peer is now lower in the person's current order.
+        if copies.iter().any(|copy| copy.status == "sent") {
+            if !copies.iter().any(|copy| copy.id == item.id && copy.status == "sent") {
+                db.outbox_cancelled(item.id, "another channel already delivered this message")?;
+            }
+            return Ok(false);
+        }
+        if let Some(peer) = copies.iter().find(|copy| copy.id != item.id && copy.status == "delivering") {
+            db.defer_outbox(item.id, peer.id)?;
+            return Ok(false);
+        }
+        let mut candidates = Vec::new();
+        for (rank, channel) in policy.order.iter().enumerate() {
+            let copy = copies.iter().find(|copy| copy.channel == *channel);
+            if let Some(copy) = copy {
+                if !current_target(db, app, copy)? {
+                    continue;
                 }
-                return Ok(false);
-            }
-            let delivery = &item.payload["delivery"];
-            let order: Vec<String> = serde_json::from_value(delivery["order"].clone()).unwrap_or_default();
-            if let (Some(group), Some(index)) = (delivery["group"].as_str(), order.iter().position(|c| c == &item.channel)) {
-                for channel in &order[..index] {
-                    let Some(preferred) = db.outbox_by_key(&format!("{group}:{channel}"))? else { continue };
-                    if preferred.status == "sent" {
-                        db.outbox_cancelled(item.id, "preferred delivery succeeded")?;
-                        return Ok(false);
-                    }
-                    let connected = policy.order.contains(channel) && current_target(db, app, &preferred)?;
-                    if connected
-                        && (preferred.status == "delivering"
-                            || matches!(preferred.status.as_str(), "pending" | "failed")
-                                && preferred.attempts < policy.fallback_after_attempts)
-                    {
-                        db.defer_outbox(item.id, preferred.id)?;
-                        return Ok(false);
-                    }
+                if copy.status == "cancelled" && !db.retry_cancelled_outbox(copy.id, POLICY_CANCELLED)? {
+                    continue;
                 }
             }
-            if item.attempts > 0 && fallback_in(db, app, item)? {
-                return Ok(false);
+            let Some(target) = target(db, app, user, item.payload["project"].as_str(), channel, !item.payload["interaction"].is_null())?
+            else {
+                continue;
+            };
+            candidates.push((rank, channel, target, copy));
+        }
+        for (index, (rank, channel, target, copy)) in candidates.iter().enumerate() {
+            let limit =
+                if index + 1 < candidates.len() { policy.fallback_after_attempts } else { genie_core::inbox::MAX_DELIVERY_ATTEMPTS };
+            if copy.is_some_and(|copy| copy.attempts >= limit) {
+                continue;
             }
-            Ok(true)
-        })
+            let chosen = match copy {
+                Some(copy) => copy.id,
+                None => {
+                    let mut payload = item.payload.clone();
+                    payload["telegramScope"] = json!(target.scope);
+                    let key = format!("{group}:{channel}");
+                    db.enqueue(Some(&key), Some(user), channel, &target.address, &item.subject, &item.body, &payload)?;
+                    db.outbox_by_key(&key)?.ok_or_else(|| genie_core::GenieError::not_found("queued delivery copy is missing"))?.id
+                }
+            };
+            if chosen == item.id {
+                return Ok(true);
+            }
+            db.defer_outbox(item.id, chosen)?;
+            match policy.order.iter().position(|c| c == &item.channel) {
+                Some(current_rank) if current_rank < *rank => db.outbox_abandoned(item.id, "another delivery channel selected")?,
+                None => db.outbox_cancelled(item.id, POLICY_CANCELLED)?,
+                _ => {}
+            }
+            return Ok(false);
+        }
+        if item.attempts >= genie_core::inbox::MAX_DELIVERY_ATTEMPTS {
+            db.outbox_abandoned(item.id, "delivery attempts exhausted")?;
+            delivery_failed_in(db, item)?;
+        } else {
+            db.outbox_cancelled(item.id, "recipient, channel or project rights changed")?;
+        }
+        Ok(false)
     })
 }
 
