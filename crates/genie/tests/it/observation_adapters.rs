@@ -411,13 +411,18 @@ async fn secrets_echoed_in_an_error_are_redacted() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_unreachable_source_is_a_network_error_that_names_it() {
-    // A port nothing listens on: bind, note the port, and let the listener go.
-    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    // Reserve a TCP port without listening. Releasing it would let a parallel test
+    // start a server there before the request, turning this into a random HTTP error.
+    let reserved = tokio::net::TcpSocket::new_v4().unwrap();
+    reserved.set_reuseaddr(false).unwrap();
+    reserved.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let port = reserved.local_addr().unwrap().port();
     let src = source_at(&format!("http://127.0.0.1:{port}"), SourceKind::Prometheus, SourceAuth::None);
     match measure(&src, None, "q", None, span()).await.unwrap_err() {
         SourceError::Network(m) => assert!(m.starts_with("source metrics is unreachable: "), "{m}"),
         other => panic!("expected a network error, got {other:?}"),
     }
+    drop(reserved);
 }
 
 #[test]
