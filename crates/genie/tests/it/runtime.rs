@@ -928,6 +928,58 @@ async fn a_manual_projects_manager_runs_for_chat_mail_and_not_for_the_owners() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn completed_one_shot_turns_stop_owned_tools_before_releasing_capacity() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"sleep 120 </dev/null >/dev/null 2>&1 & echo "$!" > "$GENIE_MARK.tool"; echo retained > progress.txt; "$GENIE_BIN" job output '{"ok":true}'"#.into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let task = app
+        .with_tracker("shop", |t| {
+            t.create(
+                &Actor::new("owner", Role::Human),
+                CreateInput { title: "Successful one-shot".into(), quiet: true, ..Default::default() },
+            )
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Complete and clean up tools".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "completed job and released capacity", Duration::from_secs(10), |app| {
+        app.with_server(|db| db.job(job.id)).unwrap().status == "succeeded" && app.slots.available_permits() == 1
+    })
+    .await;
+    let tool: u32 = std::fs::read_to_string(l._dir.path().join("failed-once.tool")).unwrap().trim().parse().unwrap();
+    wait_for(app, "completed turn's owned tool terminated", Duration::from_secs(5), |_| !process_running(tool)).await;
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().output, Some(json!({"ok":true})));
+    let progress = app.data.join(format!("workspaces/shop/job-{}/progress.txt", job.id));
+    assert_eq!(std::fs::read_to_string(&progress).unwrap(), "retained\n");
+    genie::tasks::pause_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id, "owner", "Review completed output")
+        .unwrap();
+    genie::runtime::recover(app).unwrap();
+    assert!(!process_running(tool), "neither stop nor restart can leave an untracked owned tool");
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().status, "succeeded");
+    assert_eq!(std::fs::read_to_string(&progress).unwrap(), "retained\n");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn task_stop_kills_one_shot_tools_retains_files_and_preserves_job_retry_allowance() {
     let l = live_cfg(&[], |cfg| {
         cfg.runtime.command = vec![vec![

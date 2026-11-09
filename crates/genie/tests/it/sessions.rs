@@ -1568,6 +1568,105 @@ async fn a_failed_budget_intent_write_preserves_the_project_pause_and_job_across
     daily_budget_termination(BudgetFault::ServerIntent).await;
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn admission_refusal_preserves_the_last_job_attempt_during_a_pause_write_fault() {
+    budget_start_refusal(false, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn admission_refusal_uses_a_project_fallback_when_the_intent_write_fails() {
+    budget_start_refusal(true, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn unpriced_startup_retains_a_retryable_budget_pause_despite_a_project_write_fault() {
+    budget_start_refusal(false, true).await;
+}
+
+async fn budget_start_refusal(server_fault: bool, unpriced: bool) {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let l = live(pi.clone(), |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.max_attempts = 1;
+        // No committed spend: the next full-context reservation cannot fit.
+        cfg.budgets.per_task = 0.05;
+        if !unpriced {
+            cfg.model_prices.insert(
+                "fake/executor".into(),
+                genie::config::ModelPrice { input: 1.0, output: 1.0, cache_read: Some(0.0), cache_write: Some(0.0) },
+            );
+        }
+        cfg.runtime.command = vec![
+            vec![pi.to_string_lossy().into_owned(), "--print".into(), "--model".into(), "{model}".into()],
+            vec![
+                "--no-session".into(),
+                "--no-skills".into(),
+                "--no-context-files".into(),
+                "--no-prompt-templates".into(),
+                "--no-mcp".into(),
+            ],
+            vec!["{message}".into()],
+        ];
+    })
+    .await;
+    let app = &l.app;
+    let job = app
+        .with_server(|db| {
+            db.create_job(genie_core::work::NewJob {
+                project: "shop".into(),
+                task: Some("SHOP-1".into()),
+                role: "executor".into(),
+                goal: "RUN: test -f retained-budget.txt && genie job output '{\"ok\":true}'".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    let workspace = app.data.join(format!("workspaces/shop/job-{}", job.id));
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(workspace.join("retained-budget.txt"), "kept\n").unwrap();
+    if server_fault {
+        app.with_server(|db| db.conn().execute_batch("CREATE TRIGGER fail_budget_pause BEFORE INSERT ON execution_pauses WHEN NEW.reason='budget' BEGIN SELECT RAISE(ABORT,'budget pause fault'); END;").map_err(Into::into)).unwrap();
+    } else {
+        app.with_tracker("shop", |t| {
+            t.conn()
+                .execute_batch(
+                    "CREATE TRIGGER fail_budget_pause BEFORE INSERT ON task_execution BEGIN SELECT RAISE(ABORT,'budget pause fault'); END;",
+                )
+                .map_err(Into::into)
+        })
+        .unwrap();
+    }
+    genie::runtime::tick(app).await.unwrap();
+    until("admission refusal retains the job, pause and capacity", 20, || {
+        let retained = app.with_server(|db| db.job(job.id)).unwrap();
+        let fenced = if server_fault {
+            app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_some()
+        } else {
+            !app.with_server(|db| db.pending_execution_pauses(Some("shop"))).unwrap().is_empty()
+        };
+        (fenced && retained.status == "queued" && retained.attempts == 0 && app.slots.available_permits() == 1).then_some(())
+    })
+    .await;
+    assert_eq!(app.attempts.failures(&AgentKey::Job { project: "shop".into(), job: job.id }), 0);
+    assert!(
+        app.with_server(|db| db.turns("shop", None, 10))
+            .unwrap()
+            .iter()
+            .filter(|turn| turn.job == Some(job.id))
+            .all(|turn| turn.status == "interrupted")
+    );
+    assert!(l.log.lock().unwrap().is_empty(), "no provider request may precede the required human resume");
+    assert!(app.with_tracker("shop", |t| t.model_calls().list(None, 10)).unwrap().is_empty());
+    assert!(genie::budget::check(app, "shop", Some("SHOP-1")).unwrap().is_none(), "the committed budget is not exhausted");
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
+    resume_budget_job_after_restart(&l, job.id, server_fault).await;
+}
+
 enum BudgetFault {
     DeletedTask,
     ProjectWrite,
@@ -1693,58 +1792,61 @@ async fn daily_budget_termination(fault: BudgetFault) {
         }
         assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
 
-        // A fresh runtime has no in-memory cancellation/fence state. Its raised
-        // allowance cannot implicitly resume the retained job through the fault.
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut cfg = app.cfg.clone();
-        cfg.port = listener.local_addr().unwrap().port();
-        cfg.budgets.per_day = 10.0;
-        let recovered = App::open(l._dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
-        let router = genie::http::router(recovered.clone());
-        let server = tokio::spawn(async move {
-            axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>()).await.unwrap();
-        });
-        genie::runtime::recover(&recovered).unwrap();
-        genie::runtime::recover(&recovered).unwrap();
-        genie::runtime::tick(&recovered).await.unwrap();
-        if !server_fault {
-            assert!(genie::tasks::resume_execution(&recovered, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
-        }
-        assert_eq!(recovered.with_server(|db| db.job(jobs[0].id)).unwrap().attempts, 0);
-        if server_fault {
-            recovered.with_server(|db| db.conn().execute_batch("DROP TRIGGER fail_budget_pause").map_err(Into::into)).unwrap();
-        } else {
-            recovered.with_tracker("shop", |t| t.conn().execute_batch("DROP TRIGGER fail_budget_pause").map_err(Into::into)).unwrap();
-        }
-        genie::runtime::tick(&recovered).await.unwrap();
-        let paused = recovered.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().unwrap();
-        assert_eq!(paused.reason, "budget");
-        assert!(recovered.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
-        let interactions: Value = reqwest::get(format!("http://127.0.0.1:{}/api/interactions?project=shop", recovered.cfg.port))
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-        assert!(
-            interactions.as_array().unwrap().iter().any(|item| item["kind"] == "execution_pause" && item["task"] == "SHOP-1"),
-            "{interactions}"
-        );
-        genie::tasks::resume_execution(&recovered, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").unwrap();
-        genie::runtime::tick(&recovered).await.unwrap();
-        until("retained last-attempt job completes after persistence recovery and explicit resume", 20, || {
-            recovered.with_server(|db| db.job(jobs[0].id)).unwrap().status.eq("succeeded").then_some(())
-        })
-        .await;
-        let finished = recovered.with_server(|db| db.job(jobs[0].id)).unwrap();
-        assert_eq!(finished.attempts, 1);
-        assert_eq!(finished.output, Some(json!({"ok":true})));
-        assert_eq!(
-            std::fs::read_to_string(recovered.data.join(format!("workspaces/shop/job-{}/retained-budget.txt", jobs[0].id))).unwrap(),
-            "kept\n"
-        );
-        server.abort();
+        resume_budget_job_after_restart(&l, jobs[0].id, server_fault).await;
     }
+}
+
+async fn resume_budget_job_after_restart(l: &Live, job: i64, server_fault: bool) {
+    let app = &l.app;
+    // A fresh runtime has no in-memory cancellation/fence state. Its raised
+    // allowance cannot implicitly resume the retained job through the fault.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = app.cfg.clone();
+    cfg.port = listener.local_addr().unwrap().port();
+    cfg.budgets.per_day = 10.0;
+    cfg.budgets.per_task = 10.0;
+    cfg.model_prices.insert(
+        "fake/executor".into(),
+        genie::config::ModelPrice { input: 1.0, output: 1.0, cache_read: Some(0.0), cache_write: Some(0.0) },
+    );
+    let recovered = App::open(l._dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+    let router = genie::http::router(recovered.clone());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>()).await.unwrap();
+    });
+    genie::runtime::recover(&recovered).unwrap();
+    genie::runtime::recover(&recovered).unwrap();
+    genie::runtime::tick(&recovered).await.unwrap();
+    if !server_fault {
+        assert!(genie::tasks::resume_execution(&recovered, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
+    }
+    assert_eq!(recovered.with_server(|db| db.job(job)).unwrap().attempts, 0);
+    if server_fault {
+        recovered.with_server(|db| db.conn().execute_batch("DROP TRIGGER fail_budget_pause").map_err(Into::into)).unwrap();
+    } else {
+        recovered.with_tracker("shop", |t| t.conn().execute_batch("DROP TRIGGER fail_budget_pause").map_err(Into::into)).unwrap();
+    }
+    genie::runtime::tick(&recovered).await.unwrap();
+    let paused = recovered.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().unwrap();
+    assert_eq!(paused.reason, "budget");
+    assert!(recovered.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+    let interactions: Value =
+        reqwest::get(format!("http://127.0.0.1:{}/api/interactions?project=shop", recovered.cfg.port)).await.unwrap().json().await.unwrap();
+    assert!(
+        interactions.as_array().unwrap().iter().any(|item| item["kind"] == "execution_pause" && item["task"] == "SHOP-1"),
+        "{interactions}"
+    );
+    genie::tasks::resume_execution(&recovered, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").unwrap();
+    genie::runtime::tick(&recovered).await.unwrap();
+    until("retained last-attempt job completes after persistence recovery and explicit resume", 20, || {
+        recovered.with_server(|db| db.job(job)).unwrap().status.eq("succeeded").then_some(())
+    })
+    .await;
+    let finished = recovered.with_server(|db| db.job(job)).unwrap();
+    assert_eq!(finished.attempts, 1);
+    assert_eq!(finished.output, Some(json!({"ok":true})));
+    assert_eq!(std::fs::read_to_string(recovered.data.join(format!("workspaces/shop/job-{}/retained-budget.txt", job))).unwrap(), "kept\n");
+    server.abort();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

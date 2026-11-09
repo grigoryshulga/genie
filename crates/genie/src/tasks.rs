@@ -891,6 +891,20 @@ pub(crate) fn queue_budget_pause(app: &App, project: &str, task: &str, note: &st
     }
 }
 
+/// Every budget stop uses the same durable fence, including admission refusal
+/// before any credit is spent. Stop workers even if applying the pause fails;
+/// intentional interruption must preserve jobs and their failure allowance.
+pub(crate) fn pause_for_budget(app: &App, project: &str, task: &str, note: &str) -> AppResult<()> {
+    let result = queue_budget_pause(app, project, task, note).and_then(|pause| crate::runtime::apply_limit_pause(app, &pause));
+    if result.is_err() {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        if let Err(error) = crate::runtime::halt_scope(app, project, Some(task)) {
+            eprintln!("genie runtime: {project}/{task}: budget interruption pending: {error}");
+        }
+    }
+    result
+}
+
 fn pause_inner(
     app: &App,
     project: &str,

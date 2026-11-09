@@ -786,11 +786,22 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
     match app.blocking(move |app| spec.token(app, &slug, ttl)).await {
         Ok(t) => p.token = t,
         Err(e) => {
-            app.attempts.failed_to_start(key);
+            let interrupted = app.sched.with(|s| s.interrupted.contains(key));
+            if interrupted {
+                app.attempts.clear(key);
+            } else {
+                app.attempts.failed_to_start(key);
+            }
             eprintln!("genie runtime: turn {turn}: {e}");
             let error = e.to_string();
             let recorded = if matches!(key, AgentKey::Request { .. }) { "incoming response could not start".into() } else { error.clone() };
-            let _ = app.blocking(move |app| app.with_server(|db| db.finish_turn(turn, "failed", None, Some(&recorded), None))).await;
+            let _ = app
+                .blocking(move |app| {
+                    app.with_server(|db| {
+                        db.finish_turn(turn, if interrupted { "interrupted" } else { "failed" }, None, Some(&recorded), None)
+                    })
+                })
+                .await;
             let (k, turn) = (key.clone(), p.turn);
             let _ = app
                 .blocking(move |app| {
@@ -1156,7 +1167,7 @@ async fn execute(
         let turn = p.turn;
         let _ = app.blocking(move |app| app.with_server(|db| db.set_turn_pid(turn, pid))).await;
     }
-    let mut group = ProcessGroup(child.id());
+    let group = ProcessGroup(child.id());
     let mut stdout = child.stdout.take();
     let mut stderr = child.stderr.take();
     let read = async {
@@ -1204,7 +1215,9 @@ async fn execute(
             ));
         }
     };
-    group.0 = None;
+    // A successful parent exit does not transfer ownership of its tools. End
+    // their lifetime before logging or releasing this turn's scheduling slot.
+    drop(group);
     let mut log = String::from_utf8_lossy(&out).into_owned();
     let err = String::from_utf8_lossy(&err);
     if !err.trim().is_empty() {
@@ -1216,7 +1229,7 @@ async fn execute(
     Ok((status.map_err(|e| e.to_string())?.code(), tail))
 }
 
-/// An interrupted one-shot must not leave tools running in the background.
+/// A one-shot owns its tools until it ends, on success as well as interruption.
 struct ProcessGroup(Option<u32>);
 impl Drop for ProcessGroup {
     fn drop(&mut self) {

@@ -124,11 +124,7 @@ pub(crate) fn admit_model(app: &App, slug: &str, task: Option<&str>, model: Opti
     if !valid {
         let note = format!("budget: model {} needs valid input, output, cache-read and cache-write prices", model.unwrap_or("unknown"));
         if let Some(task) = task {
-            let _gate = app.execution_gate.lock().map_err(|_| crate::state::AppError::Internal("execution gate poisoned".into()))?;
-            app.with_tracker(slug, |t| {
-                t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), task, "budget", &note)
-            })?;
-            crate::runtime::halt_scope(app, slug, Some(task))?;
+            crate::tasks::pause_for_budget(app, slug, task, &note)?;
         }
         return Err(crate::state::AppError::Conflict(note));
     }
@@ -217,9 +213,7 @@ fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> Ap
                 failure.get_or_insert(error);
             }
         }
-        match crate::tasks::queue_budget_pause(app, slug, &task, &over.explain())
-            .and_then(|pause| crate::runtime::apply_limit_pause(app, &pause))
-        {
+        match crate::tasks::pause_for_budget(app, slug, &task, &over.explain()) {
             Ok(_) | Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => {}
             Err(error) => {
                 failure.get_or_insert(error);
