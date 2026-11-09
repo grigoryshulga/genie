@@ -16,7 +16,26 @@ fn parsed<T: std::str::FromStr<Err = GenieError>>(v: Option<String>) -> Result<O
 }
 
 pub fn register(all: &mut Vec<Entry>) {
-    register!(all, Show, List, Board, Epics, Create, Update, Status, Accept, Comment, Check, Artifact, ArtifactRead, Split, Block, Unblock);
+    register!(
+        all,
+        Show,
+        List,
+        Board,
+        Epics,
+        Create,
+        Update,
+        Status,
+        Accept,
+        Comment,
+        Check,
+        Artifact,
+        ArtifactRead,
+        Split,
+        Block,
+        Unblock,
+        Stop,
+        Resume
+    );
 }
 
 /// Show a task in full: description, criteria, plan, notes, artifacts, comments (default: your task).
@@ -631,3 +650,36 @@ const STATUS_CAPS: &[Capability] = &[
     Capability::StatusApprove,
     Capability::StatusReturn,
 ];
+
+/// Stop background execution while retaining progress; cancellation of a response is separate.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Stop {
+    #[arg(long)]
+    pub task: Option<String>,
+    #[arg(long)]
+    pub note: String,
+}
+impl Op for Stop {
+    const GROUP: &'static str = "task";
+    const NAME: &'static str = "stop";
+    const NEED: Need = Need::Person;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("POST", &format!("/tasks/{}/stop", enc(&cx.task(self.task)?)), Some(json!({"note":self.note}))).await?;
+        Ok(Out::new(v.to_string(), v))
+    }
+}
+/// Explicitly resume retained background work after checking current limits.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Resume {
+    #[arg(long)]
+    pub task: Option<String>,
+}
+impl Op for Resume {
+    const GROUP: &'static str = "task";
+    const NAME: &'static str = "resume";
+    const NEED: Need = Need::Person;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        let v = cx.call("POST", &format!("/tasks/{}/resume", enc(&cx.task(self.task)?)), None).await?;
+        Ok(Out::new(v.to_string(), v))
+    }
+}

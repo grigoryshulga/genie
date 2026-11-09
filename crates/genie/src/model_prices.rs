@@ -77,10 +77,31 @@ pub fn effective(cfg: &Config, fetched: &[(String, ModelPrice)]) -> Prices {
     prices
 }
 
+/// Spending admission preserves provider identity even where the display lookup
+/// accepts another provider's alias. Only an explicitly bare manual tariff is shared.
+fn budget_prices(cfg: &Config, fetched: &[(String, ModelPrice)]) -> Prices {
+    let mut prices: Prices = fetched.iter().cloned().collect();
+    for (model, price) in &mut prices {
+        let bare = model.rsplit_once('/').map_or(model.as_str(), |(_, tail)| tail);
+        if let Some(manual) = cfg.model_prices.get(model).or_else(|| cfg.model_prices.get(bare)) {
+            price.input = manual.input;
+            price.output = manual.output;
+            price.cache_read = manual.cache_read.or(price.cache_read);
+            price.cache_write = manual.cache_write.or(price.cache_write);
+        }
+    }
+    for (model, manual) in &cfg.model_prices {
+        prices.entry(model.clone()).or_insert(*manual);
+    }
+    prices
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct State {
     /// The prices in effect right now (what spend and budgets price with).
     pub prices: Prices,
+    /// Tariffs used for admission, without cross-provider alias inference.
+    pub budget_prices: Prices,
     /// When LiteLLM's prices were last received, `None` if never.
     pub fetched_at: Option<String>,
     /// Why the last fetch failed; `None` after a success.
@@ -91,7 +112,7 @@ impl State {
     pub fn load(cfg: &Config, db: &genie_core::server_db::ServerDb) -> State {
         let (fetched_at, last_error) = db.prices_fetch_state().unwrap_or((None, None));
         let fetched = db.model_prices().unwrap_or_default();
-        State { prices: effective(cfg, &fetched), fetched_at, last_error }
+        State { prices: effective(cfg, &fetched), budget_prices: budget_prices(cfg, &fetched), fetched_at, last_error }
     }
 
     /// What spend and budgets price with.
@@ -184,7 +205,12 @@ pub async fn refresh(app: &App) -> Result<usize, String> {
     let at = genie_core::db::now();
     app.with_server(|db| db.set_model_prices(&fetched, &at)).map_err(|e| e.to_string())?;
     if let Ok(mut state) = app.prices.write() {
-        *state = State { prices: effective(&app.cfg, &fetched), fetched_at: Some(at), last_error: None };
+        *state = State {
+            prices: effective(&app.cfg, &fetched),
+            budget_prices: budget_prices(&app.cfg, &fetched),
+            fetched_at: Some(at),
+            last_error: None,
+        };
     }
     Ok(n)
 }
@@ -229,6 +255,21 @@ mod tests {
         let p = effective(&c, &fetched);
         assert_eq!(p["litellm/deep"].cache_read, Some(0.02));
         assert_eq!(p["litellm/deep"].input, 0.2);
+    }
+
+    #[test]
+    fn financial_admission_never_moves_a_manual_tariff_to_another_provider() {
+        let paid = ModelPrice { input: 2.0, output: 4.0, cache_read: Some(1.0), cache_write: Some(2.0) };
+        let fetched = vec![("litellm/model".into(), paid)];
+        let c = cfg(&[("other-provider/model", 0.0, 0.0, Some(0.0), Some(0.0))]);
+        let p = budget_prices(&c, &fetched);
+        assert_eq!(p["litellm/model"], paid, "a free tariff through another provider cannot erase actual cost");
+        assert_eq!(p["other-provider/model"].input, 0.0);
+        let c = cfg(&[("model", 1.0, 3.0, None, None)]);
+        let p = budget_prices(&c, &fetched);
+        assert_eq!(p["litellm/model"].input, 1.0, "an explicit bare operator override is supported");
+        assert_eq!(p["litellm/model"].cache_read, paid.cache_read);
+        assert!(p.contains_key("model"), "the explicit override is available to other configured providers");
     }
 
     #[test]

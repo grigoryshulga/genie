@@ -108,7 +108,7 @@ struct SchedState {
     running: HashSet<AgentKey>,
     /// Cancellation is kept separate from the durable response state; losing the server
     /// drops these handles, while recovery rebuilds runnable work from the tracker.
-    requests: HashMap<AgentKey, watch::Sender<bool>>,
+    cancels: HashMap<AgentKey, watch::Sender<bool>>,
     /// What the last pass saw waiting for a slot, by kind — the queue the web and
     /// `genie server runtime` show (`waiting`).
     waiting: [usize; 4],
@@ -282,11 +282,129 @@ pub fn recover(app: &App) -> AppResult<()> {
 pub fn cancel_request(app: &App, project: &str, response: &str) {
     let key = AgentKey::Request { project: project.into(), response: response.into() };
     app.sched.with(|s| {
-        if let Some(cancel) = s.requests.get(&key) {
+        if let Some(cancel) = s.cancels.get(&key) {
             let _ = cancel.send(true);
         }
     });
     app.wake_runtime.notify_one();
+}
+
+pub(crate) fn agent_task(app: &App, project: &str, name: &str, team: Option<&str>, job: Option<i64>) -> AppResult<Option<String>> {
+    if let Some(response) = crate::conversations::request_id(name) {
+        return crate::conversations::response_task(app, project, response);
+    }
+    if let Some(task) = genie_core::management::managed_task(name) {
+        return app.with_tracker(project, |t| match t.get(task) {
+            Ok(task) => Ok(Some(task.id)),
+            Err(GenieError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        });
+    }
+    if let Some(team) = team {
+        return app.with_tracker(project, |t| match t.bus().get(team) {
+            Ok(team) => Ok(Some(team.task)),
+            Err(GenieError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        });
+    }
+    if let Some(job) = job {
+        return app.with_server(|db| match db.job(job) {
+            Ok(job) => Ok(job.task),
+            Err(GenieError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        });
+    }
+    Ok(None)
+}
+
+pub(crate) fn key_task(app: &App, key: &AgentKey) -> AppResult<Option<String>> {
+    match key {
+        AgentKey::TaskManager { task, .. } => Ok(Some(task.clone())),
+        AgentKey::Member { project, team, .. } => app.with_tracker(project, |t| Ok(Some(t.bus().get(team)?.task))),
+        AgentKey::Job { job, .. } => app.with_server(|db| Ok(db.job(*job)?.task)),
+        AgentKey::Request { project, response } => crate::conversations::response_task(app, project, response),
+        _ => Ok(None),
+    }
+}
+
+pub(crate) fn active_tasks(app: &App, project: &str) -> AppResult<Vec<String>> {
+    let keys = app.sched.with(|s| s.running.iter().filter(|k| k.project() == project).cloned().collect::<Vec<_>>());
+    let mut tasks = Vec::new();
+    for key in keys {
+        if let Some(task) = key_task(app, &key)? {
+            tasks.push(task);
+        }
+    }
+    tasks.extend(app.sessions.all().into_iter().filter(|s| s.key.project() == project).filter_map(|s| s.task.clone()));
+    tasks.extend(app.with_tracker(project, |t| {
+        let mut tasks = t.bus().list(false)?.into_iter().map(|team| team.task).collect::<Vec<_>>();
+        tasks.extend(t.management().managers()?.into_iter().filter(|m| m.state != "completed").map(|m| m.task));
+        Ok(tasks)
+    })?);
+    tasks.sort();
+    tasks.dedup();
+    Ok(tasks)
+}
+
+fn execution_stamp(app: &App, project: &str, task: Option<&str>) -> AppResult<Option<String>> {
+    task.map(|task| app.with_tracker(project, |t| t.execution().stamp(task))).transpose()
+}
+
+pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
+    let task = key_task(app, key)?;
+    if let Some(task) = &task
+        && app.with_tracker(key.project(), |t| t.execution().blocking(task))?.is_some()
+    {
+        return Ok(false);
+    }
+    if crate::budget::check(app, key.project(), task.as_deref())?.is_some() {
+        crate::budget::enforce(app, key.project(), task.as_deref())?;
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+/// Stop task-scoped processes without discarding teams, mail or artifacts. A caller
+/// persists the execution fence first, so a late startup cannot revive the task.
+pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec<String>> {
+    let index = app.with_tracker(project, |t| crate::spend::TaskIndex::load(t.conn()).map_err(Into::into))?;
+    let covered = |task: Option<&str>| root.is_none_or(|root| task.is_some_and(|task| index.is_under(task, root)));
+    let keys = app.sched.with(|s| s.running.iter().filter(|k| k.project() == project).cloned().collect::<Vec<_>>());
+    let mut report = Vec::new();
+    for key in keys {
+        if covered(key_task(app, &key)?.as_deref()) {
+            app.sched.with(|s| {
+                if let Some(cancel) = s.cancels.get(&key) {
+                    let _ = cancel.send(true);
+                }
+            });
+            let name = match &key {
+                AgentKey::Member { member, .. } => member.clone(),
+                AgentKey::Job { job, .. } => format!("job-{job}"),
+                _ => key.label(),
+            };
+            app.with_server(|db| db.revoke_named_agent_tokens(project, &name))?;
+            report.push(key.label());
+        }
+    }
+    for session in app.sessions.all() {
+        if session.key.project() == project && covered(session.task.as_deref()) {
+            if session.live().state == "working" {
+                note_to_self(
+                    app,
+                    &session.key,
+                    "Execution was paused by the server. After an explicit resume, read current task state and continue retained work; do not repeat completed external actions.",
+                )?;
+            }
+            crate::sessions::halt(app, &session.key, "execution paused");
+            app.with_server(|db| db.revoke_named_agent_tokens(project, &session.name))?;
+            report.push(session.key.label());
+        }
+    }
+    app.wake_runtime.notify_one();
+    report.sort();
+    report.dedup();
+    Ok(report)
 }
 
 /// Does `/proc/<pid>/environ` belong to this project's agent `name`?
@@ -382,6 +500,15 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
     // backs off or was delivered to its live session is not in the queue.
     let mut waiting = [0usize; 4];
     for key in candidates {
+        let check = key.clone();
+        match app.blocking(move |app| runnable(app, &check)).await {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(error) => {
+                eprintln!("genie runtime: {}: cannot admit {}: {error}", key.project(), key.label());
+                continue;
+            }
+        }
         if live && !matches!(key, AgentKey::Job { .. } | AgentKey::Request { .. }) {
             if let Some(d) = crate::sessions::deliver(app, &key).await {
                 next.within(d);
@@ -398,31 +525,30 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
         if app.sched.with(|s| s.running.contains(&key)) {
             continue;
         }
-        if reserve_last && slots.available_permits() <= 1 && !matches!(key, AgentKey::Orchestrator { .. } | AgentKey::Request { .. }) {
-            waiting[kind(&key)] += 1;
-            continue;
-        }
-        let Ok(permit) = slots.clone().try_acquire_owned() else {
-            // No permits at all: this key and every later one that passes its checks wait.
+        let permit = {
+            let _gate = app.slot_gate.lock().unwrap_or_else(|e| e.into_inner());
+            if reserve_last && slots.available_permits() <= 1 && !matches!(key, AgentKey::Orchestrator { .. } | AgentKey::Request { .. }) {
+                None
+            } else {
+                slots.clone().try_acquire_owned().ok()
+            }
+        };
+        let Some(permit) = permit else {
             waiting[kind(&key)] += 1;
             continue;
         };
         let cancel = app.sched.with(|s| {
             s.running.insert(key.clone());
-            if matches!(key, AgentKey::Request { .. }) {
-                let (tx, rx) = watch::channel(false);
-                s.requests.insert(key.clone(), tx);
-                Some(rx)
-            } else {
-                None
-            }
+            let (tx, rx) = watch::channel(false);
+            s.cancels.insert(key.clone(), tx);
+            Some(rx)
         });
         let app = app.clone();
         tokio::spawn(async move {
             run_turn(&app, &key, cancel).await;
             app.sched.with(|s| {
                 s.running.remove(&key);
-                s.requests.remove(&key);
+                s.cancels.remove(&key);
             });
             if matches!(key, AgentKey::Request { .. }) {
                 app.attempts.clear(&key);
@@ -472,6 +598,16 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
             let error = e.to_string();
             let recorded = if matches!(key, AgentKey::Request { .. }) { "incoming response could not start".into() } else { error.clone() };
             let _ = app.blocking(move |app| app.with_server(|db| db.finish_turn(turn, "failed", None, Some(&recorded), None))).await;
+            let (k, turn) = (key.clone(), p.turn);
+            let _ = app
+                .blocking(move |app| {
+                    app.with_tracker(k.project(), |t| t.bus().release_lease(turn))?;
+                    if let AgentKey::Job { job, .. } = k {
+                        app.with_server(|db| db.interrupt_job(job))?;
+                    }
+                    Ok(())
+                })
+                .await;
             fail_request(app, key, &error).await;
             return;
         }
@@ -481,6 +617,12 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
         Ok((code, log)) => (code == Some(0), code, (code != Some(0)).then(|| format!("exit code {code:?}")), log),
         Err(e) => (false, None, Some(e), String::new()),
     };
+    if error.as_deref().is_some_and(|e| e.starts_with("run limit reached"))
+        && let Some(task) = p.spec.task.clone()
+    {
+        let (slug, note) = (key.project().to_string(), error.clone().unwrap_or_default());
+        let _ = app.blocking(move |app| crate::tasks::pause_for_limit(app, &slug, &task, "time", &note)).await;
+    }
     let k = key.clone();
     let res = app.blocking(move |app| finish(app, &k, &p, ok, code, error.as_deref(), &log)).await;
     if let Err(e) = res {
@@ -572,6 +714,9 @@ fn orchestrator_role(agents: &AgentConfig) -> AppResult<RoleDef> {
 }
 
 fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
+    if !runnable(app, key)? {
+        return Ok(None);
+    }
     let project = project_of(app, key.project())?;
     let label = key.label();
     match key {
@@ -688,6 +833,7 @@ fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Pr
         name: format!("job-{}", j.id),
         team: None,
         task: j.task.clone(),
+        execution_stamp: execution_stamp(app, &project.slug, j.task.as_deref())?,
         job: Some(j.id),
         kit: kit(app, &agents, &project.slug, &def, place.files, &place.cwd),
         cwd: place.cwd,
@@ -782,11 +928,14 @@ async fn execute(
     let (mut cmd, dir) = agent_process(app, key, &p.spec, Mode::Turn { message: &p.message }, &p.token, &p.llm).await?;
     let program = cmd.as_std().get_program().to_string_lossy().into_owned();
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    #[cfg(unix)]
+    cmd.process_group(0);
     let mut child = cmd.spawn().map_err(|e| format!("cannot start {program}: {e}"))?;
     if let Some(pid) = child.id() {
         let turn = p.turn;
         let _ = app.blocking(move |app| app.with_server(|db| db.set_turn_pid(turn, pid))).await;
     }
+    let mut group = ProcessGroup(child.id());
     let mut stdout = child.stdout.take();
     let mut stderr = child.stderr.take();
     let read = async {
@@ -799,7 +948,12 @@ async fn execute(
         }
         (out, err)
     };
-    let timeout = Duration::from_secs(app.cfg.runtime.turn_timeout_secs.max(1));
+    let hard = app.cfg.runtime.run_timeout_secs;
+    let timeout = Duration::from_secs(if hard > 0 {
+        hard.min(app.cfg.runtime.turn_timeout_secs.max(1))
+    } else {
+        app.cfg.runtime.turn_timeout_secs.max(1)
+    });
     let run = tokio::time::timeout(timeout, async {
         let (out, err) = read.await;
         let status = child.wait().await;
@@ -817,12 +971,19 @@ async fn execute(
     };
     let result = tokio::select! {
         result = run => result,
-        _ = cancelled => return Err("response cancelled".into()),
+        _ = cancelled => return Err("execution cancelled".into()),
     };
     let (status, out, err) = match result {
         Ok(v) => v,
-        Err(_) => return Err(format!("turn timed out after {}s", timeout.as_secs())),
+        Err(_) => {
+            return Err(format!(
+                "{} after {}s",
+                if hard > 0 && hard <= app.cfg.runtime.turn_timeout_secs.max(1) { "run limit reached" } else { "turn timed out" },
+                timeout.as_secs()
+            ));
+        }
     };
+    group.0 = None;
     let mut log = String::from_utf8_lossy(&out).into_owned();
     let err = String::from_utf8_lossy(&err);
     if !err.trim().is_empty() {
@@ -832,6 +993,22 @@ async fn execute(
     let _ = tokio::fs::write(dir.join(format!("turn-{}.log", p.turn)), &log).await;
     let tail: String = log.chars().rev().take(4000).collect::<Vec<_>>().into_iter().rev().collect();
     Ok((status.map_err(|e| e.to_string())?.code(), tail))
+}
+
+/// An interrupted one-shot must not leave tools running in the background.
+struct ProcessGroup(Option<u32>);
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.0 {
+            kill_process_group(pid);
+        }
+    }
+}
+
+pub(crate) fn kill_process_group(pid: u32) {
+    #[cfg(unix)]
+    let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).stderr(Stdio::null()).status();
 }
 
 /// How an agent process runs: one turn on its mail, or a live session fed over RPC.
@@ -1366,6 +1543,7 @@ pub(crate) struct AgentSpec {
     pub name: String,
     pub team: Option<String>,
     pub task: Option<String>,
+    pub execution_stamp: Option<String>,
     pub job: Option<i64>,
     pub cwd: PathBuf,
     pub session_id: String,
@@ -1391,14 +1569,33 @@ impl AgentSpec {
 
     /// The agent's token, bound to the project and to what it is (role, name, team or job).
     pub fn token(&self, app: &App, project: &str, ttl: chrono::Duration) -> AppResult<String> {
-        app.with_server(|db| {
-            if self.role_id == "intake" {
-                // A recovered response keeps its name, but a previous process must not
-                // keep the authority to act during the replacement attempt.
-                db.revoke_named_agent_tokens(project, &self.name)?;
-            }
-            db.create_role_token(project, self.role, Some(&self.role_id), &self.name, self.team.as_deref(), self.job, ttl)
+        crate::budget::admit_model(app, project, self.task.as_deref(), self.model.as_deref())?;
+        self.with_current_execution(app, project, || {
+            app.with_server(|db| {
+                if self.role_id == "intake" {
+                    db.revoke_named_agent_tokens(project, &self.name)?;
+                }
+                db.create_role_token(project, self.role, Some(&self.role_id), &self.name, self.team.as_deref(), self.job, ttl)
+            })
         })
+    }
+
+    /// Admission and process registration both serialize with stop/resume. A
+    /// process may finish starting after its token was issued and then revoked.
+    pub(crate) fn with_current_execution<T>(&self, app: &App, project: &str, action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        if let Some(over) = crate::budget::check(app, project, self.task.as_deref())? {
+            return Err(AppError::Conflict(over.explain()));
+        }
+        app.with_tracker(project, |t| {
+            if let Some(task) = &self.task {
+                let current = t.execution().stamp(task)?;
+                if self.execution_stamp.as_ref() != Some(&current) {
+                    return Err(GenieError::Denied("execution changed while this agent was starting".into()));
+                }
+            }
+            Ok(action())
+        })?
     }
 }
 
@@ -1415,6 +1612,7 @@ fn orchestrator_spec(app: &App, project: &Project, live: bool, initiator: Option
         name: ORCHESTRATOR.into(),
         team: None,
         task: None,
+        execution_stamp: None,
         job: None,
         kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
         cwd,
@@ -1456,13 +1654,16 @@ fn request_spec(app: &App, project: &Project, response: &str, turn: i64, initiat
         project.autonomy,
         project.integration.trim(),
     ));
+    let task = crate::conversations::response_task(app, &project.slug, response)?;
+    let stamp = execution_stamp(app, &project.slug, task.as_deref())?;
     Ok(AgentSpec {
         role: Role::Analyst,
         role_id: def.id.clone(),
         readonly: "edit,write".into(),
         name,
         team: None,
-        task: None,
+        task,
+        execution_stamp: stamp,
         job: None,
         kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
         cwd,
@@ -1494,6 +1695,7 @@ fn task_manager_spec(app: &App, project: &Project, task: &str, live: bool) -> Ap
         name,
         team: None,
         task: Some(task.into()),
+        execution_stamp: execution_stamp(app, &project.slug, Some(task))?,
         job: None,
         kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
         cwd,
@@ -1531,6 +1733,7 @@ fn member_spec(app: &App, project: &Project, t: &team::Team, m: &team::Member, l
         name: m.name.clone(),
         team: Some(t.id.clone()),
         task: Some(t.task.clone()),
+        execution_stamp: execution_stamp(app, &project.slug, Some(&t.task))?,
         job: None,
         kit: kit(app, &agents, &project.slug, &def, def.files, &cwd),
         cwd,
@@ -1650,6 +1853,9 @@ pub(crate) fn console_spec(app: &App, slug: &str, user: &str) -> AppResult<Conso
 /// stopped, member removed or in error, orchestrator in manual mode unless chat
 /// wants it, at a person's console, a job).
 pub(crate) fn session_spec(app: &App, key: &AgentKey) -> AppResult<Option<AgentSpec>> {
+    if !runnable(app, key)? {
+        return Ok(None);
+    }
     let project = project_of(app, key.project())?;
     match key {
         AgentKey::TaskManager { task, .. } => task_manager_spec(app, &project, task, true),
@@ -1741,6 +1947,12 @@ fn expand_group(g: &[String], vars: &HashMap<&str, String>, lists: &HashMap<&str
 /// A turn ended: close its row, its token and its mail lease (or job), then record how it went.
 fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, error: Option<&str>, log: &str) -> AppResult<()> {
     let slug = key.project();
+    let stopped = match (&p.spec.task, &p.spec.execution_stamp) {
+        (Some(task), Some(stamp)) => {
+            app.with_tracker(slug, |t| Ok(t.execution().blocking(task)?.is_some() || t.execution().stamp(task)? != *stamp))?
+        }
+        _ => false,
+    };
     let mut ok = ok;
     let mut error = error.map(str::to_owned);
     if let AgentKey::Request { response, .. } = key {
@@ -1757,7 +1969,21 @@ fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, 
     let private = matches!(key, AgentKey::Request { .. });
     let public_error = if private { (!ok).then_some("incoming response failed; see its private receipt") } else { error };
     let public_log = (!private).then_some(log);
-    app.with_server(|db| db.finish_turn(p.turn, if ok { "succeeded" } else { "failed" }, code.map(i64::from), public_error, public_log))?;
+    app.with_server(|db| {
+        db.finish_turn(
+            p.turn,
+            if stopped {
+                "interrupted"
+            } else if ok {
+                "succeeded"
+            } else {
+                "failed"
+            },
+            code.map(i64::from),
+            public_error,
+            public_log,
+        )
+    })?;
     app.with_server(|db| db.revoke_token(&p.token))?;
     match key {
         AgentKey::Request { .. } => {}
@@ -1766,13 +1992,23 @@ fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, 
             let ok = ok && has_output;
             let err = if !has_output && error.is_none() { Some("the agent finished without `genie job output`") } else { error };
             let max_attempts = i64::from(app.cfg.runtime.max_attempts.max(1));
-            app.with_server(|db| db.finish_job(*job, ok, err, max_attempts))?;
+            if stopped {
+                app.with_server(|db| db.interrupt_job(*job))?;
+            } else {
+                app.with_server(|db| db.finish_job(*job, ok, err, max_attempts))?;
+            }
         }
         AgentKey::Orchestrator { .. } | AgentKey::TaskManager { .. } | AgentKey::Member { .. } => {
             app.with_tracker(slug, |t| if ok { t.bus().complete_lease(p.turn) } else { t.bus().release_lease(p.turn) })?;
         }
     }
-    let outcome = if ok { Outcome::Ran } else { Outcome::Failed { error: error.unwrap_or("error"), log } };
+    let outcome = if stopped {
+        Outcome::Stopped
+    } else if ok {
+        Outcome::Ran
+    } else {
+        Outcome::Failed { error: error.unwrap_or("error"), log }
+    };
     crate::outcome::record(app, key, p.spec.task.as_deref(), outcome);
     Ok(())
 }
@@ -2105,7 +2341,10 @@ pub(crate) struct Roster {
 /// The task a team is asked for, refused when no team may take it: epics are
 /// split into tasks first and closed tasks are done.
 fn spawnable_task(app: &App, slug: &str, req: &SpawnRequest) -> AppResult<Task> {
-    let task = app.with_tracker(slug, |t| t.get(&req.task))?;
+    let task = app.with_tracker(slug, |t| {
+        t.execution().ensure_running(&req.task)?;
+        t.get(&req.task)
+    })?;
     if task.task_type == genie_core::TaskType::Epic {
         return Err(GenieError::invalid("epics are not handed to teams; split it into tasks").into());
     }
@@ -2205,31 +2444,34 @@ fn checked_roles(
         ))
         .into());
     }
-    if let Some(team) = app.with_tracker(slug, |t| t.bus().active_team_of(&ctx.task.id))? {
-        return Err(GenieError::invalid(format!("{} already has an active team {team}", ctx.task.id)).into());
-    }
-    let active = app.with_tracker(slug, |t| t.bus().active_count())?;
-    if active as usize >= limits.max_active_teams {
-        return Err(
-            GenieError::invalid(format!("limit: at most {} active teams per project; stop one first", limits.max_active_teams)).into()
-        );
-    }
-    if limits.max_active_teams_per_epic > 0
-        && let Some(epic) = &ctx.task.parent
-    {
-        let in_epic = app.with_tracker(slug, |t| t.bus().active_count_in_epic(epic))?;
-        if in_epic as usize >= limits.max_active_teams_per_epic {
-            return Err(GenieError::invalid(format!(
-                "limit: at most {} active teams per epic ({epic}); {} stays in its status until one of them stops",
-                limits.max_active_teams_per_epic, ctx.task.id
-            ))
-            .into());
-        }
-    }
+    app.with_tracker(slug, |t| check_team_capacity(t, limits, ctx.task))?;
     if let Some(over) = crate::budget::check(app, slug, Some(&ctx.task.id))? {
         return Err(GenieError::invalid(over.explain()).into());
     }
     Ok(roles)
+}
+
+fn check_team_capacity(t: &genie_core::Tracker, limits: &crate::config::Limits, task: &Task) -> genie_core::Result<()> {
+    t.execution().ensure_running(&task.id)?;
+    if let Some(team) = t.bus().active_team_of(&task.id)? {
+        return Err(GenieError::invalid(format!("{} already has an active team {team}", task.id)));
+    }
+    let active = t.bus().active_count()?;
+    if active as usize >= limits.max_active_teams {
+        return Err(GenieError::invalid(format!("limit: at most {} active teams per project; stop one first", limits.max_active_teams)));
+    }
+    if limits.max_active_teams_per_epic > 0
+        && let Some(epic) = &task.parent
+    {
+        let in_epic = t.bus().active_count_in_epic(epic)?;
+        if in_epic as usize >= limits.max_active_teams_per_epic {
+            return Err(GenieError::invalid(format!(
+                "limit: at most {} active teams per epic ({epic}); {} stays in its status until one of them stops",
+                limits.max_active_teams_per_epic, task.id
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Where the team works: a clone of every repository on the task's branch when
@@ -2455,6 +2697,9 @@ pub fn spawn_team(app: &App, slug: &str, mut req: SpawnRequest) -> AppResult<gen
     let system = Actor::new(req.by.name.clone(), if req.by.role == Role::Human { Role::Human } else { Role::Orchestrator });
     let created = app.with_tracker(slug, |t| {
         t.tx(|| {
+            // The earlier checks preceded workspace/decision preparation. A
+            // simultaneous launch or resume may have consumed the last slot.
+            check_team_capacity(t, &app.cfg.limits, &t.get(&task.id)?)?;
             let team = t.bus().create(
                 &req.by.name,
                 req.by.role.as_str(),
@@ -3118,6 +3363,72 @@ pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppRes
 mod tests {
     use super::*;
 
+    fn incoming(app: &App, principal: &str) -> String {
+        app.with_tracker("shop", |t| {
+            t.conversations().submit(genie_core::conversations::Submission {
+                principal: principal.into(),
+                initiator: Some(principal.into()),
+                conversation_id: None,
+                previous_response_id: None,
+                input: vec![genie_core::conversations::Message { role: "user".into(), content: "Prepare work".into() }],
+                idempotency_key: None,
+                fingerprint: "test".into(),
+            })
+        })
+        .unwrap()
+        .id
+    }
+
+    #[test]
+    fn a_prepared_process_cannot_register_after_stop_and_resume() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("agents")).unwrap();
+        std::fs::write(dir.path().join("agents/project-manager.md"), "---\nmodel: fake/project\n---\n").unwrap();
+        let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+        cfg.runtime.enabled = false;
+        let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+        app.create_project("shop", "Shop", None, None, None).unwrap();
+        let project = app.with_server(|db| db.project("shop")).unwrap();
+        let task = app
+            .with_tracker("shop", |t| {
+                t.create(
+                    &Actor::new("owner", Role::Human),
+                    genie_core::CreateInput { title: "Delayed startup".into(), ..Default::default() },
+                )
+            })
+            .unwrap();
+        let response = incoming(&app, "owner");
+        let mut prepared = request_spec(&app, &project, &response, 1, Some("owner".into())).unwrap();
+        prepared.task = Some(task.id.clone());
+        prepared.execution_stamp = execution_stamp(&app, "shop", Some(&task.id)).unwrap();
+        let token = prepared.token(&app, "shop", chrono::Duration::hours(1)).unwrap();
+        // The harness is starting after token issuance; its registration must
+        // still observe a stop/resume even when execution is runnable again.
+        let caller = crate::tasks::Caller::person("shop", "owner");
+        crate::tasks::pause_execution(&app, &caller, &task.id, "owner", "Stop delayed startup").unwrap();
+        crate::tasks::resume_execution(&app, &caller, &task.id).unwrap();
+        let registered = std::cell::Cell::new(false);
+        assert!(
+            prepared
+                .with_current_execution(&app, "shop", || {
+                    registered.set(true);
+                    Ok(())
+                })
+                .is_err()
+        );
+        assert!(!registered.get());
+        assert!(prepared.token(&app, "shop", chrono::Duration::hours(1)).is_err());
+        app.with_server(|db| db.revoke_token(&token)).unwrap();
+        prepared.execution_stamp = execution_stamp(&app, "shop", Some(&task.id)).unwrap();
+        prepared
+            .with_current_execution(&app, "shop", || {
+                registered.set(true);
+                Ok(())
+            })
+            .unwrap();
+        assert!(registered.get(), "a newly prepared process can register");
+    }
+
     #[test]
     fn incoming_agents_have_private_workspaces_and_an_unprivileged_project_context() {
         let dir = tempfile::tempdir().unwrap();
@@ -3128,9 +3439,11 @@ mod tests {
         let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
         app.create_project("shop", "Shop", None, None, None).unwrap();
         let project = app.with_server(|db| db.project("shop")).unwrap();
-        let first = request_spec(&app, &project, "resp_first", 1, Some("alice".into())).unwrap();
-        let other = request_spec(&app, &project, "resp_other", 2, Some("bob".into())).unwrap();
-        let retry = request_spec(&app, &project, "resp_first", 3, Some("alice".into())).unwrap();
+        let first_id = incoming(&app, "alice");
+        let other_id = incoming(&app, "bob");
+        let first = request_spec(&app, &project, &first_id, 1, Some("alice".into())).unwrap();
+        let other = request_spec(&app, &project, &other_id, 2, Some("bob".into())).unwrap();
+        let retry = request_spec(&app, &project, &first_id, 3, Some("alice".into())).unwrap();
         assert_eq!(first.role, Role::Analyst);
         assert_eq!(first.role_id, "intake");
         assert_eq!(first.model.as_deref(), Some("fake/project"));
@@ -3148,12 +3461,12 @@ mod tests {
         assert_eq!(first_sessions, agent_dir(&app, &first_key).join("sessions"));
         assert_eq!(first.readonly, "edit,write");
         assert!(first.prompt.contains("Project `shop`"));
-        assert!(first.prompt.contains("genie conversation reply resp_first"));
-        assert!(!first.prompt.contains("resp_other"));
+        assert!(first.prompt.contains(&format!("genie conversation reply {first_id}")));
+        assert!(!first.prompt.contains(&other_id));
         assert!(!first.prompt.contains("genie job output"));
         assert!(!first.prompt.contains("genie mail send"));
         assert!(!first.prompt.contains("genie team spawn"));
-        assert_eq!(AgentKey::mailbox("shop", &first.name), AgentKey::Request { project: "shop".into(), response: "resp_first".into() });
+        assert_eq!(AgentKey::mailbox("shop", &first.name), AgentKey::Request { project: "shop".into(), response: first_id });
     }
 
     #[test]

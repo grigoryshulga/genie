@@ -27,6 +27,8 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/tasks", get(list).post(create))
         .route("/tasks/{id}", get(show).patch(update).delete(delete_task))
         .route("/tasks/{id}/status", post(status))
+        .route("/tasks/{id}/stop", post(stop_execution))
+        .route("/tasks/{id}/resume", post(resume_execution))
         .route("/tasks/{id}/comments", post(comment))
         .route("/tasks/{id}/acceptance/{n}", post(check))
         .route("/tasks/{id}/artifacts", post(add_artifact))
@@ -133,8 +135,10 @@ async fn list(State(app): State<Arc<App>>, ctx: Ctx, Query(q): Query<ListQuery>)
 
 async fn show(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
-    let (task, epic) = tracker(&app, &access, move |t| Ok((t.get(&id)?, t.epic_context(&id)?))).await?;
+    let (task, epic, execution) =
+        tracker(&app, &access, move |t| Ok((t.get(&id)?, t.epic_context(&id)?, t.execution().blocking(&id)?))).await?;
     let mut v = serde_json::to_value(task).unwrap_or_default();
+    v["execution"] = json!(execution);
     if let Some(e) = epic.epic {
         v["epic"] = json!({ "id": e.id, "title": e.title, "description": e.description, "artifacts": e.artifacts });
     }
@@ -390,4 +394,20 @@ async fn usage(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>) ->
         "spend": crate::spend::Spend::of(&prices, &rows),
         "tasks": crate::spend::by_task(&prices, &rows, &tasks, usize::MAX),
     })))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StopBody {
+    note: String,
+}
+async fn stop_execution(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Body(b): Body<StopBody>) -> ApiResult<Json<Value>> {
+    let a = ctx.access(&app, None).await?;
+    a.write()?;
+    Ok(Json(app.blocking(move |app| crate::tasks::pause_execution(app, &a.caller(), &id, "owner", &b.note)).await?))
+}
+async fn resume_execution(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let a = ctx.access(&app, None).await?;
+    a.write()?;
+    Ok(Json(app.blocking(move |app| crate::tasks::resume_execution(app, &a.caller(), &id)).await?))
 }

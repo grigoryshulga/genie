@@ -350,7 +350,7 @@ async fn usage(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<UsageBody>) 
         } else if let Some(job) = access.agent_job {
             (format!("job/{job}"), app.with_server(|db| db.job(job)).ok().and_then(|j| j.task))
         } else {
-            (access.actor.name.clone(), None)
+            (access.actor.name.clone(), crate::runtime::agent_task(app, slug, &access.actor.name, None, None)?)
         };
         app.with_tracker(slug, |t| {
             for r in b.reports.iter().filter(|r| r.tokens.total() > 0) {

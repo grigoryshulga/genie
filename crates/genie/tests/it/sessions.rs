@@ -1198,3 +1198,96 @@ async fn a_manual_manager_interrupted_by_a_restart_finishes_its_chat_answer() {
     eprintln!("latency: a manual manager resumed its chat answer {:?} after the restart", req.at - restarted);
     assert_eq!(req.count("CHAT-QUESTION"), 1, "the question is in the resumed conversation once, not injected again");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hard_run_limit_pauses_productive_work_and_explicit_resume_keeps_progress() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(
+        pi,
+        |cfg| {
+            cfg.runtime.turn_timeout_secs = 30;
+            cfg.runtime.run_timeout_secs = 3;
+        },
+        clock.clone(),
+    )
+    .await;
+    let app = &l.app;
+    mail(app, "anna", "human", "bender", "RUN: echo $BASHPID > tool.pid; echo kept > partial.txt; sleep 120", None);
+    until("long tool started", 20, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
+    let s = app.sessions.get(&member("bender")).unwrap();
+    let work = l._dir.path().join("work");
+    let tool_pid = until("owned tool's host PID", 10, || {
+        let inside = std::fs::read_to_string(work.join("tool.pid")).ok()?;
+        // bubblewrap uses a PID namespace: the shell's BASHPID is not its
+        // host PID. Match the namespace PID and this test's unique workspace.
+        std::fs::read_dir("/proc").ok()?.flatten().find_map(|entry| {
+            let path = entry.path();
+            if std::fs::read_link(path.join("cwd")).ok()? != work {
+                return None;
+            }
+            let status = std::fs::read_to_string(path.join("status")).ok()?;
+            let pids = status.lines().find_map(|line| line.strip_prefix("NSpid:"))?;
+            (pids.split_whitespace().last()? == inside.trim()).then(|| entry.file_name().to_string_lossy().into_owned())
+        })
+    })
+    .await;
+    clock.advance(Duration::from_millis(2999));
+    // This is recent activity, so the silence watchdog cannot justify the stop.
+    assert!(s.request(json!({"type":"get_state"}), Duration::from_secs(5)).await.is_some());
+    genie::runtime::tick(app).await.unwrap();
+    assert!(app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_none());
+    clock.advance(Duration::from_millis(1));
+    genie::runtime::tick(app).await.unwrap();
+    until("hard deadline stopped session", 10, || app.sessions.get(&member("bender")).is_none().then_some(())).await;
+    until("owned shell tool stopped", 5, || {
+        let running = std::fs::read_to_string(format!("/proc/{tool_pid}/stat"))
+            .is_ok_and(|stat| !stat.split(") ").nth(1).is_some_and(|tail| tail.starts_with('Z')));
+        (!running).then_some(())
+    })
+    .await;
+    let paused = app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().unwrap();
+    assert_eq!(paused.reason, "time");
+    assert_eq!(std::fs::read_to_string(l._dir.path().join("work/partial.txt")).unwrap(), "kept\n");
+    until("interrupted turn recorded", 10, || {
+        app.with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10)).unwrap().iter().any(|t| t.status == "interrupted").then_some(())
+    })
+    .await;
+    genie::runtime::tick(app).await.unwrap();
+    assert!(app.sessions.get(&member("bender")).is_none(), "a pending continuation cannot clear the fence");
+    genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    until("explicit resume starts a fresh process", 20, || app.sessions.get(&member("bender")).filter(|next| next.pid != s.pid)).await;
+    genie::sessions::stop_all(app);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sessions_share_active_run_capacity_and_idle_sessions_release_it() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let l = live(pi, |cfg| {
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.max_sessions = 4;
+    })
+    .await;
+    let app = &l.app;
+    mail(app, "anna", "human", "bender", "RUN: sleep 120", None);
+    until("first active session", 20, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
+    mail(app, "anna", "human", "yoda", "Wait for capacity", None);
+    genie::runtime::tick(app).await.unwrap();
+    assert_eq!(app.slots.available_permits(), 0);
+    assert!(
+        app.sessions.get(&member("yoda")).is_none_or(|s| s.live().runs == 0),
+        "a second process cannot start a model run without a slot"
+    );
+    genie::sessions::halt(app, &member("bender"), "test frees capacity");
+    until("next session starts", 20, || app.sessions.get(&member("yoda")).filter(|s| s.live().runs > 0)).await;
+    until("settled session returns slot", 20, || (app.slots.available_permits() == 1).then_some(())).await;
+    assert!(app.sessions.get(&member("yoda")).is_some(), "an idle warm process does not consume active-run capacity");
+    genie::sessions::stop_all(app);
+}

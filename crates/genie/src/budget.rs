@@ -1,8 +1,8 @@
 //! Budgets for what agents' work costs (`budgets` in the configuration): one task, one
-//! epic, one day of a project. Tokens are priced as everywhere else (`modelPrices`), so a
-//! model without a price is not counted. When a budget is used up the teams it covers
-//! stop (`budget`), people are told once, and no new team starts for it until the limit is
-//! raised in `config.json` (and the server restarted) or the work moves on.
+//! epic, one day of a project. Enabled budgets fail closed on unknown prices and
+//! pause affected execution without discarding its teams or progress. A person
+//! explicitly resumes it after correcting the limit or tariff. Thresholds use
+//! reported usage; per-request financial reservations are not implemented here.
 
 use genie_core::usage::usage_since;
 
@@ -41,10 +41,18 @@ pub struct Exceeded {
     pub scope: Scope,
     pub spent: f64,
     pub limit: f64,
+    pub unpriced_tokens: u64,
 }
 
 impl Exceeded {
     pub fn explain(&self) -> String {
+        if self.unpriced_tokens > 0 {
+            return format!(
+                "budget: {} has {} tokens without valid prices; configure complete model/cache tariffs before resuming",
+                self.scope.words(),
+                self.unpriced_tokens
+            );
+        }
         format!(
             "budget: the spend of {} is ${:.2}, the limit is ${:.2} (`budgets` in config.json; restart the server after raising it)",
             self.scope.words(),
@@ -54,11 +62,65 @@ impl Exceeded {
     }
 }
 
-fn dollars(app: &App, rows: &[genie_core::usage::UsageRow]) -> f64 {
-    // A poisoned lock (a writer panicked) falls back to the manual prices rather
-    // than skipping the budget check.
-    let prices = app.prices().unwrap_or_else(|_| app.cfg.model_prices.clone());
-    Spend::of(&prices, rows).cost
+fn budget_price<'a>(prices: &'a crate::spend::Prices, model: &str) -> Option<&'a crate::config::ModelPrice> {
+    // A tariff from another provider with the same model name is not authority
+    // for spending. An explicit unqualified operator tariff remains supported.
+    prices.get(model).or_else(|| prices.get(model.rsplit_once('/').map_or(model, |(_, tail)| tail)))
+}
+
+fn spend(app: &App, rows: &[genie_core::usage::UsageRow]) -> Spend {
+    let prices = app.budget_prices().unwrap_or_else(|_| app.cfg.model_prices.clone());
+    let mut spent = Spend::default();
+    for row in rows {
+        match budget_price(&prices, &row.model) {
+            Some(price)
+                if [Some(price.input), Some(price.output), price.cache_read, price.cache_write]
+                    .into_iter()
+                    .flatten()
+                    .all(|v| v.is_finite() && v >= 0.0) =>
+            {
+                let (cost, unpriced) = price.split(&row.tokens);
+                spent.cost += cost;
+                spent.unpriced_tokens = spent.unpriced_tokens.saturating_add(unpriced);
+            }
+            _ => spent.unpriced_tokens = spent.unpriced_tokens.saturating_add(row.tokens.total().max(1)),
+        }
+    }
+    // Display rounding must never create extra budget headroom.
+    spent
+}
+
+fn exceeded(scope: Scope, spent: Spend, limit: f64) -> Option<Exceeded> {
+    (spent.unpriced_tokens > 0 || spent.cost >= limit).then_some(Exceeded {
+        scope,
+        spent: spent.cost,
+        limit,
+        unpriced_tokens: spent.unpriced_tokens,
+    })
+}
+
+/// Every enabled scope needs usable prices before an agent starts, not only after usage.
+pub(crate) fn admit_model(app: &App, slug: &str, task: Option<&str>, model: Option<&str>) -> AppResult<()> {
+    let b = app.cfg.budgets;
+    if b.per_task <= 0.0 && b.per_epic <= 0.0 && b.per_day <= 0.0 {
+        return Ok(());
+    }
+    let prices = app.budget_prices()?;
+    let valid = model.and_then(|m| budget_price(&prices, m)).is_some_and(|p| {
+        [Some(p.input), Some(p.output), p.cache_read, p.cache_write].into_iter().all(|v| v.is_some_and(|v| v.is_finite() && v >= 0.0))
+    });
+    if !valid {
+        let note = format!("budget: model {} needs valid input, output, cache-read and cache-write prices", model.unwrap_or("unknown"));
+        if let Some(task) = task {
+            let _gate = app.execution_gate.lock().map_err(|_| crate::state::AppError::Internal("execution gate poisoned".into()))?;
+            app.with_tracker(slug, |t| {
+                t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), task, "budget", &note)
+            })?;
+            crate::runtime::halt_scope(app, slug, Some(task))?;
+        }
+        return Err(crate::state::AppError::Conflict(note));
+    }
+    Ok(())
 }
 
 /// The first used-up budget that covers work on `task` (its task, its epic, the day), if any.
@@ -70,27 +132,30 @@ pub fn check(app: &App, slug: &str, task: Option<&str>) -> AppResult<Option<Exce
     app.with_tracker(slug, |t| {
         if let Some(task) = task {
             if b.per_task > 0.0 {
-                let spent = dollars(app, &t.usage_of_task(task)?);
-                if spent >= b.per_task {
-                    return Ok(Some(Exceeded { scope: Scope::Task(task.into()), spent, limit: b.per_task }));
+                let index = TaskIndex::load(t.conn())?;
+                let mut cursor = Some(t.get(task)?.id);
+                for _ in 0..32 {
+                    let Some(id) = cursor else { break };
+                    if index.0.get(&id).is_some_and(|row| row.1 != "epic")
+                        && let Some(over) = exceeded(Scope::Task(id.clone()), spend(app, &t.usage_of_task(&id)?), b.per_task)
+                    {
+                        return Ok(Some(over));
+                    }
+                    cursor = index.0.get(&id).and_then(|row| row.2.clone());
                 }
             }
             if b.per_epic > 0.0
                 && let Some(epic) = TaskIndex::load(t.conn())?.epic_of(task)
-                && epic != task
+                && let Some(over) = exceeded(Scope::Epic(epic.clone()), spend(app, &t.usage_of_task(&epic)?), b.per_epic)
             {
-                let spent = dollars(app, &t.usage_of_task(&epic)?);
-                if spent >= b.per_epic {
-                    return Ok(Some(Exceeded { scope: Scope::Epic(epic), spent, limit: b.per_epic }));
-                }
+                return Ok(Some(over));
             }
         }
         if b.per_day > 0.0 {
             let today = genie_core::db::now()[..10].to_string();
             let rows: Vec<_> = usage_since(t.conn(), &today)?.into_iter().filter(|r| r.day == today).collect();
-            let spent = dollars(app, &rows);
-            if spent >= b.per_day {
-                return Ok(Some(Exceeded { scope: Scope::Day, spent, limit: b.per_day }));
+            if let Some(over) = exceeded(Scope::Day, spend(app, &rows), b.per_day) {
+                return Ok(Some(over));
             }
         }
         Ok(None)
@@ -100,23 +165,24 @@ pub fn check(app: &App, slug: &str, task: Option<&str>) -> AppResult<Option<Exce
 /// After a report of usage on `task`: when a budget is used up, stop the teams it covers and tell people once.
 pub fn enforce(app: &App, slug: &str, task: Option<&str>) -> AppResult<()> {
     let Some(over) = check(app, slug, task)? else { return Ok(()) };
-    // The teams on the tasks the budget covers (a day: all active teams).
-    let covered: Vec<String> = app.with_tracker(slug, |t| {
-        let index = TaskIndex::load(t.conn())?;
-        Ok(t.bus()
-            .list(false)?
-            .into_iter()
-            .filter(|team| match &over.scope {
-                Scope::Task(id) => index.is_under(&team.task, id),
-                Scope::Epic(id) => index.is_under(&team.task, id),
-                Scope::Day => true,
-            })
-            .map(|team| team.id)
-            .collect())
-    })?;
-    for team in &covered {
-        crate::runtime::stop_team(app, slug, team, "budget", "genie")?;
+    let _gate = app.execution_gate.lock().map_err(|_| crate::state::AppError::Internal("execution gate poisoned".into()))?;
+    let root = match &over.scope {
+        Scope::Task(id) | Scope::Epic(id) => Some(id.as_str()),
+        Scope::Day => None,
+    };
+    if let Some(root) = root {
+        app.with_tracker(slug, |t| {
+            t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), root, "budget", &over.explain())
+        })?;
     }
+    if root.is_none() {
+        for task in crate::runtime::active_tasks(app, slug)? {
+            app.with_tracker(slug, |t| {
+                t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), &task, "budget", &over.explain())
+            })?;
+        }
+    }
+    let covered = crate::runtime::halt_scope(app, slug, root)?;
     let day = genie_core::db::now()[..10].to_string();
     let dedupe = format!("budget:{slug}:{}:{day}", over.scope.key());
     let ctx = serde_json::json!({ "task": { "id": task } });
@@ -125,7 +191,7 @@ pub fn enforce(app: &App, slug: &str, task: Option<&str>) -> AppResult<()> {
         kind: "budget".into(),
         title: format!("Budget used up for {}", over.scope.words()),
         body: format!(
-            "{} Teams on it were stopped ({}). Raise the limit in `budgets` of config.json and restart the server, or let it be.",
+            "{} Execution on it was paused ({}). Raise the limit in `budgets` of config.json and restart the server, or let it be.",
             over.explain(),
             if covered.is_empty() { "none was running".to_string() } else { covered.join(", ") }
         ),
@@ -134,10 +200,13 @@ pub fn enforce(app: &App, slug: &str, task: Option<&str>) -> AppResult<()> {
         link: task.map(|t| format!("/active?task={t}")),
         ..Default::default()
     };
-    let _ = notify::send(app, &users, &msg, Some(&dedupe));
+    if root.is_none() {
+        notify::send(app, &users, &msg, Some(&dedupe))?;
+    }
+    app.wake_engine.notify_one();
     if !covered.is_empty() {
         let text = format!(
-            "{} The teams {} were stopped; do not start them again until the owner raises the limit.",
+            "{} The agents {} were stopped; do not start them again until the owner raises the limit.",
             over.explain(),
             covered.join(", ")
         );

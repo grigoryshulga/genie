@@ -818,3 +818,69 @@ async fn a_manual_projects_manager_runs_for_chat_mail_and_not_for_the_owners() {
     l.app.wake_runtime.notify_one();
     wait_for(&l.app, "the manager's turn for chat mail", Duration::from_secs(30), |app| !manager_turns(app).is_empty()).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn task_stop_kills_one_shot_tools_retains_files_and_preserves_job_retry_allowance() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"echo "$$" > "$GENIE_MARK.pids"; echo retained > "$GENIE_MARK.progress"; sleep 120 & echo "$!" >> "$GENIE_MARK.pids"; wait"#
+                .into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let task = app
+        .with_tracker("shop", |t| {
+            t.create(&Actor::new("owner", Role::Human), CreateInput { title: "Controlled pause".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                role: "executor".into(),
+                task: Some(task.id.clone()),
+                goal: "Pause fixture".into(),
+                workspace: "none".into(),
+                inputs: json!({}),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    app.wake_runtime.notify_one();
+    let pids = l._dir.path().join("failed-once.pids");
+    wait_for(app, "parent and tool pids", Duration::from_secs(10), |_| {
+        std::fs::read_to_string(&pids).is_ok_and(|v| v.lines().count() == 2)
+    })
+    .await;
+    let ids: Vec<i32> = std::fs::read_to_string(&pids).unwrap().lines().map(|v| v.parse().unwrap()).collect();
+    genie::tasks::pause_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id, "owner", "Pause all tools").unwrap();
+    wait_for(app, "cancelled job returned to queue", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(job.id)).unwrap().status == "queued"
+    })
+    .await;
+    let queued = app.with_server(|db| db.job(job.id)).unwrap();
+    assert_eq!(queued.attempts, 0, "a human pause does not consume failure retries");
+    let running = |pid: i32| {
+        std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| !s.split(") ").nth(1).is_some_and(|s| s.starts_with('Z')))
+    };
+    wait_for(app, "both parent and tool stopped", Duration::from_secs(5), |_| ids.iter().all(|pid| !running(*pid))).await;
+    assert_eq!(std::fs::read_to_string(l._dir.path().join("failed-once.progress")).unwrap(), "retained\n");
+    genie::runtime::tick(app).await.unwrap();
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().status, "queued");
+    genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "explicit resume starts job", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(job.id)).unwrap().status == "running"
+    })
+    .await;
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 1);
+    genie::tasks::pause_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id, "owner", "End fixture").unwrap();
+    wait_for(app, "final cancellation completed", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(job.id)).unwrap().status == "queued"
+    })
+    .await;
+}

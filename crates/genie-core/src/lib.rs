@@ -14,6 +14,7 @@ pub mod doc_ops;
 pub mod env;
 pub mod error;
 pub mod events;
+pub mod execution;
 pub mod inbox;
 pub mod intelligence;
 pub mod management;

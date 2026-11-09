@@ -76,6 +76,29 @@ fn authorize(app: &App, a: &Access, c: &Conversation, write: bool) -> AppResult<
     Ok(())
 }
 
+/// One activation may cover several tasks. Stop its process with a task only when
+/// the activation explicitly selected that task or created exactly that one task.
+pub(crate) fn response_task(app: &App, project: &str, response: &str) -> AppResult<Option<String>> {
+    app.with_tracker(project, |t| {
+        let r = t.conversations().get(response)?;
+        let command = r.input.last().filter(|m| m.role == "user").and_then(|m| Command::parse(&m.content).ok().flatten());
+        match command {
+            Some(
+                Command::Continue(task)
+                | Command::Status(task)
+                | Command::Resume(task)
+                | Command::Stop { task, .. }
+                | Command::Answer { task, .. },
+            ) => Ok(Some(t.get(&task)?.id)),
+            Some(Command::Decide { proposal, .. }) => Ok(Some(t.conversations().proposal(&proposal)?.task)),
+            None => {
+                let tasks = t.conversations().created_tasks(response)?;
+                Ok((tasks.len() == 1).then(|| tasks[0].clone()))
+            }
+        }
+    })
+}
+
 pub fn validate_agent(app: &App, project: &str, name: &str) -> AppResult<()> {
     let id = request_id(name).ok_or_else(|| AppError::Forbidden("invalid intake identity".into()))?;
     let r = app.with_tracker(project, |t| t.conversations().get(id))?;
@@ -108,7 +131,11 @@ pub fn submit(app: &App, a: &Access, input: Submit) -> AppResult<Response> {
             app.with_tracker(&a.project, |t| {
                 let task = match command {
                     Command::Decide { proposal, .. } => t.conversations().proposal(proposal)?.task,
-                    Command::Answer { task, .. } | Command::Status(task) | Command::Continue(task) => task.clone(),
+                    Command::Answer { task, .. }
+                    | Command::Stop { task, .. }
+                    | Command::Resume(task)
+                    | Command::Status(task)
+                    | Command::Continue(task) => task.clone(),
                 };
                 Ok(t.get(&task)?.id)
             })
@@ -154,6 +181,11 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
         }
         Command::Status(_) => {
             show(app, a, &r.conversation_id).map(|v| status_summary(&v, app.cfg.language.user.to_lowercase().starts_with("rus")))
+        }
+        Command::Stop { task, note } => tasks::pause_execution(app, &a.caller(), &task, "owner", &note)
+            .map(|_| format!("Task {task}: execution stopped; progress retained. Use /resume {task} to continue.")),
+        Command::Resume(task) => {
+            tasks::resume_execution(app, &a.caller(), &task).map(|_| format!("Task {task}: execution resumed within current limits."))
         }
         Command::Continue(_) => unreachable!(),
     };
@@ -204,6 +236,15 @@ fn status_summary(receipt: &Value, russian: bool) -> String {
         };
         lines.push(format!("**{id} — {title}**"));
         lines.push(format!("{}: {label}.", if russian { "Статус" } else { "Status" }));
+        if entry["execution"]["paused"] == true {
+            let reason = entry["execution"]["note"].as_str().unwrap_or("");
+            let paused_task = entry["execution"]["task"].as_str().unwrap_or(id);
+            lines.push(if russian {
+                format!("Выполнение остановлено ({paused_task}): {reason}. Продолжить: `/resume {paused_task}`.")
+            } else {
+                format!("Execution paused ({paused_task}): {reason}. Resume: `/resume {paused_task}`.")
+            });
+        }
         let criteria = task["acceptance"].as_array().map(Vec::as_slice).unwrap_or_default();
         let done = criteria.iter().filter(|c| c["done"] == true).count();
         let artifacts = task["artifacts"].as_array().map_or(0, Vec::len);
@@ -252,6 +293,8 @@ enum Command {
     Answer { task: String, question: i64, text: String },
     Status(String),
     Continue(String),
+    Stop { task: String, note: String },
+    Resume(String),
 }
 impl Command {
     fn parse(text: &str) -> AppResult<Option<Self>> {
@@ -265,6 +308,18 @@ impl Command {
                     return Err(bad());
                 }
                 Some(Self::Decide { proposal: rest.into(), approved: command == "/approve" })
+            }
+            "/stop" => {
+                let mut args = rest.splitn(2, char::is_whitespace);
+                let task = args.next().filter(|s| !s.is_empty()).ok_or_else(bad)?.into();
+                let note = args.next().map(str::trim).filter(|s| !s.is_empty()).unwrap_or("Explicitly stopped by the requester").into();
+                Some(Self::Stop { task, note })
+            }
+            "/resume" => {
+                if rest.is_empty() || rest.split_whitespace().count() != 1 {
+                    return Err(bad());
+                }
+                Some(Self::Resume(rest.into()))
             }
             "/status" => {
                 if rest.is_empty() || rest.split_whitespace().count() != 1 {
@@ -324,7 +379,9 @@ pub fn show(app: &App, a: &Access, id: &str) -> AppResult<Value> {
             .conversations()
             .tasks(&c.id)?
             .iter()
-            .map(|id| Ok(json!({"task":t.get(id)?,"clarifications":t.management().clarifications(id)?})))
+            .map(|id| {
+                Ok(json!({"task":t.get(id)?,"clarifications":t.management().clarifications(id)?,"execution":t.execution().blocking(id)?}))
+            })
             .collect::<genie_core::Result<Vec<_>>>()?;
         let proposals = public_proposals(t, &c.id)?;
         Ok(json!({"conversation":c,"responses":t.conversations().history(&c.id)?,

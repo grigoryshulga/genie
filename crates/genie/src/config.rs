@@ -128,7 +128,7 @@ pub struct RuntimeConfig {
     pub mode: String,
     pub command: Vec<Vec<String>>,
     pub session_command: Vec<Vec<String>>,
-    /// Concurrent one-shot jobs and turns.
+    /// Active runs across live sessions, one-shot jobs and intake turns.
     pub max_concurrent: usize,
     /// Live sessions at once; an idle one is stopped to make room.
     pub max_sessions: usize,
@@ -143,6 +143,8 @@ pub struct RuntimeConfig {
     pub node_heap_mb: u64,
     /// A turn, or a session step without any sign of life, is stopped after this long.
     pub turn_timeout_secs: u64,
+    /// Hard wall-clock bound for one active run, including productive steps/tools; 0 disables it.
+    pub run_timeout_secs: u64,
     /// A team that neither works nor waits for anyone for this long is reported to the
     /// orchestrator. 0 turns the silent-team watchdog off.
     pub stall_secs: u64,
@@ -285,6 +287,7 @@ impl Default for RuntimeConfig {
             manager_idle_stop_secs: 3600,
             node_heap_mb: 2048,
             turn_timeout_secs: 1800,
+            run_timeout_secs: 0,
             stall_secs: 900,
             low_disk_gb: 5.0,
             ci_pending_secs: 1800,
@@ -617,6 +620,9 @@ impl Config {
         }
         let cfg: Config = serde_json::from_value(value).map_err(|e| format!("config: {e}"))?;
         cfg.environments.validate().map_err(|e| format!("config: {e}"))?;
+        if [cfg.budgets.per_task, cfg.budgets.per_epic, cfg.budgets.per_day].into_iter().any(|v| !v.is_finite() || v < 0.0) {
+            return Err("config: budgets must be finite nonnegative dollar amounts; zero means unlimited".into());
+        }
         Ok(cfg)
     }
 
@@ -638,8 +644,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = Config::load(dir.path()).unwrap();
         assert_eq!(cfg.limits.max_active_teams, 4);
+        assert_eq!(cfg.runtime.run_timeout_secs, 0, "hard deadlines are an explicit operator choice");
         // No default role models (PD24): every role carries its own model, and the
         // configuration's problems name the roles that still lack one.
+    }
+
+    #[test]
+    fn execution_limits_are_configurable_and_negative_money_limits_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.json");
+        std::fs::write(&file, r#"{"runtime":{"runTimeoutSecs":60},"budgets":{"perTask":-1}}"#).unwrap();
+        assert!(Config::load(dir.path()).unwrap_err().contains("budgets must be finite nonnegative"));
+        std::fs::write(&file, r#"{"runtime":{"runTimeoutSecs":60},"budgets":{"perTask":0,"perDay":10}}"#).unwrap();
+        let cfg = Config::load(dir.path()).unwrap();
+        assert_eq!(cfg.runtime.run_timeout_secs, 60);
+        assert_eq!((cfg.budgets.per_task, cfg.budgets.per_day), (0.0, 10.0));
     }
 
     #[test]

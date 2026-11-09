@@ -472,6 +472,11 @@ impl Conversations<'_> {
             .optional()?)
     }
 
+    pub fn created_tasks(&self, response: &str) -> Result<Vec<String>> {
+        let mut q = self.0.conn().prepare("SELECT DISTINCT task FROM conversation_created_tasks WHERE response=?1 ORDER BY task")?;
+        Ok(q.query_map([response], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn record_created_task(&self, response: &str, key: &str, task: &str) -> Result<()> {
         self.0
             .conn()
