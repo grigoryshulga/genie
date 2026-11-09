@@ -295,18 +295,12 @@ pub async fn handle_update(app: &Arc<App>, u: &Value) -> Result<(), String> {
             return Ok(());
         }
         let data = cb["data"].as_str().unwrap_or_default();
-        let parts = data.split(':').collect::<Vec<_>>();
-        let (text, selection) = match parts.as_slice() {
-            ["interaction", "approve"] => ("approve", None),
-            ["interaction", "reject"] => ("reject", None),
-            ["interaction", "resume"] => ("resume", None),
-            ["q", _, _, index] => match index.parse::<usize>() {
-                Ok(i) => ("", Some(i)),
-                Err(_) => return Ok(()),
-            },
-            _ => return Ok(()),
+        let Some(callback) = crate::interactions::TelegramCallback::parse(data) else { return Ok(()) };
+        let (text, selection) = match callback {
+            crate::interactions::TelegramCallback::Action(action) => (action.to_string(), None),
+            crate::interactions::TelegramCallback::Option(index) => (String::new(), Some(index)),
         };
-        let result = app.blocking(move |app| crate::interactions::global_telegram_response(app, chat, message, text, selection)).await;
+        let result = app.blocking(move |app| crate::interactions::global_telegram_response(app, chat, message, &text, selection)).await;
         let notice = crate::telegram::interaction_result(result)?;
         let _ = tg(app, "answerCallbackQuery", json!({"callback_query_id":cb["id"],"text":notice})).await;
         return Ok(());

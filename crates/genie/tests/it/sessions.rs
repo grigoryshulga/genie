@@ -1223,10 +1223,11 @@ async fn a_taskless_project_manager_reaching_its_hard_limit_stops_its_live_sessi
     })
     .await;
     assert!(session.task.is_none(), "exercise the taskless hard-limit path");
-    clock.advance(Duration::from_secs(3));
     // The active session is responsive: its hard deadline, rather than silence,
     // must trigger the stop and terminalize this turn.
+    clock.advance(Duration::from_millis(2999));
     assert!(session.request(json!({"type":"get_state"}), Duration::from_secs(5)).await.is_some());
+    clock.advance(Duration::from_millis(1));
     genie::runtime::tick(app).await.unwrap();
     until("project manager's limited turn interrupted", 10, || {
         app.with_server(|db| db.turns("shop", Some(ORCHESTRATOR), 10))
@@ -1241,6 +1242,162 @@ async fn a_taskless_project_manager_reaching_its_hard_limit_stops_its_live_sessi
     })
     .await;
     assert!(app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_none());
+    genie::sessions::stop_all(app);
+}
+
+async fn owned_tool_pid(work: &std::path::Path, file: &str) -> String {
+    until("owned tool's host PID", 10, || {
+        let inside = std::fs::read_to_string(work.join(file)).ok()?;
+        // bubblewrap uses a PID namespace: match the shell's namespace PID
+        // and this test's unique workspace to identify the host process.
+        std::fs::read_dir("/proc").ok()?.flatten().find_map(|entry| {
+            let path = entry.path();
+            if std::fs::read_link(path.join("cwd")).ok()? != work {
+                return None;
+            }
+            let status = std::fs::read_to_string(path.join("status")).ok()?;
+            let pids = status.lines().find_map(|line| line.strip_prefix("NSpid:"))?;
+            (pids.split_whitespace().last()? == inside.trim()).then(|| entry.file_name().to_string_lossy().into_owned())
+        })
+    })
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_live_hard_limit_stops_work_and_allows_independent_work_while_its_pause_write_fails() {
+    hard_limit_storage_failure(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_live_hard_limit_keeps_its_fence_after_exit_until_its_server_intent_can_be_stored() {
+    hard_limit_storage_failure(true).await;
+}
+
+async fn hard_limit_storage_failure(server: bool) {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(
+        pi,
+        |cfg| {
+            cfg.runtime.max_concurrent = 1;
+            cfg.runtime.max_sessions = 1;
+            cfg.runtime.turn_timeout_secs = 30;
+            cfg.runtime.run_timeout_secs = 3;
+        },
+        clock.clone(),
+    )
+    .await;
+    let app = &l.app;
+    let fault = format!(
+        "CREATE TRIGGER fail_time_pause BEFORE INSERT ON {} BEGIN SELECT RAISE(ABORT,'pause storage fault'); END;",
+        if server { "turn_pauses" } else { "task_execution" },
+    );
+    if server {
+        app.with_server(|db| db.conn().execute_batch(&fault).map_err(Into::into)).unwrap();
+    } else {
+        app.with_tracker("shop", |t| t.conn().execute_batch(&fault).map_err(Into::into)).unwrap();
+    }
+    mail(app, "anna", "human", "bender", "RUN: echo $BASHPID > limit-tool.pid; echo kept > partial.txt; sleep 120", None);
+    until("limited session's long tool", 20, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
+    let old = app.sessions.get(&member("bender")).unwrap();
+    let work = l._dir.path().join("work");
+    let tool = owned_tool_pid(&work, "limit-tool.pid").await;
+    clock.advance(Duration::from_secs(3));
+    genie::runtime::tick(app).await.unwrap();
+    until("limited owned tool stopped despite storage failure", 5, || {
+        let running = std::fs::read_to_string(format!("/proc/{tool}/stat"))
+            .is_ok_and(|stat| !stat.split(") ").nth(1).is_some_and(|tail| tail.starts_with('Z')));
+        (!running).then_some(())
+    })
+    .await;
+    assert_eq!(
+        app.with_server(|db| Ok(db.conn().query_row(
+            "SELECT COUNT(*) FROM api_tokens WHERE project='shop' AND member='bender' AND revoked=0",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?))
+        .unwrap(),
+        0,
+        "the interrupted worker has no remaining authority"
+    );
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
+    if server {
+        assert_eq!(
+            app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().unwrap().reason,
+            "time",
+            "the project DB preserves the pause across a restart while its server intent write is unavailable"
+        );
+        assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+        assert_eq!(app.sessions.get(&member("bender")).unwrap().pid, old.pid, "the stopped session retains the memory fence");
+    } else {
+        assert!(app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_none());
+        assert_eq!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().len(), 1);
+    }
+    let other = app
+        .with_tracker("shop", |t| {
+            let task = t.create(
+                &Actor::new("anna", Role::Human),
+                CreateInput { title: "Independent work".into(), quiet: true, ..Default::default() },
+            )?;
+            t.bus().create(
+                "anna",
+                "human",
+                NewTeam {
+                    id: task.id.clone(),
+                    task: task.id.clone(),
+                    cwd: work.to_string_lossy().into_owned(),
+                    members: vec![NewMember { name: "independent".into(), role: "executor".into(), ..Default::default() }],
+                    ..Default::default()
+                },
+            )?;
+            t.bus().send(SendMail {
+                team: &task.id,
+                from: "anna",
+                from_role: "human",
+                to: "independent",
+                text: "Independent hello",
+                kind: "owner",
+                ..Default::default()
+            })?;
+            Ok(task.id)
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    until("independent task uses the freed run slot", 20, || {
+        app.with_server(|db| db.turns("shop", Some(&format!("{other}/independent")), 10))
+            .unwrap()
+            .iter()
+            .any(|turn| turn.status == "succeeded")
+            .then_some(())
+    })
+    .await;
+    assert!(
+        app.sessions.get(&member("bender")).is_none_or(|session| session.pid == old.pid),
+        "the failed pause cannot restart the old task"
+    );
+    if server {
+        app.with_server(|db| db.conn().execute_batch("DROP TRIGGER fail_time_pause").map_err(Into::into)).unwrap();
+        clock.advance(Duration::from_secs(1));
+    } else {
+        app.with_tracker("shop", |t| t.conn().execute_batch("DROP TRIGGER fail_time_pause").map_err(Into::into)).unwrap();
+    }
+    genie::runtime::tick(app).await.unwrap();
+    until("pause persisted after storage recovery", 10, || {
+        app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().filter(|state| state.reason == "time")
+    })
+    .await;
+    until("intent acknowledged after storage recovery", 10, || {
+        app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty().then_some(())
+    })
+    .await;
+    assert_eq!(std::fs::read_to_string(work.join("partial.txt")).unwrap(), "kept\n");
+    genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    until("explicit resume starts a new live worker", 20, || app.sessions.get(&member("bender")).filter(|session| session.pid != old.pid))
+        .await;
     genie::sessions::stop_all(app);
 }
 
@@ -1265,21 +1422,7 @@ async fn hard_run_limit_pauses_productive_work_and_explicit_resume_keeps_progres
     until("long tool started", 20, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
     let s = app.sessions.get(&member("bender")).unwrap();
     let work = l._dir.path().join("work");
-    let tool_pid = until("owned tool's host PID", 10, || {
-        let inside = std::fs::read_to_string(work.join("tool.pid")).ok()?;
-        // bubblewrap uses a PID namespace: the shell's BASHPID is not its
-        // host PID. Match the namespace PID and this test's unique workspace.
-        std::fs::read_dir("/proc").ok()?.flatten().find_map(|entry| {
-            let path = entry.path();
-            if std::fs::read_link(path.join("cwd")).ok()? != work {
-                return None;
-            }
-            let status = std::fs::read_to_string(path.join("status")).ok()?;
-            let pids = status.lines().find_map(|line| line.strip_prefix("NSpid:"))?;
-            (pids.split_whitespace().last()? == inside.trim()).then(|| entry.file_name().to_string_lossy().into_owned())
-        })
-    })
-    .await;
+    let tool_pid = owned_tool_pid(&work, "tool.pid").await;
     clock.advance(Duration::from_millis(2999));
     // This is recent activity, so the silence watchdog cannot justify the stop.
     assert!(s.request(json!({"type":"get_state"}), Duration::from_secs(5)).await.is_some());

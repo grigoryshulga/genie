@@ -13,6 +13,26 @@ mod human;
 pub(crate) use human::answer_in;
 pub use human::{Action, Interaction, Response, access, answer_clarification, list, respond, show};
 
+/// Both bot adapters decode the same vocabulary; message correlation and
+/// current account/project authority remain in their response services.
+pub(crate) enum TelegramCallback {
+    Action(Action),
+    Option(usize),
+}
+
+impl TelegramCallback {
+    pub(crate) fn parse(data: &str) -> Option<Self> {
+        let parts = data.split(':').collect::<Vec<_>>();
+        match parts.as_slice() {
+            ["interaction", "approve"] => Some(Self::Action(Action::Approve)),
+            ["interaction", "reject"] => Some(Self::Action(Action::Reject)),
+            ["interaction", "resume"] => Some(Self::Action(Action::Resume)),
+            ["q", _, _, index] => index.parse().ok().map(Self::Option),
+            _ => None,
+        }
+    }
+}
+
 /// A dedicated cursor backfills still-pending interactions when this capability is enabled.
 /// Outbox writes precede acknowledgement; replay uses stable domain dedupe keys.
 pub fn tick(app: &App, project: &str) -> AppResult<()> {

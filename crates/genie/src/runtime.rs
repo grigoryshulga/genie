@@ -398,14 +398,16 @@ pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
 }
 
 pub(crate) fn pending_limit(app: &App, project: &str, task: &str) -> AppResult<bool> {
-    let pending = app.with_server(|db| db.pending_turn_pauses(Some(project)))?;
-    if pending.is_empty() {
+    let mut roots = app.with_server(|db| db.pending_turn_pauses(Some(project)))?.into_iter().map(|pause| pause.task).collect::<Vec<_>>();
+    roots
+        .extend(app.sessions.all().into_iter().filter(|s| s.key.project() == project).filter_map(|s| s.limited_task().map(str::to_string)));
+    if roots.is_empty() {
         return Ok(false);
     }
     app.with_tracker(project, |t| {
         let task = t.get(task)?.id;
         let index = crate::spend::TaskIndex::load(t.conn())?;
-        Ok(pending.iter().any(|pause| index.is_under(&task, &pause.task)))
+        Ok(roots.iter().any(|root| index.is_under(&task, root)))
     })
 }
 
@@ -419,7 +421,7 @@ pub(crate) fn flush_limit_pauses(app: &App) -> AppResult<()> {
     failure.map_or(Ok(()), Err)
 }
 
-fn apply_limit_pause(app: &App, pause: &genie_core::work::TurnPause) -> AppResult<()> {
+pub(crate) fn apply_limit_pause(app: &App, pause: &genie_core::work::TurnPause) -> AppResult<()> {
     match crate::tasks::apply_turn_pause(app, pause) {
         Ok(()) => {}
         Err(AppError::Genie(GenieError::NotFound(_))) => {
@@ -438,6 +440,7 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
     let covered = |task: Option<&str>| root.is_none_or(|root| task.is_some_and(|task| index.is_under(task, root)));
     let keys = app.sched.with(|s| s.running.iter().filter(|k| k.project() == project).cloned().collect::<Vec<_>>());
     let mut report = Vec::new();
+    let mut failure = None;
     for key in keys {
         if covered(key_task(app, &key)?.as_deref()) {
             app.sched.with(|s| {
@@ -450,28 +453,36 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
                 AgentKey::Job { job, .. } => format!("job-{job}"),
                 _ => key.label(),
             };
-            app.with_server(|db| db.revoke_named_agent_tokens(project, &name))?;
+            if let Err(error) = app.with_server(|db| db.revoke_named_agent_tokens(project, &name)) {
+                failure.get_or_insert(error);
+            }
             report.push(key.label());
         }
     }
     for session in app.sessions.all() {
         if session.key.project() == project && covered(session.task.as_deref()) {
-            if session.live().state == "working" {
-                note_to_self(
+            let was_working = session.live().state == "working";
+            // Process termination cannot depend on a continuation-mail write.
+            crate::sessions::halt(app, &session.key, "execution paused");
+            if let Err(error) = app.with_server(|db| db.revoke_named_agent_tokens(project, &session.name)) {
+                failure.get_or_insert(error);
+            }
+            if was_working
+                && let Err(error) = note_to_self(
                     app,
                     &session.key,
                     "Execution was paused by the server. After an explicit resume, read current task state and continue retained work; do not repeat completed external actions.",
-                )?;
+                )
+            {
+                failure.get_or_insert(error);
             }
-            crate::sessions::halt(app, &session.key, "execution paused");
-            app.with_server(|db| db.revoke_named_agent_tokens(project, &session.name))?;
             report.push(session.key.label());
         }
     }
     app.wake_runtime.notify_one();
     report.sort();
     report.dedup();
-    Ok(report)
+    failure.map_or(Ok(report), Err)
 }
 
 /// Does `/proc/<pid>/environ` belong to this project's agent `name`?

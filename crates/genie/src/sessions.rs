@@ -71,6 +71,10 @@ impl Registry {
     pub fn all(&self) -> Vec<Arc<Session>> {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).values().cloned().collect()
     }
+    /// An exited session retained only for a limit fence holds no process slot.
+    fn processes(&self) -> Vec<Arc<Session>> {
+        self.all().into_iter().filter(|s| s.with_live(|live| live.limit.as_ref().is_none_or(|limit| !limit.exited))).collect()
+    }
     /// Record a warm-up of `project` at `now`, unless one was recorded less than `every` ago.
     /// Whether it was recorded: a refused one changes nothing.
     pub fn warm(&self, project: &str, now: Instant, every: Duration) -> bool {
@@ -105,6 +109,13 @@ impl Registry {
 pub struct Startup {
     pub ready_ms: Option<u64>,
     pub first_reply_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct RunLimit {
+    turn: Option<i64>,
+    note: String,
+    exited: bool,
 }
 
 /// What a session is doing, as seen from its event stream.
@@ -159,6 +170,8 @@ pub struct Live {
     #[serde(skip)]
     turn: Option<i64>,
     #[serde(skip)]
+    limit: Option<RunLimit>,
+    #[serde(skip)]
     last_stop: Option<String>,
     #[serde(skip)]
     repeat: (String, u32),
@@ -198,6 +211,7 @@ impl Live {
             interrupting: false,
             stall_abort: None,
             turn: None,
+            limit: None,
             last_stop: None,
             repeat: (String::new(), 0),
             tool_at: None,
@@ -247,6 +261,9 @@ pub struct Session {
 impl Session {
     pub fn live(&self) -> Live {
         self.live.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+    pub(crate) fn limited_task(&self) -> Option<&str> {
+        if self.with_live(|live| live.limit.is_some()) { self.task.as_deref() } else { None }
     }
     fn with_live<T>(&self, f: impl FnOnce(&mut Live) -> T) -> T {
         f(&mut self.live.lock().unwrap_or_else(|e| e.into_inner()))
@@ -469,7 +486,7 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) -> Option<Duration> {
     if !app.attempts.may_start(key) {
         return app.attempts.wait_for(key).map(|d| d + Duration::from_millis(50));
     }
-    let live = app.sessions.all();
+    let live = app.sessions.processes();
     if live.len() >= app.cfg.runtime.max_sessions.max(1) {
         // Make room: stop the idle session that goes first; this agent starts on a later pass. A
         // session already leaving frees its slot first: no second one is stopped for the same agent.
@@ -505,7 +522,7 @@ pub async fn prewarm(app: &Arc<App>, key: &AgentKey) -> AppResult<bool> {
     if !app.cfg.runtime.live_sessions() || app.sessions.get(key).is_some() || !app.attempts.may_start(key) {
         return Ok(false);
     }
-    if app.sessions.all().len() >= app.cfg.runtime.max_sessions.max(1) {
+    if app.sessions.processes().len() >= app.cfg.runtime.max_sessions.max(1) {
         return Ok(false);
     }
     match start(app, key).await {
@@ -961,18 +978,102 @@ async fn prompt_or_mail(app: &Arc<App>, session: &Arc<Session>, message: String)
     }
 }
 
+/// The session stays registered as a scope fence until this intent is durable.
+/// A failed turn registration is repaired in the same transaction as its intent.
+fn queue_run_limit(app: &App, s: &Session) -> AppResult<genie_core::work::TurnPause> {
+    let limit = s.with_live(|live| live.limit.clone()).ok_or_else(|| AppError::Internal("session has no pending run limit".into()))?;
+    let task = s.task.as_deref().ok_or_else(|| AppError::Internal("taskless session has a task limit".into()))?;
+    let queued = {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        app.with_server(|db| {
+            db.tx(|| {
+                let turn = match limit.turn.map(|turn| db.turn(turn)).transpose() {
+                    Ok(Some(turn)) => turn.id,
+                    Ok(None) | Err(genie_core::GenieError::NotFound(_)) => {
+                        let turn = db.start_turn(
+                            s.key.project(),
+                            &s.key.label(),
+                            s.team.as_deref(),
+                            s.team.as_ref().map(|_| s.name.as_str()),
+                            None,
+                        )?;
+                        db.set_turn_pid(turn, s.pid)?;
+                        turn
+                    }
+                    Err(error) => return Err(error),
+                };
+                db.queue_turn_pause(turn, task, &limit.note)
+            })
+        })
+    };
+    let pause = match queued {
+        Ok(pause) => pause,
+        Err(error) => {
+            // The project DB can still retain the pause if only the server
+            // intent write is unavailable. Repeating an existing pause is inert.
+            if let Err(pause_error) = crate::tasks::pause_for_limit(app, s.key.project(), task, "time", &limit.note) {
+                eprintln!("genie runtime: {}: project hard-limit fallback pending: {pause_error}", s.key.label());
+            }
+            return Err(error);
+        }
+    };
+    s.with_live(|live| {
+        if let Some(limit) = &mut live.limit {
+            limit.turn = Some(pause.turn);
+        }
+    });
+    Ok(pause)
+}
+
+fn enforce_run_limit(app: &App, s: &Session) -> AppResult<()> {
+    let queued = queue_run_limit(app, s);
+    // Stop external work even if either database cannot accept the pause. The
+    // registered in-memory fence remains until on_exit can stage the intent.
+    let stopped = runtime::halt_scope(app, s.key.project(), s.task.as_deref());
+    halt(app, &s.key, "hard run time limit");
+    let revoked = app.with_server(|db| db.revoke_token(&s.token));
+    let applied = queued.and_then(|pause| runtime::apply_limit_pause(app, &pause));
+    applied?;
+    revoked?;
+    stopped?;
+    Ok(())
+}
+
 async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
     if let Some(line) = s.with_live(|l| startup_line(&s.key, l, true)) {
         println!("{line}");
     }
-    let (state, turn, log) = s.with_live(|l| (l.state.clone(), l.turn.take(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n")));
+    let (state, mut turn, log) = s.with_live(|l| {
+        if let Some(limit) = &mut l.limit {
+            limit.exited = true;
+        }
+        (l.state.clone(), l.turn.take(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n"))
+    });
     let expected = state == "stopping";
     let force = s.with_live(|l| l.force_stop);
     if force {
         runtime::kill_process_group(s.pid);
     }
-    app.sessions.remove(&s.key, s.pid);
     s.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if s.limited_task().is_some() {
+        // Capacity became available even while this dead session's scope fence
+        // must stay registered. Persistence recovery is not its wake-up signal.
+        app.wake_runtime.notify_one();
+        loop {
+            let session = s.clone();
+            match app.blocking(move |app| queue_run_limit(app, &session)).await {
+                Ok(pause) => {
+                    turn = Some(pause.turn);
+                    break;
+                }
+                Err(error) => {
+                    eprintln!("genie runtime: {}: hard-limit intent pending after process exit: {error}", s.key.label());
+                    app.clock.sleep_until(app.clock.now() + Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+    app.sessions.remove(&s.key, s.pid);
     s.replies.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let _ = std::fs::remove_file(s.dir.join("session.pid"));
     let (k, token, task) = (s.key.clone(), s.token.clone(), s.task.clone());
@@ -1106,9 +1207,20 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
         });
         let hard = app.cfg.runtime.run_timeout_secs;
         if state == "working" && hard > 0 && idle_for >= Duration::from_secs(hard) {
-            if let Some(task) = s.task.clone() {
-                let (project, note) = (s.key.project().to_string(), format!("Active run reached the configured {hard}s limit"));
-                app.blocking(move |app| crate::tasks::pause_for_limit(app, &project, &task, "time", &note)).await?;
+            if s.task.is_some() {
+                s.with_live(|live| {
+                    let turn = live.turn;
+                    live.limit.get_or_insert_with(|| RunLimit {
+                        turn,
+                        note: format!("Active run reached the configured {hard}s limit"),
+                        exited: false,
+                    });
+                });
+                let session = s.clone();
+                if let Err(error) = app.blocking(move |app| enforce_run_limit(app, &session)).await {
+                    eprintln!("genie runtime: {}: hard-limit pause pending: {error}", s.key.label());
+                    next.within(Duration::from_secs(1));
+                }
             } else {
                 let key = s.key.clone();
                 app.blocking(move |app| {

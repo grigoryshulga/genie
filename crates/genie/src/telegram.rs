@@ -124,24 +124,16 @@ pub async fn handle_update(app: &Arc<App>, bot: &ProjectBot, update: &Value) -> 
             return Ok(());
         }
         let data = callback["data"].as_str().unwrap_or_default();
-        let option = data.split(':').collect::<Vec<_>>();
-        let selection = if let ["q", _, _, index] = option.as_slice() { index.parse::<usize>().ok() } else { None };
-        let answer = match data {
-            "interaction:approve" => "approve",
-            "interaction:reject" => "reject",
-            "interaction:resume" => "resume",
-            _ if selection.is_some() => "",
-            _ => return Ok(()),
-        };
+        let Some(callback_action) = crate::interactions::TelegramCallback::parse(data) else { return Ok(()) };
         let copy = bot.clone();
         let result = app
-            .blocking(move |app| {
-                if let Some(index) = selection {
-                    crate::interactions::telegram_option(app, &copy, chat, id, index)
-                } else if answer == "resume" {
-                    crate::interactions::telegram_reply(app, &copy, chat, id, answer)
-                } else {
-                    crate::interactions::telegram_decision(app, &copy, chat, id, answer)
+            .blocking(move |app| match callback_action {
+                crate::interactions::TelegramCallback::Option(index) => crate::interactions::telegram_option(app, &copy, chat, id, index),
+                crate::interactions::TelegramCallback::Action(crate::interactions::Action::Resume) => {
+                    crate::interactions::telegram_reply(app, &copy, chat, id, "resume")
+                }
+                crate::interactions::TelegramCallback::Action(action) => {
+                    crate::interactions::telegram_decision(app, &copy, chat, id, &action.to_string())
                 }
             })
             .await;
