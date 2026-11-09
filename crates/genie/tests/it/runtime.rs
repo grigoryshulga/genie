@@ -797,27 +797,10 @@ fn recovery_stops_only_verified_stray_agent_processes() {
 
 #[test]
 fn recovery_stops_owned_tools_even_after_their_group_leader_has_exited() {
-    use std::os::unix::process::CommandExt;
     for orphaned in [false, true] {
         let dir = tempfile::tempdir().unwrap();
         let app = app_with_team("turns", dir.path());
-        let child_file = dir.path().join("tool.pid");
-        let mut parent = std::process::Command::new("bash")
-            .args(["-c", "sleep 120 & echo $! > \"$TOOL_PID_FILE\"; wait"])
-            .env("GENIE_PROJECT", "shop")
-            .env("GENIE_AGENT_NAME", "bender")
-            .env("TOOL_PID_FILE", &child_file)
-            .process_group(0)
-            .spawn()
-            .unwrap();
-        let started = Instant::now();
-        let child = loop {
-            if let Some(pid) = std::fs::read_to_string(&child_file).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
-                break pid;
-            }
-            assert!(started.elapsed() < Duration::from_secs(5), "owned tool did not start");
-            std::thread::sleep(Duration::from_millis(5));
-        };
+        let (mut parent, child) = owned_tool_process(dir.path());
         app.with_server(|db| {
             let turn = db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)?;
             db.set_turn_pid(turn, parent.id())
@@ -830,16 +813,92 @@ fn recovery_stops_owned_tools_even_after_their_group_leader_has_exited() {
         }
         genie::runtime::recover(&app).unwrap();
         let stopped = Instant::now();
-        loop {
-            let running = std::fs::read_to_string(format!("/proc/{child}/stat"))
-                .is_ok_and(|s| !s.split(") ").nth(1).is_some_and(|s| s.starts_with('Z')));
-            if !running {
-                break;
-            }
+        while process_running(child) {
             assert!(stopped.elapsed() < Duration::from_secs(5), "owned child survived recovery (orphaned={orphaned})");
             std::thread::sleep(Duration::from_millis(5));
         }
         parent.wait().unwrap();
+        assert!(app.with_tracker("shop", |t| t.execution().blocking("G-1")).unwrap().is_some());
+    }
+}
+
+fn owned_tool_process(dir: &std::path::Path) -> (std::process::Child, u32) {
+    use std::os::unix::process::CommandExt;
+    let child_file = dir.join("tool.pid");
+    let parent = std::process::Command::new("bash")
+        .args(["-c", "sleep 120 >/dev/null 2>&1 & echo $! > \"$TOOL_PID_FILE\"; wait"])
+        .env("GENIE_PROJECT", "shop")
+        .env("GENIE_AGENT_NAME", "bender")
+        .env("TOOL_PID_FILE", &child_file)
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let started = Instant::now();
+    let child = loop {
+        if let Some(pid) = std::fs::read_to_string(&child_file).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+            break pid;
+        }
+        assert!(started.elapsed() < Duration::from_secs(5), "owned tool did not start");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    (parent, child)
+}
+
+fn process_running(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| !s.split(") ").nth(1).is_some_and(|s| s.starts_with('Z')))
+}
+
+#[test]
+fn recovery_stops_warm_idle_sessions_and_orphaned_tools_without_touching_unowned_processes() {
+    use std::os::unix::process::CommandExt;
+    for orphaned in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_with_team("sessions", dir.path());
+        let (mut parent, child) = owned_tool_process(dir.path());
+        let turn = app
+            .with_server(|db| {
+                let turn = db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)?;
+                db.set_turn_pid(turn, parent.id())?;
+                db.finish_turn(turn, "succeeded", Some(0), None, None)?;
+                Ok(turn)
+            })
+            .unwrap();
+        let session_dir = app.data.join("runtime/shop/idle-bender");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let pid_file = session_dir.join("session.pid");
+        std::fs::write(&pid_file, format!("{} bender\n", parent.id())).unwrap();
+        app.with_tracker("shop", |t| t.execution().pause(&Actor::new("anna", Role::Human), "G-1", "owner", "Interrupted stop")).unwrap();
+        if orphaned {
+            parent.kill().unwrap();
+            parent.wait().unwrap();
+        }
+        let mut other = std::process::Command::new("sleep")
+            .arg("120")
+            .env_remove("GENIE_PROJECT")
+            .env_remove("GENIE_AGENT_NAME")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let other_dir = app.data.join("runtime/shop/unowned");
+        std::fs::create_dir_all(&other_dir).unwrap();
+        let unowned_pid_file = other_dir.join("session.pid");
+        std::fs::write(&unowned_pid_file, format!("{} bender\n", other.id())).unwrap();
+
+        genie::runtime::recover(&app).unwrap();
+        assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "succeeded");
+        assert!(process_running(child), "settled turns require the separate session recovery path");
+        genie::sessions::recover(&app);
+        let stopped = Instant::now();
+        while process_running(child) {
+            assert!(stopped.elapsed() < Duration::from_secs(5), "idle session tool survived recovery (orphaned={orphaned})");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        parent.wait().unwrap();
+        assert!(!pid_file.exists());
+        assert!(!unowned_pid_file.exists());
+        assert!(other.try_wait().unwrap().is_none(), "an unverified process group must survive a stale PID file");
+        other.kill().unwrap();
+        other.wait().unwrap();
         assert!(app.with_tracker("shop", |t| t.execution().blocking("G-1")).unwrap().is_some());
     }
 }
@@ -932,6 +991,78 @@ async fn task_stop_kills_one_shot_tools_retains_files_and_preserves_job_retry_al
         app.with_server(|db| db.job(job.id)).unwrap().status == "queued"
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_deleted_unrelated_team_does_not_prevent_stopping_running_task_members() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 3;
+        cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), "sleep 120".into()]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let tasks = app
+        .with_tracker("shop", |t| {
+            let mut tasks = Vec::new();
+            for name in ["first", "second"] {
+                let task = t.create(
+                    &Actor::new("owner", Role::Human),
+                    CreateInput { title: name.into(), quiet: true, status: Some(Status::Ready), ..Default::default() },
+                )?;
+                t.bus().create(
+                    "owner",
+                    "human",
+                    NewTeam {
+                        id: task.id.clone(),
+                        task: task.id.clone(),
+                        cwd: l._dir.path().to_string_lossy().into_owned(),
+                        members: vec![NewMember { name: name.into(), role: "executor".into(), ..Default::default() }],
+                        ..Default::default()
+                    },
+                )?;
+                t.bus().send(SendMail {
+                    team: &task.id,
+                    from: "owner",
+                    from_role: "human",
+                    to: name,
+                    text: "work",
+                    kind: "owner",
+                    ..Default::default()
+                })?;
+                tasks.push(task.id);
+            }
+            Ok(tasks)
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "both team processes", Duration::from_secs(10), |app| {
+        app.with_server(|db| db.turns("shop", None, 10)).unwrap().iter().filter(|turn| turn.member.is_some() && turn.pid.is_some()).count()
+            == 2
+    })
+    .await;
+    let pids = app.with_server(|db| db.turns("shop", None, 10)).unwrap().into_iter().filter_map(|turn| turn.pid).collect::<Vec<_>>();
+    let caller = genie::tasks::Caller::person("shop", "owner");
+    genie::tasks::delete(app, &caller, &tasks[1], false).unwrap();
+    assert!(app.with_tracker("shop", |t| t.bus().get(&tasks[1])).is_err());
+    assert_eq!(app.sched.snapshot(3, app.slots.available_permits()).running, 2, "deletion left a stale running key");
+
+    genie::tasks::pause_execution(app, &caller, &tasks[0], "owner", "Stop the remaining task").unwrap();
+    wait_for(app, "both surviving and obsolete workers stopped", Duration::from_secs(5), |app| {
+        app.sched.snapshot(3, app.slots.available_permits()).running == 0 && pids.iter().all(|pid| !process_running(*pid as u32))
+    })
+    .await;
+    assert!(app.with_tracker("shop", |t| t.execution().blocking(&tasks[0])).unwrap().is_some());
+    let valid_tokens: i64 = app
+        .with_server(|db| {
+            Ok(db
+                .conn()
+                .query_row("SELECT COUNT(*) FROM api_tokens WHERE project=?1 AND kind='agent' AND revoked=0", ["shop"], |r| r.get(0))?)
+        })
+        .unwrap();
+    assert_eq!(valid_tokens, 0, "both known and obsolete workers lose mutation authority");
+    assert_eq!(app.slots.available_permits(), 3);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

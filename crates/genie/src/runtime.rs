@@ -315,15 +315,8 @@ pub fn recover(app: &App) -> AppResult<()> {
             (None, Some(j)) => format!("job-{j}"),
             _ => t.agent.clone(),
         };
-        let Ok(group) = u32::try_from(pid) else { continue };
-        if owned_process_group(group, &t.project, &name) {
-            kill_process_group(group);
-            println!("genie runtime: stopped stray agent group {pid} ({}/{name})", t.project);
-        } else if is_our_agent(pid, &t.project, &name) {
-            // Older harnesses did not create a dedicated group; signal only
-            // their verified parent, never the server's own process group.
-            signal_process(group, libc::SIGKILL);
-            println!("genie runtime: stopped stray agent process {pid} ({}/{name})", t.project);
+        if stop_stray_agent(pid, &t.project, &name) {
+            println!("genie runtime: stopped stray agent {pid} ({}/{name})", t.project);
         }
     }
     // A live session's mail was acknowledged inside the lost step, so nothing is pending and the
@@ -387,8 +380,10 @@ pub(crate) fn active_tasks(app: &App, project: &str) -> AppResult<Vec<String>> {
     let keys = app.sched.with(|s| s.running.iter().filter(|k| k.project() == project).cloned().collect::<Vec<_>>());
     let mut tasks = Vec::new();
     for key in keys {
-        if let Some(task) = key_task(app, &key)? {
-            tasks.push(task);
+        match key_task(app, &key) {
+            Ok(Some(task)) => tasks.push(task),
+            Ok(None) | Err(AppError::Genie(GenieError::NotFound(_))) => {}
+            Err(error) => return Err(error),
         }
     }
     tasks.extend(app.sessions.all().into_iter().filter(|s| s.key.project() == project).filter_map(|s| s.task.clone()));
@@ -480,7 +475,17 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
     let mut report = Vec::new();
     let mut failure = None;
     for key in keys {
-        if covered(key_task(app, &key)?.as_deref()) {
+        let stop = match key_task(app, &key) {
+            Ok(task) => covered(task.as_deref()),
+            // A deleted scope cannot own valid work. Clean up its stale worker
+            // without preventing termination of other, still-known scopes.
+            Err(AppError::Genie(GenieError::NotFound(_))) => true,
+            Err(error) => {
+                failure.get_or_insert(error);
+                continue;
+            }
+        };
+        if stop {
             app.sched.with(|s| {
                 if let Some(cancel) = s.cancels.get(&key) {
                     let _ = cancel.send(true);
@@ -529,6 +534,23 @@ pub(crate) fn is_our_agent(pid: i64, project: &str, name: &str) -> bool {
     let vars: Vec<&[u8]> = env.split(|b| *b == 0).collect();
     let has = |kv: String| vars.contains(&kv.as_bytes());
     has(format!("GENIE_PROJECT={project}")) && has(format!("GENIE_AGENT_NAME={name}"))
+}
+
+/// Recovery uses the same verified group cleanup for active turns and warm
+/// sessions, including groups whose leader has already exited.
+pub(crate) fn stop_stray_agent(pid: i64, project: &str, name: &str) -> bool {
+    let Some(group) = u32::try_from(pid).ok().filter(|pid| *pid > 1) else { return false };
+    if owned_process_group(group, project, name) {
+        kill_process_group(group);
+        true
+    } else if is_our_agent(pid, project, name) {
+        // Legacy harnesses had no dedicated group. Never signal the server's
+        // group merely because its verified child inherited that group.
+        signal_process(group, libc::SIGKILL);
+        true
+    } else {
+        false
+    }
 }
 
 /// A group may outlive its leader. Verify an inherited agent identity on a

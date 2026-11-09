@@ -396,9 +396,8 @@ pub fn recover(app: &App) {
             let Ok(raw) = std::fs::read_to_string(&pid_file) else { continue };
             let mut parts = raw.split_whitespace();
             let (Some(pid), Some(name)) = (parts.next().and_then(|x| x.parse::<i64>().ok()), parts.next()) else { continue };
-            if runtime::is_our_agent(pid, &project, name) {
-                runtime::signal_process(pid as u32, libc::SIGTERM);
-                println!("genie runtime: stopped stray session process {pid} ({project}/{name})");
+            if runtime::stop_stray_agent(pid, &project, name) {
+                println!("genie runtime: stopped stray session {pid} ({project}/{name})");
             }
             let _ = std::fs::remove_file(pid_file);
         }
