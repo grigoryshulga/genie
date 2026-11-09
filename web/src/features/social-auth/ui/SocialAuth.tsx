@@ -3,7 +3,7 @@ import { useState } from "react";
 import { request, type SocialProvider } from "@/shared/api";
 import "./social-auth.css";
 
-export function SocialAuth({ link = false }: { link?: boolean }) {
+export function SocialAuth({ link = false, separator = false }: { link?: boolean; separator?: boolean }) {
   const { data: providers } = useQuery({
     queryKey: ["social-providers"],
     queryFn: () => request<SocialProvider[]>("GET", "/api/auth/social"),
@@ -14,6 +14,7 @@ export function SocialAuth({ link = false }: { link?: boolean }) {
   if (!providers?.length && !failed && !error) return null;
   return (
     <div className="social-auth" aria-label={link ? "Подключённые способы входа" : "Вход через провайдера"}>
+      {separator && !!providers?.length && <p className="auth-or">или</p>}
       {failed && <p role="alert" className="auth-error">Не удалось войти через провайдера. Попробуйте ещё раз. Если регистрация закрыта, войдите по паролю и подключите провайдера в настройках профиля.</p>}
       {providers?.map((provider) => (
         <button

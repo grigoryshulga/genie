@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { Markdown } from "@tiptap/markdown";
 import { DocBody } from "@/entities/doc";
-import { Icon } from "@/shared/ui";
-import { articleExtensions, visualEditingIssue } from "../model/rich-markdown.ts";
+import { Icon, MenuButton } from "@/shared/ui";
+import { articleExtensions, articleMarkdown, visualEditingIssue } from "../model/rich-markdown.ts";
 import { formatMarkdown, type ArticleFormat } from "../model/format-markdown.ts";
 
 type Mode = "visual" | "source" | "split";
@@ -20,23 +20,29 @@ const FORMATS: { id: ArticleFormat; label: string; icon: string }[] = [
   { id: "link", label: "Ссылка", icon: "↗" },
 ];
 
-export function DocContentEditor({ value, onChange, title }: { value: string; onChange: (value: string) => void; title: string }) {
+export function DocContentEditor({ value, savedValue, onChange, title }: { value: string; savedValue: string; onChange: (value: string) => void; title: string }) {
   const [mode, setMode] = useState<Mode>("visual");
   const [link, setLink] = useState<string | null>(null);
   const source = useRef<HTMLTextAreaElement>(null);
   const selection = useRef({ start: 0, end: 0 });
   const lastOutput = useRef(value);
   const issue = useMemo(() => visualEditingIssue(value), [value]);
+  const savedMarkdown = useMemo(() => visualEditingIssue(savedValue) ? undefined : articleMarkdown.serialize(articleMarkdown.parse(savedValue)).trimEnd(), [savedValue]);
   const effectiveMode = mode === "visual" && issue ? "source" : mode;
   const extensions = useMemo(() => [...articleExtensions(), Markdown], []);
   const editor = useEditor({
     extensions, content: value, contentType: "markdown",
     // The same prose typography as the article reader (g-prose), so the editor shows what the page will look like.
     editorProps: { attributes: { class: "g-prose", role: "textbox", "aria-label": "Текст статьи", "aria-multiline": "true" } },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
+      // Focus/selection can append Tiptap's trailing paragraph. Keep the original Markdown
+      // until the initiating transaction actually edits the document.
+      if (!transaction.docChanged) return;
       const markdown = editor.getMarkdown();
-      lastOutput.current = markdown;
-      onChange(markdown);
+      // Undo back to the saved document also restores its original source formatting.
+      const next = savedMarkdown !== undefined && markdown.trimEnd() === savedMarkdown ? savedValue : markdown;
+      lastOutput.current = next;
+      onChange(next);
     },
   });
   const state = useEditorState({ editor, selector: ({ editor }) => editor ? {
@@ -91,7 +97,8 @@ export function DocContentEditor({ value, onChange, title }: { value: string; on
 
   return <div className="doc-content-editor">
     <div className="doc-format-toolbar" role="toolbar" aria-label="Форматирование статьи">
-      {FORMATS.map((format) => <button key={format.id} type="button" aria-label={format.label} title={format.label} aria-pressed={effectiveMode === "visual" && format.id !== "divider" ? !!state?.[format.id] : undefined} onMouseDown={(e) => e.preventDefault()} onClick={() => format.id === "link" ? setLink(effectiveMode === "visual" ? String(editor?.getAttributes("link").href ?? "https://") : "https://") : apply(format.id)}>{format.icon}</button>)}
+      {FORMATS.map((format) => <button key={format.id} type="button" className={["bold", "italic", "h2", "bullet"].includes(format.id) ? undefined : "doc-format-extra"} aria-label={format.label} title={format.label} aria-pressed={effectiveMode === "visual" && format.id !== "divider" ? !!state?.[format.id] : undefined} onMouseDown={(e) => e.preventDefault()} onClick={() => format.id === "link" ? setLink(effectiveMode === "visual" ? String(editor?.getAttributes("link").href ?? "https://") : "https://") : apply(format.id)}>{format.icon}</button>)}
+      <MenuButton className="doc-format-overflow" label="Другие инструменты форматирования" icon={<Icon.dots size={16} />} items={FORMATS.filter((format) => !["bold", "italic", "h2", "bullet"].includes(format.id)).map((format) => ({ id: format.id, label: format.label, onSelect: () => format.id === "link" ? setLink(effectiveMode === "visual" ? String(editor?.getAttributes("link").href ?? "https://") : "https://") : apply(format.id) }))} />
       {effectiveMode === "visual" && <>
         <button type="button" aria-label="Отменить" title="Отменить (Ctrl+Z)" disabled={!state?.undo} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().undo().run()}>↶</button>
         <button type="button" aria-label="Повторить" title="Повторить (Ctrl+Shift+Z)" disabled={!state?.redo} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().redo().run()}>↷</button>

@@ -1,7 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { agentTone, displayName } from "@/entities/member";
-import { awaitsTeam, EpicChip, EpicIcon, epicTone, laneOf, moveTargets, PriorityIcon, type Status, STATUS_NAME, type TaskSummary, useEpicMap } from "@/entities/task";
+import { awaitsTeam, EpicChip, EpicIcon, epicTone, laneOf, moveTargets, PriorityIcon, StatusIcon, type Status, STATUS_NAME, type TaskSummary, useEpicMap } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { Avatar, cx, Icon, Segments, Tag, WorkingArcs, ActionMenu, type MenuEntry } from "@/shared/ui";
 
@@ -25,7 +25,7 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
   // dnd-kit's drag instructions fill aria-describedby, which overrides aria-description, so the
   // card's notes are a hidden element the button references alongside them.
   const noteId = useId();
-  const note = [t.needsOwner?.question ?? t.blocked?.reason, waiting && AWAITING_TEAM].filter(Boolean).join(". ");
+  const note = [STATUS_NAME[t.status], t.needsOwner?.question ?? t.blocked?.reason, waiting && AWAITING_TEAM].filter(Boolean).join(". ");
   const content = (
     <>
       <span className="bd-title" title={t.title}>
@@ -44,6 +44,7 @@ export function CardBody({ t, team, onSelect, selected, drag }: {
         </span>
       ) : (
         <span className="bd-context">
+          <span className="bd-state"><StatusIcon status={t.status} size={12} /><span aria-hidden="true">{STATUS_NAME[t.status]}</span></span>
           {t.blocked ? (
             <span className="bd-note" title={t.blocked.reason}>Заблокировано: {t.blocked.reason}</span>
           ) : t.openDeps.length > 0 && <span className="bd-note" title={`Ждёт ${t.openDeps.join(", ")}`}>Ждёт {t.openDeps.join(", ")}</span>}

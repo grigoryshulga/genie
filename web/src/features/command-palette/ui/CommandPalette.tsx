@@ -1,9 +1,9 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { DocFileIcon, DocStatusBadge, snippetParts, useDebounced, useDocSearch } from "@/entities/doc";
 import { useSession } from "@/entities/session";
 import { EpicIcon, type PresetId, PRESETS, StatusIcon, useTasks } from "@/entities/task";
 import { useTeams } from "@/entities/team";
-import { Icon, Kbd, Modal, WorkingArcs } from "@/shared/ui";
+import { Checkbox, ErrorState, Icon, Kbd, Modal, WorkingArcs } from "@/shared/ui";
 
 export interface PaletteActions {
   newTask: () => void;
@@ -25,6 +25,8 @@ interface Item {
   icon: ReactNode;
   label: string;
   hint?: string;
+  /** A documentation path, subordinate to its human title. */
+  path?: string;
   /** Second line of a docs hit (a highlighted snippet). */
   sub?: ReactNode;
   /** Rendered next to the label (docs status). */
@@ -43,9 +45,15 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   const [docsOnly, setDocsOnly] = useState(false);
+  const listId = useId();
+  const list = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const query = q.trim();
   const debounced = useDebounced(q, 180);
   const docs = useDocSearch(debounced.trim(), debounced.trim().length > 0);
+  const docsPending = !!query && (debounced.trim() !== query || docs.isPending);
+  const docsFailed = !!query && !docsPending && docs.isError;
+  const docsEmpty = !!query && !docsPending && docs.isSuccess && !docs.data.results.length;
 
   const items = useMemo<Item[]>(() => {
     const base: Item[] = [
@@ -66,7 +74,7 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
       key: `d-${result.path}`,
       icon: <DocFileIcon />,
       label: result.title,
-      hint: result.path,
+      path: result.path,
       mark: <DocStatusBadge status={result.status} />,
       sub: (
         <span className="pal-snippet">
@@ -116,6 +124,19 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
   }, [query, tasks, teams, actions, docs.data, docsOnly, mine]);
 
   useEffect(() => setIdx(0), [q, docsOnly]);
+  const activeIndex = Math.max(0, Math.min(idx, items.length - 1));
+  const activeItem = items[activeIndex];
+  const optionId = (key: string) => `${listId}-${encodeURIComponent(key)}`;
+  const activeOptionId = activeItem ? optionId(activeItem.key) : undefined;
+  useEffect(() => {
+    const box = list.current;
+    const option = activeOptionId && document.getElementById(activeOptionId);
+    if (!box || !option) return;
+    const bounds = box.getBoundingClientRect();
+    const item = option.getBoundingClientRect();
+    if (item.top < bounds.top) box.scrollTop += item.top - bounds.top;
+    else if (item.bottom > bounds.bottom) box.scrollTop += item.bottom - bounds.bottom;
+  }, [activeOptionId]);
 
   const run = (item: Item | undefined) => {
     if (!item) return;
@@ -132,25 +153,29 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
           <Icon.search />
           <input
             autoFocus
+            ref={searchInput}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="true"
+            aria-controls={listId}
+            aria-activedescendant={activeOptionId}
             aria-label="Поиск команд, задач и документации"
             placeholder="Задача, команда, документация или действие…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Tab") {
-                e.preventDefault();
-                setDocsOnly((v) => !v);
-                return;
-              }
-              if (e.key === "ArrowDown") setIdx((i) => Math.min(items.length - 1, i + 1));
-              else if (e.key === "ArrowUp") setIdx((i) => Math.max(0, i - 1));
-              else if (e.key === "Enter") run(items[idx]);
+              if (e.key === "ArrowDown") setIdx(Math.min(Math.max(0, items.length - 1), activeIndex + 1));
+              else if (e.key === "ArrowUp") setIdx(Math.max(0, activeIndex - 1));
+              else if (e.key === "Enter") run(activeItem);
               else return;
               e.preventDefault();
             }}
           />
         </label>
-        <div className="items" role="listbox">
+        {docsPending && <div className="pal-search-status" role="status"><span aria-hidden="true"><WorkingArcs size={14} /></span>Ищем в документации…</div>}
+        {docsFailed && <div className="pal-search-error"><ErrorState message="Не удалось выполнить поиск по документации. Попробуйте ещё раз." onRetry={() => { void docs.refetch(); searchInput.current?.focus(); }} /></div>}
+        {docsEmpty && <div className="pal-search-status" role="status">В документации ничего не найдено</div>}
+        <div className="items" role="listbox" tabIndex={-1} id={listId} ref={list} aria-label="Результаты поиска" aria-busy={docsPending || undefined}>
           {items.map((i, n) => {
             const header = i.group !== lastGroup ? i.group : undefined;
             lastGroup = i.group;
@@ -162,28 +187,30 @@ export function CommandPalette({ onClose, actions }: { onClose: () => void; acti
                     {header === "ДОКУМЕНТАЦИЯ" && docsOnly ? <span className="muted"> · только документация</span> : null}
                   </div>
                 )}
-                <button type="button" role="option" aria-selected={n === idx} className="g-menu-item" data-active={n === idx} onMouseEnter={() => setIdx(n)} onClick={() => run(i)}>
+                <button type="button" role="option" id={optionId(i.key)} tabIndex={-1} aria-selected={n === activeIndex} className="g-menu-item" data-active={n === activeIndex} onMouseEnter={() => setIdx(n)} onClick={() => run(i)}>
                   {i.icon}
                   <span className="pal-col">
                     <span className="pal-label">
-                      {i.label}
+                      <span className="pal-title">{i.label}</span>
                       {i.mark}
                     </span>
+                    {i.path && <span className="pal-path" title={i.path}>{i.path}</span>}
                     {i.sub && <span className="pal-sub">{i.sub}</span>}
                   </span>
-                  {i.hint && <span className="hint">{i.hint}</span>}
+                  {i.hint && <span className="hint" title={i.hint}>{i.hint}</span>}
                 </button>
               </div>
             );
           })}
           {!items.length && (
-            <div className="g-empty">
-              {docsOnly && !docs.isPending ? "В документации ничего не найдено" : "Ничего не найдено"}
+            <div className="g-empty" role="status">
+              {docsOnly && !query ? "Введите запрос для поиска в документации" : docsOnly && !docs.isPending ? "В документации ничего не найдено" : "Ничего не найдено"}
             </div>
           )}
         </div>
         <div className="pal-foot muted">
-          <Kbd>↑↓</Kbd> выбрать <Kbd>↵</Kbd> открыть <Kbd>Tab</Kbd> только документация <Kbd>Esc</Kbd> закрыть
+          <Checkbox label="Только документация" checked={docsOnly} onChange={(event) => setDocsOnly(event.target.checked)} />
+          <span><Kbd>↑↓</Kbd> выбрать <Kbd>↵</Kbd> открыть <Kbd>Esc</Kbd> закрыть</span>
         </div>
       </div>
     </Modal>

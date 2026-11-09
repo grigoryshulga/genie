@@ -3,16 +3,15 @@
    AuthLayout (web/src/pages/auth/ui/AuthLayout.tsx) draws the slogan, the arcs motif and the
    character; the rules here place them. Tokens only, both themes, phone first. */
 
-/* The page-level loader and the first-project page still use this column (pages/settings).
-   They sit on the same ink backdrop as the sign-in surface so the first screen of a server reads as one place. */
+/* The page-level loader and first-project setup use the selected theme's canvas. */
 .auth-page {
   min-height: 100svh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--g-space-8) var(--g-space-5);
-  background: var(--g-ink);
-  color: var(--g-paper);
+  background: var(--g-bg);
+  color: var(--g-text);
   overflow-y: auto;
 }
 
@@ -25,7 +24,7 @@
 
 .auth-page .auth-card {
   padding: var(--g-space-6);
-  border: 1px solid var(--g-n-800);
+  border: 1px solid var(--g-border);
   border-radius: var(--g-radius-lg);
   background: var(--g-surface);
   color: var(--g-text);
@@ -288,7 +287,7 @@
   margin: 0;
   font-size: var(--g-text-body-lg);
   line-height: 1.55;
-  color: var(--g-text-2);
+  color: var(--sh-t2);
   max-width: 46ch;
 }
 
@@ -326,12 +325,12 @@
 }
 
 .answer-num {
-  color: var(--g-text-muted);
+  color: var(--sh-t2);
   font-variant-numeric: tabular-nums;
 }
 
 .answer-why {
-  color: var(--g-text-muted);
+  color: var(--sh-t2);
   font-size: var(--g-text-dense);
   line-height: 1.5;
 }
@@ -350,7 +349,7 @@
   display: flex;
   align-items: center;
   gap: var(--g-space-2);
-  color: var(--g-accent-soft-text);
+  color: var(--sh-accent);
   font-size: var(--g-text-dense);
 }
 

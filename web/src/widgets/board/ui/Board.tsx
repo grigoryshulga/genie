@@ -215,7 +215,14 @@ export function Board({
   const { lanes: byLane, cancelled } = groupByLane(tasks);
   // Every lane is on the board; «Готово» is folded unless the owner shows it, and «Может быть» starts folded.
   const listed = LANES;
-  const [phoneLane, setPhoneLane] = useState<LaneId>(() => (LANES.find((l) => byLane[l.id].length) ?? LANES[0]).id);
+  const [phoneLane, setPhoneLane] = useState<LaneId>(() => (LANES.find((l) => l.id !== "maybe" && l.id !== "done" && byLane[l.id].length) ?? LANES[1]).id);
+  useLayoutEffect(() => {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      const box = scroller.current;
+      const lane = lanes.current[phoneLane];
+      if (box && lane) box.scrollLeft += lane.getBoundingClientRect().left - box.getBoundingClientRect().left - (parseFloat(getComputedStyle(box).paddingLeft) || 0);
+    }
+  }, []); // The initial phone viewport starts on an open lane; later scrolling remains user-controlled.
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -294,7 +301,16 @@ export function Board({
   // Phone: the chip row above the lanes scrolls the board and follows the lane in view.
   const goLane = (id: LaneId) => {
     setPhoneLane(id);
-    lanes.current[id]?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+    if (id === "done" && !showDone) onDoneVisibilityChange(true);
+    setFolded((current) => new Set([...current].filter((key) => key !== id)));
+    requestAnimationFrame(() => {
+      const box = scroller.current;
+      const lane = lanes.current[id];
+      if (!box || !lane) return;
+      // Only the board moves: scrollIntoView would also shift the page beneath the fixed shell.
+      const left = box.scrollLeft + lane.getBoundingClientRect().left - box.getBoundingClientRect().left - (parseFloat(getComputedStyle(box).paddingLeft) || 0);
+      box.scrollTo({ left, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    });
   };
   const onScroll = () => {
     const box = scroller.current;

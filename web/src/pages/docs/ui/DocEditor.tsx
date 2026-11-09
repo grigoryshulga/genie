@@ -25,7 +25,7 @@ import { DocContentEditor } from "./DocContentEditor.tsx";
 import "./editor.css";
 import { DiagIcon, StaleIcon } from "@/entities/doc";
 import { plural } from "@/shared/lib";
-import { Button, Dialog, DisclosureCard, Icon, LoadingState } from "@/shared/ui";
+import { Button, Dialog, DisclosureCard, ErrorState, Icon, LoadingState } from "@/shared/ui";
 
 function countChanges(before: string, after: string): number {
   const a = before.replace(/\r/g, "").split("\n");
@@ -182,7 +182,7 @@ export function DocEditor({ path, pages, onSaved }: { path: string; pages: { pat
   }, [externallyChanged, conflict, save.isPending]);
 
   const submit = async (mode: "update" | "create" = "update", force = false) => {
-    if (!fields || errors.length) return;
+    if (!fields || errors.length || (mode === "update" && !force && !dirty)) return;
     if (!body.trim()) {
       setSaveError("Содержимое страницы пустое — сервер не примет такое сохранение");
       return;
@@ -252,7 +252,10 @@ export function DocEditor({ path, pages, onSaved }: { path: string; pages: { pat
   };
 
   if (!fields) {
-    if (pageQ.isError) return <div className="docs-content"><div className="doc-editor-wait g-muted">Не удалось открыть страницу: {pageQ.error.message}</div></div>;
+    if (pageQ.isError) return <div className="docs-content"><div className="doc-editor-wait">
+      <ErrorState message={pageQ.error instanceof DocRequestError && pageQ.error.status === 404 ? "Статья удалена или перемещена. Откройте знания, чтобы найти актуальную версию." : "Не удалось загрузить статью для редактирования. Проверьте подключение и попробуйте снова."} onRetry={() => void pageQ.refetch()} />
+      <p><Link className="g-btn secondary" to="/docs">К знаниям</Link></p>
+    </div></div>;
     return <div className="docs-content"><div className="doc-editor-wait"><LoadingState label="Загрузка страницы" lines={4} width={520} /></div></div>;
   }
 
@@ -383,7 +386,7 @@ export function DocEditor({ path, pages, onSaved }: { path: string; pages: { pat
 
       <div className="doc-editor-workspace">
         <div className="doc-editor-canvas">
-          <DocContentEditor value={body} onChange={setBody} title={fields.title || title} />
+          <DocContentEditor value={body} savedValue={initial?.body ?? body} onChange={setBody} title={fields.title || title} />
         </div>
         {!narrow && <aside className="doc-editor-sidebar" aria-label="Свойства статьи">{properties}</aside>}
       </div>
@@ -417,7 +420,7 @@ export function DocEditor({ path, pages, onSaved }: { path: string; pages: { pat
         <Link className="g-btn secondary" to={`/docs?page=${encodeURIComponent(path)}`}>
           Отмена
         </Link>
-        <Button variant="primary" onClick={() => void submit()} busy={save.isPending} disabled={save.isPending || errors.length > 0}>
+        <Button variant="primary" onClick={() => void submit()} busy={save.isPending} disabled={!dirty || save.isPending || errors.length > 0}>
           <Icon.check size={13} />
           {save.isPending ? "Сохраняю…" : "Сохранить"}
         </Button>

@@ -17,7 +17,7 @@
 .ac-head { flex: none; display: flex; align-items: center; gap: var(--g-space-3); min-height: 64px; padding: var(--g-space-2) var(--g-space-5); border-bottom: 1px solid var(--g-border); background: var(--g-bg); }
 .ac-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: var(--g-leading-ui); }
 .ac-nm { display: flex; align-items: baseline; gap: var(--g-space-2); min-width: 0; }
-.ac-nm b { font: var(--g-weight-bold) var(--g-text-ui) var(--g-font-display); white-space: nowrap; }
+.ac-nm b { font: var(--g-weight-bold) var(--g-text-ui) var(--g-font-sans); white-space: nowrap; }
 .ac-role { font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; }
 .ac-state { display: inline-flex; align-items: center; gap: var(--g-space-2); max-width: 100%; overflow: hidden; font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; text-overflow: ellipsis; }
 .ac-state > .g-working { flex: none; }
@@ -69,7 +69,7 @@
 .ac-steplist { display: flex; flex-direction: column; gap: var(--g-space-1); }
 .ac-stepitem { display: flex; flex-direction: column; gap: var(--g-space-1); }
 .ac-steprow { display: flex; align-items: center; gap: var(--g-space-1); }
-.ac-step { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--g-space-2); min-height: 28px; padding: 0 var(--g-space-3) 0 var(--g-space-2); border: 0; border-radius: var(--g-radius-sm); background: transparent; color: var(--g-text-2); font: 500 var(--g-text-caption)/1.35 var(--g-font-sans); text-align: left; overflow: hidden; opacity: 0.62; cursor: pointer; transition: opacity var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease); }
+.ac-step { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--g-space-2); min-height: 28px; padding: 0 var(--g-space-3) 0 var(--g-space-2); border: 0; border-radius: var(--g-radius-sm); background: transparent; color: var(--g-text-2); font: 500 var(--g-text-caption)/1.35 var(--g-font-sans); text-align: left; overflow: hidden; cursor: pointer; transition: opacity var(--g-duration) var(--g-ease), background var(--g-duration) var(--g-ease); }
 .ac-step.group { min-height: 30px; }
 .ac-step:hover, .ac-step:focus-visible, .ac-step.open, .ac-step.running { opacity: 1; }
 .ac-step:hover:not(:disabled), .ac-step.open { background: var(--g-surface-hover); }
@@ -81,7 +81,7 @@
 .ac-step .count { flex: none; font-weight: 600; color: var(--g-text-2); }
 .ac-step .chips { flex: 0 1 auto; min-width: 0; display: flex; gap: var(--g-space-1); overflow: hidden; }
 .ac-step .chips .g-tag { flex: none; }
-.ac-step .args { flex: 1; min-width: 0; font: 500 11.5px var(--g-font-mono); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-step .args { flex: 1; min-width: 0; font: var(--g-weight-medium) var(--g-text-caption) var(--g-font-mono); color: var(--g-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ac-step.running .args, .ac-step.open .args { color: var(--g-text-2); }
 .ac-step .took { flex: none; font-variant-numeric: tabular-nums; color: var(--g-text-muted); }
 .ac-step .st { flex: none; color: var(--g-text-muted); }
@@ -175,7 +175,8 @@
   .ac-msg.mine { grid-template-columns: minmax(0, 1fr); padding-left: 8%; }
   .ac-note { padding: 0 var(--g-space-3); }
   .ac-steps { margin-left: 0; }
-  .ac-step { min-height: 40px; }
+  .ac-step { min-height: var(--g-control); }
+  .ac-steprow .quote { width: var(--g-control); height: var(--g-control); opacity: 1; }
   .ac-step.group .stack, .ac-step.group .args { display: none; }
   .ac-step.group .chips { flex: 1; }
   .ac-composer { position: sticky; bottom: 0; z-index: var(--g-z-sticky); margin: 0; width: auto; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; border-bottom: 0; padding-bottom: max(var(--g-space-2), env(safe-area-inset-bottom)); }

@@ -80,7 +80,17 @@ export function NavMenu({ label, items, align = "left" }: { label: string; items
       e.preventDefault();
       return close(true);
     }
-    if (e.key === "Tab") return close(false);
+    if (e.key === "Tab") {
+      e.preventDefault();
+      // The portal leaves the DOM after its exit motion. Move to a stable shell control
+      // before closing rather than tabbing into a menu item that is about to disappear.
+      const stops = [...document.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]')]
+        .filter((node) => node.tabIndex >= 0 && !node.matches(':disabled') && node.getClientRects().length > 0 && !panel.current?.contains(node));
+      const at = stops.indexOf(button.current!);
+      close(false);
+      (stops[at + (e.shiftKey ? -1 : 1)] ?? button.current)?.focus();
+      return;
+    }
     const links = [...(panel.current?.querySelectorAll<HTMLAnchorElement>("a") ?? [])];
     const at = links.findIndex((a) => a === document.activeElement);
     const next = nextIndex(at, e.key, links.length);
@@ -117,6 +127,7 @@ export function NavMenu({ label, items, align = "left" }: { label: string; items
               key={item.id}
               to={item.to}
               role="menuitem"
+              tabIndex={-1}
               className="g-nav-menu-item"
               aria-current={item.current ? "page" : undefined}
               style={{ "--g-nav-menu-index": i } as React.CSSProperties}

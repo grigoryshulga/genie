@@ -90,11 +90,16 @@
 .changes-merge-pane pre { margin: 0; height: 52vh; overflow: auto; padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); font-family: var(--g-font-mono); font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .changes-merge-editor { height: 52vh; resize: vertical; font-family: var(--g-font-mono); font-size: var(--g-text-caption); line-height: var(--g-leading-ui); }
 .changes-merge-warning { margin: 0; font-size: var(--g-text-caption); color: var(--g-danger-text); }
+.changes-merge-guidance { margin: 0; padding: var(--g-space-3) var(--g-space-6); background: var(--g-signal-soft); color: var(--g-signal-text); font-size: var(--g-text-dense); }
+.changes-merge-compare { display: none; }
 .changes-merge-base summary { cursor: pointer; font-size: var(--g-text-dense); color: var(--g-text-2); }
 .changes-merge-base pre { max-height: 30vh; overflow: auto; margin: var(--g-space-2) 0 0; padding: var(--g-space-3); border: 1px solid var(--g-border); border-radius: var(--g-radius-md); background: var(--g-surface); font-family: var(--g-font-mono); font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: pre-wrap; }
 
 @media (max-width: 1100px) {
+  .changes-merge-compare { display: flex; flex-wrap: wrap; gap: var(--g-space-2); }
   .changes-merge-panes { grid-template-columns: minmax(0, 1fr); }
+  .changes-merge-pane.result { order: -1; }
+  .changes-merge-panes[data-comparison="ours"] .theirs, .changes-merge-panes[data-comparison="theirs"] .ours { display: none; }
   .changes-merge-pane pre, .changes-merge-editor { height: 32vh; }
 }
 
@@ -102,7 +107,10 @@
   .doc-changeset-bar { padding-inline: var(--g-space-4); }
   .doc-changeset-actions { margin-left: 0; }
   .changes-filters { padding-inline: var(--g-space-4); }
-  .changes-filter-selects { margin-left: 0; }
+  .changes-filters > .g-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; min-width: 0; border-radius: var(--g-radius-lg); }
+  .changes-filters > .g-seg > button { min-width: 0; justify-content: center; white-space: normal; }
+  .changes-filter-selects { margin-left: 0; width: 100%; min-width: 0; }
+  .changes-filter-selects .g-select { flex: 1; min-width: 0; max-width: 100%; }
   .changes-detail { padding: var(--g-space-4); }
   .changes-merge-head, .changes-merge-body { padding-inline: var(--g-space-4); }
   .doc-history { grid-template-columns: minmax(0, 1fr); max-height: none; }

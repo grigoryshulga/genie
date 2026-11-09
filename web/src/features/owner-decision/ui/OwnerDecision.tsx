@@ -232,7 +232,7 @@ export function OwnerDecision({ task }: { task: Task }) {
         onChange={(e) => setWords(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && send(true)}
       />
-      <p className="od-hint">⌘↵ ответить и вернуть в «{STATUS_NAME[owner.previous]}»</p>
+      <p className="od-hint d-only">⌘↵ ответить и вернуть в «{STATUS_NAME[owner.previous]}»</p>
       <div className="od-buttons">
         <button type="button" className={`g-btn ${kind === "ask-for-merge-pr" ? "ghost" : "primary"}`} disabled={!text} onClick={() => send(true)}>
           Ответить и вернуть в работу

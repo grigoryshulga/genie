@@ -40,3 +40,8 @@
 .config-history-pagination { display: flex; align-items: center; justify-content: flex-end; gap: var(--g-space-3); margin-top: var(--g-space-4); font-size: var(--g-text-caption); }
 
 @media (max-width: 700px) { .config-tabs .g-tabs.underline > [role="tab"] { padding-inline: var(--g-space-1); } }
+
+@media (max-width: 900px) {
+  .config-icon-group .g-icon-btn, .config-icon-group .fchip { width: var(--g-control); height: var(--g-control); min-height: var(--g-control); }
+  .config-icon-group { flex-wrap: wrap; max-width: 100%; }
+}

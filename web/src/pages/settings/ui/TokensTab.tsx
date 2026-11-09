@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { type UserToken, useIssueToken, useRevokeToken, useTokens } from "@/entities/project";
 import { timeAgo, useTick } from "@/shared/lib";
-import { ConfirmDialog, Icon, Segmented, useRefreshingAct as useAct, useToast } from "@/shared/ui";
+import { Button, ConfirmDialog, Field, Icon, Input, Segmented, useRefreshingAct as useAct, useToast } from "@/shared/ui";
 import { SettingsLoading } from "@/widgets/settings-shell";
 
 type Client = "claude" | "codex" | "opencode" | "cursor" | "gemini" | "generic" | "cli";
@@ -101,7 +101,7 @@ export function TokensTab() {
         </div>
 
         <form
-          className="pj-row"
+          className="tokens-issue-form"
           onSubmit={(e) => {
             e.preventDefault();
             const name = label.trim() || "без имени";
@@ -112,16 +112,15 @@ export function TokensTab() {
             });
           }}
         >
-          <input
-            aria-label="Имя токена"
-            placeholder="Где будет жить токен: ноутбук, CI, Claude Code…"
+          <Field label="Имя токена"><Input
+            placeholder="Ноутбук, CI, Claude Code…"
             value={label}
             maxLength={80}
             onChange={(e) => setLabel(e.target.value)}
-          />
-          <button className="g-btn secondary"  disabled={issue.isPending}>
+          /></Field>
+          <Button type="submit" variant="secondary" busy={issue.isPending}>
             Выпустить токен
-          </button>
+          </Button>
         </form>
 
         {fresh && (

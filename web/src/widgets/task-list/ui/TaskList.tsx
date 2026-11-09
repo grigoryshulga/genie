@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { Avatars } from "@/entities/member";
 import { PersonAvatar } from "@/entities/project";
 import { EpicChip, EpicIcon, Labels, PriorityIcon, StatusIcon, type Status, STATUS_NAME, STATUS_ORDER, type TaskSummary } from "@/entities/task";
@@ -18,6 +18,8 @@ export function TaskList({
   grouped = true,
   when = "updated",
   empty = "Здесь пусто",
+  emptyDescription,
+  emptyAction,
   teams,
   people,
   focused,
@@ -32,6 +34,8 @@ export function TaskList({
   /** Which date the last column shows. */
   when?: "updated" | "created";
   empty?: string;
+  emptyDescription?: ReactNode;
+  emptyAction?: ReactNode;
   teams: Map<string, Team>;
   /** login → name of the project's people. */
   people?: Map<string, string>;
@@ -55,7 +59,7 @@ export function TaskList({
 
   if (!groups.length) {
     return (
-      <EmptyState className="tl-empty" title={empty} />
+      <EmptyState className="tl-empty" title={empty} action={emptyAction}>{emptyDescription}</EmptyState>
     );
   }
 
@@ -102,6 +106,8 @@ export function TaskList({
                         onOpen(t.id);
                       }}
                     >
+                      <span className="tl-inline-id m-only g-mono">{t.id}</span>
+                      <span className="tl-title-text">
                       {t.priority <= 1 && <PriorityIcon priority={t.priority} />}
                       {t.type === "epic" && (
                         <span className="tl-epic-mark">
@@ -110,6 +116,7 @@ export function TaskList({
                         </span>
                       )}
                       {t.title}
+                      </span>
                     </button>
                     <span className="tl-labels d-only">
                       <Labels labels={t.labels.slice(0, 3)} />

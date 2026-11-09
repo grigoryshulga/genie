@@ -22,7 +22,7 @@ import {
 } from "@/entities/doc";
 import { useSession } from "@/entities/session";
 import { DocViewSwitch } from "@/widgets/docs-view-switch";
-import { useToast, Banner, EmptyState, ErrorState, Icon, LoadingState, Skeleton, useModalFocus } from "@/shared/ui";
+import { useToast, Banner, EmptyState, ErrorState, Field, Input, Icon, LoadingState, Skeleton, useModalFocus } from "@/shared/ui";
 import { DocsOverview } from "./DocsOverview.tsx";
 import { DocSearchList } from "./DocSearchList.tsx";
 import { DocView } from "./DocView.tsx";
@@ -126,7 +126,8 @@ export function DocsPage() {
   return (
     <main className="main docs-main">
 
-      <div className={`docs-grid ${grid}`}>
+      {searchMode && activePath && <button type="button" className="g-btn ghost m-only docs-search-back" onClick={() => setParam({ page: null })}><Icon.back size={15} />К результатам поиска</button>}
+      <div className={`docs-grid ${grid}${searchMode && activePath ? " search-selected" : ""}`}>
         <div className="docs-tree-col">
           <header className="docs-col-head side-head">
             <button type="button" className="g-icon-btn m-only" onClick={() => setDrawer(true)} aria-label="Открыть навигацию по документации">
@@ -135,6 +136,8 @@ export function DocsPage() {
             <h1 className="g-page-title">Знания</h1>
             {searchMode && <span className="doc-col-tag">поиск</span>}
           </header>
+
+          {searchMode && <div className="docs-result-query"><Field label="Поиск по знаниям"><Input type="search" value={q} onChange={(event) => setParam({ q: event.target.value || null, page: null }, true)} placeholder="Название, текст или тег" /></Field></div>}
 
           {loading ? (
             <div className="doc-tree-empty" aria-busy="true">
@@ -157,6 +160,7 @@ export function DocsPage() {
               results={results}
               pending={search.isPending || debouncedQ !== q}
               error={search.error}
+              onRetry={() => void search.refetch()}
               selected={activePath}
               onOpen={openPage}
               onCreate={(title) => setParam({ new: "page", title, q: null })}
@@ -170,15 +174,17 @@ export function DocsPage() {
           <div className="docs-content"><div className="docs-view"><ErrorState message={tree.error.message} onRetry={() => void tree.refetch()} /></div></div>
         ) : loading ? (
           <div className="docs-content"><div className="docs-view" aria-busy="true">
-            <div className="doc-head">
-              <Skeleton width="12ch" height={20} />
-              <Skeleton width="70%" height={36} />
-              <Skeleton width="40%" height={20} />
-            </div>
-            <Skeleton width="100%" height={16} />
-            <Skeleton width="92%" height={16} />
-            <Skeleton width="96%" height={16} />
-            <Skeleton width="60%" height={16} />
+            <LoadingState label="Загрузка страницы" width="100%">
+              <div className="doc-head">
+                <Skeleton width="12ch" height={20} />
+                <Skeleton width="70%" height={36} />
+                <Skeleton width="40%" height={20} />
+              </div>
+              <Skeleton width="100%" height={16} />
+              <Skeleton width="92%" height={16} />
+              <Skeleton width="96%" height={16} />
+              <Skeleton width="60%" height={16} />
+            </LoadingState>
           </div></div>
         ) : !pagePath && !searchMode ? (
           roots.length === 0 ? (
@@ -204,15 +210,17 @@ export function DocsPage() {
         ) : activePath && pageQ.isPending && !showPage ? (
           <div className="docs-content">
             <div className="docs-view" aria-busy="true">
-              <div className="doc-head">
-                <Skeleton width="10ch" height={20} />
-                <Skeleton width="62%" height={36} />
-                <Skeleton width="34%" height={20} />
-              </div>
-              <Skeleton width="100%" height={16} />
-              <Skeleton width="88%" height={16} />
-              <Skeleton width="94%" height={16} />
-              <Skeleton width="52%" height={16} />
+              <LoadingState label="Загрузка страницы" width="100%">
+                <div className="doc-head">
+                  <Skeleton width="10ch" height={20} />
+                  <Skeleton width="62%" height={36} />
+                  <Skeleton width="34%" height={20} />
+                </div>
+                <Skeleton width="100%" height={16} />
+                <Skeleton width="88%" height={16} />
+                <Skeleton width="94%" height={16} />
+                <Skeleton width="52%" height={16} />
+              </LoadingState>
             </div>
           </div>
         ) : pageQ.isError ? (

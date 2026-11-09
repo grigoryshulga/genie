@@ -1,5 +1,5 @@
 import { TaskIntelligence } from "./TaskIntelligence.tsx";
-import { Fragment, type ReactNode, useEffect, useId, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { DocDiagBadge, DocStaleBadge, DocStatusBadge } from "@/entities/doc";
 import { agentTone, displayName, ROLE_TITLE_RU } from "@/entities/member";
@@ -42,6 +42,9 @@ import {
   Button,
   Character,
   ConfirmDialog,
+  Dialog,
+  Field,
+  Textarea,
   EmptyState,
   ErrorState,
   Icon,
@@ -84,6 +87,17 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
 }) {
   useTick();
   const q = useTask(id);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const previousReview = useRef<{ id: string; status?: Status }>({ id });
+  useEffect(() => {
+    const previous = previousReview.current;
+    const status = q.data?.status;
+    previousReview.current = { id, status };
+    if (previous.id === id && previous.status === "review" && status && status !== "review") {
+      // The authoritative query can remove the decision dialog before mutation callbacks run.
+      requestAnimationFrame(() => titleRef.current?.focus());
+    }
+  }, [id, q.data?.status]);
   const navigate = useNavigate();
   const toast = useToast();
   const move = useMoveTask();
@@ -172,6 +186,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const TitleTag = page ? "h1" : "h2";
   const title = (
     <TitleTag
+      ref={titleRef}
       className={page ? "title g-page-title" : "title"}
       contentEditable={writable}
       suppressContentEditableWarning
@@ -657,6 +672,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           </div>
           <div className="detail-main">
             {states}
+            {t.status === "review" && writable && <ReviewDecision key={t.id} task={t.id} />}
             {epicLink}
             {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
             {contentTabs}
@@ -703,7 +719,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
               title="Команда не собрана"
               character="sleep"
               characterLabel="Команда ещё не собрана"
-              action={canSpawn && writable ? <Button variant="primary" onClick={() => setSpawning(true)}>Собрать команду</Button> : undefined}
+              action={canSpawn && writable ? <Button variant={t.status === "review" ? "secondary" : "primary"} onClick={() => setSpawning(true)}>Собрать команду</Button> : undefined}
             >
               Соберите команду агентов: здесь появятся её почта, схема и участники.
             </EmptyState>
@@ -746,6 +762,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           </aside>
           <div className="tp-main">
             {states}
+            {t.status === "review" && writable && <ReviewDecision key={t.id} task={t.id} />}
             {epicLink}
             {impactEnabled && <DocsImpactBlock result={impact.data} />}
             {!t.needsOwner?.question.startsWith("Clarification #") && <OwnerDecision task={t} />}
@@ -783,12 +800,12 @@ function useNarrow(): boolean {
 }
 
 /** A rail card that folds to its title; the choice is remembered per card. */
-function RailCard({ id, title, className, children, collapsible = true }: { id: string; title: string; className?: string; children: ReactNode; collapsible?: boolean }) {
+function RailCard({ id, title, className, children, collapsible = true, foldOnPhone = id === "properties" }: { id: string; title: string; className?: string; children: ReactNode; collapsible?: boolean; foldOnPhone?: boolean }) {
   const key = `genie.railCard.${id}`;
   const contentId = useId();
   // On a phone the properties fold under the headline like an accordion until opened.
   const narrow = useNarrow();
-  const [open, setOpen] = useState(() => readPref(key, id === "properties" && narrow ? "closed" : "open") === "open");
+  const [open, setOpen] = useState(() => readPref(key, foldOnPhone && narrow ? "closed" : "open") === "open");
   if (!collapsible) return <section className={`tp-card${className ? ` ${className}` : ""}`}>{title && <h3 className="tp-card-title">{title}</h3>}<div className="tp-card-body">{children}</div></section>;
   return (
     <section className={`tp-card${className ? ` ${className}` : ""}${open ? "" : " collapsed"}`}>
@@ -820,7 +837,7 @@ function TeamCard({ task, status, team, canSpawn, onSpawn, compact = false }: { 
   const active = current?.state === "active";
   const live = current && spec ? liveTeam(spec, current.members, status, active, displayName).live : {};
   return (
-    <RailCard id="team" title={compact ? "" : "Команда"} className={`tp-team-card${compact ? " tp-team-compact" : ""}`} collapsible={!compact}>
+    <RailCard id="team" title={compact ? "" : "Команда"} className={`tp-team-card${compact ? " tp-team-compact" : ""}`} collapsible={!compact} foldOnPhone={!team}>
       {current?.members.length ? (
         <>
           <div className="tp-team-roster" aria-label="Участники команды">
@@ -856,7 +873,7 @@ function TeamCard({ task, status, team, canSpawn, onSpawn, compact = false }: { 
           <Link className="g-btn secondary sm" to={`/task/${encodeURIComponent(task)}/team`}>
             Перейти к команде <Icon.chevron size={12} />
           </Link>
-          {canSpawn && <Button variant="primary" sm onClick={onSpawn}><Icon.userPlus size={12} />Собрать команду</Button>}
+          {canSpawn && <Button variant={["needs_owner", "review"].includes(status) ? "secondary" : "primary"} sm onClick={onSpawn}><Icon.userPlus size={12} />Собрать команду</Button>}
         </div>
       )}
     </RailCard>
@@ -1015,4 +1032,40 @@ function TaskSkeleton({ page }: { page: boolean }) {
       </div>
     </div>
   );
+}
+
+/** Human review uses the same authorized status transition as the properties field. */
+function ReviewDecision({ task }: { task: string }) {
+  const move = useMoveTask();
+  const [returning, setReturning] = useState(false);
+  const [reason, setReason] = useState("");
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { if (returning) requestAnimationFrame(() => reasonRef.current?.focus()); }, [returning]);
+  const [error, setError] = useState<string>();
+  const decide = (status: "approved" | "changes_requested") => {
+    setError(undefined);
+    move.mutate({ id: task, status, ...(status === "changes_requested" ? { note: reason.trim() } : {}) }, {
+      onError: (cause) => setError(cause.message),
+      onSuccess: () => setReturning(false),
+    });
+  };
+  return <section className="tp-review-decision" aria-label="Решение по ревью">
+    <h2 className="g-h4">Проверьте результат</h2>
+    <p>Одобрите работу или верните её на доработку с замечаниями.</p>
+    {error && !returning && <ErrorState message={error} />}
+    <div className="tp-review-actions">
+      <Button variant="primary" busy={move.isPending} onClick={() => decide("approved")}>Одобрить</Button>
+      <Button variant="secondary" disabled={move.isPending} onClick={() => { setError(undefined); setReturning(true); }}>Вернуть на доработку</Button>
+    </div>
+    {returning && <Dialog title="Вернуть на доработку" onClose={() => setReturning(false)}>
+      <form onSubmit={(event) => { event.preventDefault(); if (reason.trim()) decide("changes_requested"); }}>
+        <Field label="Что нужно исправить"><Textarea ref={reasonRef} autoFocus required value={reason} onChange={(event) => setReason(event.target.value)} /></Field>
+        {error && <ErrorState message={error} />}
+        <div className="tp-review-actions">
+          <Button type="submit" variant="primary" busy={move.isPending} disabled={!reason.trim()}>Вернуть на доработку</Button>
+          <Button variant="secondary" onClick={() => setReturning(false)}>Отмена</Button>
+        </div>
+      </form>
+    </Dialog>}
+  </section>;
 }

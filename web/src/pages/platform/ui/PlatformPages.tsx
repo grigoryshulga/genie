@@ -2,10 +2,10 @@
 // link), notifications and using the automations (the rules themselves are
 // defined in the settings mode). Documentation changesets live in the docs routes.
 
-import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { type Automation, type Notification, describeTrigger, RUN_STATUS, useAutomations, useNotifications } from "@/entities/platform";
-import { request } from "@/shared/api";
+import { ApiError, request } from "@/shared/api";
 import { matchesSearch, timeAgo, useTick } from "@/shared/lib";
 import { Banner, Button, Card, Character, EmptyState, GroupHead, Icon, PageHeader, Radio, Sheet, Skeleton, Textarea, useRefreshingAct, WorkingArcs } from "@/shared/ui";
 import { Runs } from "@/widgets/runs";
@@ -28,19 +28,46 @@ export function AnswerPage() {
   const [sp] = useSearchParams();
   const token = sp.get("token") ?? "";
   const [data, setData] = useState<{ questionnaire: Questionnaire; taskTitle?: string } | null>();
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<{ message: string; retry: boolean }>();
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [done, setDone] = useState(false);
-  if (data === undefined && !error) {
-    request<{ questionnaire: Questionnaire; taskTitle?: string }>("GET", `/api/answer/${encodeURIComponent(token)}`).then(setData, (e: Error) => setError(e.message));
-  }
+  const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setData(undefined);
+    setError(undefined);
+    setAnswers({});
+    setDone(false);
+    setBusy(false);
+    setSubmitError(undefined);
+    if (!token) {
+      setError({ message: "В ссылке нет кода вопроса. Откройте полную ссылку из последнего уведомления.", retry: false });
+      return;
+    }
+    void request<{ questionnaire: Questionnaire; taskTitle?: string }>("GET", `/api/answer/${encodeURIComponent(token)}`).then(
+      (value) => { if (active) setData(value); },
+      (cause: unknown) => {
+        if (!active) return;
+        const invalid = cause instanceof ApiError && [400, 403, 404, 410].includes(cause.status);
+        setError({ message: invalid ? "Ссылка недействительна или заменена новой. Откройте последнее уведомление или попросите автора вопроса прислать новую ссылку." : "Не удалось загрузить вопросы. Проверьте подключение и попробуйте снова.", retry: !invalid });
+      },
+    );
+    return () => { active = false; };
+  }, [token, attempt]);
   const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setSubmitError(undefined);
     try {
       const res = await request<{ questionnaire: Questionnaire; complete: boolean }>("POST", `/api/answer/${encodeURIComponent(token)}`, { answers });
       setData((d) => (d ? { ...d, questionnaire: res.questionnaire } : d));
       setDone(res.complete);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setSubmitError(e instanceof ApiError && [403, 404, 410].includes(e.status) ? "Ссылка больше недоступна. Откройте последнее уведомление. Введённые ответы остаются в форме." : "Не удалось подтвердить отправку. Проверьте подключение и повторите отправку. Введённые ответы остаются в форме.");
+    } finally {
+      setBusy(false);
     }
   };
   const qn = data?.questionnaire;
@@ -59,8 +86,12 @@ export function AnswerPage() {
               <Character state="sleep" size={148} />
             </div>
             <Banner tone="danger" title="Не получилось открыть вопросы">
-              {error}
+              {error.message}
             </Banner>
+            <div className="answer-actions">
+              {error.retry && <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>Попробовать снова</Button>}
+              <Link className="g-btn secondary" to="/">Открыть Genie</Link>
+            </div>
           </>
         )}
         {!qn && !error && (
@@ -117,7 +148,7 @@ export function AnswerPage() {
                           {q.answer}
                         </p>
                       ) : (
-                        <fieldset className="answer-options">
+                        <fieldset className="answer-options" disabled={busy}>
                           <legend className="g-sr">Ответ на вопрос {q.n}</legend>
                           {q.options.map((o) => (
                             <Radio key={o} name={`q${q.n}`} label={o} checked={answers[q.n] === o} onChange={() => setAnswers({ ...answers, [q.n]: o })} />
@@ -134,8 +165,9 @@ export function AnswerPage() {
                     </div>
                   </Sheet>
                 ))}
+                {submitError && <Banner tone="danger" title="Отправка не подтверждена">{submitError}</Banner>}
                 <div className="answer-actions">
-                  <Button type="submit" variant="primary">
+                  <Button type="submit" variant="primary" busy={busy}>
                     Отправить ответы
                   </Button>
                   <span className="answer-note">Вход не нужен — ссылка работает, пока вопрос открыт</span>

@@ -3,7 +3,7 @@ import { useMeta } from "@/entities/project";
 import { EpicIcon, PRIORITY_NAME, PriorityIcon, StatusIcon, useCreateTask, useEpicMap } from "@/entities/task";
 import { useStartIdea } from "@/features/shape-idea";
 import type { TaskType } from "@/shared/api";
-import { Icon, Modal, ResizableTextarea, useToast } from "@/shared/ui";
+import { Field, Icon, Input, Modal, ResizableTextarea, useToast } from "@/shared/ui";
 import "@/features/shape-idea/ui/idea.css";
 import "./new-task.css";
 
@@ -48,6 +48,7 @@ export function NewTaskDialog({
   // Ideas are filed on their own, not inside an epic.
   const canTalk = !preset?.epic;
   const [talk, setTalk] = useState(!!preset?.idea && canTalk);
+  const [focusForm, setFocusForm] = useState(true);
   const [idea, setIdea] = useState("");
   const start = useStartIdea();
 
@@ -104,11 +105,18 @@ export function NewTaskDialog({
           <span className="nt-title">{talk ? "Обсудить с менеджером проекта" : isEpic ? "Новый эпик во входящие" : "Новая задача во входящие"}</span>
           <span className="grow" />
           {canTalk && (
-            <div role="radiogroup" aria-label="Как завести" className="nt-mode">
-              <button type="button" role="radio" aria-checked={!talk} onClick={() => setTalk(false)}>
+            <div role="radiogroup" aria-label="Как завести" className="nt-mode" onKeyDown={(event) => {
+              if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              const next = event.key === "Home" ? false : event.key === "End" ? true : !talk;
+              setFocusForm(false);
+              setTalk(next);
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next ? 1 : 0]?.focus();
+            }}>
+              <button type="button" role="radio" aria-checked={!talk} tabIndex={talk ? -1 : 0} onClick={() => { setFocusForm(false); setTalk(false); }}>
                 Заполнить самому
               </button>
-              <button type="button" role="radio" aria-checked={talk} onClick={() => setTalk(true)}>
+              <button type="button" role="radio" aria-checked={talk} tabIndex={talk ? 0 : -1} onClick={() => { setFocusForm(false); setTalk(true); }}>
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M2.5 4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H7l-3 2.5v-2.5a2 2 0 0 1-1.5-2z" />
                 </svg>
@@ -122,42 +130,38 @@ export function NewTaskDialog({
         </div>
         {talk ? (
           <div className="mb">
-            <label className="g-field">
-              <span className="g-label">Идея как есть</span>
+            <Field label="Идея как есть">
               <ResizableTextarea
-                autoFocus
+                autoFocus={focusForm}
                 rows={7}
                 required
                 value={idea}
                 onChange={(e) => setIdea(e.target.value)}
-                placeholder="Что хочется получить и зачем. Можно сумбурно: планировщик сам спросит, чего не хватает."
+                placeholder="Что хочется получить и зачем. Можно сумбурно: менеджер проекта сам спросит, чего не хватает."
               />
-            </label>
+            </Field>
             <ol className="nt-steps">
-              <li>Планировщик задаст вопросы: цель, для кого, рамки, что уже есть</li>
+              <li>Менеджер проекта задаст вопросы: цель, для кого, рамки, что уже есть</li>
               <li>Предложит план: одну задачу или эпик с задачами и критериями</li>
               <li>Вы правите план и одной кнопкой заводите всё во входящие</li>
             </ol>
           </div>
         ) : (
           <div className="mb">
-            <label className="g-field">
-              <span className="g-label">Название</span>
-              <input className="g-input" autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isEpic ? "Крупная веха: что должно получиться?" : "Что нужно сделать?"} />
-            </label>
-            <label className="g-field">
-              <span className="g-label">{isEpic ? "Цель" : "Описание"}</span>
+            <Field label="Название">
+              <Input autoFocus={focusForm} required value={title} onChange={(e) => setTitle(e.target.value)} placeholder={isEpic ? "Крупная веха: что должно получиться?" : "Что нужно сделать?"} />
+            </Field>
+            <Field label={isEpic ? "Цель" : "Описание"}>
               <ResizableTextarea
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={isEpic ? "Зачем эта веха, что входит и что нет. Поддерживается markdown." : "Контекст, ограничения, ссылки. Поддерживается markdown."}
               />
-            </label>
-            <label className="g-field">
-              <span className="g-label">{isEpic ? "Критерии успеха — по одному в строке (можно оставить оркестратору)" : "Критерии приёмки — по одному в строке (можно оставить оркестратору)"}</span>
+            </Field>
+            <Field label={isEpic ? "Критерии успеха — по одному в строке (можно оставить оркестратору)" : "Критерии приёмки — по одному в строке (можно оставить оркестратору)"}>
               <ResizableTextarea rows={2} value={criteria} onChange={(e) => setCriteria(e.target.value)} />
-            </label>
+            </Field>
             <div className="opts">
               <label className="nt-opt">
                 <PriorityIcon priority={priority} size={13} />

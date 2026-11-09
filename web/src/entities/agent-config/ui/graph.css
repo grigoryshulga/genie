@@ -54,3 +54,4 @@
 .team-graph-modal::backdrop { background: color-mix(in srgb, var(--g-ink) 62%, transparent); }
 .team-graph-modal .team-graph { height: 100%; box-sizing: border-box; }
 .team-graph-modal .team-graph-scroll { flex: 1; min-height: 0; overflow: auto; }
+.team-graph-modal .team-graph .team-graph-scroll { max-height: none; }

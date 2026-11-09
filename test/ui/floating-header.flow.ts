@@ -163,11 +163,11 @@ for (const width of [1440, 390]) {
     await expect.poll(aligned).toBeLessThan(0.5);
     // Rapid changes must settle under the final destination, not an earlier animation's target.
     await nav.getByRole("link", { name: /Управление/ }).click();
-    await nav.getByRole("link", { name: /Задачи/ }).click();
+    await nav.getByRole("link", { name: /Доска/ }).click();
     await expect.poll(aligned).toBeLessThan(0.5);
     await page.setViewportSize({ width: width > 900 ? 1000 : 360, height: 900 });
     await expect.poll(aligned).toBeLessThan(0.5);
-    await nav.getByRole("link", { name: /Задачи/ }).focus();
+    await nav.getByRole("link", { name: /Доска/ }).focus();
     await page.keyboard.press("ArrowRight");
     await expect(nav.getByRole("link", { name: "Чат", exact: true })).toBeFocused();
     await page.keyboard.press("ArrowRight");
@@ -177,7 +177,7 @@ for (const width of [1440, 390]) {
     await expect.poll(aligned).toBeLessThan(0.5);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(indicator).toHaveCSS("transition-duration", "0s");
-    await nav.getByRole("link", { name: /Задачи/ }).click();
+    await nav.getByRole("link", { name: /Доска/ }).click();
     await expect.poll(aligned).toBeLessThan(0.5);
   });
 }

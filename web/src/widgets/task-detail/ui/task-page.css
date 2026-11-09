@@ -106,7 +106,7 @@
 
 @media (max-width: 900px) {
   .task-page .td-headline h2.title { font-size: var(--g-text-h3); }
-  .tp-rail { order: -1; padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); border-bottom: 1px solid var(--g-border); }
+  .tp-rail { order: 1; padding: var(--g-space-4) var(--g-space-4) var(--g-space-3); border-top: 1px solid var(--g-border); border-bottom: 0; }
   .tp-main { padding: var(--g-space-4) var(--g-space-4) var(--g-space-6); }
   .tp-card-toggle { min-height: var(--g-row); }
   .tp-rail .props.rail { gap: var(--g-space-3) var(--g-space-2); }
@@ -243,3 +243,8 @@
 .detail .tp-team-compact > .tp-card-body { margin-top: 0; }
 .td-label-editor { width: 100%; display: flex; flex-direction: column; gap: var(--g-space-2); }
 .td-label-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--g-space-2); }
+
+.tp-review-decision { padding: var(--g-space-4); border: 1px solid var(--g-signal); border-radius: var(--g-radius-md); background: var(--g-signal-soft); color: var(--g-text); }
+.tp-review-decision h2 { margin: 0; font: var(--g-weight-semibold) var(--g-text-h4)/var(--g-leading-ui) var(--g-font-sans); }
+.tp-review-decision p { margin: var(--g-space-2) 0 var(--g-space-3); }
+.tp-review-actions { display: flex; flex-wrap: wrap; gap: var(--g-space-2); margin-top: var(--g-space-3); }

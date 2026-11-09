@@ -17,6 +17,15 @@
 .ag-section { display: flex; flex-direction: column; gap: var(--g-space-3); }
 .ag-section-head { display: flex; align-items: center; gap: var(--g-space-3); min-height: var(--g-control-sm); }
 .ag-section-head h3 { margin: 0; }
+@media (max-width: 900px) {
+  .ag-select { min-height: var(--g-control); }
+  .ag-section-head { flex-wrap: wrap; align-items: flex-start; }
+  .ag-section-head h3 { flex-basis: 100%; }
+  .ag-section-head .ag-section-note { flex-basis: 100%; overflow-wrap: anywhere; }
+  .ag-table td[colspan] { white-space: normal; overflow-wrap: anywhere; max-width: calc(100vw - 2 * var(--g-space-5)); }
+  .ag-table:has(tbody > tr:only-child > td[colspan]) { table-layout: fixed; }
+  .ag-table:has(tbody > tr:only-child > td[colspan]) thead { display: none; }
+}
 .ag-section-note { flex: 1; min-width: 0; font-size: var(--g-text-dense); color: var(--g-text-muted); }
 .ag-actions { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; }
 .ag-empty, .ag-note { margin: 0; line-height: var(--g-leading-prose); }
@@ -240,7 +249,10 @@ fieldset:disabled .ag-perm { cursor: default; }
   .ag-page { padding: var(--g-space-4); }
   .ag-grant { grid-template-columns: 1fr; }
   .ag-member-row, .ag-relation-row { grid-template-columns: 1fr 1fr; }
-  .ag-history-row { grid-template-columns: 100px minmax(0, 1fr) 70px; }
+  .ag-history-row { grid-template-columns: minmax(0, 1fr) auto; gap: var(--g-space-2); padding-block: var(--g-space-3); }
+  .ag-history-row .who { white-space: normal; overflow-wrap: anywhere; }
+  .ag-history-row .what { grid-column: 1 / -1; grid-row: 2; white-space: normal; overflow-wrap: anywhere; }
+  .ag-history-row .when { grid-column: 2; grid-row: 1; }
   .agents .topbar { padding: 0 var(--g-space-4); }
 }
 
@@ -311,7 +323,7 @@ fieldset:disabled .ag-perm { cursor: default; }
 .agents .split-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .agents .pane-head { padding: var(--g-space-6) var(--g-space-7) 0; gap: var(--g-space-3); align-items: flex-start; flex-wrap: wrap; }
 .agents .pane-head .ttl { display: flex; flex-direction: column; gap: var(--g-space-2); flex: 1; min-width: 240px; }
-.agents .pane-head h2 { margin: 0; display: flex; align-items: center; gap: var(--g-space-3); flex-wrap: wrap; font-family: var(--g-font-display); font-size: var(--g-text-h3); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); }
+.agents .pane-head h2 { margin: 0; display: flex; align-items: center; gap: var(--g-space-3); flex-wrap: wrap; font-family: var(--g-font-sans); font-size: var(--g-text-h3); font-weight: var(--g-weight-bold); line-height: var(--g-leading-heading); letter-spacing: var(--g-tracking-heading); }
 .agents .pane-head h2.g-mono { font-family: var(--g-font-mono); font-size: var(--g-text-h4); letter-spacing: 0; }
 .agents .pane-head .sub { color: var(--g-text-muted); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); }
 .agents .pane-body { padding: var(--g-space-5) var(--g-space-7) var(--g-space-7); gap: var(--g-space-5); }
@@ -336,7 +348,7 @@ fieldset:disabled .ag-perm { cursor: default; }
 }
 
 /* A role's title being renamed: the field takes the title's size and stops short of the actions. */
-.ag-role-rename { max-width: 420px; height: auto; padding: 2px var(--g-space-2); font: 700 var(--g-text-h3) / 1.25 var(--g-font-display); letter-spacing: var(--g-tracking-heading); }
+.ag-role-rename { max-width: 420px; height: auto; padding: 2px var(--g-space-2); font: 700 var(--g-text-h3) / 1.25 var(--g-font-sans); letter-spacing: var(--g-tracking-heading); }
 
 .ag-mcp-connections { display: grid; gap: var(--g-space-2); }
 .ag-mcp-connection { min-width: 0; border: 1px solid var(--g-border); border-radius: var(--g-radius-md); padding: var(--g-space-3); }
@@ -350,3 +362,9 @@ fieldset:disabled .ag-perm { cursor: default; }
 .ag-mcp-tool-picker > input { margin-bottom: var(--g-space-3); }
 
 .ag-roles-layout .side-head { justify-content: space-between; }
+
+.ag-problem-summary:not(.error) { background: var(--g-signal-soft); border-color: var(--g-signal); }
+.ag-problem-summary:not(.error) > summary { color: var(--g-signal-text); }
+.ag-problem-summary > summary > svg { margin-right: var(--g-space-2); vertical-align: middle; }
+.ag-problems li.warning { background: var(--g-signal-soft); border-color: var(--g-signal); }
+.ag-problems li.warning b { color: var(--g-signal-text); }

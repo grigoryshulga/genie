@@ -5,7 +5,7 @@
 
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { CAPTURE_ROUTES } from "./routes.ts";
 
 const seededAt = Date.parse(process.env.GENIE_UI_SEEDED_AT ?? "");
@@ -16,6 +16,7 @@ mkdirSync(out, { recursive: true });
 async function settle(page: Page) {
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready);
+  await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
 }
 
 for (const theme of themes) {

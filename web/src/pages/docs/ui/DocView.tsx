@@ -136,7 +136,7 @@ export function DocView({
   return (
     <>
       {/* The top row spans the reader and the aside, so the aside starts under it (see docs.css). */}
-      <header className="docs-topbar">
+      <header className="docs-topbar doc-reader-topbar">
         {onOpenTree && (
           <button type="button" className="g-icon-btn m-only" onClick={onOpenTree} aria-label="Открыть дерево документации">
             <Icon.list size={15} />
@@ -144,20 +144,21 @@ export function DocView({
         )}
         <DocBreadcrumbs root={navigation} path={page.path} title={articleTitle(page)} onSection={onSection} />
         <span className="grow" />
-        <IconButton label="Редактировать" onClick={onEdit}>
+        <IconButton className="d-only" label="Редактировать" onClick={onEdit}>
           <Icon.pencil size={14} />
         </IconButton>
         {writable && (
-          <IconButton label="Клонировать" onClick={() => void clone()} disabled={save.isPending}>
+          <IconButton className="d-only" label="Клонировать" onClick={() => void clone()} disabled={save.isPending}>
             <Icon.copy size={14} />
           </IconButton>
         )}
         {writable && (
-          <IconButton label="Удалить" onClick={() => setRemoving(true)}>
+          <IconButton className="d-only" label="Удалить" onClick={() => setRemoving(true)}>
             <Icon.trash size={14} />
           </IconButton>
         )}
         <MenuButton
+          className="d-only"
           label="Действия страницы"
           icon={<Icon.dots size={14} />}
           items={[
@@ -165,6 +166,12 @@ export function DocView({
             { id: "changes", label: "Изменения документации", hint: "весь список", onSelect: () => navigate("/docs/changes") },
           ]}
         />
+        <MenuButton className="m-only" label="Действия страницы" icon={<Icon.dots size={14} />} items={[
+          { id: "edit", label: "Редактировать", onSelect: onEdit },
+          ...(writable ? [{ id: "clone", label: "Клонировать", onSelect: () => void clone(), disabled: save.isPending }, { id: "delete", label: "Удалить", onSelect: () => setRemoving(true) }] : []),
+          { id: "history", label: "История версий", onSelect: () => setHistoryOpen(true) },
+          { id: "changes", label: "Изменения документации", onSelect: () => navigate("/docs/changes") },
+        ]} />
         <DocViewSwitch />
       </header>
       <div className="docs-content">

@@ -255,7 +255,7 @@ function SkillFileView({ name, path, onClose }: { name: string; path: string; on
   );
 }
 
-export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catalogue; readOnly?: boolean; base?: string }) {
+export function McpTab({ cfg, readOnly = false, base = "/agents", configureTo }: { cfg: Catalogue; readOnly?: boolean; base?: string; configureTo?: string }) {
   const mcp = useMcpConfig();
   const d = mcp.data;
   const servers = d?.servers ?? cfg.mcp;
@@ -316,7 +316,8 @@ export function McpTab({ cfg, readOnly = false, base = "/agents" }: { cfg: Catal
             {!servers.length && (
               <tr>
                 <td colSpan={4} className="g-muted">
-                  Подключений пока нет.
+                  <p>Подключений пока нет.</p>
+                  {configureTo ? <Link className="g-btn secondary sm" to={configureTo}>Настроить подключения</Link> : <p>Подключения MCP настраивает администратор сервера.</p>}
                 </td>
               </tr>
             )}

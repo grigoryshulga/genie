@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 import type { DocSearchResult, DocSection } from "@/entities/doc";
 import { articleTitle, sectionTrail, DocDiagBadge, DocStaleBadge, DocStatusBadge, DocTypeBadge, snippetParts } from "@/entities/doc";
 import { plural } from "@/shared/lib";
-import { Icon } from "@/shared/ui";
+import { ErrorState, Icon, LoadingState } from "@/shared/ui";
 
 function Hit({ result, navigation, selected, onOpen }: { result: DocSearchResult; navigation: DocSection; selected: boolean; onOpen: (path: string) => void }) {
   return (
@@ -35,6 +35,7 @@ export function DocSearchList({
   selected,
   onOpen,
   onCreate,
+  onRetry,
 }: {
   navigation: DocSection;
   query: string;
@@ -44,6 +45,7 @@ export function DocSearchList({
   selected: string | undefined;
   onOpen: (path: string) => void;
   onCreate: (title: string) => void;
+  onRetry: () => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -64,13 +66,13 @@ export function DocSearchList({
         </span>
       </div>
 
-      {pending && <div className="doc-search-body g-muted">Поиск…</div>}
-      {error && <div className="doc-search-body g-muted">Не удалось выполнить поиск: {error.message}</div>}
+      {pending && <div className="doc-search-body"><LoadingState label="Поиск по знаниям" lines={3} /></div>}
+      {error && <ErrorState message={`Не удалось выполнить поиск: ${error.message}`} onRetry={onRetry} />}
 
       {!pending && !error && results.length > 0 && (
-        <div className="doc-hits" role="listbox">
+        <div className="doc-hits" role="list" aria-label="Результаты поиска">
           {results.map((result) => (
-            <Hit key={result.path} result={result} navigation={navigation} selected={result.path === selected} onOpen={onOpen} />
+            <div role="listitem" key={result.path}><Hit result={result} navigation={navigation} selected={result.path === selected} onOpen={onOpen} /></div>
           ))}
         </div>
       )}

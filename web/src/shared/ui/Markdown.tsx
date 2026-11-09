@@ -92,7 +92,7 @@ function tableStart(lines: string[], i: number): { header: string[]; align: Alig
 /** A thematic break: three or more `-`, `*` or `_`, optionally spaced. */
 const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
 
-export function Markdown({ text, empty = "Пусто" }: { text: string; empty?: string }) {
+export function Markdown({ text, empty = "Пусто", documentHeadings = false }: { text: string; empty?: string; documentHeadings?: boolean }) {
   if (!text.trim()) return <div className="md"><span className="empty-md">{empty}</span></div>;
   const lines = text.replace(/\r/g, "").split("\n");
   const blocks: ReactNode[] = [];
@@ -123,7 +123,8 @@ export function Markdown({ text, empty = "Пусто" }: { text: string; empty?:
     }
     const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
-      const Tag = `h${Math.min(4, h[1].length + 1)}` as "h2";
+      // Documents preserve their outline. Compact embedded Markdown reserves the top level for its host.
+      const Tag = `h${Math.min(documentHeadings ? 6 : 4, h[1].length + (documentHeadings ? 0 : 1))}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
       blocks.push(<Tag key={k++}>{inline(h[2], k)}</Tag>);
       i++;
       continue;

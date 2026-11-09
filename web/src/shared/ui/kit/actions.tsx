@@ -1,4 +1,5 @@
-import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ButtonHTMLAttributes, cloneElement, isValidElement, type KeyboardEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { cx } from "./cx.ts";
 import { nextIndex } from "./menu-nav.ts";
@@ -149,12 +150,43 @@ export function Breadcrumbs({ items }: { items: { label: ReactNode; to?: string 
 /** A tooltip shown on hover and focus of its child; the text is wired through aria-describedby. */
 export function Tooltip({ text, children }: { text: string; children: ReactNode }) {
   const id = useId();
+  const host = useRef<HTMLSpanElement>(null);
+  const tip = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const trigger = isValidElement<Record<string, unknown>>(children) ? cloneElement(children, { "aria-describedby": [children.props["aria-describedby"], id].filter(Boolean).join(" ") }) : children;
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const anchor = host.current;
+      const bubble = tip.current;
+      if (!anchor || !bubble) return;
+      const box = anchor.getBoundingClientRect();
+      const gutter = 12;
+      const left = Math.max(gutter, Math.min(box.left + (box.width - bubble.offsetWidth) / 2, window.innerWidth - bubble.offsetWidth - gutter));
+      const above = box.top - bubble.offsetHeight - gutter;
+      bubble.style.left = `${left}px`;
+      bubble.style.top = `${above >= gutter ? above : Math.min(box.bottom + gutter, window.innerHeight - bubble.offsetHeight - gutter)}px`;
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, text]);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [open]);
   return (
-    <span className="g-tip-host" aria-describedby={id}>
-      {children}
-      <span role="tooltip" id={id} className="g-tip g-tip-pop">
+    <span className="g-tip-host" ref={host} onMouseEnter={() => setOpen(true)} onMouseLeave={() => { if (!host.current?.contains(document.activeElement)) setOpen(false); }} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}>
+      {trigger}
+      {createPortal(<span role="tooltip" id={id} ref={tip} className="g-tip g-tip-pop" data-open={open || undefined}>
         {text}
-      </span>
+      </span>, document.body)}
     </span>
   );
 }

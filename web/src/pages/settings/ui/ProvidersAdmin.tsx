@@ -8,13 +8,14 @@ import { useState } from "react";
 import { useSharedLlmKeys, type LlmProvider } from "@/entities/platform";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { Icon, useRefreshingAct as useAct } from "@/shared/ui";
+import { Button, EmptyState, ErrorState, Icon, LoadingState, useRefreshingAct as useAct } from "@/shared/ui";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
 import { HubActions } from "@/widgets/settings-shell";
 import "@/shared/ui/settings.css";
 
 export function ProvidersAdminSection() {
-  const { data } = useSharedLlmKeys();
+  const query = useSharedLlmKeys();
+  const { data } = query;
   const act = useAct();
   const [values, setValues] = useState<Record<string, string>>({});
   const [connecting, setConnecting] = useState(false);
@@ -96,12 +97,16 @@ export function ProvidersAdminSection() {
 
   return (
     <div className="st-body">
-      {providers.length > 0 && (
+      {shown.length > 0 && (
         <HubActions>
           <button type="button" className="g-btn secondary" onClick={() => setConnecting(true)}><Icon.plus size={14} />Добавить провайдера</button>
         </HubActions>
       )}
-      {shown.map(card)}
+      {query.isPending ? <LoadingState label="Загрузка провайдеров" lines={3} /> : query.isError ? <ErrorState message={`Не удалось загрузить провайдеров: ${query.error.message}`} onRetry={() => void query.refetch()} /> : !shown.length ? (
+        <EmptyState title="Общие провайдеры ещё не подключены" action={providers.length > 0 ? <Button variant="secondary" onClick={() => setConnecting(true)}>Добавить провайдера</Button> : undefined}>
+          Общие подключения дают всем агентам сервера доступ к моделям. Пользователь может выбрать личный ключ в своих настройках провайдеров.
+        </EmptyState>
+      ) : shown.map(card)}
       {connecting && <ProviderConnectDialog providers={providers} scope="server" onClose={() => setConnecting(false)} />}
     </div>
   );

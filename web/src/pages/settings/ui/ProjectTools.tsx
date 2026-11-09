@@ -37,7 +37,7 @@ function Selection({ slug, data, kind }: { slug: string; kind: "skills" | "mcp";
       onSubmit={(e) => {
         e.preventDefault();
         setBusy(true);
-        void act(() => save({ settings, baseHash: data.hash }), "Инструменты проекта сохранены").finally(() => setBusy(false));
+        void act(() => save({ settings, baseHash: data.hash }), kind === "skills" ? "Навыки проекта сохранены" : "MCP-подключения проекта сохранены").finally(() => setBusy(false));
       }}
     >
       {[kind].map((kind) => {
@@ -74,7 +74,7 @@ function Selection({ slug, data, kind }: { slug: string; kind: "skills" | "mcp";
                   />
                 </label>
               ))}
-              {!items.length && <p className="g-muted">В каталоге сервера пока нет доступных инструментов.</p>}
+              {!items.length && <p className="g-muted">В каталоге сервера пока нет доступных {kind === "skills" ? "навыков" : "MCP-подключений"}.</p>}
               {selected
                 ?.filter((id) => !items.some((item) => item.id === id))
                 .map((id) => (
