@@ -31,19 +31,20 @@ pub struct Turn {
     pub log: Option<String>,
 }
 
-/// A hard limit waits for its project-side pause before its turn can be released.
+/// A limit retains its task fence until the project-side pause is acknowledged.
 #[derive(Debug, Clone)]
-pub struct TurnPause {
+pub struct ExecutionPause {
     pub id: String,
-    pub turn: i64,
+    pub turn: Option<i64>,
     pub project: String,
     pub task: String,
+    pub reason: String,
     pub note: String,
 }
 
-impl TurnPause {
+impl ExecutionPause {
     fn from_row(r: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(Self { id: r.get(0)?, turn: r.get(1)?, project: r.get(2)?, task: r.get(3)?, note: r.get(4)? })
+        Ok(Self { id: r.get(0)?, turn: r.get(1)?, project: r.get(2)?, task: r.get(3)?, reason: r.get(4)?, note: r.get(5)? })
     }
 }
 
@@ -132,17 +133,17 @@ pub struct NewJob {
 }
 
 impl ServerDb {
-    pub fn queue_turn_pause(&self, turn: i64, task: &str, note: &str) -> Result<TurnPause> {
+    pub fn queue_turn_pause(&self, turn: i64, task: &str, note: &str) -> Result<ExecutionPause> {
         self.tx(|| {
-            self.turn(turn)?;
+            let run = self.turn(turn)?;
             self.conn().execute(
-                "INSERT OR IGNORE INTO turn_pauses(id,turn,task,note) VALUES (?1,?2,?3,?4)",
-                params![crate::server_db::new_code(), turn, task, note],
+                "INSERT OR IGNORE INTO execution_pauses(id,turn,project,task,reason,note) VALUES (?1,?2,?3,?4,'time',?5)",
+                params![crate::server_db::new_code(), turn, run.project, task, note],
             )?;
             let pause = self.conn().query_row(
-                "SELECT p.id,p.turn,t.project,p.task,p.note FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE p.turn=?1",
+                "SELECT id,turn,project,task,reason,note FROM execution_pauses WHERE turn=?1",
                 [turn],
-                TurnPause::from_row,
+                ExecutionPause::from_row,
             )?;
             if pause.task != task || pause.note != note {
                 return Err(GenieError::invalid("a turn's hard-limit pause cannot change"));
@@ -151,15 +152,28 @@ impl ServerDb {
         })
     }
 
-    pub fn pending_turn_pauses(&self, project: Option<&str>) -> Result<Vec<TurnPause>> {
-        let mut stmt = self.conn().prepare(
-            "SELECT p.id,p.turn,t.project,p.task,p.note FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE p.applied=0 AND (?1 IS NULL OR t.project=?1) ORDER BY p.turn",
-        )?;
-        Ok(stmt.query_map([project], TurnPause::from_row)?.collect::<rusqlite::Result<_>>()?)
+    pub fn queue_budget_pause(&self, project: &str, task: &str, note: &str) -> Result<ExecutionPause> {
+        self.tx(|| {
+            self.conn().execute(
+                "INSERT OR IGNORE INTO execution_pauses(id,project,task,reason,note) VALUES (?1,?2,?3,'budget',?4)",
+                params![crate::server_db::new_code(), project, task, note],
+            )?;
+            Ok(self.conn().query_row(
+                "SELECT id,turn,project,task,reason,note FROM execution_pauses WHERE project=?1 AND task=?2 AND reason='budget' AND applied=0",
+                params![project, task], ExecutionPause::from_row,
+            )?)
+        })
     }
 
-    pub fn turn_pause_applied(&self, id: &str) -> Result<()> {
-        self.conn().execute("UPDATE turn_pauses SET applied=1 WHERE id=?1", [id])?;
+    pub fn pending_execution_pauses(&self, project: Option<&str>) -> Result<Vec<ExecutionPause>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT id,turn,project,task,reason,note FROM execution_pauses WHERE applied=0 AND (?1 IS NULL OR project=?1) ORDER BY rowid",
+        )?;
+        Ok(stmt.query_map([project], ExecutionPause::from_row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn execution_pause_applied(&self, id: &str) -> Result<()> {
+        self.conn().execute("UPDATE execution_pauses SET applied=1 WHERE id=?1", [id])?;
         Ok(())
     }
 
@@ -344,13 +358,17 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    const SCHEMA_14_PAUSES: &str = "DROP TABLE execution_pauses;
+        CREATE TABLE turn_pauses(id TEXT PRIMARY KEY, turn INTEGER NOT NULL UNIQUE REFERENCES turns(id) ON DELETE CASCADE, task TEXT NOT NULL, note TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0 CHECK(applied IN (0,1)));
+        UPDATE meta SET value='14' WHERE key='schema';";
+
     #[test]
     fn limit_intents_upgrade_survive_restart_and_keep_one_frozen_binding() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("server.db");
         let db = ServerDb::open(&path).unwrap();
         let turn = db.start_turn("shop", "worker", None, None, None).unwrap();
-        db.conn().execute_batch("DROP TABLE turn_pauses; UPDATE meta SET value='13' WHERE key='schema';").unwrap();
+        db.conn().execute_batch("DROP TABLE execution_pauses; UPDATE meta SET value='13' WHERE key='schema';").unwrap();
         drop(db);
         let db = ServerDb::open(&path).unwrap();
         let pause = db.queue_turn_pause(turn, "G-1", "run limit reached").unwrap();
@@ -358,12 +376,83 @@ mod tests {
         assert!(db.queue_turn_pause(turn, "G-2", "run limit reached").is_err());
         drop(db);
         let db = ServerDb::open(&path).unwrap();
-        assert_eq!(db.pending_turn_pauses(Some("shop")).unwrap()[0].id, pause.id);
-        assert!(db.pending_turn_pauses(Some("other")).unwrap().is_empty());
-        db.turn_pause_applied(&pause.id).unwrap();
-        assert!(db.pending_turn_pauses(None).unwrap().is_empty());
+        assert_eq!(db.pending_execution_pauses(Some("shop")).unwrap()[0].id, pause.id);
+        assert!(db.pending_execution_pauses(Some("other")).unwrap().is_empty());
+        db.execution_pause_applied(&pause.id).unwrap();
+        assert!(db.pending_execution_pauses(None).unwrap().is_empty());
         assert_eq!(db.queue_turn_pause(turn, "G-1", "run limit reached").unwrap().id, pause.id);
-        assert!(db.pending_turn_pauses(None).unwrap().is_empty(), "retry cannot reopen an acknowledged intent");
+        assert!(db.pending_execution_pauses(None).unwrap().is_empty(), "retry cannot reopen an acknowledged intent");
+    }
+
+    #[test]
+    fn schema_14_pause_intents_keep_their_receipts_and_acknowledgements() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.db");
+        let db = ServerDb::open(&path).unwrap();
+        let turn = db.start_turn("shop", "worker", None, None, None).unwrap();
+        let settled = db.start_turn("shop", "other", None, None, None).unwrap();
+        db.conn().execute_batch(SCHEMA_14_PAUSES).unwrap();
+        for (id, turn, applied) in [("pending", turn, 0), ("settled", settled, 1)] {
+            db.conn()
+                .execute(
+                    "INSERT INTO turn_pauses(id,turn,task,note,applied) VALUES (?1,?2,'G-1','Time limit',?3)",
+                    params![id, turn, applied],
+                )
+                .unwrap();
+        }
+        drop(db);
+        let db = ServerDb::open(&path).unwrap();
+        let pending = db.pending_execution_pauses(Some("shop")).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "pending");
+        assert_eq!(pending[0].reason, "time");
+        assert_eq!(pending[0].turn, Some(turn));
+        assert_eq!(db.queue_turn_pause(settled, "G-1", "Time limit").unwrap().id, "settled");
+        assert_eq!(db.pending_execution_pauses(None).unwrap().len(), 1);
+        assert_eq!(db.conn().query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        assert!(
+            !db.conn()
+                .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='turn_pauses')", [], |r| r.get::<_, bool>(0))
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn budget_intents_deduplicate_pending_scopes_and_survive_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.db");
+        let db = ServerDb::open(&path).unwrap();
+        let first = db.queue_budget_pause("shop", "G-1", "Daily budget exhausted").unwrap();
+        assert!(first.turn.is_none());
+        assert_eq!(first.reason, "budget");
+        assert_eq!(db.queue_budget_pause("shop", "G-1", "A later cost report").unwrap().id, first.id);
+        drop(db);
+        let db = ServerDb::open(&path).unwrap();
+        assert_eq!(db.pending_execution_pauses(Some("shop")).unwrap()[0].id, first.id);
+        db.execution_pause_applied(&first.id).unwrap();
+        let next = db.queue_budget_pause("shop", "G-1", "Another exhausted allowance").unwrap();
+        assert_ne!(next.id, first.id);
+        assert_eq!(db.pending_execution_pauses(None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_declared_pause_table_move_still_refuses_row_loss_without_touching_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.db");
+        let db = ServerDb::open(&path).unwrap();
+        let turn = db.start_turn("shop", "worker", None, None, None).unwrap();
+        db.conn().execute_batch(SCHEMA_14_PAUSES).unwrap();
+        db.conn().execute_batch("PRAGMA foreign_keys=OFF").unwrap();
+        for (id, turn) in [("valid", turn), ("orphan", turn + 1)] {
+            db.conn().execute("INSERT INTO turn_pauses(id,turn,task,note) VALUES (?1,?2,'G-1','Time limit')", params![id, turn]).unwrap();
+        }
+        drop(db);
+        let before = std::fs::read(&path).unwrap();
+        let error = ServerDb::open(&path).err().expect("rehearsal must reject lost records");
+        assert!(error.to_string().contains("row count of execution_pauses: 2 → 1"), "{error}");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let original = rusqlite::Connection::open(&path).unwrap();
+        assert_eq!(original.query_row("SELECT COUNT(*) FROM turn_pauses", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
     }
 
     #[test]

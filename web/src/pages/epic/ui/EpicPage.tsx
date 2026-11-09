@@ -5,6 +5,7 @@ import { canWriteProject, useSession } from "@/entities/session";
 import {
   ArtifactThumb,
   EpicIcon,
+  EditableTaskTitle,
   EpicProgress,
   historyText,
   Labels,
@@ -232,34 +233,9 @@ function EpicHead({ epic, writable }: { epic: Task; writable: boolean }) {
           {PRIORITY_NAME[epic.priority]}
         </span>
       </div>
-      <EditableTitle epic={epic} writable={writable} />
+      <EditableTaskTitle key={epic.id} task={epic} writable={writable} className="title g-page-title" />
       <EditableText epic={epic} field="description" title="Цель" empty="Цель ещё не записана" writable={writable} lede />
     </header>
-  );
-}
-
-function EditableTitle({ epic, writable }: { epic: Task; writable: boolean }) {
-  const patch = usePatchTask();
-  const toast = useToast();
-  return (
-    <h1
-      className="title g-page-title"
-      contentEditable={writable}
-      suppressContentEditableWarning
-      spellCheck={false}
-      onFocus={(e) => {
-        const node = e.currentTarget;
-        if (!node.dataset.editVersion || node.textContent?.trim() === epic.title) node.dataset.editVersion = epic.editVersion;
-      }}
-      onBlur={(e) => {
-        if (!writable) return;
-        const title = e.currentTarget.textContent?.trim() ?? "";
-        if (title && title !== epic.title) patch.mutate({ id: epic.id, patch: { title, expectedVersion: e.currentTarget.dataset.editVersion } }, { onError: (err) => toast(`Не удалось: ${err.message}`, "error") });
-      }}
-      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
-    >
-      {epic.title}
-    </h1>
   );
 }
 

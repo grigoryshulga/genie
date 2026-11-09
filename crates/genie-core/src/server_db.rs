@@ -223,13 +223,17 @@ CREATE TABLE IF NOT EXISTS turns (
 );
 CREATE INDEX IF NOT EXISTS turns_status ON turns(status);
 CREATE INDEX IF NOT EXISTS turns_agent ON turns(project, agent, id);
-CREATE TABLE IF NOT EXISTS turn_pauses (
+CREATE TABLE IF NOT EXISTS execution_pauses (
   id TEXT PRIMARY KEY,
-  turn INTEGER NOT NULL UNIQUE REFERENCES turns(id) ON DELETE CASCADE,
+  turn INTEGER UNIQUE REFERENCES turns(id) ON DELETE CASCADE,
+  project TEXT NOT NULL,
   task TEXT NOT NULL,
+  reason TEXT NOT NULL CHECK(reason IN ('time','budget')),
   note TEXT NOT NULL,
   applied INTEGER NOT NULL DEFAULT 0 CHECK(applied IN (0,1))
 );
+CREATE UNIQUE INDEX IF NOT EXISTS execution_pauses_budget_pending ON execution_pauses(project,task)
+  WHERE reason='budget' AND applied=0;
 CREATE TABLE IF NOT EXISTS questionnaires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project TEXT NOT NULL,
@@ -502,7 +506,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 14;
+pub const SERVER_SCHEMA_VERSION: i64 = 15;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -781,6 +785,19 @@ pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
     db.conn().execute_batch(crate::inbox::SCHEMA)?;
     db.conn().execute_batch(crate::human_delivery::SCHEMA)?;
     db.add_columns(SERVER_COLUMN_MIGRATIONS)?;
+    if db
+        .conn()
+        .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='turn_pauses')", [], |r| r.get::<_, bool>(0))?
+    {
+        db.tx(|| {
+            db.conn().execute_batch(
+                "INSERT INTO execution_pauses(id,turn,project,task,reason,note,applied)
+                   SELECT p.id,p.turn,t.project,p.task,'time',p.note,p.applied FROM turn_pauses p JOIN turns t ON t.id=p.turn;
+                 DROP TABLE turn_pauses;",
+            )?;
+            Ok(())
+        })?;
+    }
     // Indexes on the columns the background loops filter and order by every couple of seconds —
     // open questionnaires, queued jobs, an automation's run history and the delivery poller.
     // After `add_columns`: the poller's `ci_sha` is one of the columns just applied, and an
@@ -807,7 +824,10 @@ impl ServerDb {
             std::fs::create_dir_all(dir)?;
         }
         // A pending migration is rehearsed on a copy before this file is touched.
-        crate::migrate::preflight(path, SERVER_SCHEMA_VERSION, SERVER_COLUMN_MIGRATIONS, &|p| open_migrated(p).map(|_| ()))?;
+        let report = crate::migrate::check_server(path)?;
+        if report.rehearsed {
+            crate::migrate::remember(report);
+        }
         let db = open_migrated(path)?;
         Ok(ServerDb { db, secrets_key: crate::secrets::key_path(path) })
     }

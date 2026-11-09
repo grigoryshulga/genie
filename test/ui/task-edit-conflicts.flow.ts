@@ -2,6 +2,65 @@ import { expect, test } from "@playwright/test";
 import { storedTask, type StoredTask } from "./api.ts";
 import { PROJECT } from "./seed.ts";
 
+for (const type of ["task", "epic"] as const) {
+  for (const theme of ["ink", "paper"] as const) {
+    test(`a ${type} title retains its text and version through refresh, conflict and refocus in ${theme}`, async ({ page }) => {
+      const created = await page.request.post(`/api/tasks?project=${PROJECT.id}`, {
+        headers: { "x-genie": "1" }, data: { title: "Исходное название", type },
+      });
+      expect(created.ok()).toBe(true);
+      const task: StoredTask = await created.json();
+      const path = `/api/tasks/${task.id}?project=${PROJECT.id}`;
+      await page.goto(`/${type}/${task.id}`);
+      await page.evaluate((theme) => { document.documentElement.dataset.theme = theme; }, theme);
+      const heading = page.locator("h1.title");
+      await expect(heading).toHaveText("Исходное название");
+      await heading.fill("Мой черновик");
+      // Consecutive input must preserve the caret while the draft state changes.
+      await heading.press("Home");
+      await heading.pressSequentially("Автор: ");
+      const draft = "Автор: Мой черновик";
+      await expect(heading).toHaveText(draft);
+      const version = (await storedTask(page.request, task.id)).editVersion;
+      const refreshed = page.waitForResponse((r) => r.request().method() === "GET"
+        && new URL(r.url()).pathname === `/api/tasks/${task.id}` && r.ok());
+      expect((await page.request.patch(path, {
+        headers: { "x-genie": "1" }, data: { title: "Название другого клиента", expectedVersion: version },
+      })).ok()).toBe(true);
+      await refreshed;
+      await expect(heading).toHaveText(draft);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(heading).toHaveAttribute("contenteditable", "true");
+        await heading.focus();
+        const response = page.waitForResponse((r) => r.request().method() === "PATCH"
+          && new URL(r.url()).pathname === `/api/tasks/${task.id}`);
+        await heading.blur();
+        const conflict = await response;
+        expect(conflict.status()).toBe(409);
+        expect(conflict.request().postDataJSON().expectedVersion).toBe(version);
+        await expect(heading).toHaveText(draft);
+      }
+      await page.screenshot({ path: test.info().outputPath(`title-conflict-${type}-${theme}.png`) });
+      expect((await storedTask(page.request, task.id)).title).toBe("Название другого клиента");
+      // Escape deliberately adopts the current server title and a new edit base.
+      await expect(heading).toHaveAttribute("contenteditable", "true");
+      await heading.focus();
+      await heading.press("Escape");
+      await expect(heading).toHaveText("Название другого клиента");
+      await heading.fill("Согласованное название");
+      await heading.press("Enter");
+      await expect.poll(async () => (await storedTask(page.request, task.id)).title).toBe("Согласованное название");
+      await expect(heading).toHaveText("Согласованное название");
+      const current = await storedTask(page.request, task.id);
+      expect((await page.request.patch(path, {
+        headers: { "x-genie": "1" }, data: { title: "Следующее название с сервера", expectedVersion: current.editVersion },
+      })).ok()).toBe(true);
+      await expect(heading).toHaveText("Следующее название с сервера");
+      expect((await page.request.delete(path, { headers: { "x-genie": "1" } })).ok()).toBe(true);
+    });
+  }
+}
+
 for (const scenario of [
   { type: "task", field: "description", edit: "Изменить описание", label: "Описание", theme: "ink" },
   { type: "epic", field: "description", edit: "Изменить: цель", label: "Цель", theme: "paper" },

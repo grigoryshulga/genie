@@ -112,6 +112,10 @@ struct SchedState {
     /// Dead turns finishing a hard-limit pause fence their task without holding
     /// an execution slot. This also covers failure to store the server intent.
     pending_limits: HashMap<AgentKey, String>,
+    /// Budget scopes awaiting a server intent or the project-side fallback.
+    budget_pauses: HashMap<(String, String), String>,
+    /// Intentional cancellation is independent of whether a pause write succeeds.
+    interrupted: HashSet<AgentKey>,
     /// What the last pass saw waiting for a slot, by kind — the queue the web and
     /// `genie server runtime` show (`waiting`).
     waiting: [usize; 4],
@@ -120,6 +124,14 @@ struct SchedState {
 impl Sched {
     fn with<T>(&self, f: impl FnOnce(&mut SchedState) -> T) -> T {
         f(&mut self.state.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub(crate) fn remember_budget_pause(&self, project: &str, task: &str, note: &str) -> String {
+        self.with(|s| s.budget_pauses.entry((project.into(), task.into())).or_insert_with(|| note.into()).clone())
+    }
+
+    pub(crate) fn forget_budget_pause(&self, project: &str, task: &str) {
+        self.with(|s| s.budget_pauses.remove(&(project.into(), task.into())));
     }
 
     /// Whether a turn of any member of `team` is running now.
@@ -221,10 +233,10 @@ pub fn start(app: &Arc<App>) {
 /// Explicit and background passes share the same serialization and scheduling rules.
 pub async fn tick(app: &Arc<App>) -> AppResult<Duration> {
     let _tick = app.sched.tick.lock().await;
-    let pause_retry = match app.blocking(flush_limit_pauses).await {
+    let pause_retry = match app.blocking(flush_execution_pauses).await {
         Ok(()) => false,
         Err(e) => {
-            eprintln!("genie runtime: hard-limit pause pending: {e}");
+            eprintln!("genie runtime: execution-limit pause pending: {e}");
             true
         }
     };
@@ -290,10 +302,10 @@ pub fn recover(app: &App) -> AppResult<()> {
             })
         })?
     };
-    if let Err(error) = flush_limit_pauses(app) {
+    if let Err(error) = flush_execution_pauses(app) {
         // The persisted intent continues to fence its scope and tick retries it.
         // Other interrupted work still needs its leases and continuation restored.
-        eprintln!("genie runtime: hard-limit recovery pending: {error}");
+        eprintln!("genie runtime: execution-limit recovery pending: {error}");
     }
     for p in app.with_server(|db| db.projects())? {
         app.with_tracker(&p.slug, |t| t.model_calls().recover())?;
@@ -433,13 +445,17 @@ pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
 }
 
 pub(crate) fn pending_limit(app: &App, project: &str, task: &str) -> AppResult<bool> {
-    let mut roots = app.with_server(|db| db.pending_turn_pauses(Some(project)))?.into_iter().map(|pause| pause.task).collect::<Vec<_>>();
+    let mut roots =
+        app.with_server(|db| db.pending_execution_pauses(Some(project)))?.into_iter().map(|pause| pause.task).collect::<Vec<_>>();
     roots
         .extend(app.sessions.all().into_iter().filter(|s| s.key.project() == project).filter_map(|s| s.limited_task().map(str::to_string)));
     roots.extend(
         app.sched.with(|s| {
             s.pending_limits.iter().filter(|(key, _)| key.project() == project).map(|(_, task)| task.clone()).collect::<Vec<_>>()
         }),
+    );
+    roots.extend(
+        app.sched.with(|s| s.budget_pauses.keys().filter(|(scope, _)| scope == project).map(|(_, task)| task.clone()).collect::<Vec<_>>()),
     );
     if roots.is_empty() {
         return Ok(false);
@@ -451,9 +467,17 @@ pub(crate) fn pending_limit(app: &App, project: &str, task: &str) -> AppResult<b
     })
 }
 
-pub(crate) fn flush_limit_pauses(app: &App) -> AppResult<()> {
+pub(crate) fn flush_execution_pauses(app: &App) -> AppResult<()> {
     let mut failure = None;
-    for pause in app.with_server(|db| db.pending_turn_pauses(None))? {
+    let budgets = app
+        .sched
+        .with(|s| s.budget_pauses.iter().map(|((project, task), note)| (project.clone(), task.clone(), note.clone())).collect::<Vec<_>>());
+    for (project, task, note) in budgets {
+        if let Err(error) = crate::tasks::queue_budget_pause(app, &project, &task, &note) {
+            failure.get_or_insert(error);
+        }
+    }
+    for pause in app.with_server(|db| db.pending_execution_pauses(None))? {
         if let Err(error) = apply_limit_pause(app, &pause) {
             failure.get_or_insert(error);
         }
@@ -461,8 +485,8 @@ pub(crate) fn flush_limit_pauses(app: &App) -> AppResult<()> {
     failure.map_or(Ok(()), Err)
 }
 
-pub(crate) fn apply_limit_pause(app: &App, pause: &genie_core::work::TurnPause) -> AppResult<()> {
-    match crate::tasks::apply_turn_pause(app, pause) {
+pub(crate) fn apply_limit_pause(app: &App, pause: &genie_core::work::ExecutionPause) -> AppResult<()> {
+    match crate::tasks::apply_execution_pause(app, pause) {
         Ok(()) => {}
         Err(AppError::Genie(GenieError::NotFound(_))) => {
             // Deletion is permanent. Acknowledge obsolete work rather than
@@ -470,7 +494,7 @@ pub(crate) fn apply_limit_pause(app: &App, pause: &genie_core::work::TurnPause) 
         }
         Err(error) => return Err(error),
     }
-    app.with_server(|db| db.turn_pause_applied(&pause.id))
+    app.with_server(|db| db.execution_pause_applied(&pause.id))
 }
 
 /// Stop task-scoped processes without discarding teams, mail or artifacts. A caller
@@ -495,6 +519,7 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
         };
         if stop {
             app.sched.with(|s| {
+                s.interrupted.insert(key.clone());
                 if let Some(cancel) = s.cancels.get(&key) {
                     let _ = cancel.send(true);
                 }
@@ -504,7 +529,15 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
                 AgentKey::Job { job, .. } => format!("job-{job}"),
                 _ => key.label(),
             };
-            if let Err(error) = app.with_server(|db| db.revoke_named_agent_tokens(project, &name)) {
+            if let Err(error) = app.with_server(|db| {
+                db.tx(|| {
+                    db.revoke_named_agent_tokens(project, &name)?;
+                    if let AgentKey::Job { job, .. } = &key {
+                        db.interrupt_job(*job)?;
+                    }
+                    Ok(())
+                })
+            }) {
                 failure.get_or_insert(error);
             }
             report.push(key.label());
@@ -708,6 +741,7 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
                 s.running.remove(&key);
                 s.cancels.remove(&key);
                 s.pending_limits.remove(&key);
+                s.interrupted.remove(&key);
             });
             if matches!(key, AgentKey::Request { .. }) {
                 app.attempts.clear(&key);
@@ -2210,16 +2244,17 @@ fn expand_group(g: &[String], vars: &HashMap<&str, String>, lists: &HashMap<&str
 /// A turn ended: close its row, its token and its mail lease (or job), then record how it went.
 fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, error: Option<&str>, log: &str) -> AppResult<()> {
     let slug = key.project();
-    let stopped = match (&p.spec.task, &p.spec.execution_stamp) {
-        (Some(task), Some(stamp)) => {
-            match app.with_tracker(slug, |t| Ok(t.execution().blocking(task)?.is_some() || t.execution().stamp(task)? != *stamp)) {
-                Ok(stopped) => stopped,
-                Err(AppError::Genie(GenieError::NotFound(_))) => true,
-                Err(error) => return Err(error),
+    let stopped = app.sched.with(|s| s.interrupted.contains(key))
+        || match (&p.spec.task, &p.spec.execution_stamp) {
+            (Some(task), Some(stamp)) => {
+                match app.with_tracker(slug, |t| Ok(t.execution().blocking(task)?.is_some() || t.execution().stamp(task)? != *stamp)) {
+                    Ok(stopped) => stopped,
+                    Err(AppError::Genie(GenieError::NotFound(_))) => true,
+                    Err(error) => return Err(error),
+                }
             }
-        }
-        _ => false,
-    };
+            _ => false,
+        };
     let mut ok = ok;
     let mut error = error.map(str::to_owned);
     if let AgentKey::Request { response, .. } = key {

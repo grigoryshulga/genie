@@ -1109,14 +1109,14 @@ async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure
         .unwrap();
     genie::runtime::tick(app).await.unwrap();
     wait_for(app, "durable hard-limit intent", Duration::from_secs(10), |app| {
-        !app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty()
+        !app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty()
     })
     .await;
     let retained = app.with_server(|db| db.job(job.id)).unwrap();
     assert_eq!((retained.status.as_str(), retained.attempts), ("running", 1));
     assert_eq!(app.sched.snapshot(1, app.slots.available_permits()).running, 0, "dead work does not consume runtime capacity");
     assert_eq!(app.slots.available_permits(), 1);
-    let old = app.with_server(|db| db.pending_turn_pauses(None)).unwrap();
+    let old = app.with_server(|db| db.pending_execution_pauses(None)).unwrap();
     assert_eq!(old.len(), 1);
     assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_err());
     // A failed pause write neither consumes another attempt nor blocks unrelated execution.
@@ -1145,7 +1145,7 @@ async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure
     })
     .await;
     assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 1);
-    assert_eq!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap()[0].id, old[0].id);
+    assert_eq!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap()[0].id, old[0].id);
     app.with_tracker("shop", |t| {
         t.conn().execute_batch("DROP TRIGGER fail_time_pause;")?;
         Ok(())
@@ -1159,7 +1159,7 @@ async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure
             && app.sched.snapshot(app.cfg.runtime.max_concurrent, app.slots.available_permits()).running == 0
     })
     .await;
-    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
     assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "time");
     genie::runtime::tick(app).await.unwrap();
     assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 0, "a timed-out job cannot restart before human resume");
@@ -1185,7 +1185,7 @@ async fn a_hard_timeout_retains_the_project_pause_across_server_intent_failure_a
     app.with_server(|db| {
         db.set_autonomy("shop", "manual")?;
         db.conn().execute_batch(
-            "CREATE TRIGGER fail_time_intent BEFORE INSERT ON turn_pauses BEGIN SELECT RAISE(ABORT,'intent storage fault'); END;",
+            "CREATE TRIGGER fail_time_intent BEFORE INSERT ON execution_pauses BEGIN SELECT RAISE(ABORT,'intent storage fault'); END;",
         )?;
         Ok(())
     })
@@ -1216,7 +1216,7 @@ async fn a_hard_timeout_retains_the_project_pause_across_server_intent_failure_a
         app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().is_some_and(|pause| pause.reason == "time")
     })
     .await;
-    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
     assert_eq!(app.sched.snapshot(1, app.slots.available_permits()).running, 0);
     assert_eq!(app.slots.available_permits(), 1);
     assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_err());
@@ -1338,7 +1338,7 @@ async fn deletion_during_a_timed_run_releases_the_only_slot_and_closes_the_obsol
     wait_for(app, "obsolete deleted-task pause acknowledged", Duration::from_secs(5), |app| {
         app.with_server(|db| {
             Ok(db.conn().query_row(
-                "SELECT COUNT(*) FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
+                "SELECT COUNT(*) FROM execution_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
                 [jobs[0]],
                 |r| r.get::<_, i64>(0),
             )?)
@@ -1347,10 +1347,10 @@ async fn deletion_during_a_timed_run_releases_the_only_slot_and_closes_the_obsol
             == 1
     })
     .await;
-    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
     assert_eq!(
         app.with_server(|db| Ok(db.conn().query_row(
-            "SELECT COUNT(*) FROM turn_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
+            "SELECT COUNT(*) FROM execution_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
             [jobs[0]],
             |r| r.get::<_, i64>(0)
         )?))
@@ -1362,7 +1362,7 @@ async fn deletion_during_a_timed_run_releases_the_only_slot_and_closes_the_obsol
         app.with_server(|db| db.job(jobs[1])).unwrap().status == "succeeded"
     })
     .await;
-    assert!(app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -1390,12 +1390,12 @@ async fn replay_after_a_lost_limit_ack_preserves_a_later_human_resume() {
     let resumed = h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap();
     h.app
         .with_server(|db| {
-            db.conn().execute("UPDATE turn_pauses SET applied=0 WHERE id=?1", [&intent.id])?;
+            db.conn().execute("UPDATE execution_pauses SET applied=0 WHERE id=?1", [&intent.id])?;
             Ok(())
         })
         .unwrap();
     genie::runtime::recover(&h.app).unwrap();
     assert_eq!(h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap(), resumed);
-    assert!(h.app.with_server(|db| db.pending_turn_pauses(None)).unwrap().is_empty());
+    assert!(h.app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
     assert_eq!(first.generation + 1, resumed.unwrap().generation);
 }

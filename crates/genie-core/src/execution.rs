@@ -103,7 +103,7 @@ impl Execution<'_> {
     }
     /// The server DB acknowledges this effect separately. Keep its receipt with
     /// the pause, so acknowledgement loss cannot pause a later resumed generation.
-    pub fn pause_once(&self, actor: &Actor, task: &str, note: &str, receipt: &str) -> Result<ExecutionState> {
+    pub fn pause_once(&self, actor: &Actor, task: &str, reason: &str, note: &str, receipt: &str) -> Result<ExecutionState> {
         self.0.tx(|| {
             let task = self.0.get(task)?.id;
             let old: Option<String> = self.0.conn().query_row(
@@ -112,14 +112,14 @@ impl Execution<'_> {
             ).optional()?;
             if let Some(old) = old {
                 let old: serde_json::Value = serde_json::from_str(&old)?;
-                if old["task"] != task || old["note"] != note {
+                if old["task"] != task || old["note"] != note || old.get("reason").and_then(|r| r.as_str()).unwrap_or("time") != reason {
                     return Err(GenieError::invalid("the limit receipt belongs to another pause"));
                 }
                 return Ok(serde_json::from_value(old["execution"].clone())?);
             }
-            let state = self.pause(actor, &task, "time", note)?;
+            let state = self.pause(actor, &task, reason, note)?;
             self.0.append_event("task.execution_limit_applied", Some(&task), &actor.name, actor.role.as_str(),
-                json!({"receipt":receipt,"task":task,"note":note,"execution":state}))?;
+                json!({"receipt":receipt,"task":task,"reason":reason,"note":note,"execution":state}))?;
             Ok(state)
         })
     }

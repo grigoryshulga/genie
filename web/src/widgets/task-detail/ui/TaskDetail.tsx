@@ -7,6 +7,7 @@ import type { DocsImpact, DocsImpactReason } from "@/shared/api";
 import {
   ArtifactThumb,
   EpicIcon,
+  EditableTaskTitle,
   historyText,
   Labels,
   PRIORITY_NAME,
@@ -170,29 +171,17 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const sameStatusTasks = (allTasks ?? []).filter((task) => task.id !== t.id && task.status === t.status && task.type === t.type);
 
   // On its own page the task title is the screen's title; in the side panel it stays a section heading.
-  const TitleTag = page ? "h1" : "h2";
   const title = (
-    <TitleTag
+    <EditableTaskTitle
+      key={t.id}
+      task={t}
+      writable={writable}
+      as={page ? "h1" : "h2"}
       className={page ? "title g-page-title" : "title"}
-      contentEditable={writable}
-      suppressContentEditableWarning
-      spellCheck={false}
       // Reachable for a programmatic hand-off (the decision box hands focus here when it closes);
       // it stays out of the Tab order.
       tabIndex={-1}
-      onFocus={(e) => {
-        const node = e.currentTarget;
-        if (!node.dataset.editVersion || node.textContent?.trim() === t.title) node.dataset.editVersion = t.editVersion;
-      }}
-      onBlur={(e) => {
-        if (!writable) return;
-        const title = e.currentTarget.textContent?.trim() ?? "";
-        if (title && title !== t.title) patch.mutate({ id: t.id, patch: { title, expectedVersion: e.currentTarget.dataset.editVersion } }, { onError: fail });
-      }}
-      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
-    >
-      {t.title}
-    </TitleTag>
+    />
   );
 
   // What keeps the task from moving: open dependencies, a block, a cancellation. Said in words, above the text.

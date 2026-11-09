@@ -195,7 +195,6 @@ fn apply_limits(app: &App, slug: &str, task: Option<&str>, limits: Vec<Exceeded>
 }
 
 fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> AppResult<()> {
-    let _gate = app.execution_gate.lock().map_err(|_| crate::state::AppError::Internal("execution gate poisoned".into()))?;
     let root = match &over.scope {
         Scope::Task(id) | Scope::Epic(id) => Some(id.as_str()),
         Scope::Day => None,
@@ -209,9 +208,18 @@ fn apply_limit(app: &App, slug: &str, task: Option<&str>, over: &Exceeded) -> Ap
         }
     };
     for task in tasks {
-        match app.with_tracker(slug, |t| {
-            t.execution().pause(&genie_core::Actor::new("genie", genie_core::Role::Orchestrator), &task, "budget", &over.explain())
-        }) {
+        // Existing pauses already require an explicit resume. Avoid creating a
+        // new receipt each time a taskless manager checks an exhausted day.
+        match app.with_tracker(slug, |t| Ok(t.execution().blocking(&task)?.is_some())) {
+            Ok(true) | Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => continue,
+            Ok(false) => {}
+            Err(error) => {
+                failure.get_or_insert(error);
+            }
+        }
+        match crate::tasks::queue_budget_pause(app, slug, &task, &over.explain())
+            .and_then(|pause| crate::runtime::apply_limit_pause(app, &pause))
+        {
             Ok(_) | Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => {}
             Err(error) => {
                 failure.get_or_insert(error);

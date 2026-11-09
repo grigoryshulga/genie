@@ -834,7 +834,7 @@ pub(crate) fn queue_turn_pause(
     task: &str,
     note: &str,
     prepare_turn: impl FnOnce(&genie_core::server_db::ServerDb) -> genie_core::Result<i64>,
-) -> AppResult<genie_core::work::TurnPause> {
+) -> AppResult<genie_core::work::ExecutionPause> {
     let queued = {
         let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
         app.with_server(|db| db.tx(|| db.queue_turn_pause(prepare_turn(db)?, task, note)))
@@ -850,11 +850,12 @@ pub(crate) fn queue_turn_pause(
     }
 }
 
-pub(crate) fn apply_turn_pause(app: &App, pause: &genie_core::work::TurnPause) -> AppResult<()> {
+pub(crate) fn apply_execution_pause(app: &App, pause: &genie_core::work::ExecutionPause) -> AppResult<()> {
     let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
     let halt = app.with_tracker(&pause.project, |t| {
         t.tx(|| {
-            let applied = t.execution().pause_once(&Actor::new("genie", Role::Orchestrator), &pause.task, &pause.note, &pause.id)?;
+            let applied =
+                t.execution().pause_once(&Actor::new("genie", Role::Orchestrator), &pause.task, &pause.reason, &pause.note, &pause.id)?;
             Ok(t.execution().state(&pause.task)?.is_some_and(|s| s.paused && s.generation == applied.generation))
         })
     })?;
@@ -863,6 +864,31 @@ pub(crate) fn apply_turn_pause(app: &App, pause: &genie_core::work::TurnPause) -
     }
     changed(app);
     Ok(())
+}
+
+/// Persist the budget fence before interrupting workers. If the server intent
+/// cannot be stored, retain its in-memory fence and try the project database.
+pub(crate) fn queue_budget_pause(app: &App, project: &str, task: &str, note: &str) -> AppResult<genie_core::work::ExecutionPause> {
+    let (queued, note) = {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        let note = app.sched.remember_budget_pause(project, task, note);
+        let queued = app.with_server(|db| db.queue_budget_pause(project, task, &note));
+        if queued.is_ok() {
+            app.sched.forget_budget_pause(project, task);
+        }
+        (queued, note)
+    };
+    match queued {
+        Ok(pause) => Ok(pause),
+        Err(error) => {
+            match pause_for_limit(app, project, task, "budget", &note) {
+                Ok(_) => {}
+                Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => app.sched.forget_budget_pause(project, task),
+                Err(fallback) => eprintln!("genie runtime: {project}/{task}: project budget-pause fallback pending: {fallback}"),
+            }
+            Err(error)
+        }
+    }
 }
 
 fn pause_inner(
@@ -913,7 +939,7 @@ fn resume_inner(
     }
     let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
     if crate::runtime::pending_limit(app, &caller.project, task)? {
-        return Err(AppError::Conflict("a hard-limit pause is awaiting persistence; inspect it before resuming".into()));
+        return Err(AppError::Conflict("an execution-limit pause is awaiting persistence; inspect it before resuming".into()));
     }
     if let Some(expected) = generation {
         let current = app.with_tracker(&caller.project, |t| t.execution().state(task))?;

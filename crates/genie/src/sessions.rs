@@ -995,7 +995,7 @@ async fn prompt_or_mail(app: &Arc<App>, session: &Arc<Session>, message: String)
 
 /// The session stays registered as a scope fence until this intent is durable.
 /// A failed turn registration is repaired in the same transaction as its intent.
-fn queue_run_limit(app: &App, s: &Session) -> AppResult<genie_core::work::TurnPause> {
+fn queue_run_limit(app: &App, s: &Session) -> AppResult<genie_core::work::ExecutionPause> {
     let limit = s.with_live(|live| live.limit.clone()).ok_or_else(|| AppError::Internal("session has no pending run limit".into()))?;
     let task = s.task.as_deref().ok_or_else(|| AppError::Internal("taskless session has a task limit".into()))?;
     let pause = crate::tasks::queue_turn_pause(app, s.key.project(), task, &limit.note, |db| {
@@ -1012,7 +1012,7 @@ fn queue_run_limit(app: &App, s: &Session) -> AppResult<genie_core::work::TurnPa
     })?;
     s.with_live(|live| {
         if let Some(limit) = &mut live.limit {
-            limit.turn = Some(pause.turn);
+            limit.turn = pause.turn;
         }
     });
     Ok(pause)
@@ -1053,7 +1053,7 @@ async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
             let session = s.clone();
             match app.blocking(move |app| queue_run_limit(app, &session)).await {
                 Ok(pause) => {
-                    turn = Some(pause.turn);
+                    turn = pause.turn;
                     break;
                 }
                 Err(error) => {
