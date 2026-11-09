@@ -271,6 +271,10 @@ details.st-card > .sv-two { padding: 0 var(--g-space-5) var(--g-space-4); }
   .sv-checks .area { grid-column: 2; }
   .sv-checks .txt { grid-column: 2; }
   .sv-verdict { flex-wrap: wrap; padding: var(--g-space-4) var(--g-space-4); }
+  .sv-verdict-text { flex-basis: calc(100% - var(--g-control) - var(--g-space-3)); overflow-wrap: anywhere; }
+  .sv-verdict > .g-btn { margin-left: auto; }
+  .gc-head { flex-wrap: wrap; align-items: flex-start; }
+  .gc-head > :first-child { flex-basis: 100%; }
   .sv-top .sv-select { flex: 1; width: auto; }
   .sv-table .tr { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--g-space-3) var(--g-space-4); }
   .sv-table .tr.th { display: none; }
@@ -322,9 +326,9 @@ details.st-card > .sv-two { padding: 0 var(--g-space-5) var(--g-space-4); }
 .gc-item { border-top: 1px solid var(--g-border); }
 .gc-row { display: flex; align-items: center; gap: var(--g-space-3); padding: var(--g-space-4) var(--g-space-4) var(--g-space-4) var(--g-space-5); }
 .gc-row .g-btn.gc-off, .gc-row .g-btn.gc-off:hover { color: var(--g-danger); }
-.gc-note { display: flex; align-items: baseline; gap: var(--g-space-2); margin: 0; padding: 0 var(--g-space-5) var(--g-space-4); font-size: var(--g-text-caption); color: var(--g-text-muted); line-height: 1.5; }
+.gc-note { display: block; margin: 0; padding: 0 var(--g-space-5) var(--g-space-4); font-size: var(--g-text-caption); color: var(--g-text-muted); line-height: 1.5; }
 .gc-item .gc-note { padding-top: 0; }
-.gc-note i { width: 6px; height: 6px; border-radius: 50%; background: var(--g-accent); flex: none; }
+.gc-note i { display: inline-block; margin-right: var(--g-space-2); vertical-align: middle; width: 6px; height: 6px; border-radius: 50%; background: var(--g-accent); flex: none; }
 .gc-note.fail { color: var(--g-danger); }
 .gc-note.fail i { background: var(--g-danger); }
 .gc-alert { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--g-danger); cursor: pointer; }
@@ -352,4 +356,8 @@ details.st-card > .sv-two { padding: 0 var(--g-space-5) var(--g-space-4); }
   .gc-head, .gc-row { flex-wrap: wrap; }
   .gc-repo { flex-wrap: wrap; gap: var(--g-space-2) var(--g-space-4); }
   .gc-repo-id { flex: 1 1 100%; }
+}
+
+@media (max-width: 900px) {
+  .gc-alert { width: var(--g-control); height: var(--g-control); min-width: var(--g-control); min-height: var(--g-control); }
 }

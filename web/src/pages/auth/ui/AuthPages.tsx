@@ -61,8 +61,7 @@ export function LoginPage({ note }: { note?: string }) {
           Войти
         </Button>
       </form>
-      <p className="auth-or">или</p>
-      <SocialAuth />
+      <SocialAuth separator />
     </AuthLayout>
   );
 }

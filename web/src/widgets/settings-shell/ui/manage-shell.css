@@ -1,5 +1,5 @@
 /* The management hub sits in the work shell's content row: the grouped rail on the left, the page on the right.
-   On a phone the rail becomes a strip of pills above the page, the groups one after another. */
+   On a phone a labeled picker exposes the same grouped destinations above the page. */
 
 .app > .st-hub { display: grid; grid-template-columns: 264px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; }
 .st-hub > .st-rail { background: transparent; }
@@ -9,6 +9,7 @@
 .st-hub-head { flex: none; }
 .st-hub-actions { display: flex; align-items: center; gap: var(--g-space-2); }
 .st-hub-actions:empty { display: none; }
+.st-hub-mobile-navigation { display: none; }
 .st-hub-groups { display: flex; flex-direction: column; gap: var(--g-space-5); }
 .st-hub-group { display: flex; flex-direction: column; gap: var(--g-space-2); }
 .st-hub-group-label { margin: 0; padding: 0 var(--g-space-4); color: var(--g-text-muted); font: 600 var(--g-text-eyebrow)/1.2 var(--g-font-sans); letter-spacing: var(--g-tracking-eyebrow); text-transform: uppercase; }
@@ -23,9 +24,10 @@
 
 @media (max-width: 900px) {
   .app > .st-hub { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .st-hub-groups { flex-direction: row; gap: var(--g-space-3); overflow-x: auto; scrollbar-width: none; }
+  .st-hub-groups { display: none; }
+  .st-hub-mobile-navigation { display: block; min-width: 0; }
   .st-hub-group { flex: none; flex-direction: row; align-items: center; }
   .st-hub-group-label { padding: 0; white-space: nowrap; }
   .st-hub .st-rail-nav { overflow: visible; }
-  .st-hub-section > .st-tabs-band { padding: var(--g-space-2) var(--g-space-4); }
+  .st-hub-section > .st-tabs-band { padding: var(--g-space-2) var(--g-space-4); scrollbar-width: thin; }
 }

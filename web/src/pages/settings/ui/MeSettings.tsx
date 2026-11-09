@@ -11,7 +11,7 @@ import { useLlmKeys, type LlmProvider } from "@/entities/platform";
 import { type SessionUser, useSession } from "@/entities/session";
 import { request } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { Icon, useModalFocus, useRefreshingAct as useAct } from "@/shared/ui";
+import { Button, EmptyState, ErrorState, Icon, LoadingState, useModalFocus, useRefreshingAct as useAct } from "@/shared/ui";
 import { PersonalTelegram } from "./TelegramSettings.tsx";
 import { TokensTab } from "./TokensTab.tsx";
 import { ProviderConnectDialog } from "./ProviderConnectDialog.tsx";
@@ -83,7 +83,7 @@ function AccountTab({ user }: { user: SessionUser }) {
         <div className="st-row">
           <div className="lbl">
             <b>Фото</b>
-            <span>Видно в списке людей, в задачах и в меню слева.</span>
+            <span>Видно в списке людей, в задачах и в меню профиля.</span>
           </div>
           <Photo user={user} />
         </div>
@@ -305,7 +305,8 @@ function SecurityTab() {
 }
 
 function KeysTab() {
-  const { data } = useLlmKeys();
+  const query = useLlmKeys();
+  const { data } = query;
   const act = useAct();
   const [values, setValues] = useState<Record<string, string>>({});
   const [connecting, setConnecting] = useState(false);
@@ -407,10 +408,14 @@ function KeysTab() {
       <div className="st-head">
         <div className="provider-headline">
           <h1 className="g-page-title">Провайдеры и ключи</h1>
-          {providers.length > 0 && <button type="button" className="g-btn secondary provider-add" aria-label="Подключить провайдера" title="Подключить провайдера" onClick={() => setConnecting(true)}><Icon.plus size={15} /></button>}
+          {shown.length > 0 && <Button variant="secondary" onClick={() => setConnecting(true)}><Icon.plus size={15} />Подключить провайдера</Button>}
         </div>
       </div>
-      {shown.map(card)}
+      {query.isPending ? <LoadingState label="Загрузка провайдеров" lines={3} /> : query.isError ? <ErrorState message={`Не удалось загрузить провайдеров: ${query.error.message}`} onRetry={() => void query.refetch()} /> : !shown.length ? (
+        <EmptyState title="Провайдеры ещё не подключены" action={providers.length > 0 ? <Button variant="primary" onClick={() => setConnecting(true)}>Подключить провайдера</Button> : undefined}>
+          Подключите провайдера, чтобы агенты могли использовать его модели. Личный ключ доступен только вашим агентам; общие подключения настраивает администратор.
+        </EmptyState>
+      ) : shown.map(card)}
       {connecting && <ProviderConnectDialog providers={providers} scope="personal" onClose={() => setConnecting(false)} />}
     </div>
   );

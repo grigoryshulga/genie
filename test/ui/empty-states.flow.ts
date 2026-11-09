@@ -31,6 +31,7 @@ test("a slow page shows skeleton rows under one status instead of bare loading t
   await expect(status.locator(".g-skeleton").first()).toBeVisible();
   // The old bare row is gone.
   await expect(page.getByText("Загрузка страницы…", { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "test-results/docs-loading-final.png", animations: "disabled" });
   releasePage();
   await expect(status).toBeHidden({ timeout: 20000 });
   await expect(page.getByRole("heading", { name: /Как запустить/ })).toBeVisible();

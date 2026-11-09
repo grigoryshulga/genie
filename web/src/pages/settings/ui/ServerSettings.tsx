@@ -36,7 +36,7 @@ import { useSession } from "@/entities/session";
 import { ContextSearch } from "@/widgets/topbar";
 import { matchesSearch } from "@/shared/lib";
 import { request } from "@/shared/api";
-import { BarChart, ConfirmDialog, Icon, Menu, useAct, useToast } from "@/shared/ui";
+import { BarChart, Button, ConfirmDialog, ErrorState, Field, Icon, Input, LoadingState, Menu, useAct, useToast } from "@/shared/ui";
 import { McpAdminSection } from "./McpAdmin.tsx";
 import { FirstAdmin, ProjectMembers } from "./ProjectSettings.tsx";
 import { SettingsTabs, useSettingsTab } from "./SettingsTabs.tsx";
@@ -101,9 +101,9 @@ function Health() {
     <div className="st-body sv-wide">
       <section className="st-card">
         {doctor.isPending ? (
-          <div className="st-card-body g-muted">Проверяем сервер…</div>
+          <div className="st-card-body"><LoadingState label="Проверяем сервер" lines={3} /></div>
         ) : doctor.isError ? (
-          <div className="st-card-body g-muted">Проверка не удалась: {doctor.error.message}</div>
+          <div className="st-card-body"><ErrorState message={`Проверка не удалась: ${doctor.error.message}`} onRetry={() => void doctor.refetch()} /></div>
         ) : (
           <>
             <div className="sv-verdict">
@@ -135,19 +135,35 @@ function Health() {
 }
 
 function Checks({ list }: { list: DoctorCheck[] }) {
+  const describe = (check: DoctorCheck) => {
+    const disk = check.text.match(/^([\d.]+) GB free on the (.+) disk \((.+)\)(:.*)?$/);
+    if (disk) {
+      const where = disk[2] === "data" ? "данными" : `рабочей копией ${disk[2].replace(/ worktree$/, "")}`;
+      return { text: `На диске с ${where} свободно ${disk[1].replace(".", ",")} ГБ · ${disk[3]}`, hint: check.level === "ok" ? undefined : check.level === "fail" ? "Освободите место: базы данных, рабочие копии и журналы агентов могут перестать записываться. Проверьте размер журналов и кэшей сборки; рабочие копии закрытых задач удаляются автоматически." : "Рабочие копии и журналы агентов растут. Оставляйте на диске несколько свободных гигабайт." };
+    }
+    if (/^\d+ error\(s\) in the agent configuration$/.test(check.text)) return { text: `Ошибок в настройках агентов: ${check.text.split(" ")[0]}`, hint: "Проверьте роли, шаблоны команд и доступ к инструментам.", to: "/manage/agents/roles" };
+    if (check.text === "Telegram is not configured") return { text: "Telegram не подключён", hint: "Подключите Telegram, чтобы получать уведомления и вопросы агентов.", to: "/manage/project/channels" };
+    if (check.text === "mail is not configured") return { text: "Почтовые уведомления не настроены", hint: "Настройте SMTP для отправки уведомлений по почте.", to: "/manage/project/channels" };
+    if (check.text === "agents are off (runtime.enabled: false)") return { text: "Запуск агентов отключён", hint: "Включите runtime.enabled или запустите genie serve без --no-agents." };
+    if (check.text.startsWith("the vault lives only on this server")) return { text: "У хранилища знаний нет удалённой копии", hint: "Подключите Git-репозиторий для синхронизации и резервной копии знаний.", to: "/manage/server/vault" };
+    return { text: check.text, hint: check.hint };
+  };
   return (
     <ul className="sv-checks">
-      {list.map((c, i) => (
-        <li key={i} className={c.level}>
-          {/* A dot on its own says nothing to a screen reader, and colour alone says little to anyone. */}
-          <span className="lv" role="img" aria-label={LEVEL_NAME[c.level]} />
-          <span className="area">{DOCTOR_AREA[c.area] ?? c.area}</span>
-          <span className="txt">
-            {c.text}
-            {c.hint && c.level !== "ok" && <span className="hint">{c.hint}</span>}
-          </span>
-        </li>
-      ))}
+      {list.map((c, i) => {
+        const description = describe(c);
+        return (
+          <li key={i} className={c.level}>
+            {/* A dot on its own says nothing to a screen reader, and colour alone says little to anyone. */}
+            <span className="lv" role="img" aria-label={LEVEL_NAME[c.level]} />
+            <span className="area">{DOCTOR_AREA[c.area] ?? c.area}</span>
+            <span className="txt">
+              {description.text}
+              {description.hint && c.level !== "ok" && <span className="hint">{description.hint}{description.to && <> <Link to={description.to}>Открыть настройки</Link></>}</span>}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -486,29 +502,21 @@ export function NewProjectForm({ onCreated, folded }: { onCreated?: () => void; 
   const [form, setForm] = useState({ slug: "", name: "", repo: "", prefix: "" });
   const extra = (
     <>
-      <label className="g-field">
-        Репозиторий кода на этой машине
-        <input className="g-mono" value={form.repo} placeholder="/home/team/code/shop — пусто, если проект без кода" onChange={(e) => setForm({ ...form, repo: e.target.value })} />
-        <span className="pj-hint">Задачи из .genie/ будут импортированы.</span>
-      </label>
-      <label className="g-field">
-        Префикс задач
-        <input value={form.prefix} placeholder="по коду проекта, например SHOP" onChange={(e) => setForm({ ...form, prefix: e.target.value.toUpperCase() })} />
-      </label>
+      <Field label="Репозиторий кода на этой машине" help="Оставьте пустым для проекта без кода. Например: /home/team/code/shop. Задачи из .genie/ будут импортированы.">
+        <Input className="g-mono" value={form.repo} placeholder="/home/team/code/shop" onChange={(e) => setForm({ ...form, repo: e.target.value })} />
+      </Field>
+      <Field label="Префикс задач" help="По коду проекта, например SHOP.">
+        <Input value={form.prefix} placeholder="SHOP" onChange={(e) => setForm({ ...form, prefix: e.target.value.toUpperCase() })} />
+      </Field>
     </>
   );
   const slug = (
-    <label className="g-field">
-      Код (латиница)
-      <input value={form.slug} pattern="[a-z0-9][a-z0-9-]*" title="строчные латинские буквы, цифры и дефис" placeholder="shop" onChange={(e) => setForm({ ...form, slug: e.target.value })} required />
-      {folded && <span className="pj-hint">В адресах и командах genie; потом не меняется.</span>}
-    </label>
+    <Field label="Код (латиница)" help={folded ? "В адресах и командах genie; потом не меняется." : undefined}>
+      <Input value={form.slug} pattern="[a-z0-9](?:[a-z0-9]|-)*" title="строчные латинские буквы, цифры и дефис" placeholder="shop" onChange={(e) => setForm({ ...form, slug: e.target.value })} required />
+    </Field>
   );
   const name = (
-    <label className="g-field">
-      Название
-      <input value={form.name} placeholder="Магазин" onChange={(e) => setForm({ ...form, name: e.target.value })} />
-    </label>
+    <Field label="Название"><Input value={form.name} placeholder="Магазин" onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
   );
   return (
     <form
@@ -542,9 +550,9 @@ export function NewProjectForm({ onCreated, folded }: { onCreated?: () => void; 
           {extra}
         </>
       )}
-      <button className="g-btn secondary" disabled={create.isPending}>
+      <Button type="submit" variant="secondary" busy={create.isPending}>
         Создать проект
-      </button>
+      </Button>
     </form>
   );
 }

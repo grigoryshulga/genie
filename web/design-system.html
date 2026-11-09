@@ -104,6 +104,7 @@
       row(h(kit.Field, { label: "Name", help: "Shown in the sidebar" }, h(kit.Input, { placeholder: "Project name", defaultValue: "" })),
         h(kit.Field, { label: "Status" }, h(kit.Select, { defaultValue: "ready" }, h("option", { value: "ready" }, "Ready for work"), h("option", { value: "in_progress" }, "In progress"))),
         h(kit.Field, { label: "Notes" }, h(kit.Textarea, { rows: 2, defaultValue: "" })),
+        h(kit.Field, { label: "Resizable notes", help: "Drag the grip or use arrows, Home and End; height and bounds are announced." }, h(kit.ResizableTextarea, { rows: 3, defaultValue: "Text stays in place while the field changes height." })),
         h(kit.SearchField, { label: "Search tasks", placeholder: "Search" })),
       row(h(kit.Checkbox, { label: "Checkbox", defaultChecked: true }), h(kit.Radio, { label: "Radio", defaultChecked: true }), h(kit.Switch, { label: "Switch", defaultChecked: true }))),
     block("Feedback",

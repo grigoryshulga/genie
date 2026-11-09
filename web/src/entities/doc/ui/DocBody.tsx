@@ -1,5 +1,5 @@
-// DocBody — Markdown for a docs page. `Markdown.tsx` is owned by another task and
-// renders `[[wiki-links]]` literally, so resolved links are rewritten here into a
+// DocBody — Markdown for a docs page. The shared renderer keeps wiki-links literal,
+// so resolved links are rewritten here into a
 // sentinel URL that is intercepted on click; unresolved/ambiguous targets stay
 // literal (the docs core never guesses a target).
 
@@ -43,7 +43,7 @@ export function DocBody({
   };
   return (
     <div className="doc-body g-prose" onClick={onClick}>
-      <Markdown text={prepared} {...(empty !== undefined ? { empty } : {})} />
+      <Markdown text={prepared} documentHeadings {...(empty !== undefined ? { empty } : {})} />
     </div>
   );
 }

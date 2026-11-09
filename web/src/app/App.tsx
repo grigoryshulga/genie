@@ -231,7 +231,7 @@ function Shell() {
 type ShellContext = { onNew: (preset?: NewTaskPreset) => void };
 
 function TasksRoute() {
-  return <TasksPage />;
+  return <TasksPage onNew={useOutletContext<ShellContext>().onNew} />;
 }
 
 function BoardRoute() {

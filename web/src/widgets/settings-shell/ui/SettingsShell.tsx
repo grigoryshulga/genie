@@ -10,7 +10,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { PROJECT_ROLE_NAME } from "@/entities/project";
 import { useSession, useSwitchProject } from "@/entities/session";
 import { lastWorkRoute } from "@/shared/lib";
-import { Icon } from "@/shared/ui";
+import { Field, Icon, Select } from "@/shared/ui";
 import { SettingsLoading } from "./SettingsLoading.tsx";
 import "@/shared/ui/settings.css";
 
@@ -59,14 +59,17 @@ export function SettingsShell() {
         <div className="g-sheet-nav st-rail-nav">
           <button type="button" className="st-rail-back" aria-label="Вернуться к работе" onClick={() => navigate(lastWorkRoute())}>
             <Icon.back size={15} />
-            {/* The icon is the arrow; the label only spells it out on wider screens. */}
-            <span className="grow">к работе</span>
+            {/* Keep the destination visible alongside the arrow. */}
+            <span className="grow">К работе</span>
           </button>
           {items.map(([id, label]) => (
             <Link key={id} to={`${base}/${id}`} className={active(id) ? "on" : undefined} aria-current={active(id) ? "page" : undefined}>
               {label}
             </Link>
           ))}
+          <div className="st-personal-mobile-navigation"><Field label="Личные настройки"><Select value={items.find(([id]) => active(id))?.[0] ?? "account"} onChange={(event) => navigate(`${base}/${event.target.value}`)}>
+            {items.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </Select></Field></div>
         </div>
       </nav>
       <Suspense fallback={<div className="st-rail-fallback"><SettingsLoading rows={5} /></div>}>

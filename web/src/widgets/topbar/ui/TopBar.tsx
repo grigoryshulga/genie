@@ -114,13 +114,16 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
     ...extra,
   });
   const hub = visibleHub(viewer);
+  const workTo = TASK_VIEWS.includes(pathname) ? pathname : rememberedTaskView();
+  const workLabel = workTo === "/board" ? "Доска" : workTo === "/epics" ? "Эпики" : "Задачи";
+  const workIcon = workTo === "/board" ? <Icon.board size={16} /> : workTo === "/epics" ? <EpicIcon size={16} /> : <Icon.list size={16} />;
   const primary: { id: Primary; label: React.ReactNode; to: string; title: string; menu?: { label: string; items: NavMenuEntry[] } }[] = [
     {
       id: "tasks",
       label: (
         <>
-          <Icon.list size={16} />
-          {label("Задачи")}
+          {workIcon}
+          {label(workLabel)}
           {waiting > 0 && (
             <Tag tone="solid-signal" title="ждут вашего решения">
               {waiting}
@@ -129,8 +132,8 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
           {open > 0 && <span className="g-caption g-topbar-open">{open}</span>}
         </>
       ),
-      to: rememberedTaskView(),
-      title: "Задачи",
+      to: workTo,
+      title: workLabel,
       menu: {
         label: "Виды задач",
         items: [
@@ -249,7 +252,7 @@ export function TopBar({ onNew, online, searchRef, searchOpen, onOpenSearch, onC
             <Icon.search size={20} />
           </IconButton>
           {canCreate && (
-            <IconButton label="Новая задача" className="g-topbar-create" onClick={onNew}>
+            <IconButton label="Новая задача" className={`g-topbar-create${/^\/(task|epic)\//.test(pathname) ? " secondary" : ""}`} onClick={onNew}>
               <Icon.plus size={20} />
             </IconButton>
           )}

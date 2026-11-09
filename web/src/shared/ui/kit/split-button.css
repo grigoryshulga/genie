@@ -18,3 +18,9 @@
 @media (prefers-reduced-motion: reduce) {
   .g-split > button, .g-split-more > svg { transition: none; }
 }
+
+@media (max-width: 900px) {
+  .g-split { height: var(--g-control); }
+  .g-split-main, .g-split-more { min-width: var(--g-control); min-height: var(--g-control); }
+  .g-split-more { width: var(--g-control); padding: 0; }
+}

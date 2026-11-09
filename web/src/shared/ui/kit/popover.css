@@ -17,7 +17,7 @@
 .fopt .hint { font-size: var(--g-text-caption); color: var(--g-text-muted); white-space: nowrap; font-feature-settings: "tnum"; }
 
 @media (max-width: 900px) {
-  .fchip { min-height: 36px; }
+  .fchip { min-height: var(--g-control); }
   .fpop { top: auto; right: 0; bottom: 0; left: 0; min-width: 0; max-width: none; max-height: 70vh; border-radius: var(--g-radius-xl) var(--g-radius-xl) 0 0; padding-bottom: calc(var(--g-space-4) + env(safe-area-inset-bottom)); }
   .fopt { min-height: 40px; }
 }

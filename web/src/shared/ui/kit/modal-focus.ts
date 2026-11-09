@@ -15,7 +15,7 @@ const FOCUSABLE = [
 
 /** Controls a keyboard user can reach inside `root`, in tab order, skipping hidden ones. */
 export function focusStops(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0);
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
 }
 
 export function useModalFocus(ref: RefObject<HTMLElement | null>, open: boolean, onClose: () => void) {

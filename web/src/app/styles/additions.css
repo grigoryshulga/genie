@@ -18,6 +18,10 @@ button.title { background: none; border: 0; padding: 0; color: inherit; text-ali
 /* narrow list column next to an open task */
 .topbar { overflow: hidden; }
 .topbar h1 { white-space: nowrap; }
+@media (max-width: 900px) {
+  .page-head { height: auto; overflow: visible; }
+  .page-head .g-page-title { min-width: 0; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+}
 .search { flex-shrink: 1; min-width: 120px; }
 @media (max-width: 900px) {
   .board { scroll-padding-inline: 16px; }

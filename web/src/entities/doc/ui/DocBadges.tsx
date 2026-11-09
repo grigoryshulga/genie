@@ -7,7 +7,7 @@ import { DeprecatedIcon, DiagIcon, DraftIcon, OkIcon, StaleIcon, UnknownIcon } f
 
 // Tag tones carry the status: green means current, orange means "check me", red means the
 // frontmatter is broken, and a plain outline is a lifecycle fact rather than a call to act.
-const STATUS_TONE = { current: "signal", draft: "outline", deprecated: "outline" } as const;
+const STATUS_TONE = { current: "accent", draft: "outline", deprecated: "outline" } as const;
 
 /** The page's type when the frontmatter sets one (a plain page shows nothing). */
 export function DocTypeBadge({ type, long }: { type: DocPage["type"]; long?: boolean }) {
@@ -46,7 +46,7 @@ export function DocDiagIcon({ size = 12 }: { size?: number }) {
 
 export function DocStaleBadge({ count }: { count?: number }) {
   return (
-    <Tag tone="accent" className="doc-status s-stale" title="Код, который описывает страница, менялся после её проверки">
+    <Tag tone="signal" className="doc-status s-stale" title="Код, который описывает страница, менялся после её проверки">
       <DocStaleIcon />
       Возможно устарела{count && count > 1 ? ` · ${count}` : ""}
     </Tag>

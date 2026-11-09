@@ -38,12 +38,13 @@ type Choice = { id: string; kind: "checkbox" | "radio"; checked: boolean; onChan
 type FilterGroup = { key: string; label: string; value: string; active: boolean; head?: string; extra?: ReactNode; choices: Choice[] };
 
 /** «Задачи»: the project's tasks as a list, with search and filters by status, readiness, time and more. */
-export function TasksPage() {
+export function TasksPage({ onNew }: { onNew: () => void }) {
   const [sp, setSp] = useSearchParams();
   const [focused, setFocused] = useState<string | undefined>();
   const tasksQ = useTasks();
   const teams = useTeamMap();
   const session = useSession().data;
+  const canCreate = session?.projects.find((p) => p.slug === session.project)?.role !== "viewer";
   const login = session?.mode === "users" ? session.user.login : undefined;
   const members = useMembers(login ? session?.project : undefined).data;
   const people = useMemo(() => new Map((members ?? []).map((m) => [m.user.login, personName(m.user)])), [members]);
@@ -229,7 +230,8 @@ export function TasksPage() {
     <>
       <label className="g-chip g-chip-select">
         <span className="k">Порядок</span>
-        <select value={f.sort} onChange={(e) => set({ sort: e.target.value as TaskSort })}>
+        <span className="g-chip-select-value" aria-hidden="true">{SORT_NAME[f.sort]}</span>
+        <select aria-label="Порядок задач" value={f.sort} onChange={(e) => set({ sort: e.target.value as TaskSort })}>
           {(Object.keys(SORT_NAME) as TaskSort[]).map((s) => (
             <option key={s} value={s}>
               {SORT_NAME[s]}
@@ -239,7 +241,8 @@ export function TasksPage() {
       </label>
       <label className="g-chip g-chip-select">
         <span className="k">Группы</span>
-        <select value={f.grouped ? "status" : "none"} onChange={(e) => set({ grouped: e.target.value === "status" })}>
+        <span className="g-chip-select-value" aria-hidden="true">{f.grouped ? "по статусу" : "без групп"}</span>
+        <select aria-label="Группы задач" value={f.grouped ? "status" : "none"} onChange={(e) => set({ grouped: e.target.value === "status" })}>
           <option value="status">по статусу</option>
           <option value="none">без групп</option>
         </select>
@@ -296,7 +299,9 @@ export function TasksPage() {
             selected={selected}
             onOpen={open}
             onFocus={setFocused}
-            empty={isFiltered(f) ? "Ничего не нашлось" : undefined}
+            empty={isFiltered(f) ? "Ничего не нашлось" : all.length ? "Нет открытых задач" : "Здесь пусто"}
+            emptyDescription={isFiltered(f) ? "Ни одна задача не подходит под выбранные условия. Сбросьте фильтры, чтобы вернуться к списку." : all.length ? "Все задачи скрыты текущим набором статусов. Посмотрите завершённые задачи или создайте новую." : canCreate ? "Создайте первую задачу: опишите результат и критерии приёмки, затем передайте её команде." : "В проекте пока нет задач. Участник проекта может создать первую задачу."}
+            emptyAction={isFiltered(f) ? <Button variant="secondary" onClick={reset}>Сбросить фильтры</Button> : all.length ? <Button variant="secondary" onClick={() => set({ statuses: STATUS_ORDER })}>Показать все задачи</Button> : canCreate ? <Button variant="primary" onClick={onNew}>Создать задачу</Button> : undefined}
           />
         </div>
       )}

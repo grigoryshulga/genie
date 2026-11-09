@@ -5,6 +5,10 @@
 .g-rename-btn:hover { color: var(--g-text); background: var(--g-surface-hover); }
 .g-rename-btn:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
 @media (hover: none) { .g-rename-btn { opacity: 1; } }
+@media (max-width: 900px) {
+  .g-rename-btn { width: var(--g-control); height: var(--g-control); opacity: 1; }
+  .g-rename-input { min-height: var(--g-control); }
+}
 .g-rename-input { flex: 1; min-width: 0; height: var(--g-control-sm); padding: 0 var(--g-space-2); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-sm); background: var(--g-surface); color: var(--g-text); font: var(--g-weight-semibold) var(--g-text-dense) var(--g-font-sans); }
 .g-rename-input:focus { outline: 2px solid var(--g-focus); outline-offset: 1px; border-color: transparent; }
 .g-rename-input.g-page-title, .g-rename-input.doc-title { height: auto; padding: 0 var(--g-space-1); }

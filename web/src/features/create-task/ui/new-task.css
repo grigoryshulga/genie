@@ -15,6 +15,11 @@
 
 /* Keep both filing modes and the submit action reachable without horizontal scrolling. */
 @media (max-width: 900px) {
+  .nt-dialog .opts, .nt-dialog .nt-opt { min-width: 0; max-width: 100%; }
+  .nt-dialog .nt-opt > svg { flex: none; }
+  .nt-dialog .nt-opt > select { flex: 1; min-width: 0; width: 100%; }
+  .nt-dialog .opts > select, .nt-dialog .opts > input { min-width: 0; max-width: 100%; }
+  .nt-dialog .nt-kbd { display: none; }
   .nt-dialog .mh { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: var(--g-space-2); padding: var(--g-space-4); }
   .nt-dialog .mh > .grow { display: none; }
   .nt-dialog .mh > .g-icon-btn { grid-column: 4; grid-row: 1; }

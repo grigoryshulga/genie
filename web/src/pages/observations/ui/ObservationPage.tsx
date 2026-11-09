@@ -108,6 +108,17 @@ function Frame({ actions, children }: { actions?: ReactNode; children?: ReactNod
 type IncidentNote = { id: number; action: "resolve" | "dismiss" };
 type CaseDialog = "edit" | "cancel" | "final";
 
+/** The API shares these diagnostic strings with the CLI; owners get a localized next step. */
+function ArmProblem({ problem }: { problem: string }) {
+  if (problem === "no contract yet") return <>Не задан контракт наблюдения. Нажмите «Задать контракт» в разделе «Контракт».</>;
+  if (problem === "link at least one task") return <>Свяжите наблюдение хотя бы с одной задачей через «Изменить».</>;
+  const source = problem.match(/^unknown source (.+)$/);
+  if (source) return <>Источник «{source[1]}» не настроен. Обратитесь к администратору проекта.</>;
+  const secret = problem.match(/^source (.+) needs a secret$/);
+  if (secret) return <>Для источника «{secret[1]}» не заданы данные доступа. Обратитесь к администратору проекта.</>;
+  return <>{problem.startsWith("contract is invalid:") ? "В контракте есть ошибки. Нажмите «Изменить контракт», чтобы исправить их." : "Не выполнены условия запуска. Проверьте контракт и источники."}<details><summary>Технические подробности</summary><span className="mono">{problem}</span></details></>;
+}
+
 function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
   const c = view.case;
   const actions = caseActions(c, rights);
@@ -249,7 +260,7 @@ function CaseBody({ view, rights }: { view: CaseView; rights: CaseRights }) {
           <b>Пока наблюдение нельзя перевести в ожидание поставки:</b>
           <ul>
             {view.armProblems.map((problem, i) => (
-              <li key={`${i}-${problem}`}>{problem}</li>
+              <li key={`${i}-${problem}`}><ArmProblem problem={problem} /></li>
             ))}
           </ul>
         </section>

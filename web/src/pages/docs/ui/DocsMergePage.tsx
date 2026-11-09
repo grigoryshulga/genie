@@ -34,6 +34,8 @@ export function DocsMergePage() {
   const page = pages.find((item) => item.path === active) ?? pages[0];
   const text = page ? edits[page.path] ?? page.marked : "";
   const marker = hasConflictMarkers(text);
+  const unresolved = pages.filter((item) => hasConflictMarkers(edits[item.path] ?? item.marked)).length;
+  const [comparison, setComparison] = useState<"ours" | "theirs">("ours");
 
   const save = () => {
     if (!merge) return;
@@ -62,11 +64,12 @@ export function DocsMergePage() {
           К изменениям
         </Link>
         {merge && merge.status !== "resolved" && (
-          <Button variant="primary" onClick={save} busy={resolve.isPending} disabled={marker}>
+          <Button variant="primary" onClick={save} busy={resolve.isPending} disabled={unresolved > 0}>
             Сохранить и опубликовать
           </Button>
         )}
       </header>
+      {unresolved > 0 && <p className="changes-merge-guidance" role="status">Удалите маркеры конфликта в результате. Страниц с конфликтами: {unresolved}. Затем сохраните и опубликуйте.</p>}
 
       <div className="scroll changes-merge-body">
         {query.isPending ? (
@@ -106,12 +109,16 @@ export function DocsMergePage() {
                   {query.data?.ours && <span>{query.data.ours.authorName ?? query.data.ours.author}{query.data.ours.task ? ` · ${query.data.ours.task}` : ""}{query.data.ours.note ? ` · ${query.data.ours.note}` : ""}</span>}
                   {query.data?.theirs && <span>{query.data.theirs.authorName ?? query.data.theirs.author}{query.data.theirs.task ? ` · ${query.data.theirs.task}` : ""}{query.data.theirs.note ? ` · ${query.data.theirs.note}` : ""}</span>}
                 </div>
-                <div className="changes-merge-panes">
-                  <section className="changes-merge-pane" aria-label="Основная версия">
+                <div className="changes-merge-compare" role="group" aria-label="Сравнить версии">
+                  <Chip pressed={comparison === "ours"} onClick={() => setComparison("ours")}>Основная версия</Chip>
+                  <Chip pressed={comparison === "theirs"} onClick={() => setComparison("theirs")}>Черновик</Chip>
+                </div>
+                <div className="changes-merge-panes" data-comparison={comparison}>
+                  <section className="changes-merge-pane ours" aria-label="Основная версия">
                     <h2>На основной ветке</h2>
                     <pre>{page.ours || "Пусто"}</pre>
                   </section>
-                  <section className="changes-merge-pane" aria-label="Версия в ветке">
+                  <section className="changes-merge-pane theirs" aria-label="Версия в ветке">
                     <h2>В черновике</h2>
                     <pre>{page.theirs || "Пусто"}</pre>
                   </section>

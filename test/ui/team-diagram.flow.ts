@@ -36,6 +36,12 @@ test("the team line shows who works and who waits; the graph opens on demand and
   await expect(page.locator(".team-graph")).toHaveCount(0);
   // How urgent a message is stays behind the send button's chevron; the choice becomes the default.
   await expect(page.getByRole("group", { name: "Важность" })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const button of await page.locator(".g-split > button").all()) {
+    const bounds = (await button.boundingBox())!;
+    expect(bounds.width).toBeGreaterThanOrEqual(40);
+    expect(bounds.height).toBeGreaterThanOrEqual(40);
+  }
   await page.getByRole("button", { name: "Как отправить" }).click();
   await page.getByRole("menuitemcheckbox", { name: /Важное/ }).click();
   await expect(page.getByRole("button", { name: "Как отправить" })).toBeFocused();
@@ -43,6 +49,7 @@ test("the team line shows who works and who waits; the graph opens on demand and
   await page.getByRole("button", { name: "Как отправить" }).click();
   await expect(page.getByRole("menuitemcheckbox", { name: /Важное/ })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "Схема связей" }).click();
   const reviewer = page.locator(".team-graph a").filter({ hasText: "Лиза" });
   await expect(reviewer.locator("text.nr")).toHaveText("ревьюер");

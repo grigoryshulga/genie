@@ -1,4 +1,4 @@
-import { cloneElement, type InputHTMLAttributes, isValidElement, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId, useRef, useState } from "react";
+import { cloneElement, type InputHTMLAttributes, isValidElement, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "./cx.ts";
 import "./select.css";
 import "./resize.css";
@@ -44,18 +44,21 @@ export function Textarea({ className, ref, ...rest }: TextareaHTMLAttributes<HTM
   return <textarea {...rest} ref={ref} className={cx("g-textarea", className)} />;
 }
 
-const RESIZE_MIN = 72;
+const RESIZE_MIN = 96;
 const RESIZE_MAX = 480;
 const RESIZE_STEP = 16;
 
 /** A text area whose height the grip sets, by drag or with the arrow keys; it starts at its rows. */
 export function ResizableTextarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const field = useRef<HTMLTextAreaElement>(null);
+  const fallbackId = useId();
+  const fieldId = rest.id ?? fallbackId;
   const [height, setHeight] = useState<number>();
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ y: number; height: number } | null>(null);
   const clamp = (value: number) => Math.min(RESIZE_MAX, Math.max(RESIZE_MIN, value));
   const current = () => field.current?.offsetHeight ?? RESIZE_MIN;
+  useLayoutEffect(() => { setHeight(clamp(current())); }, []);
   const onPointerDown = (event: PointerEvent<HTMLSpanElement>) => {
     drag.current = { y: event.clientY, height: current() };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -69,16 +72,21 @@ export function ResizableTextarea({ className, ...rest }: TextareaHTMLAttributes
     setDragging(false);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
-    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    setHeight(clamp(current() + (event.key === "ArrowDown" ? RESIZE_STEP : -RESIZE_STEP)));
+    setHeight(event.key === "Home" ? RESIZE_MIN : event.key === "End" ? RESIZE_MAX : clamp(current() + (event.key === "ArrowDown" ? RESIZE_STEP : -RESIZE_STEP)));
   };
   return (
     <div className="g-resize">
-      <textarea {...rest} ref={field} style={height === undefined ? undefined : { height }} className={cx("g-textarea g-resize-field", className)} />
+      <textarea {...rest} id={fieldId} ref={field} style={height === undefined ? undefined : { height }} className={cx("g-textarea g-resize-field", className)} />
       <span
         role="separator"
         aria-orientation="horizontal"
+        aria-controls={fieldId}
+        aria-valuemin={RESIZE_MIN}
+        aria-valuemax={RESIZE_MAX}
+        aria-valuenow={Math.round(height ?? RESIZE_MIN)}
+        aria-valuetext={`${Math.round(height ?? RESIZE_MIN)} пикселей`}
         aria-label="Изменить высоту поля"
         title="Потяните, чтобы изменить высоту"
         tabIndex={0}

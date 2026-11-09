@@ -43,15 +43,15 @@ export function AgentsPage({ tab }: { tab: AgentsTab }) {
     <main className="main agents">
       <HubActions>
           {tab === "mcp" && isAdmin && (
-            <Link to="/manage/server/tools?tab=mcp" className="g-btn secondary sm">
+            <Link to="/manage/server/tools?tab=mcp" className="g-btn secondary sm" aria-label="Настроить MCP-подключения">
               <Icon.gear size={13} />
-              <span className="d-only">Настроить</span>
+              <span>Настроить</span>
             </Link>
           )}
           {create && c && tab !== "roles" && tab !== "templates" && (
-            <button type="button" className="g-btn secondary" onClick={() => setCreating(create.kind)}>
+            <button type="button" className="g-btn secondary" aria-label={create.label} onClick={() => setCreating(create.kind)}>
               <Icon.plus size={13} />
-              <span className="d-only">{create.label}</span>
+              <span>{create.label}</span>
             </button>
           )}
       </HubActions>
@@ -72,7 +72,7 @@ export function AgentsPage({ tab }: { tab: AgentsTab }) {
       ) : tab === "skills" ? (
         <SkillsTab cfg={c} selected={selected} onSelect={select} readOnly={!isAdmin} />
       ) : tab === "mcp" ? (
-        <McpTab cfg={c} readOnly />
+        <McpTab cfg={c} readOnly configureTo={isAdmin ? "/manage/server/tools?tab=mcp" : undefined} />
       ) : (
         <div className="ag-page">
           <History admin />

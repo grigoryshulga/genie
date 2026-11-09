@@ -16,6 +16,8 @@
 .g-topbar-project-switcher .g-popover-host { min-width: 0; }
 .g-topbar .g-topbar-create { flex: none; background: var(--g-signal); color: var(--g-on-signal); }
 .g-topbar .g-topbar-create:hover { background: var(--g-signal-hover); color: var(--g-on-signal); }
+.g-topbar .g-topbar-create.secondary { background: var(--g-surface-raised); color: var(--g-accent-text); border: 1px solid var(--g-accent); }
+.g-topbar .g-topbar-create.secondary:hover { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
 
 /* Reveal the search field in place, then restore navigation with the same quiet motion. */
 .g-topbar-search-mode { animation: g-search-appear calc(2 * var(--g-duration)) var(--g-ease) both; }
@@ -65,5 +67,9 @@
   .g-topbar .g-tabs > .g-tab-split > a .g-tag, .g-topbar .g-tabs > .g-tab-split > a .g-topbar-open { position: absolute; top: 0; left: calc(50% + var(--g-space-2)); }
   .g-topbar .g-tabs > .g-tab-split > a .g-tag { min-width: var(--g-space-4); height: var(--g-space-4); justify-content: center; padding: 0 var(--g-space-1); font-size: var(--g-text-eyebrow); }
   .g-topbar .g-tabs > .g-tab-split > a .g-tag ~ .g-topbar-open { display: none; }
-  .g-topbar .g-tab-split > .g-nav-menu-toggle { position: absolute; top: 50%; right: var(--g-space-1); margin: 0; transform: translateY(-50%); }
+  .g-topbar .g-tabs > .g-tab-split > a { margin-right: var(--g-control); }
+  .g-topbar .g-tabs > .g-tab-split:last-child { flex-grow: 1.35; }
+  .g-topbar .g-tabs > a { flex-grow: 0.65; }
+  .g-topbar .g-tab-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .g-topbar .g-tab-split > .g-nav-menu-toggle { position: absolute; top: 50%; right: 0; width: var(--g-control); height: var(--g-control); margin: 0; transform: translateY(-50%); }
 }
