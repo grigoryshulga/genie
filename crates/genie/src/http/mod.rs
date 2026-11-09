@@ -167,6 +167,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(agent_config::routes())
         .merge(mcp_admin::routes())
         .merge(mcp_gateway::routes())
+        .merge(crate::model_gateway::routes())
         .merge(repos::routes())
         .merge(connections::routes())
         .merge(observation::routes())

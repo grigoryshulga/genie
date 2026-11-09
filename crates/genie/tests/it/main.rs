@@ -33,6 +33,7 @@ mod llm_keys;
 mod management;
 mod mcp_gateway;
 mod mcp_server;
+mod model_gateway;
 mod model_prices;
 mod observation_adapters;
 mod observation_api;

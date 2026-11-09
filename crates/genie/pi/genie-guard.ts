@@ -246,7 +246,7 @@ export function usageOf(message: any): UsageReport | undefined {
 }
 
 function reportUsage(pi: any): void {
-  if (!BASE || !TOKEN) return;
+  if (!BASE || !TOKEN || process.env.GENIE_MODEL_GATEWAY === "1") return;
   let pending: UsageReport[] = [];
   let sending: Promise<void> = Promise.resolve();
   async function send(): Promise<void> {

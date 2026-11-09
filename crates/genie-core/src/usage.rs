@@ -112,6 +112,10 @@ impl Tracker {
     /// Add one model response of `agent` to today's row.
     pub fn record_usage(&self, agent: &str, task: Option<&str>, model: &str, t: &Tokens) -> Result<()> {
         let day = crate::db::now()[..10].to_string();
+        self.record_usage_on(agent, task, model, t, &day)
+    }
+
+    pub(crate) fn record_usage_on(&self, agent: &str, task: Option<&str>, model: &str, t: &Tokens, day: &str) -> Result<()> {
         self.tx(|| {
         self.conn().execute(
             "INSERT INTO usage(day, agent, task, model, calls, input, output, cache_read, cache_write)

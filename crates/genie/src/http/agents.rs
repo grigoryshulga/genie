@@ -334,14 +334,24 @@ struct UsageReport {
 
 /// The calling agent's model responses (reported by the genie guard extension):
 /// added to its chat and the task it works on.
-async fn usage(State(app): State<Arc<App>>, ctx: Ctx, Json(b): Json<UsageBody>) -> ApiResult<Json<Value>> {
+async fn usage(State(app): State<Arc<App>>, ctx: Ctx, headers: HeaderMap, Json(b): Json<UsageBody>) -> ApiResult<Json<Value>> {
     let access = ctx.access(&app, None).await?;
     if !access.agent {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "only agents report their usage"));
     }
     let n = b.reports.len();
+    let token_hash = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|v| genie_core::server_db::hash_secret(v.trim()));
     app.blocking(move |app| {
         let slug = &access.project;
+        if let Some(hash) = token_hash
+            && app.with_tracker(slug, |t| t.model_calls().enrolled_token(&hash))?
+        {
+            return Err(crate::state::AppError::Forbidden("usage for this worker is recorded by the server model gateway".into()));
+        }
         let (agent, task) = if access.actor.role == Role::Orchestrator {
             (access.actor.name.clone(), genie_core::management::managed_task(&access.actor.name).map(str::to_string))
         } else if let Some(team) = &access.agent_team {
