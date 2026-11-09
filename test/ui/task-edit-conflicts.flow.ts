@@ -113,6 +113,55 @@ for (const scenario of [
   });
 }
 
+for (const theme of ["ink", "paper"] as const) {
+  test(`an integration draft survives same-field live refresh, repeated conflict and cancellation in ${theme}`, async ({ page }) => {
+    const created = await page.request.post(`/api/tasks?project=${PROJECT.id}`, {
+      headers: { "x-genie": "1" }, data: { title: "Совместная интеграция", mergeStrategy: "Исходная интеграция" },
+    });
+    expect(created.ok()).toBe(true);
+    const task: StoredTask = await created.json();
+    const path = `/api/tasks/${task.id}?project=${PROJECT.id}`;
+    await page.goto(`/task/${task.id}`);
+    await page.evaluate((theme) => { document.documentElement.dataset.theme = theme; }, theme);
+    const input = page.getByRole("textbox", { name: "Интеграция", exact: true });
+    await input.fill("Мой черновик");
+    await input.press("Home");
+    await input.pressSequentially("Автор: ");
+    const draft = "Автор: Мой черновик";
+    const version = (await storedTask(page.request, task.id)).editVersion;
+    const refreshed = page.waitForResponse((r) => r.request().method() === "GET"
+      && new URL(r.url()).pathname === `/api/tasks/${task.id}` && r.ok());
+    expect((await page.request.patch(path, {
+      headers: { "x-genie": "1" }, data: { mergeStrategy: "Интеграция другого клиента", expectedVersion: version },
+    })).ok()).toBe(true);
+    await refreshed;
+    await expect(input).toHaveValue(draft);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await input.focus();
+      const response = page.waitForResponse((r) => r.request().method() === "PATCH"
+        && new URL(r.url()).pathname === `/api/tasks/${task.id}`);
+      await input.blur();
+      const conflict = await response;
+      expect(conflict.status()).toBe(409);
+      expect(conflict.request().postDataJSON().expectedVersion).toBe(version);
+      await expect(input).toHaveValue(draft);
+    }
+    await page.screenshot({ path: test.info().outputPath(`integration-conflict-${theme}.png`) });
+    await input.focus();
+    await input.press("Escape");
+    await expect(input).toHaveValue("Интеграция другого клиента");
+    await input.fill("Согласованная интеграция");
+    await input.press("Enter");
+    await expect.poll(async () => (await storedTask(page.request, task.id)).mergeStrategy).toBe("Согласованная интеграция");
+    const current = await storedTask(page.request, task.id);
+    expect((await page.request.patch(path, {
+      headers: { "x-genie": "1" }, data: { mergeStrategy: "Следующая интеграция с сервера", expectedVersion: current.editVersion },
+    })).ok()).toBe(true);
+    await expect(input).toHaveValue("Следующая интеграция с сервера");
+    expect((await page.request.delete(path, { headers: { "x-genie": "1" } })).ok()).toBe(true);
+  });
+}
+
 test("refocusing a conflicted inline edit cannot silently grant it a new version", async ({ page }) => {
   const created = await page.request.post(`/api/tasks?project=${PROJECT.id}`, {
     headers: { "x-genie": "1" }, data: { title: "Конфликт интеграции", mergeStrategy: "Исходная интеграция" },

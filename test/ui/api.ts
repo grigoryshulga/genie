@@ -8,6 +8,7 @@ export interface StoredTask {
   title: string;
   status: string;
   editVersion: string;
+  mergeStrategy: string;
   description?: string;
   plan?: string;
   labels: string[];

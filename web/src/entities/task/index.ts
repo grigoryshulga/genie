@@ -4,6 +4,7 @@ export * from "./epic-tone.ts";
 export * from "./api.ts";
 export * from "./ui/StatusIcon.tsx";
 export * from "./ui/EditableTaskTitle.tsx";
+export * from "./ui/EditableTaskIntegration.tsx";
 export * from "./ui/StageBars.tsx";
 export * from "./ui/Labels.tsx";
 export * from "./ui/Epic.tsx";

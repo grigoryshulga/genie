@@ -8,6 +8,7 @@ import {
   ArtifactThumb,
   EpicIcon,
   EditableTaskTitle,
+  EditableTaskIntegration,
   historyText,
   Labels,
   PRIORITY_NAME,
@@ -383,18 +384,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
         <>
           <Prop label="Интеграция">
             {writable ? (
-              <Input
-                sm
-                key={`${t.id}-merge-${t.mergeStrategy}`}
-                aria-label="Интеграция"
-                defaultValue={t.mergeStrategy}
-                placeholder="не задана"
-                onFocus={(e) => {
-                  const node = e.currentTarget;
-                  if (!node.dataset.editVersion || node.value === t.mergeStrategy) node.dataset.editVersion = t.editVersion;
-                }}
-                onBlur={(e) => e.target.value !== t.mergeStrategy && patch.mutate({ id: t.id, patch: { mergeStrategy: e.target.value, expectedVersion: e.currentTarget.dataset.editVersion } }, { onError: fail })}
-              />
+              <EditableTaskIntegration key={t.id} task={t} />
             ) : (
               <span className={t.mergeStrategy ? "td-val" : "td-val muted"}>{t.mergeStrategy || "не задана"}</span>
             )}

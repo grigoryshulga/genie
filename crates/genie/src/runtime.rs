@@ -430,6 +430,11 @@ fn execution_stamp(app: &App, project: &str, task: Option<&str>) -> AppResult<Op
     task.map(|task| app.with_tracker(project, |t| t.execution().stamp(task))).transpose()
 }
 
+fn execution_blocked(app: &App, project: &str, task: Option<&str>) -> AppResult<bool> {
+    let Some(task) = task else { return Ok(false) };
+    Ok(pending_limit(app, project, task)? || app.with_tracker(project, |t| t.execution().blocking(task))?.is_some())
+}
+
 pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
     if let AgentKey::Request { project, response } = key
         && crate::conversations::is_direct_response(app, project, response)?
@@ -437,14 +442,7 @@ pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
         return Ok(true);
     }
     let task = key_task(app, key)?;
-    if let Some(task) = &task
-        && pending_limit(app, key.project(), task)?
-    {
-        return Ok(false);
-    }
-    if let Some(task) = &task
-        && app.with_tracker(key.project(), |t| t.execution().blocking(task))?.is_some()
-    {
+    if execution_blocked(app, key.project(), task.as_deref())? {
         return Ok(false);
     }
     if crate::budget::check(app, key.project(), task.as_deref())?.is_some() {
@@ -1014,28 +1012,74 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
             Ok(Some(Prepared { spec, turn, message: member_message(&mail), token: String::new(), llm }))
         }
         AgentKey::Job { project: slug, job } => {
-            let j = app.with_server(|db| {
-                let j = db.job(*job)?;
-                if j.status != "queued" {
-                    return Ok(None);
-                }
-                db.start_job(*job)?;
-                Ok(Some(j))
-            })?;
-            let Some(j) = j else { return Ok(None) };
-            let turn = app.with_server(|db| db.start_turn(slug, &label, None, None, Some(*job)))?;
-            // A job that cannot start (its role removed, no worktree) fails this attempt instead of hanging.
-            let prepared = prepare_job(app, &project, &j, turn);
-            if let Err(e) = &prepared {
-                let (error, max) = (e.to_string(), i64::from(app.cfg.runtime.max_attempts.max(1)));
-                app.with_server(|db| {
-                    db.finish_turn(turn, "failed", None, Some(&error), None)?;
-                    db.finish_job(*job, false, Some(&error), max).map(|_| ())
-                })?;
-            }
-            prepared.map(Some)
+            let Some(claimed) = claim_job(app, slug, *job)? else { return Ok(None) };
+            prepare_claimed_job(app, &project, claimed)
         }
     }
+}
+
+struct ClaimedJob {
+    job: Job,
+    turn: i64,
+    execution_stamp: Option<String>,
+}
+
+/// Claim and snapshot execution in the same gate as stop/resume. Preparation
+/// may do slow filesystem work later, but can never adopt a newer generation.
+fn claim_job(app: &App, project: &str, job: i64) -> AppResult<Option<ClaimedJob>> {
+    let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    let key = AgentKey::Job { project: project.into(), job };
+    let j = app.with_server(|db| db.job(job))?;
+    if j.project != project {
+        return Err(AppError::Forbidden("the job belongs to another project".into()));
+    }
+    if j.status != "queued" || app.sched.with(|s| s.interrupted.contains(&key)) || execution_blocked(app, project, j.task.as_deref())? {
+        return Ok(None);
+    }
+    let stamp = execution_stamp(app, project, j.task.as_deref())?;
+    app.with_server(|db| {
+        db.tx(|| {
+            if db.job(job)?.status != "queued" {
+                return Ok(None);
+            }
+            db.start_job(job)?;
+            let turn = db.start_turn(project, &key.label(), None, None, Some(job))?;
+            Ok(Some(ClaimedJob { job: j, turn, execution_stamp: stamp }))
+        })
+    })
+}
+
+fn prepare_claimed_job(app: &App, project: &Project, claimed: ClaimedJob) -> AppResult<Option<Prepared>> {
+    let ClaimedJob { job, turn, execution_stamp: stamp } = claimed;
+    let key = AgentKey::Job { project: project.slug.clone(), job: job.id };
+    let prepared = prepare_job(app, project, &job, turn, stamp.clone());
+    // A stop can complete while worktree/model preparation is in progress.
+    // Classify and finalize behind its gate, even if preparation itself failed.
+    let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    let interrupted = app.sched.with(|s| s.interrupted.contains(&key))
+        || execution_blocked(app, &project.slug, job.task.as_deref())?
+        || execution_stamp(app, &project.slug, job.task.as_deref())? != stamp;
+    if interrupted {
+        app.with_server(|db| {
+            db.tx(|| {
+                db.finish_turn(turn, "interrupted", None, Some("execution changed while the job was preparing"), None)?;
+                db.interrupt_job(job.id)
+            })
+        })?;
+        app.attempts.clear(&key);
+        return Ok(None);
+    }
+    // Configuration/workspace errors without an interruption remain real failures.
+    if let Err(error) = &prepared {
+        let (error, max) = (error.to_string(), i64::from(app.cfg.runtime.max_attempts.max(1)));
+        app.with_server(|db| {
+            db.tx(|| {
+                db.finish_turn(turn, "failed", None, Some(&error), None)?;
+                db.finish_job(job.id, false, Some(&error), max).map(|_| ())
+            })
+        })?;
+    }
+    prepared.map(Some)
 }
 
 /// The key of a turn's agent; when it cannot have one, the turn ends without
@@ -1055,7 +1099,7 @@ fn turn_key(
     })
 }
 
-fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Prepared> {
+fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64, stamp: Option<String>) -> AppResult<Prepared> {
     let agents = app.agents();
     let def = running_role(&agents, &j.role)?;
     let (model, thinking) = role_model(&def, j.model.clone(), None)?;
@@ -1070,7 +1114,7 @@ fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Pr
         name: format!("job-{}", j.id),
         team: None,
         task: j.task.clone(),
-        execution_stamp: execution_stamp(app, &project.slug, j.task.as_deref())?,
+        execution_stamp: stamp,
         job: Some(j.id),
         kit: kit(app, &agents, &project.slug, &def, place.files, &place.cwd),
         cwd: place.cwd,
@@ -3690,6 +3734,116 @@ pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppRes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_budget_stop_before_or_during_job_preparation_preserves_the_last_attempt() {
+        for before_claim in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(dir.path().join("agents")).unwrap();
+            std::fs::write(dir.path().join("agents/executor.md"), "---\nmodel: fake/executor\n---\n").unwrap();
+            let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+            cfg.runtime.enabled = false;
+            cfg.runtime.max_attempts = 1;
+            cfg.budgets.per_day = 1.0;
+            cfg.model_prices.insert(
+                "fake/executor".into(),
+                crate::config::ModelPrice { input: 1.0, output: 1.0, cache_read: Some(0.0), cache_write: Some(0.0) },
+            );
+            let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+            app.create_project("shop", "Shop", None, None, None).unwrap();
+            let task = app
+                .with_tracker("shop", |t| {
+                    t.create(
+                        &Actor::new("owner", Role::Human),
+                        genie_core::CreateInput { title: "Retained preparation".into(), quiet: true, ..Default::default() },
+                    )
+                })
+                .unwrap();
+            let job = app
+                .with_server(|db| {
+                    db.create_job(genie_core::work::NewJob {
+                        project: "shop".into(),
+                        task: Some(task.id.clone()),
+                        role: "executor".into(),
+                        goal: "Keep progress".into(),
+                        workspace: "none".into(),
+                        ..Default::default()
+                    })
+                })
+                .unwrap();
+            let key = AgentKey::Job { project: "shop".into(), job: job.id };
+            app.sched.with(|s| {
+                s.running.insert(key.clone());
+            });
+            assert!(runnable(&app, &key).unwrap());
+            // These are the actual boundaries used by prepare: after its first
+            // runnable check, and after the atomic claim but before slow setup.
+            let claimed = (!before_claim).then(|| claim_job(&app, "shop", job.id).unwrap().unwrap());
+            app.with_tracker("shop", |t| {
+                t.record_usage(
+                    "another-worker",
+                    Some(&task.id),
+                    "fake/executor",
+                    &genie_core::usage::Tokens { input: 1_000_000, ..Default::default() },
+                )
+            })
+            .unwrap();
+            crate::budget::enforce(&app, "shop", Some(&task.id)).unwrap();
+            let project = app.with_server(|db| db.project("shop")).unwrap();
+            if let Some(claimed) = claimed {
+                assert!(prepare_claimed_job(&app, &project, claimed).unwrap().is_none());
+            } else {
+                assert!(claim_job(&app, "shop", job.id).unwrap().is_none());
+            }
+            let retained = app.with_server(|db| db.job(job.id)).unwrap();
+            assert_eq!((retained.status.as_str(), retained.attempts), ("queued", 0));
+            assert_eq!(app.attempts.failures(&key), 0);
+            assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "budget");
+            assert!(app.with_server(|db| db.turns("shop", None, 10)).unwrap().iter().all(|turn| turn.status == "interrupted"));
+
+            let mut cfg = app.cfg.clone();
+            cfg.budgets.per_day = 10.0;
+            let recovered = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+            recover(&recovered).unwrap();
+            recover(&recovered).unwrap();
+            assert!(claim_job(&recovered, "shop", job.id).unwrap().is_none(), "raising credit cannot implicitly resume");
+            crate::tasks::resume_execution(&recovered, &crate::tasks::Caller::person("shop", "owner"), &task.id).unwrap();
+            let project = recovered.with_server(|db| db.project("shop")).unwrap();
+            let claimed = claim_job(&recovered, "shop", job.id).unwrap().unwrap();
+            let mut prepared = prepare_claimed_job(&recovered, &project, claimed).unwrap().unwrap();
+            prepared.token = prepared.spec.token(&recovered, "shop", chrono::Duration::hours(1)).unwrap();
+            recovered.with_server(|db| db.set_job_output(job.id, &json!({"ok":true}))).unwrap();
+            finish(&recovered, &key, &prepared, true, Some(0), None, "Retained job completed").unwrap();
+            let finished = recovered.with_server(|db| db.job(job.id)).unwrap();
+            assert_eq!((finished.status.as_str(), finished.attempts, finished.output), ("succeeded", 1, Some(json!({"ok":true}))));
+        }
+    }
+
+    #[test]
+    fn an_uninterrupted_job_preparation_error_still_consumes_its_attempt() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_attempts = 1;
+        let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+        app.create_project("shop", "Shop", None, None, None).unwrap();
+        let job = app
+            .with_server(|db| {
+                db.create_job(genie_core::work::NewJob {
+                    project: "shop".into(),
+                    role: "missing-role".into(),
+                    goal: "Real configuration error".into(),
+                    workspace: "none".into(),
+                    ..Default::default()
+                })
+            })
+            .unwrap();
+        let project = app.with_server(|db| db.project("shop")).unwrap();
+        let claimed = claim_job(&app, "shop", job.id).unwrap().unwrap();
+        assert!(prepare_claimed_job(&app, &project, claimed).is_err());
+        let failed = app.with_server(|db| db.job(job.id)).unwrap();
+        assert_eq!((failed.status.as_str(), failed.attempts), ("failed", 1));
+    }
 
     fn incoming(app: &App, principal: &str) -> String {
         app.with_tracker("shop", |t| {
