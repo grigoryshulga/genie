@@ -18,10 +18,12 @@ test("the empty team tab shows one character and keeps its call to action", asyn
   await page.screenshot({ path: "test-results/empty-team-character.png", animations: "disabled" });
 });
 
-test("a slow page shows skeleton rows under one status instead of bare loading text", async ({ page }) => {
+test("a slow page chunk shows skeleton rows under one status instead of bare loading text", async ({ page }) => {
   let releasePage!: () => void;
   const pageReady = new Promise<void>((resolve) => { releasePage = resolve; });
-  await page.route("**/api/docs/page?path=*", async (route) => {
+  // The shell's fallback belongs to the lazy module. Holding the document API
+  // only races that fallback against the already-mounted reader's skeletons.
+  await page.route("**/assets/docs-*.js", async (route) => {
     await pageReady;
     await route.continue();
   });

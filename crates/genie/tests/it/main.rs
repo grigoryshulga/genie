@@ -27,6 +27,7 @@ mod git_flow;
 mod git_hosts;
 mod git_proxy;
 mod harness;
+mod human_interactions;
 mod ideas;
 mod intelligence;
 mod llm_keys;

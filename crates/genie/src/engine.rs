@@ -468,7 +468,7 @@ fn step_task_update(app: &App, run: &Run, caller: &Caller, input: &Value) -> App
 fn step_task_get(app: &App, project: &str, run: &Run, input: &Value) -> AppResult<Outcome> {
     let task = need_task(input, run)?;
     let t = app.with_tracker(project, |t| t.get(&task))?;
-    Ok(Outcome::Done(serde_json::to_value(t).unwrap_or(Value::Null)))
+    Ok(Outcome::Done(tasks::view(&t)?))
 }
 
 /// Move the task to ready, and with it every task waiting on it, unless something still holds each one.

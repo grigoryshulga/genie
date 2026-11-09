@@ -10,7 +10,8 @@ case "$GENIE_AGENT_ROLE" in
   orchestrator)
     if grep -q "in the inbox from the owner" <<<"$msg"; then
       id=$(grep -o 'New task [A-Z]*-[0-9]*' <<<"$msg" | head -1 | awk '{print $3}')
-      g task update --task "$id" -d "Export orders as CSV" -a "file downloads" --merge-strategy "a person merges the request"
+      version=$(g task show "$id" --json | jq -r .editVersion)
+      g task update --task "$id" --expected-version "$version" -d "Export orders as CSV" -a "file downloads" --merge-strategy "a person merges the request"
       g task status ready --task "$id" --note "refined"
       g team spawn "$id" --template pair --note "small change"
     fi

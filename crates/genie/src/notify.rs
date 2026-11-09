@@ -5,9 +5,12 @@
 
 use std::collections::BTreeSet;
 
+use genie_core::human_delivery::DeliveryPolicy;
 use serde_json::{Value, json};
 
 use crate::state::{App, AppResult};
+
+const POLICY_CANCELLED: &str = "channel no longer allowed";
 
 #[derive(Debug, Clone, Default)]
 pub struct Message {
@@ -99,52 +102,245 @@ pub fn resolve(app: &App, project: &str, specs: &[String], ctx: &Value) -> AppRe
     Ok(ids.into_iter().collect())
 }
 
-/// Notify people; `dedupe` makes repeated calls for the same thing idempotent.
+/// A bot token is not persisted in delivery payloads. Its digest separates global bot
+/// generations so a message ID from another bot can never identify a previous question.
+pub(crate) fn global_scope(app: &App) -> Option<String> {
+    app.cfg.telegram.as_ref().map(|t| format!("global:{}", genie_core::server_db::hash_secret(&t.token)))
+}
+
+pub(crate) struct Target {
+    pub address: String,
+    pub scope: Option<String>,
+}
+
+pub(crate) fn target(
+    db: &genie_core::server_db::ServerDb,
+    app: &App,
+    user: i64,
+    project: Option<&str>,
+    channel: &str,
+    interaction: bool,
+) -> genie_core::Result<Option<Target>> {
+    let u = db.user(user)?;
+    if u.disabled
+        || project.map(|p| db.project_role(p, &u).map(|r| r.is_none_or(|r| interaction && !r.can_write()))).transpose()?.unwrap_or(false)
+    {
+        return Ok(None);
+    }
+    match channel {
+        "telegram" => {
+            let bot = project.map(|p| db.project_bot(p)).transpose()?.flatten();
+            let (link, scope) =
+                if let Some(bot) = bot { (bot.scope.clone(), Some(bot.scope)) } else { ("telegram".into(), global_scope(app)) };
+            if scope.is_none() {
+                return Ok(None);
+            }
+            let address = db.channel_address(user, &link)?;
+            if let Some(address) = &address
+                && db.user_by_channel(&link, address)? != Some(user)
+            {
+                return Ok(None);
+            }
+            Ok(address.map(|address| Target { address, scope }))
+        }
+        "email" if app.cfg.smtp.is_some() => {
+            Ok(db.channel_address(user, "email")?.or(u.email).map(|address| Target { address, scope: None }))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Default routing authorizes only the first connected allowed channel. A reset
+/// restores that choice even for old queued copies; it grants no failure fallback.
+fn effective_policy(
+    db: &genie_core::server_db::ServerDb,
+    app: &App,
+    user: i64,
+    project: Option<&str>,
+    interaction: bool,
+    allowed: &[String],
+) -> genie_core::Result<DeliveryPolicy> {
+    let wants = |channel: &str| allowed.is_empty() || allowed.iter().any(|c| c == channel);
+    if let Some(mut policy) = db.delivery_policy(user)? {
+        policy.order.retain(|c| wants(c));
+        return Ok(policy);
+    }
+    let mut order = Vec::new();
+    for channel in ["telegram", "email"] {
+        if wants(channel) && target(db, app, user, project, channel, interaction)?.is_some() {
+            order.push(channel.to_string());
+            break;
+        }
+    }
+    Ok(DeliveryPolicy { order, fallback_after_attempts: genie_core::inbox::MAX_DELIVERY_ATTEMPTS })
+}
+
+/// Notify people; a deduplicated group spans web, the preferred channel and explicit fallbacks.
 pub fn send(app: &App, users: &[i64], msg: &Message, dedupe: Option<&str>) -> AppResult<usize> {
     let base = app.cfg.public_url();
     let link = msg.link.as_ref().map(|l| if l.starts_with("http") { l.clone() } else { format!("{base}{l}") });
     let wants = |c: &str| msg.channels.is_empty() || msg.channels.iter().any(|x| x == c);
+    let root = dedupe.map(str::to_string).unwrap_or_else(genie_core::server_db::new_secret);
     let mut queued = 0;
     for &user in users {
-        app.with_server(|db| {
-            if wants("web") {
-                let key = dedupe.map(|d| format!("{d}:{user}:web"));
-                db.add_notification(
-                    user,
-                    msg.project.as_deref(),
-                    msg.task.as_deref(),
-                    &msg.kind,
-                    &msg.title,
-                    &msg.body,
-                    msg.link.as_deref(),
-                    key.as_deref(),
-                )?;
+        queued+=app.with_server(|db|db.tx(|| {
+            let u=db.user(user)?;
+            // Existing noninteractive web notices follow their domain's recipient selection
+            // (including personal key/setup errors). Interactive prompts require live write
+            // access; all external channels recheck current project access in `target`.
+            if u.disabled || msg.interaction.is_some() && msg.project.as_deref().map(|p|db.project_role(p,&u).map(|r|!r.is_some_and(|r|r.can_write()))).transpose()?.unwrap_or(false) { return Ok(0); }
+            let group=format!("{root}:{user}");
+            let web_key=format!("{group}:web");
+            let notification=if wants("web") {
+                db.add_notification(user,msg.project.as_deref(),msg.task.as_deref(),&msg.kind,&msg.title,&msg.body,msg.link.as_deref(),Some(&web_key))?;
+                use rusqlite::OptionalExtension;
+                db.conn().query_row("SELECT id FROM notifications WHERE dedupe_key=?1",[&web_key],|r|r.get::<_,i64>(0)).optional()?
+            } else {None};
+            let policy=effective_policy(db,app,user,msg.project.as_deref(),msg.interaction.is_some(),&msg.channels)?;
+            let order=policy.order;
+            let after=policy.fallback_after_attempts;
+            let text=format!("{}\n\n{}{}",msg.title,msg.body,link.as_ref().map(|l|format!("\n\n{l}")).unwrap_or_default());
+            let mut payload=json!({"buttons":msg.buttons,"link":link,"kind":msg.kind,"project":msg.project,"task":msg.task,"interaction":msg.interaction,"recipient":user,"notification":notification,
+                "delivery":{"group":group,"order":order,"afterAttempts":after,"allowed":msg.channels}});
+            // A web-only interaction still has a durable copy to update when resolved.
+            if notification.is_some() && msg.interaction.is_some() {
+                db.enqueue(Some(&format!("{group}:web-copy")),Some(user),"web","",&msg.title,&msg.body,&payload)?;
             }
-            let u = db.user(user)?;
-            let project_bot = msg.project.as_deref().map(|p| db.project_bot(p)).transpose()?.flatten();
-            let telegram_scope = project_bot.as_ref().map(|b| b.scope.as_str());
-            let authorized = !u.disabled && match msg.project.as_deref() { Some(p) => db.project_role(p, &u)?.is_some(), None => true };
-            let telegram = if !authorized || !wants("telegram") { None }
-                else if let Some(bot) = &project_bot { db.channel_address(user, &bot.scope)?.filter(|_| !bot.token.0.is_empty()) }
-                else { db.channel_address(user, "telegram")?.filter(|_| app.cfg.telegram.is_some()) };
-            let email = db.channel_address(user, "email")?.or(u.email.clone()).filter(|_| app.cfg.smtp.is_some() && wants("email"));
-            let text = format!("{}\n\n{}{}", msg.title, msg.body, link.as_ref().map(|l| format!("\n\n{l}")).unwrap_or_default());
-            let buttons = if msg.interaction.is_some() && telegram_scope.is_none() { Vec::new() } else { msg.buttons.clone() };
-            let payload = json!({ "buttons": buttons, "link": link, "kind": msg.kind, "project": msg.project, "task": msg.task, "telegramScope": telegram_scope, "interaction": msg.interaction, "recipient": user, "forceReply": msg.interaction.is_some() && telegram_scope.is_some() });
-            let key = |ch: &str| dedupe.map(|d| format!("{d}:{user}:{ch}"));
-            // One channel per person: Telegram when linked, otherwise e-mail.
-            if let Some(chat) = telegram {
-                if db.enqueue(key("telegram").as_deref(), Some(user), "telegram", &chat, &msg.title, &text, &payload)?.is_some() {
-                    queued += 1;
-                }
-            } else if let Some(addr) = email
-                && db.enqueue(key("email").as_deref(), Some(user), "email", &addr, &msg.title, &text, &payload)?.is_some()
-            {
-                queued += 1;
+            for channel in &order {
+                let Some(t)=target(db,app,user,msg.project.as_deref(),channel,msg.interaction.is_some())? else {continue};
+                payload["telegramScope"]=json!(t.scope);
+                payload["forceReply"]=json!(msg.interaction.is_some());
+                return Ok(db.enqueue(Some(&format!("{group}:{channel}")),Some(user),channel,&t.address,&msg.title,&text,&payload)?.is_some() as usize);
             }
-            Ok(())
-        })?;
+            Ok(0)
+        }))?;
     }
     app.wake_outbox.notify_one();
     Ok(queued)
+}
+
+/// Failure accounting and the next current-policy decision share a transaction.
+pub(crate) fn fallback_in(
+    db: &genie_core::server_db::ServerDb,
+    app: &App,
+    item: &genie_core::inbox::OutboxItem,
+) -> genie_core::Result<bool> {
+    reconcile_in(db, app, item).map(|current| !current)
+}
+
+/// Reconcile a claimed copy before its network call. The same decision is used
+/// after a failure, so changing priority cannot leave a separate stale fallback path.
+pub(crate) fn ready(app: &App, item: &genie_core::inbox::OutboxItem) -> AppResult<bool> {
+    app.with_server(|db| reconcile_in(db, app, item))
+}
+
+fn reconcile_in(db: &genie_core::server_db::ServerDb, app: &App, item: &genie_core::inbox::OutboxItem) -> genie_core::Result<bool> {
+    db.tx(|| {
+        let Some(user) = item.user else {
+            db.outbox_cancelled(item.id, "delivery has no recipient")?;
+            return Ok(false);
+        };
+        let allowed: Vec<String> = serde_json::from_value(item.payload["delivery"]["allowed"].clone()).unwrap_or_default();
+        let policy = effective_policy(db, app, user, item.payload["project"].as_str(), !item.payload["interaction"].is_null(), &allowed)?;
+        let Some(group) = item.payload["delivery"]["group"].as_str() else {
+            let valid = policy.order.contains(&item.channel) && current_target(db, app, item)?;
+            if !valid {
+                db.outbox_cancelled(item.id, "recipient, channel or project rights changed")?;
+            }
+            return Ok(valid);
+        };
+        let mut copies = Vec::new();
+        for channel in ["telegram", "email"] {
+            if let Some(copy) = db.outbox_by_key(&format!("{group}:{channel}"))? {
+                copies.push(copy);
+            }
+        }
+        // A reorder cannot duplicate a known delivery or race an already claimed
+        // peer, even when that peer is now lower in the person's current order.
+        if copies.iter().any(|copy| copy.status == "sent") {
+            if !copies.iter().any(|copy| copy.id == item.id && copy.status == "sent") {
+                db.outbox_cancelled(item.id, "another channel already delivered this message")?;
+            }
+            return Ok(false);
+        }
+        if let Some(peer) = copies.iter().find(|copy| copy.id != item.id && copy.status == "delivering") {
+            db.defer_outbox(item.id, peer.id)?;
+            return Ok(false);
+        }
+        let mut candidates = Vec::new();
+        for (rank, channel) in policy.order.iter().enumerate() {
+            let copy = copies.iter().find(|copy| copy.channel == *channel);
+            if let Some(copy) = copy {
+                if !current_target(db, app, copy)? {
+                    continue;
+                }
+                if copy.status == "cancelled" && !db.retry_cancelled_outbox(copy.id, POLICY_CANCELLED)? {
+                    continue;
+                }
+            }
+            let Some(target) = target(db, app, user, item.payload["project"].as_str(), channel, !item.payload["interaction"].is_null())?
+            else {
+                continue;
+            };
+            candidates.push((rank, channel, target, copy));
+        }
+        for (index, (rank, channel, target, copy)) in candidates.iter().enumerate() {
+            let limit =
+                if index + 1 < candidates.len() { policy.fallback_after_attempts } else { genie_core::inbox::MAX_DELIVERY_ATTEMPTS };
+            if copy.is_some_and(|copy| copy.attempts >= limit) {
+                continue;
+            }
+            let chosen = match copy {
+                Some(copy) => copy.id,
+                None => {
+                    let mut payload = item.payload.clone();
+                    payload["telegramScope"] = json!(target.scope);
+                    let key = format!("{group}:{channel}");
+                    db.enqueue(Some(&key), Some(user), channel, &target.address, &item.subject, &item.body, &payload)?;
+                    db.outbox_by_key(&key)?.ok_or_else(|| genie_core::GenieError::not_found("queued delivery copy is missing"))?.id
+                }
+            };
+            if chosen == item.id {
+                return Ok(true);
+            }
+            db.defer_outbox(item.id, chosen)?;
+            match policy.order.iter().position(|c| c == &item.channel) {
+                Some(current_rank) if current_rank < *rank => db.outbox_abandoned(item.id, "another delivery channel selected")?,
+                None => db.outbox_cancelled(item.id, POLICY_CANCELLED)?,
+                _ => {}
+            }
+            return Ok(false);
+        }
+        if item.attempts >= genie_core::inbox::MAX_DELIVERY_ATTEMPTS {
+            db.outbox_abandoned(item.id, "delivery attempts exhausted")?;
+            delivery_failed_in(db, item)?;
+        } else {
+            db.outbox_cancelled(item.id, "recipient, channel or project rights changed")?;
+        }
+        Ok(false)
+    })
+}
+
+fn current_target(db: &genie_core::server_db::ServerDb, app: &App, item: &genie_core::inbox::OutboxItem) -> genie_core::Result<bool> {
+    let Some(user) = item.user else { return Ok(false) };
+    let expected = target(db, app, user, item.payload["project"].as_str(), &item.channel, !item.payload["interaction"].is_null())?;
+    Ok(expected.is_some_and(|t| {
+        t.address == item.address && (item.channel != "telegram" || t.scope.as_deref() == item.payload["telegramScope"].as_str())
+    }))
+}
+
+/// Exhausting delivery never resolves a question. Surface the failure in the person's web
+/// center without sending another external message or adding recipients.
+pub(crate) fn delivery_failed_in(db: &genie_core::server_db::ServerDb, item: &genie_core::inbox::OutboxItem) -> genie_core::Result<()> {
+    let Some(uid) = item.user else { return Ok(()) };
+    let u = db.user(uid)?;
+    let project = item.payload["project"].as_str();
+    if u.disabled || project.map(|p| db.project_role(p, &u).map(|r| r.is_none())).transpose()?.unwrap_or(false) {
+        return Ok(());
+    }
+    let group = item.payload["delivery"]["group"].as_str().map(str::to_string).unwrap_or_else(|| item.id.to_string());
+    db.add_notification(uid,project,item.payload["task"].as_str(),"delivery_failed","Не удалось доставить уведомление",
+            &format!("{}\n\nНастроенные способы доставки недоступны. Проверьте подключения. Вопрос или предложение остаётся открытым в Genie; ответ или одобрение не записывались.",item.subject),
+            item.payload["link"].as_str(),Some(&format!("delivery-failed:{group}")))?;
+    Ok(())
 }

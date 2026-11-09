@@ -137,7 +137,7 @@ async fn show(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>) -> 
     let access = ctx.access(&app, None).await?;
     let (task, epic, execution) =
         tracker(&app, &access, move |t| Ok((t.get(&id)?, t.epic_context(&id)?, t.execution().blocking(&id)?))).await?;
-    let mut v = serde_json::to_value(task).unwrap_or_default();
+    let mut v = crate::tasks::view(&task)?;
     v["execution"] = json!(execution);
     if let Some(e) = epic.epic {
         v["epic"] = json!({ "id": e.id, "title": e.title, "description": e.description, "artifacts": e.artifacts });
@@ -159,7 +159,7 @@ async fn create(State(app): State<Arc<App>>, ctx: Ctx, Body(b): Body<CreateBody>
     access.write()?;
     let caller = access.caller();
     let task = app.blocking(move |app| crate::tasks::create(app, &caller, b)).await?;
-    Ok((StatusCode::CREATED, to_json(task)))
+    Ok((StatusCode::CREATED, Json(crate::tasks::view(&task)?)))
 }
 
 async fn update(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, Body(b): Body<UpdateBody>) -> ApiResult<Json<Value>> {
@@ -167,7 +167,7 @@ async fn update(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<String>, B
     access.write()?;
     let caller = access.caller();
     let task = app.blocking(move |app| crate::tasks::update(app, &caller, &id, b)).await?;
-    Ok(to_json(task))
+    Ok(Json(crate::tasks::view(&task)?))
 }
 
 #[derive(Debug, Default, Deserialize)]

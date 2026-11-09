@@ -71,6 +71,10 @@ impl Registry {
     pub fn all(&self) -> Vec<Arc<Session>> {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).values().cloned().collect()
     }
+    /// An exited session retained only for a limit fence holds no process slot.
+    fn processes(&self) -> Vec<Arc<Session>> {
+        self.all().into_iter().filter(|s| s.with_live(|live| live.limit.as_ref().is_none_or(|limit| !limit.exited))).collect()
+    }
     /// Record a warm-up of `project` at `now`, unless one was recorded less than `every` ago.
     /// Whether it was recorded: a refused one changes nothing.
     pub fn warm(&self, project: &str, now: Instant, every: Duration) -> bool {
@@ -105,6 +109,13 @@ impl Registry {
 pub struct Startup {
     pub ready_ms: Option<u64>,
     pub first_reply_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct RunLimit {
+    turn: Option<i64>,
+    note: String,
+    exited: bool,
 }
 
 /// What a session is doing, as seen from its event stream.
@@ -159,6 +170,8 @@ pub struct Live {
     #[serde(skip)]
     turn: Option<i64>,
     #[serde(skip)]
+    limit: Option<RunLimit>,
+    #[serde(skip)]
     last_stop: Option<String>,
     #[serde(skip)]
     repeat: (String, u32),
@@ -198,6 +211,7 @@ impl Live {
             interrupting: false,
             stall_abort: None,
             turn: None,
+            limit: None,
             last_stop: None,
             repeat: (String::new(), 0),
             tool_at: None,
@@ -224,6 +238,7 @@ impl Live {
 pub struct Session {
     pub key: AgentKey,
     pub pid: u32,
+    group: Arc<runtime::ProcessGroup>,
     pub role: Role,
     /// The configured role (its rules are rewritten when the configuration changes).
     pub role_id: String,
@@ -247,6 +262,9 @@ pub struct Session {
 impl Session {
     pub fn live(&self) -> Live {
         self.live.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+    pub(crate) fn limited_task(&self) -> Option<&str> {
+        if self.with_live(|live| live.limit.is_some()) { self.task.as_deref() } else { None }
     }
     fn with_live<T>(&self, f: impl FnOnce(&mut Live) -> T) -> T {
         f(&mut self.live.lock().unwrap_or_else(|e| e.into_inner()))
@@ -314,24 +332,16 @@ impl Session {
             l.note(format!("■ stopping: {why}"));
         });
         self.stdin.lock().unwrap_or_else(|e| e.into_inner()).take();
-        let (pid, project, name) = (self.pid, self.key.project().to_string(), self.name.clone());
+        let group = self.group.clone();
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                if runtime::is_our_agent(i64::from(pid), &project, &name) {
-                    kill(pid, "-KILL");
-                }
+                group.kill();
             });
         }
     }
     fn is(&self, state: &str) -> bool {
         self.with_live(|l| l.state == state)
-    }
-}
-
-fn kill(pid: u32, signal: &str) {
-    if std::path::Path::new(&format!("/proc/{pid}")).exists() {
-        let _ = std::process::Command::new("kill").arg(signal).arg(pid.to_string()).stderr(Stdio::null()).status();
     }
 }
 
@@ -382,9 +392,8 @@ pub fn recover(app: &App) {
             let Ok(raw) = std::fs::read_to_string(&pid_file) else { continue };
             let mut parts = raw.split_whitespace();
             let (Some(pid), Some(name)) = (parts.next().and_then(|x| x.parse::<i64>().ok()), parts.next()) else { continue };
-            if runtime::is_our_agent(pid, &project, name) {
-                kill(pid as u32, "-TERM");
-                println!("genie runtime: stopped stray session process {pid} ({project}/{name})");
+            if runtime::stop_stray_agent(pid, &project, name) {
+                println!("genie runtime: stopped stray session {pid} ({project}/{name})");
             }
             let _ = std::fs::remove_file(pid_file);
         }
@@ -472,7 +481,7 @@ pub async fn deliver(app: &Arc<App>, key: &AgentKey) -> Option<Duration> {
     if !app.attempts.may_start(key) {
         return app.attempts.wait_for(key).map(|d| d + Duration::from_millis(50));
     }
-    let live = app.sessions.all();
+    let live = app.sessions.processes();
     if live.len() >= app.cfg.runtime.max_sessions.max(1) {
         // Make room: stop the idle session that goes first; this agent starts on a later pass. A
         // session already leaving frees its slot first: no second one is stopped for the same agent.
@@ -508,7 +517,7 @@ pub async fn prewarm(app: &Arc<App>, key: &AgentKey) -> AppResult<bool> {
     if !app.cfg.runtime.live_sessions() || app.sessions.get(key).is_some() || !app.attempts.may_start(key) {
         return Ok(false);
     }
-    if app.sessions.all().len() >= app.cfg.runtime.max_sessions.max(1) {
+    if app.sessions.processes().len() >= app.cfg.runtime.max_sessions.max(1) {
         return Ok(false);
     }
     match start(app, key).await {
@@ -556,11 +565,13 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
         }
     };
     let pid = child.id().unwrap_or_default();
+    let group = Arc::new(runtime::ProcessGroup::new(child.id()));
     let _ = tokio::fs::write(dir.join("session.pid"), format!("{pid} {}\n", spec.name)).await;
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let s = Arc::new(Session {
         key: key.clone(),
         pid,
+        group,
         role: spec.role,
         role_id: spec.role_id.clone(),
         name: spec.name.clone(),
@@ -589,7 +600,7 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
         })
         .await
     {
-        runtime::kill_process_group(pid);
+        s.group.kill();
         let _ = child.kill().await;
         let _ = child.wait().await;
         let token = s.token.clone();
@@ -625,7 +636,7 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
     });
     let stdout = child.stdout.take().expect("piped stdout");
     let (app2, s2) = (app.clone(), s.clone());
-    tokio::spawn(async move {
+    let events = tokio::spawn(async move {
         let mut reader = BufReader::new(stdout);
         let mut line = Vec::new();
         loop {
@@ -639,7 +650,19 @@ async fn start(app: &Arc<App>, key: &AgentKey) -> AppResult<Option<Arc<Session>>
                 }
             }
         }
-        let status = child.wait().await.ok().and_then(|s| s.code());
+    });
+    let (app2, s2) = (app.clone(), s.clone());
+    tokio::spawn(async move {
+        let status = match s2.group.wait(&mut child).await {
+            Ok(status) => status.code(),
+            Err(error) => {
+                eprintln!("genie runtime: {}: session process wait failed: {error}", s2.key.label());
+                None
+            }
+        };
+        if let Err(error) = events.await {
+            eprintln!("genie runtime: {}: session event reader failed: {error}", s2.key.label());
+        }
         on_exit(&app2, &s2, status).await;
     });
     Ok(Some(s))
@@ -964,18 +987,77 @@ async fn prompt_or_mail(app: &Arc<App>, session: &Arc<Session>, message: String)
     }
 }
 
+/// The session stays registered as a scope fence until this intent is durable.
+/// A failed turn registration is repaired in the same transaction as its intent.
+fn queue_run_limit(app: &App, s: &Session) -> AppResult<genie_core::work::ExecutionPause> {
+    let limit = s.with_live(|live| live.limit.clone()).ok_or_else(|| AppError::Internal("session has no pending run limit".into()))?;
+    let task = s.task.as_deref().ok_or_else(|| AppError::Internal("taskless session has a task limit".into()))?;
+    let pause = crate::tasks::queue_turn_pause(app, s.key.project(), task, &limit.note, |db| {
+        match limit.turn.map(|turn| db.turn(turn)).transpose() {
+            Ok(Some(turn)) => Ok(turn.id),
+            Ok(None) | Err(genie_core::GenieError::NotFound(_)) => {
+                let turn =
+                    db.start_turn(s.key.project(), &s.key.label(), s.team.as_deref(), s.team.as_ref().map(|_| s.name.as_str()), None)?;
+                db.set_turn_pid(turn, s.pid)?;
+                Ok(turn)
+            }
+            Err(error) => Err(error),
+        }
+    })?;
+    s.with_live(|live| {
+        if let Some(limit) = &mut live.limit {
+            limit.turn = pause.turn;
+        }
+    });
+    Ok(pause)
+}
+
+fn enforce_run_limit(app: &App, s: &Session) -> AppResult<()> {
+    let queued = queue_run_limit(app, s);
+    // Stop external work even if either database cannot accept the pause. The
+    // registered in-memory fence remains until on_exit can stage the intent.
+    let stopped = runtime::halt_scope(app, s.key.project(), s.task.as_deref());
+    halt(app, &s.key, "hard run time limit");
+    let revoked = app.with_server(|db| db.revoke_token(&s.token));
+    let applied = queued.and_then(|pause| runtime::apply_limit_pause(app, &pause));
+    applied?;
+    revoked?;
+    stopped?;
+    Ok(())
+}
+
 async fn on_exit(app: &Arc<App>, s: &Arc<Session>, code: Option<i32>) {
     if let Some(line) = s.with_live(|l| startup_line(&s.key, l, true)) {
         println!("{line}");
     }
-    let (state, turn, log) = s.with_live(|l| (l.state.clone(), l.turn.take(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n")));
+    let (state, mut turn, log) = s.with_live(|l| {
+        if let Some(limit) = &mut l.limit {
+            limit.exited = true;
+        }
+        (l.state.clone(), l.turn.take(), l.recent.iter().cloned().collect::<Vec<_>>().join("\n"))
+    });
     let expected = state == "stopping";
     let force = s.with_live(|l| l.force_stop);
-    if force {
-        runtime::kill_process_group(s.pid);
+    s.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if s.limited_task().is_some() {
+        // Capacity became available even while this dead session's scope fence
+        // must stay registered. Persistence recovery is not its wake-up signal.
+        app.wake_runtime.notify_one();
+        loop {
+            let session = s.clone();
+            match app.blocking(move |app| queue_run_limit(app, &session)).await {
+                Ok(pause) => {
+                    turn = pause.turn;
+                    break;
+                }
+                Err(error) => {
+                    eprintln!("genie runtime: {}: hard-limit intent pending after process exit: {error}", s.key.label());
+                    app.clock.sleep_until(app.clock.now() + Duration::from_secs(1)).await;
+                }
+            }
+        }
     }
     app.sessions.remove(&s.key, s.pid);
-    s.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
     s.replies.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let _ = std::fs::remove_file(s.dir.join("session.pid"));
     let (k, token, task) = (s.key.clone(), s.token.clone(), s.task.clone());
@@ -1109,11 +1191,27 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
         });
         let hard = app.cfg.runtime.run_timeout_secs;
         if state == "working" && hard > 0 && idle_for >= Duration::from_secs(hard) {
-            if let Some(task) = s.task.clone() {
-                let (project, note) = (s.key.project().to_string(), format!("Active run reached the configured {hard}s limit"));
-                app.blocking(move |app| crate::tasks::pause_for_limit(app, &project, &task, "time", &note)).await?;
+            if s.task.is_some() {
+                s.with_live(|live| {
+                    let turn = live.turn;
+                    live.limit.get_or_insert_with(|| RunLimit {
+                        turn,
+                        note: format!("Active run reached the configured {hard}s limit"),
+                        exited: false,
+                    });
+                });
+                let session = s.clone();
+                if let Err(error) = app.blocking(move |app| enforce_run_limit(app, &session)).await {
+                    eprintln!("genie runtime: {}: hard-limit pause pending: {error}", s.key.label());
+                    next.within(Duration::from_secs(1));
+                }
             } else {
-                halt(app, &s.key, "hard run time limit");
+                let key = s.key.clone();
+                app.blocking(move |app| {
+                    halt(app, &key, "hard run time limit");
+                    Ok(())
+                })
+                .await?;
             }
             continue;
         }
@@ -1142,7 +1240,7 @@ pub(crate) async fn sweep(app: &Arc<App>, next: &mut runtime::Next) -> AppResult
                 }
                 Some(at) if app.clock.now().saturating_duration_since(at) >= Duration::from_secs(60) => {
                     s.with_live(|l| l.note("■ killed: the abort did not stop it".into()));
-                    kill(s.pid, "-KILL");
+                    runtime::signal_process(s.pid, libc::SIGKILL);
                 }
                 _ => {}
             }
@@ -1256,9 +1354,7 @@ pub fn halt(app: &App, key: &AgentKey, reason: &str) {
         s.with_live(|l| l.force_stop = true);
         s.abort(reason);
         s.stop(reason);
-        if runtime::is_our_agent(i64::from(s.pid), s.key.project(), &s.name) {
-            kill(s.pid, "-TERM");
-        }
+        s.group.kill();
     }
 }
 

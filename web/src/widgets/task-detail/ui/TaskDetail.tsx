@@ -7,6 +7,8 @@ import type { DocsImpact, DocsImpactReason } from "@/shared/api";
 import {
   ArtifactThumb,
   EpicIcon,
+  EditableTaskTitle,
+  EditableTaskIntegration,
   historyText,
   Labels,
   PRIORITY_NAME,
@@ -16,6 +18,7 @@ import {
   StatusIcon,
   statusNote,
   type Task,
+  type TaskDraft,
   useArtifactViewer,
   useCheck,
   useComment,
@@ -96,8 +99,8 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const [moreProperties, setMoreProperties] = useState(false);
   const [draft, setDraft] = useState("");
   const [contentTab, setContentTab] = useState<"description" | "activity" | "artifacts" | "team">("description");
-  const [editDesc, setEditDesc] = useState<string | undefined>();
-  const [editLabels, setEditLabels] = useState<string | undefined>();
+  const [editDesc, setEditDesc] = useState<TaskDraft | undefined>();
+  const [editLabels, setEditLabels] = useState<TaskDraft | undefined>();
   const [spawning, setSpawning] = useState(false);
   const agents = useAgentConfig();
   const epics = useEpicMap();
@@ -169,25 +172,17 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
   const sameStatusTasks = (allTasks ?? []).filter((task) => task.id !== t.id && task.status === t.status && task.type === t.type);
 
   // On its own page the task title is the screen's title; in the side panel it stays a section heading.
-  const TitleTag = page ? "h1" : "h2";
   const title = (
-    <TitleTag
+    <EditableTaskTitle
+      key={t.id}
+      task={t}
+      writable={writable}
+      as={page ? "h1" : "h2"}
       className={page ? "title g-page-title" : "title"}
-      contentEditable={writable}
-      suppressContentEditableWarning
-      spellCheck={false}
       // Reachable for a programmatic hand-off (the decision box hands focus here when it closes);
       // it stays out of the Tab order.
       tabIndex={-1}
-      onBlur={(e) => {
-        if (!writable) return;
-        const title = e.currentTarget.textContent?.trim() ?? "";
-        if (title && title !== t.title) patch.mutate({ id: t.id, patch: { title } }, { onError: fail });
-      }}
-      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
-    >
-      {t.title}
-    </TitleTag>
+    />
   );
 
   // What keeps the task from moving: open dependencies, a block, a cancellation. Said in words, above the text.
@@ -368,15 +363,15 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
           {editLabels === undefined ? (
             <>
               {t.labels.length ? <Labels labels={t.labels} /> : <span className="td-val muted">нет</span>}
-              {writable && <IconButton label="Изменить метки" onClick={() => setEditLabels(t.labels.join(", "))}><Icon.pencil size={14} /></IconButton>}
+              {writable && <IconButton label="Изменить метки" onClick={() => setEditLabels({ value: t.labels.join(", "), version: t.editVersion })}><Icon.pencil size={14} /></IconButton>}
             </>
           ) : (
             <form className="td-label-editor" onSubmit={(event) => {
               event.preventDefault();
-              const labels = [...new Set(editLabels.split(",").map((label) => label.trim()).filter(Boolean))];
-              patch.mutate({ id: t.id, patch: { labels } }, { onSuccess: () => setEditLabels(undefined), onError: fail });
+              const labels = [...new Set(editLabels.value.split(",").map((label) => label.trim()).filter(Boolean))];
+              patch.mutate({ id: t.id, patch: { labels, expectedVersion: editLabels.version } }, { onSuccess: () => setEditLabels(undefined), onError: fail });
             }}>
-              <Input sm autoFocus aria-label="Метки через запятую" placeholder="Метки через запятую" value={editLabels} onChange={(event) => setEditLabels(event.target.value)} />
+              <Input sm autoFocus aria-label="Метки через запятую" placeholder="Метки через запятую" value={editLabels.value} onChange={(event) => { const value = event.target.value; setEditLabels((draft) => draft && { ...draft, value }); }} />
               <div className="td-label-actions">
                 <Button type="button" variant="ghost" sm onClick={() => setEditLabels(undefined)}>Отмена</Button>
                 <Button type="submit" variant="secondary" sm disabled={patch.isPending}>Сохранить метки</Button>
@@ -389,14 +384,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
         <>
           <Prop label="Интеграция">
             {writable ? (
-              <Input
-                sm
-                key={`${t.id}-merge-${t.mergeStrategy}`}
-                aria-label="Интеграция"
-                defaultValue={t.mergeStrategy}
-                placeholder="не задана"
-                onBlur={(e) => e.target.value !== t.mergeStrategy && patch.mutate({ id: t.id, patch: { mergeStrategy: e.target.value } }, { onError: fail })}
-              />
+              <EditableTaskIntegration key={t.id} task={t} />
             ) : (
               <span className={t.mergeStrategy ? "td-val" : "td-val muted"}>{t.mergeStrategy || "не задана"}</span>
             )}
@@ -418,7 +406,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
     <CollapsibleSection
       title={isEpic ? "Цель" : "Описание"}
       action={editDesc === undefined && writable ? (
-        <IconButton label={isEpic ? "Изменить цель" : "Изменить описание"} className="sec-edit" onClick={() => setEditDesc(t.description)}>
+        <IconButton label={isEpic ? "Изменить цель" : "Изменить описание"} className="sec-edit" onClick={() => setEditDesc({ value: t.description, version: t.editVersion })}>
           <Icon.pencil size={14} />
         </IconButton>
       ) : null}
@@ -427,7 +415,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
         <Markdown text={t.description} empty="Описания нет" />
       ) : (
         <div className="composer">
-          <textarea className="g-textarea" aria-label="Описание" rows={8} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+          <textarea className="g-textarea" aria-label="Описание" rows={8} value={editDesc.value} onChange={(e) => { const value = e.target.value; setEditDesc((draft) => draft && { ...draft, value }); }} />
           <div className="bar">
             markdown
             <span className="grow" />
@@ -437,7 +425,7 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
             <Button
               variant="secondary"
               sm
-              onClick={() => patch.mutate({ id: t.id, patch: { description: editDesc } }, { onSuccess: () => setEditDesc(undefined), onError: fail })}
+              onClick={() => patch.mutate({ id: t.id, patch: { description: editDesc.value, expectedVersion: editDesc.version } }, { onSuccess: () => setEditDesc(undefined), onError: fail })}
             >
               Сохранить
             </Button>

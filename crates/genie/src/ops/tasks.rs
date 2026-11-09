@@ -229,6 +229,9 @@ impl Op for Create {
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Update {
+    /// The editVersion read from task show; required for task edits.
+    #[arg(long)]
+    pub expected_version: String,
     #[arg(long)]
     pub task: Option<String>,
     #[arg(long)]
@@ -300,6 +303,7 @@ impl Op for Update {
         let some = |v: Vec<String>| (!v.is_empty()).then_some(v);
         let clear = |v: Option<String>| v.map(|v| Some(v).filter(|v| v != "none" && !v.is_empty()));
         let body = UpdateBody {
+            expected_version: self.expected_version,
             title: self.title,
             task_type: parsed(self.task_type)?,
             description: cx.text(self.description, None)?,

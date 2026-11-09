@@ -17,6 +17,13 @@ pub async fn call(app: &App, token: &str, method: &str, body: Value) -> Result<V
         .map_err(|_| "Telegram недоступен. Повторите попытку.".to_string())?;
     let value: Value = res.json().await.map_err(|_| "Некорректный ответ Telegram".to_string())?;
     if value["ok"] != true {
+        // Replayed copy cleanup is successful when the provider already has this exact edit.
+        // Inspect only this fixed condition; never return arbitrary provider text containing URLs.
+        if method == "editMessageText"
+            && value["description"].as_str().is_some_and(|d| d.to_lowercase().contains("message is not modified"))
+        {
+            return Ok(Value::Null);
+        }
         return Err("Telegram отклонил запрос. Проверьте токен и доступность бота.".into());
     }
     Ok(value["result"].clone())
@@ -116,13 +123,20 @@ pub async fn handle_update(app: &Arc<App>, bot: &ProjectBot, update: &Value) -> 
         if message["chat"]["type"] != "private" || callback["from"]["id"].as_i64() != Some(chat) {
             return Ok(());
         }
-        let answer = match callback["data"].as_str() {
-            Some("interaction:approve") => "approve",
-            Some("interaction:reject") => "reject",
-            _ => return Ok(()),
-        };
+        let data = callback["data"].as_str().unwrap_or_default();
+        let Some(callback_action) = crate::interactions::TelegramCallback::parse(data) else { return Ok(()) };
         let copy = bot.clone();
-        let result = app.blocking(move |app| crate::interactions::telegram_decision(app, &copy, chat, id, answer)).await;
+        let result = app
+            .blocking(move |app| match callback_action {
+                crate::interactions::TelegramCallback::Option(index) => crate::interactions::telegram_option(app, &copy, chat, id, index),
+                crate::interactions::TelegramCallback::Action(crate::interactions::Action::Resume) => {
+                    crate::interactions::telegram_reply(app, &copy, chat, id, "resume")
+                }
+                crate::interactions::TelegramCallback::Action(action) => {
+                    crate::interactions::telegram_decision(app, &copy, chat, id, &action.to_string())
+                }
+            })
+            .await;
         let reply = interaction_result(result)?;
         // Expired callback toasts must not poison the update queue after a committed decision.
         let _ = call(app, &bot.token.0, "answerCallbackQuery", json!({"callback_query_id":callback["id"],"text":reply})).await;
@@ -165,7 +179,7 @@ pub async fn handle_update(app: &Arc<App>, bot: &ProjectBot, update: &Value) -> 
     Ok(())
 }
 
-fn interaction_result(result: crate::state::AppResult<bool>) -> Result<&'static str, String> {
+pub(crate) fn interaction_result(result: crate::state::AppResult<bool>) -> Result<&'static str, String> {
     match result {
         Ok(true) => Ok("Решение сохранено. Задача получила ваш ответ."),
         Ok(false) => Ok("Вопрос недоступен. Проверьте аккаунт и права на проект."),

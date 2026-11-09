@@ -795,6 +795,114 @@ fn recovery_stops_only_verified_stray_agent_processes() {
     other.kill().unwrap();
 }
 
+#[test]
+fn recovery_stops_owned_tools_even_after_their_group_leader_has_exited() {
+    for orphaned in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_with_team("turns", dir.path());
+        let (mut parent, child) = owned_tool_process(dir.path());
+        app.with_server(|db| {
+            let turn = db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)?;
+            db.set_turn_pid(turn, parent.id())
+        })
+        .unwrap();
+        app.with_tracker("shop", |t| t.execution().pause(&Actor::new("anna", Role::Human), "G-1", "owner", "Interrupted stop")).unwrap();
+        if orphaned {
+            parent.kill().unwrap();
+            parent.wait().unwrap();
+        }
+        genie::runtime::recover(&app).unwrap();
+        let stopped = Instant::now();
+        while process_running(child) {
+            assert!(stopped.elapsed() < Duration::from_secs(5), "owned child survived recovery (orphaned={orphaned})");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        parent.wait().unwrap();
+        assert!(app.with_tracker("shop", |t| t.execution().blocking("G-1")).unwrap().is_some());
+    }
+}
+
+fn owned_tool_process(dir: &std::path::Path) -> (std::process::Child, u32) {
+    use std::os::unix::process::CommandExt;
+    let child_file = dir.join("tool.pid");
+    let parent = std::process::Command::new("bash")
+        .args(["-c", "sleep 120 >/dev/null 2>&1 & echo $! > \"$TOOL_PID_FILE\"; wait"])
+        .env("GENIE_PROJECT", "shop")
+        .env("GENIE_AGENT_NAME", "bender")
+        .env("TOOL_PID_FILE", &child_file)
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let started = Instant::now();
+    let child = loop {
+        if let Some(pid) = std::fs::read_to_string(&child_file).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+            break pid;
+        }
+        assert!(started.elapsed() < Duration::from_secs(5), "owned tool did not start");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    (parent, child)
+}
+
+fn process_running(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| !s.split(") ").nth(1).is_some_and(|s| s.starts_with('Z')))
+}
+
+#[test]
+fn recovery_stops_warm_idle_sessions_and_orphaned_tools_without_touching_unowned_processes() {
+    use std::os::unix::process::CommandExt;
+    for orphaned in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_with_team("sessions", dir.path());
+        let (mut parent, child) = owned_tool_process(dir.path());
+        let turn = app
+            .with_server(|db| {
+                let turn = db.start_turn("shop", "G-1/bender", Some("G-1"), Some("bender"), None)?;
+                db.set_turn_pid(turn, parent.id())?;
+                db.finish_turn(turn, "succeeded", Some(0), None, None)?;
+                Ok(turn)
+            })
+            .unwrap();
+        let session_dir = app.data.join("runtime/shop/idle-bender");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let pid_file = session_dir.join("session.pid");
+        std::fs::write(&pid_file, format!("{} bender\n", parent.id())).unwrap();
+        app.with_tracker("shop", |t| t.execution().pause(&Actor::new("anna", Role::Human), "G-1", "owner", "Interrupted stop")).unwrap();
+        if orphaned {
+            parent.kill().unwrap();
+            parent.wait().unwrap();
+        }
+        let mut other = std::process::Command::new("sleep")
+            .arg("120")
+            .env_remove("GENIE_PROJECT")
+            .env_remove("GENIE_AGENT_NAME")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let other_dir = app.data.join("runtime/shop/unowned");
+        std::fs::create_dir_all(&other_dir).unwrap();
+        let unowned_pid_file = other_dir.join("session.pid");
+        std::fs::write(&unowned_pid_file, format!("{} bender\n", other.id())).unwrap();
+
+        genie::runtime::recover(&app).unwrap();
+        assert_eq!(app.with_server(|db| db.turn(turn)).unwrap().status, "succeeded");
+        assert!(process_running(child), "settled turns require the separate session recovery path");
+        genie::sessions::recover(&app);
+        let stopped = Instant::now();
+        while process_running(child) {
+            assert!(stopped.elapsed() < Duration::from_secs(5), "idle session tool survived recovery (orphaned={orphaned})");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        parent.wait().unwrap();
+        assert!(!pid_file.exists());
+        assert!(!unowned_pid_file.exists());
+        assert!(other.try_wait().unwrap().is_none(), "an unverified process group must survive a stale PID file");
+        other.kill().unwrap();
+        other.wait().unwrap();
+        assert!(app.with_tracker("shop", |t| t.execution().blocking("G-1")).unwrap().is_some());
+    }
+}
+
 /// The turns the project's manager has run (or is running), as their statuses.
 fn manager_turns(app: &App) -> Vec<String> {
     app.with_server(|db| db.turns("shop", None, 50)).unwrap().into_iter().filter(|t| t.agent == ORCHESTRATOR).map(|t| t.status).collect()
@@ -817,6 +925,71 @@ async fn a_manual_projects_manager_runs_for_chat_mail_and_not_for_the_owners() {
         .unwrap();
     l.app.wake_runtime.notify_one();
     wait_for(&l.app, "the manager's turn for chat mail", Duration::from_secs(30), |app| !manager_turns(app).is_empty()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn completed_one_shot_turns_stop_owned_tools_before_releasing_capacity() {
+    completed_turn_cleanup(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn completed_one_shot_turns_stop_environment_cleared_tools_holding_stdout() {
+    completed_turn_cleanup(true).await;
+}
+
+async fn completed_turn_cleanup(inherit_stdout: bool) {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            if inherit_stdout {
+                r#"env -i /bin/sleep 120 & echo "$!" > "$GENIE_MARK.tool"; echo retained > progress.txt; "$GENIE_BIN" job output '{"ok":true}'"#
+            } else {
+                r#"sleep 120 </dev/null >/dev/null 2>&1 & echo "$!" > "$GENIE_MARK.tool"; echo retained > progress.txt; "$GENIE_BIN" job output '{"ok":true}'"#
+            }.into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let task = app
+        .with_tracker("shop", |t| {
+            t.create(
+                &Actor::new("owner", Role::Human),
+                CreateInput { title: "Successful one-shot".into(), quiet: true, ..Default::default() },
+            )
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Complete and clean up tools".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "completed job and released capacity", Duration::from_secs(10), |app| {
+        app.with_server(|db| db.job(job.id)).unwrap().status == "succeeded" && app.slots.available_permits() == 1
+    })
+    .await;
+    let tool: u32 = std::fs::read_to_string(l._dir.path().join("failed-once.tool")).unwrap().trim().parse().unwrap();
+    wait_for(app, "completed turn's owned tool terminated", Duration::from_secs(5), |_| !process_running(tool)).await;
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().output, Some(json!({"ok":true})));
+    let progress = app.data.join(format!("workspaces/shop/job-{}/progress.txt", job.id));
+    assert_eq!(std::fs::read_to_string(&progress).unwrap(), "retained\n");
+    genie::tasks::pause_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id, "owner", "Review completed output")
+        .unwrap();
+    genie::runtime::recover(app).unwrap();
+    assert!(!process_running(tool), "neither stop nor restart can leave an untracked owned tool");
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().status, "succeeded");
+    assert_eq!(std::fs::read_to_string(&progress).unwrap(), "retained\n");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -883,4 +1056,521 @@ async fn task_stop_kills_one_shot_tools_retains_files_and_preserves_job_retry_al
         app.with_server(|db| db.job(job.id)).unwrap().status == "queued"
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stopping_a_task_preserves_same_named_workers_in_other_teams() {
+    same_named_worker_stop(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stopping_a_live_task_preserves_same_named_workers_in_other_teams() {
+    same_named_worker_stop(true).await;
+}
+
+async fn same_named_worker_stop(sessions: bool) {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 3;
+        cfg.runtime.mode = if sessions { "sessions" } else { "turns" }.into();
+        let record = r#"printf '%s' "$GENIE_TOKEN" > "$GENIE_MARK.$GENIE_TEAM.token"; echo "$$" > "$GENIE_MARK.$GENIE_TEAM.pid";"#;
+        cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), format!("{record} sleep 120")]];
+        cfg.runtime.session_command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            format!(
+                r#"{record}
+            while IFS= read -r line; do
+              case "$line" in
+                *'"get_state"'*) printf '%s\n' '{{"type":"response","success":true}}' ;;
+                *'"prompt"'*) printf '%s\n' '{{"type":"agent_start"}}' ;;
+              esac
+            done"#
+            ),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let tasks = app
+        .with_tracker("shop", |t| {
+            let mut tasks = Vec::new();
+            for title in ["Stopped worker", "Independent worker"] {
+                let task = t.create(
+                    &Actor::new("owner", Role::Human),
+                    CreateInput { title: title.into(), quiet: true, status: Some(Status::Ready), ..Default::default() },
+                )?;
+                t.bus().create(
+                    "owner",
+                    "human",
+                    NewTeam {
+                        id: task.id.clone(),
+                        task: task.id.clone(),
+                        cwd: l._dir.path().to_string_lossy().into_owned(),
+                        members: vec![NewMember { name: "worker".into(), role: "executor".into(), ..Default::default() }],
+                        ..Default::default()
+                    },
+                )?;
+                t.bus().send(SendMail {
+                    team: &task.id,
+                    from: "owner",
+                    from_role: "human",
+                    to: "worker",
+                    text: "Work independently",
+                    kind: "owner",
+                    ..Default::default()
+                })?;
+                tasks.push(task.id);
+            }
+            Ok(tasks)
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    let token_path = |task: &str| l._dir.path().join(format!("failed-once.{task}.token"));
+    wait_for(app, "both same-named processes started", Duration::from_secs(10), |_| {
+        tasks.iter().all(|task| {
+            std::fs::read_to_string(token_path(task)).is_ok_and(|token| token.starts_with("gna_"))
+                && std::fs::read_to_string(l._dir.path().join(format!("failed-once.{task}.pid")))
+                    .is_ok_and(|pid| pid.trim().parse::<u32>().is_ok())
+        })
+    })
+    .await;
+    if sessions {
+        wait_for(app, "both same-named sessions ready", Duration::from_secs(5), |app| {
+            app.sessions.all().iter().filter(|session| session.name == "worker" && session.live().startup.ready_ms.is_some()).count() == 2
+        })
+        .await;
+        genie::runtime::tick(app).await.unwrap();
+        wait_for(app, "both same-named sessions working", Duration::from_secs(5), |app| {
+            app.sessions.all().iter().filter(|session| session.name == "worker" && session.live().state == "working").count() == 2
+        })
+        .await;
+    }
+    let tokens: Vec<_> = tasks.iter().map(|task| std::fs::read_to_string(token_path(task)).unwrap()).collect();
+    let pids: Vec<u32> = tasks
+        .iter()
+        .map(|task| std::fs::read_to_string(l._dir.path().join(format!("failed-once.{task}.pid"))).unwrap().trim().parse().unwrap())
+        .collect();
+    let client = reqwest::Client::new();
+    let url = |task: &str| format!("http://127.0.0.1:{}/api/tasks/{task}?project=shop", app.cfg.port);
+    for (task, token) in tasks.iter().zip(&tokens) {
+        assert_eq!(client.get(url(task)).bearer_auth(token).send().await.unwrap().status(), reqwest::StatusCode::OK);
+    }
+    let caller = genie::tasks::Caller::person("shop", "owner");
+    genie::tasks::pause_execution(app, &caller, &tasks[0], "owner", "Stop only this team").unwrap();
+    wait_for(app, "selected worker stopped", Duration::from_secs(5), |_| !process_running(pids[0])).await;
+    assert_eq!(client.get(url(&tasks[0])).bearer_auth(&tokens[0]).send().await.unwrap().status(), reqwest::StatusCode::UNAUTHORIZED);
+    assert_eq!(client.get(url(&tasks[1])).bearer_auth(&tokens[1]).send().await.unwrap().status(), reqwest::StatusCode::OK);
+    assert!(process_running(pids[1]));
+    assert!(app.with_tracker("shop", |t| t.execution().blocking(&tasks[1])).unwrap().is_none());
+    assert!(app.with_server(|db| db.resolve_token(&tokens[1])).unwrap().is_some());
+    genie::tasks::pause_execution(app, &caller, &tasks[1], "owner", "Finish fixture").unwrap();
+    wait_for(app, "remaining worker stopped", Duration::from_secs(5), |_| !process_running(pids[1])).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_deleted_unrelated_team_does_not_prevent_stopping_running_task_members() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 3;
+        cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), "sleep 120".into()]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let tasks = app
+        .with_tracker("shop", |t| {
+            let mut tasks = Vec::new();
+            for name in ["first", "second"] {
+                let task = t.create(
+                    &Actor::new("owner", Role::Human),
+                    CreateInput { title: name.into(), quiet: true, status: Some(Status::Ready), ..Default::default() },
+                )?;
+                t.bus().create(
+                    "owner",
+                    "human",
+                    NewTeam {
+                        id: task.id.clone(),
+                        task: task.id.clone(),
+                        cwd: l._dir.path().to_string_lossy().into_owned(),
+                        members: vec![NewMember { name: name.into(), role: "executor".into(), ..Default::default() }],
+                        ..Default::default()
+                    },
+                )?;
+                t.bus().send(SendMail {
+                    team: &task.id,
+                    from: "owner",
+                    from_role: "human",
+                    to: name,
+                    text: "work",
+                    kind: "owner",
+                    ..Default::default()
+                })?;
+                tasks.push(task.id);
+            }
+            Ok(tasks)
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "both team processes", Duration::from_secs(10), |app| {
+        app.with_server(|db| db.turns("shop", None, 10)).unwrap().iter().filter(|turn| turn.member.is_some() && turn.pid.is_some()).count()
+            == 2
+    })
+    .await;
+    let pids = app.with_server(|db| db.turns("shop", None, 10)).unwrap().into_iter().filter_map(|turn| turn.pid).collect::<Vec<_>>();
+    let caller = genie::tasks::Caller::person("shop", "owner");
+    genie::tasks::delete(app, &caller, &tasks[1], false).unwrap();
+    assert!(app.with_tracker("shop", |t| t.bus().get(&tasks[1])).is_err());
+    assert_eq!(app.sched.snapshot(3, app.slots.available_permits()).running, 2, "deletion left a stale running key");
+
+    genie::tasks::pause_execution(app, &caller, &tasks[0], "owner", "Stop the remaining task").unwrap();
+    wait_for(app, "both surviving and obsolete workers stopped", Duration::from_secs(5), |app| {
+        app.sched.snapshot(3, app.slots.available_permits()).running == 0 && pids.iter().all(|pid| !process_running(*pid as u32))
+    })
+    .await;
+    assert!(app.with_tracker("shop", |t| t.execution().blocking(&tasks[0])).unwrap().is_some());
+    let valid_tokens: i64 = app
+        .with_server(|db| {
+            Ok(db
+                .conn()
+                .query_row("SELECT COUNT(*) FROM api_tokens WHERE project=?1 AND kind='agent' AND revoked=0", ["shop"], |r| r.get(0))?)
+        })
+        .unwrap();
+    assert_eq!(valid_tokens, 0, "both known and obsolete workers lose mutation authority");
+    assert_eq!(app.slots.available_permits(), 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_hard_timeout_retains_its_job_until_the_pause_survives_storage_failure() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.sandbox.mode = "bwrap".into();
+        cfg.runtime.run_timeout_secs = 1;
+        cfg.runtime.turn_timeout_secs = 30;
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"if [ "$GENIE_TASK" = "G-1" ]; then sleep 120; else "$GENIE_BIN" job output '{"ok":true}'; fi"#.into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let task = app
+        .with_tracker("shop", |t| {
+            let task = t.create(
+                &Actor::new("owner", Role::Human),
+                CreateInput { title: "Time limit storage failure".into(), quiet: true, ..Default::default() },
+            )?;
+            t.conn().execute_batch(
+                "CREATE TRIGGER fail_time_pause BEFORE INSERT ON task_execution BEGIN SELECT RAISE(ABORT,'pause storage fault'); END;",
+            )?;
+            Ok(task)
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Time-limited fixture".into(),
+                workspace: "none".into(),
+                inputs: json!({}),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "durable hard-limit intent", Duration::from_secs(10), |app| {
+        !app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty()
+    })
+    .await;
+    let retained = app.with_server(|db| db.job(job.id)).unwrap();
+    assert_eq!((retained.status.as_str(), retained.attempts), ("running", 1));
+    assert_eq!(app.sched.snapshot(1, app.slots.available_permits()).running, 0, "dead work does not consume runtime capacity");
+    assert_eq!(app.slots.available_permits(), 1);
+    let old = app.with_server(|db| db.pending_execution_pauses(None)).unwrap();
+    assert_eq!(old.len(), 1);
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_err());
+    // A failed pause write neither consumes another attempt nor blocks unrelated execution.
+    let other = app
+        .with_tracker("shop", |t| {
+            t.create(&Actor::new("owner", Role::Human), CreateInput { title: "Independent work".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &other.id).unwrap();
+    let independent = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(other.id),
+                role: "executor".into(),
+                goal: "Independent execution during a pause outage".into(),
+                workspace: "none".into(),
+                inputs: json!({}),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "independent job uses the only slot during the pause outage", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(independent.id)).unwrap().status == "succeeded"
+    })
+    .await;
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 1);
+    assert_eq!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap()[0].id, old[0].id);
+    app.with_tracker("shop", |t| {
+        t.conn().execute_batch("DROP TRIGGER fail_time_pause;")?;
+        Ok(())
+    })
+    .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "durable pause and retained retry", Duration::from_secs(5), |app| {
+        let job = app.with_server(|db| db.job(job.id)).unwrap();
+        job.status == "queued"
+            && job.attempts == 0
+            && app.sched.snapshot(app.cfg.runtime.max_concurrent, app.slots.available_permits()).running == 0
+    })
+    .await;
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+    assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "time");
+    genie::runtime::tick(app).await.unwrap();
+    assert_eq!(app.with_server(|db| db.job(job.id)).unwrap().attempts, 0, "a timed-out job cannot restart before human resume");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_hard_timeout_retains_the_project_pause_across_server_intent_failure_and_restart() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.sandbox.mode = "bwrap".into();
+        cfg.runtime.run_timeout_secs = 1;
+        cfg.runtime.turn_timeout_secs = 30;
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"if [ -f partial.txt ]; then "$GENIE_BIN" job output '{"retained":"kept"}'; else echo kept > partial.txt; sleep 120; fi"#
+                .into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| {
+        db.set_autonomy("shop", "manual")?;
+        db.conn().execute_batch(
+            "CREATE TRIGGER fail_time_intent BEFORE INSERT ON execution_pauses BEGIN SELECT RAISE(ABORT,'intent storage fault'); END;",
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let task = app
+        .with_tracker("shop", |t| {
+            t.create(
+                &Actor::new("owner", Role::Human),
+                CreateInput { title: "One-shot pause survives server intent failure".into(), quiet: true, ..Default::default() },
+            )
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Retain workspace and require resume".into(),
+                workspace: "none".into(),
+                inputs: json!({}),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "durable project fallback while the server intent cannot be stored", Duration::from_secs(5), |app| {
+        app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().is_some_and(|pause| pause.reason == "time")
+    })
+    .await;
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+    assert_eq!(app.sched.snapshot(1, app.slots.available_permits()).running, 0);
+    assert_eq!(app.slots.available_permits(), 1);
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_err());
+    // A fresh runtime has none of the previous scheduler's memory fences.
+    // Its durable recovery must still keep the interrupted job paused.
+    let reopened = App::open(l._dir.path(), app.cfg.clone(), PathBuf::from("/nonexistent")).unwrap();
+    genie::runtime::recover(&reopened).unwrap();
+    genie::runtime::tick(&reopened).await.unwrap();
+    let recovered = reopened.with_server(|db| db.job(job.id)).unwrap();
+    assert_eq!((recovered.status.as_str(), recovered.attempts), ("queued", 0));
+    genie::runtime::recover(&reopened).unwrap();
+    assert_eq!(reopened.with_server(|db| db.job(job.id)).unwrap().attempts, 0, "repeated recovery cannot refund an attempt twice");
+    assert_eq!(reopened.sched.snapshot(1, reopened.slots.available_permits()).running, 0);
+    assert!(reopened.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().is_some());
+    app.with_server(|db| db.conn().execute_batch("DROP TRIGGER fail_time_intent").map_err(Into::into)).unwrap();
+    wait_for(app, "old timeout turn finalization", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.turns("shop", None, 10))
+            .unwrap()
+            .iter()
+            .any(|turn| turn.job == Some(job.id) && turn.status == "interrupted")
+            && app.with_server(|db| db.job(job.id)).unwrap().status == "queued"
+            && genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "owner"), &task.id).is_ok()
+    })
+    .await;
+    // Resume above is the first explicit human release. New work reuses the
+    // retained workspace and returns its progress rather than sleeping again.
+    genie::runtime::tick(&reopened).await.unwrap();
+    wait_for(&reopened, "explicitly resumed job completes with retained progress", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(job.id)).unwrap().status == "succeeded"
+    })
+    .await;
+    assert_eq!(reopened.with_server(|db| db.job(job.id)).unwrap().output, Some(json!({"retained":"kept"})));
+}
+
+#[test]
+fn recovery_cancels_running_jobs_whose_task_was_deleted_before_server_cleanup() {
+    let h = crate::common::Harness::new();
+    h.project("shop");
+    let actor = Actor::new("owner", Role::Human);
+    let task = h
+        .app
+        .with_tracker("shop", |t| {
+            t.create(&actor, CreateInput { title: "Deleted across the recovery boundary".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    let job = h
+        .app
+        .with_server(|db| {
+            let job = db.create_job(NewJob {
+                project: "shop".into(),
+                task: Some(task.id.clone()),
+                role: "executor".into(),
+                goal: "Interrupted cleanup".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })?;
+            db.start_job(job.id)?;
+            db.start_turn("shop", &format!("job/{}", job.id), None, None, Some(job.id))?;
+            Ok(job)
+        })
+        .unwrap();
+    h.app.with_tracker("shop", |t| t.delete_tasks(&actor, &task.id, false)).unwrap();
+    genie::runtime::recover(&h.app).unwrap();
+    assert_eq!(h.app.with_server(|db| db.job(job.id)).unwrap().status, "cancelled");
+    assert!(h.app.with_server(|db| db.queued_jobs()).unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn deletion_during_a_timed_run_releases_the_only_slot_and_closes_the_obsolete_pause() {
+    let l = live_cfg(&[], |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.run_timeout_secs = 2;
+        cfg.runtime.turn_timeout_secs = 30;
+        cfg.runtime.command = vec![vec![
+            "bash".into(),
+            "-c".into(),
+            r#"if [ "$GENIE_TASK" = "G-1" ]; then sleep 120; else "$GENIE_BIN" job output '{"ok":true}'; fi"#.into(),
+        ]];
+    })
+    .await;
+    let app = &l.app;
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let mut tasks = Vec::new();
+    let mut jobs = Vec::new();
+    for title in ["Deleted while running", "Unrelated next job"] {
+        let task = app
+            .with_tracker("shop", |t| {
+                t.create(&Actor::new("owner", Role::Human), CreateInput { title: title.into(), quiet: true, ..Default::default() })
+            })
+            .unwrap();
+        let job = app
+            .with_server(|db| {
+                db.create_job(NewJob {
+                    project: "shop".into(),
+                    task: Some(task.id.clone()),
+                    role: "executor".into(),
+                    goal: title.into(),
+                    workspace: "none".into(),
+                    inputs: json!({}),
+                    ..Default::default()
+                })
+            })
+            .unwrap();
+        tasks.push(task.id);
+        jobs.push(job.id);
+    }
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "first process occupying the only slot", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.turns("shop", None, 10)).unwrap().iter().any(|turn| turn.job == Some(jobs[0]) && turn.pid.is_some())
+    })
+    .await;
+    genie::tasks::delete(app, &genie::tasks::Caller::person("shop", "owner"), &tasks[0], false).unwrap();
+    wait_for(app, "deleted run released its capacity", Duration::from_secs(5), |app| {
+        app.sched.snapshot(1, app.slots.available_permits()).running == 0
+    })
+    .await;
+    assert_eq!(app.with_server(|db| db.job(jobs[0])).unwrap().status, "cancelled");
+    wait_for(app, "obsolete deleted-task pause acknowledged", Duration::from_secs(5), |app| {
+        app.with_server(|db| {
+            Ok(db.conn().query_row(
+                "SELECT COUNT(*) FROM execution_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
+                [jobs[0]],
+                |r| r.get::<_, i64>(0),
+            )?)
+        })
+        .unwrap()
+            == 1
+    })
+    .await;
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+    assert_eq!(
+        app.with_server(|db| Ok(db.conn().query_row(
+            "SELECT COUNT(*) FROM execution_pauses p JOIN turns t ON t.id=p.turn WHERE t.job=?1 AND p.applied=1",
+            [jobs[0]],
+            |r| r.get::<_, i64>(0)
+        )?))
+        .unwrap(),
+        1
+    );
+    genie::runtime::tick(app).await.unwrap();
+    wait_for(app, "unrelated work after deletion", Duration::from_secs(5), |app| {
+        app.with_server(|db| db.job(jobs[1])).unwrap().status == "succeeded"
+    })
+    .await;
+    assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn replay_after_a_lost_limit_ack_preserves_a_later_human_resume() {
+    let h = crate::common::Harness::new();
+    h.project("shop");
+    let owner = Actor::new("owner", Role::Human);
+    let task = h
+        .app
+        .with_tracker("shop", |t| {
+            t.create(&owner, CreateInput { title: "Limit acknowledgement gap".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    let intent = h
+        .app
+        .with_server(|db| {
+            let turn = db.start_turn("shop", "job/one", None, None, None)?;
+            db.queue_turn_pause(turn, &task.id, "run limit reached after 1s")
+        })
+        .unwrap();
+    genie::runtime::tick(&h.app).await.unwrap();
+    let first = h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap().unwrap();
+    // Recreate the lost acknowledgement, with a later decision already in the tracker.
+    h.app.with_tracker("shop", |t| t.execution().resume(&owner, &task.id)).unwrap();
+    let resumed = h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap();
+    h.app
+        .with_server(|db| {
+            db.conn().execute("UPDATE execution_pauses SET applied=0 WHERE id=?1", [&intent.id])?;
+            Ok(())
+        })
+        .unwrap();
+    genie::runtime::recover(&h.app).unwrap();
+    assert_eq!(h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap(), resumed);
+    assert!(h.app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+    assert_eq!(first.generation + 1, resumed.unwrap().generation);
 }

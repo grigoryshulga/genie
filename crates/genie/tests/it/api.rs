@@ -22,8 +22,11 @@ async fn local_owner_without_users_runs_the_full_task_cycle() {
     assert_eq!(task["status"], "inbox", "people submit to the inbox");
     let id = task["id"].as_str().unwrap().to_string();
 
-    let (s, _, _) =
-        call(r, "PATCH", &format!("/api/tasks/{id}")).json(json!({ "plan": "1. do", "addDeps": [] , "labels": ["web"] })).send().await;
+    let (s, _, _) = call(r, "PATCH", &format!("/api/tasks/{id}"))
+        .current_version()
+        .json(json!({ "plan": "1. do", "addDeps": [] , "labels": ["web"] }))
+        .send()
+        .await;
     assert_eq!(s, StatusCode::OK);
     let (s, t, _) = call(r, "POST", &format!("/api/tasks/{id}/status")).json(json!({ "status": "ready" })).send().await;
     assert_eq!(s, StatusCode::OK, "{t}");
@@ -227,8 +230,16 @@ async fn team_members_act_only_on_their_task_its_subtasks_and_epic_notes() {
     let send = |m: &'static str, uri: String, body: serde_json::Value| async move {
         call(r, m, &uri).bearer(token).no_csrf().json(body).send().await.0
     };
-    assert_eq!(send("PATCH", "/api/tasks/G-2".into(), json!({ "plan": "p" })).await, StatusCode::OK);
-    assert_eq!(send("PATCH", "/api/tasks/G-4".into(), json!({ "plan": "p" })).await, StatusCode::OK, "subtasks are in scope");
+    for id in ["G-2", "G-4"] {
+        let (status, _, _) = call(r, "PATCH", &format!("/api/tasks/{id}"))
+            .bearer(token)
+            .no_csrf()
+            .current_version()
+            .json(json!({ "plan": "p" }))
+            .send()
+            .await;
+        assert_eq!(status, StatusCode::OK, "the task and its subtasks are in scope");
+    }
     assert_eq!(
         send("POST", "/api/tasks/G-1/comments".into(), json!({ "text": "shared finding" })).await,
         StatusCode::CREATED,
@@ -271,7 +282,7 @@ async fn in_an_assisted_project_people_close_tasks_and_teams_get_the_default_int
     assert_eq!(s, StatusCode::OK, "an autonomous orchestrator closes tasks itself");
 
     // A team gets the project's way of integrating results.
-    call(r, "PATCH", "/api/tasks/G-3").json(json!({ "description": "Do it", "acceptance": ["it works"] })).send().await;
+    call(r, "PATCH", "/api/tasks/G-3").current_version().json(json!({ "description": "Do it", "acceptance": ["it works"] })).send().await;
     let (s, t, _) = call(r, "POST", &close("G-3")).json(json!({ "status": "ready" })).send().await;
     assert_eq!(s, StatusCode::OK, "{t}");
     let (s, team, _) = call(r, "POST", "/api/teams").json(json!({ "task": "G-3", "template": "pair" })).send().await;
@@ -304,16 +315,16 @@ async fn a_person_is_responsible_for_a_task_and_mentions_reach_people() {
     let task = format!("/api/tasks/{id}");
     let notes = |user: i64| h.app.with_server(|db| db.notifications(user, false, 20)).unwrap();
 
-    let (s, e, _) = call(r, "PATCH", &task).cookie(&session).json(json!({ "assignee": "@carol" })).send().await;
+    let (s, e, _) = call(r, "PATCH", &task).cookie(&session).current_version().json(json!({ "assignee": "@carol" })).send().await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{e}");
     assert!(e["error"].as_str().unwrap().contains("not a member"), "{e}");
-    let (s, t, _) = call(r, "PATCH", &task).cookie(&session).json(json!({ "assignee": "@Boris" })).send().await;
+    let (s, t, _) = call(r, "PATCH", &task).cookie(&session).current_version().json(json!({ "assignee": "@Boris" })).send().await;
     assert_eq!(s, StatusCode::OK, "{t}");
     assert_eq!(t["assignee"], "boris");
     assert!(notes(boris).iter().any(|n| n.kind == "assigned" && n.title.contains(&id)), "{:#?}", notes(boris));
     let (_, list, _) = call(r, "GET", "/api/tasks").cookie(&session).send().await;
     assert_eq!(list[0]["assignee"], "boris", "lists show the person responsible");
-    call(r, "PATCH", &task).cookie(&session).json(json!({ "assignee": "boris" })).send().await;
+    call(r, "PATCH", &task).cookie(&session).current_version().json(json!({ "assignee": "boris" })).send().await;
     assert_eq!(notes(boris).iter().filter(|n| n.kind == "assigned").count(), 1, "the same person is not told twice");
 
     // Mentions reach the project's people: not the one who writes, not outsiders.
@@ -353,7 +364,7 @@ async fn a_person_is_responsible_for_a_task_and_mentions_reach_people() {
         assert!(notes(who).iter().any(|n| n.kind == "needs_owner"), "{:#?}", notes(who));
     }
 
-    let (_, t, _) = call(r, "PATCH", &task).cookie(&session).json(json!({ "assignee": null })).send().await;
+    let (_, t, _) = call(r, "PATCH", &task).cookie(&session).current_version().json(json!({ "assignee": null })).send().await;
     assert!(t.get("assignee").is_none(), "cleared: {t}");
 }
 
@@ -401,7 +412,8 @@ async fn admins_delete_tasks_for_good_with_their_subtasks_teams_and_dependencies
     let epic = create(json!({ "title": "Эпик", "type": "epic" })).await;
     let child = create(json!({ "title": "Подзадача", "parent": epic })).await;
     let other = create(json!({ "title": "Зависит от подзадачи" })).await;
-    let (s, _, _) = call(r, "PATCH", &format!("/api/tasks/{other}")).bearer(&admin).json(json!({ "addDeps": [child] })).send().await;
+    let (s, _, _) =
+        call(r, "PATCH", &format!("/api/tasks/{other}")).bearer(&admin).current_version().json(json!({ "addDeps": [child] })).send().await;
     assert_eq!(s, StatusCode::OK);
     call(r, "POST", &format!("/api/tasks/{child}/comments")).bearer(&admin).json(json!({ "text": "заметка" })).send().await;
 
@@ -586,7 +598,7 @@ async fn people_rename_themselves_set_a_photo_and_manage_their_tokens() {
     let session = cookies[0].clone();
     let (_, t, _) = call(r, "POST", "/api/tasks").cookie(&session).json(json!({ "title": "Экспорт" })).send().await;
     let task = format!("/api/tasks/{}", t["id"].as_str().unwrap());
-    call(r, "PATCH", &task).cookie(&session).json(json!({ "assignee": "anna" })).send().await;
+    call(r, "PATCH", &task).cookie(&session).current_version().json(json!({ "assignee": "anna" })).send().await;
 
     // A new login and name: the session goes on, tasks follow the new login.
     let (s, u, _) = call(r, "PATCH", &format!("/api/users/{anna}")).cookie(&session).json(json!({ "login": "boris" })).send().await;

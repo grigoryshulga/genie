@@ -35,24 +35,9 @@ pub fn start(app: &Arc<App>) {
     }
 }
 
-fn http() -> reqwest::Client {
-    reqwest::Client::builder().timeout(Duration::from_secs(60)).build().unwrap_or_default()
-}
-
-fn tg_url(app: &App, method: &str) -> Option<String> {
-    let t = app.cfg.telegram.as_ref()?;
-    let base = t.api_base.clone().unwrap_or_else(|| "https://api.telegram.org".into());
-    Some(format!("{}/bot{}/{method}", base.trim_end_matches('/'), t.token))
-}
-
 async fn tg(app: &App, method: &str, body: Value) -> Result<Value, String> {
-    let url = tg_url(app, method).ok_or("telegram is not configured")?;
-    let res = http().post(url).json(&body).send().await.map_err(|e| format!("telegram: {e}"))?;
-    let v: Value = res.json().await.map_err(|e| format!("telegram: {e}"))?;
-    if v["ok"] != json!(true) {
-        return Err(format!("telegram: {}", v["description"].as_str().unwrap_or("error")));
-    }
-    Ok(v["result"].clone())
+    let config = app.cfg.telegram.as_ref().ok_or("telegram is not configured")?;
+    crate::telegram::call(app, &config.token, method, body).await
 }
 
 /// The bot's username (for instructions), if Telegram is configured and reachable.
@@ -64,27 +49,104 @@ pub async fn telegram_username(app: &App) -> Option<String> {
 pub async fn dispatch(app: &Arc<App>) {
     let Ok(items) = app.blocking(|app| app.with_server(|db| db.due_outbox(50))).await else { return };
     for item in items {
+        let id = item.id;
+        if !app.blocking(move |app| app.with_server(|db| db.claim_outbox(id))).await.unwrap_or(false) {
+            continue;
+        }
+        let copy = item.clone();
+        let ready = if item.channel == "interaction_sync" {
+            true
+        } else {
+            app.blocking(move |app| {
+                if !crate::interactions::delivery_current(app, copy.id)? {
+                    app.with_server(|db| db.outbox_cancelled(copy.id, "interaction is closed"))?;
+                    return Ok(false);
+                }
+                if copy.channel != "web" && !crate::notify::ready(app, &copy)? {
+                    return Ok(false);
+                }
+                Ok(true)
+            })
+            .await
+            .unwrap_or(false)
+        };
+        if !ready {
+            continue;
+        }
         let result = match item.channel.as_str() {
             "telegram" => send_telegram(app, &item).await,
             "email" => send_email(app, &item).await,
+            "web" => Ok(None),
+            "interaction_sync" => sync_interaction(app, &item).await,
             other => Err(format!("unknown channel {other}")),
         };
-        let id = item.id;
-        let question = item.payload["question"].clone();
         let _ = app
             .blocking(move |app| {
-                app.with_server(|db| match &result {
-                    Ok(reference) => {
-                        db.outbox_sent(id, reference.as_deref())?;
-                        if let (Some(qn), Some(n), Some(r)) = (question["questionnaire"].as_i64(), question["n"].as_i64(), reference) {
-                            db.set_question_message(qn, n, r)?;
+                app.with_server(|db| {
+                    db.tx(|| {
+                        match &result {
+                            Ok(reference) => {
+                                db.outbox_sent(id, reference.as_deref())?;
+                                let question = &item.payload["question"];
+                                if let (Some(qn), Some(n), Some(r)) =
+                                    (question["questionnaire"].as_i64(), question["n"].as_i64(), reference)
+                                {
+                                    db.set_question_message(qn, n, r)?;
+                                }
+                            }
+                            Err(error) => {
+                                db.outbox_failed(id, error)?;
+                                if item.channel != "interaction_sync" {
+                                    let current = db.outbox_item(id)?;
+                                    if !crate::notify::fallback_in(db, app, &current)? && current.status == "failed" {
+                                        crate::notify::delivery_failed_in(db, &current)?;
+                                    }
+                                }
+                            }
                         }
                         Ok(())
-                    }
-                    Err(e) => db.outbox_failed(id, e),
-                })
+                    })
+                })?;
+                if result.is_ok() && item.channel != "interaction_sync" {
+                    crate::interactions::delivery_current(app, id)?;
+                }
+                Ok(())
             })
             .await;
+    }
+}
+
+async fn sync_interaction(app: &Arc<App>, item: &OutboxItem) -> Result<Option<String>, String> {
+    let id = item.payload["original"].as_i64().ok_or("missing original delivery")?;
+    let original = app.blocking(move |app| app.with_server(|db| db.outbox_item(id))).await.map_err(|_| "cannot read original delivery")?;
+    let Some(reference) = original.external_ref.as_deref() else {
+        return if original.status == "delivering" { Err("original send is still in flight".into()) } else { Ok(None) };
+    };
+    let mut parts = reference.rsplitn(3, ':');
+    let message = parts.next().and_then(|v| v.parse::<i64>().ok()).ok_or("invalid message reference")?;
+    let chat = parts.next().ok_or("missing chat reference")?;
+    let scope = parts.next();
+    if chat != original.address || scope != original.payload["telegramScope"].as_str() {
+        return Ok(None);
+    }
+    let body = json!({"chat_id":chat,"message_id":message,"text":format!("Обращение завершено или больше недоступно ({}). Текущее состояние — в Genie.",item.payload["state"].as_str().unwrap_or("closed")),"reply_markup":{"inline_keyboard":[]}});
+    let result = if scope.is_some() && scope == crate::notify::global_scope(app).as_deref() {
+        tg(app, "editMessageText", body).await
+    } else if let Some(scope) = scope {
+        let scope = scope.to_string();
+        let bot = app
+            .blocking(move |app| app.with_server(|db| Ok(db.project_bots()?.into_iter().find(|b| b.scope == scope))))
+            .await
+            .map_err(|_| "cannot read project bot")?;
+        let Some(bot) = bot else { return Ok(None) };
+        crate::telegram::call(app, &bot.token.0, "editMessageText", body).await
+    } else {
+        return Ok(None);
+    };
+    match result {
+        Ok(_) => Ok(None),
+        Err(e) if e.to_lowercase().contains("message is not modified") => Ok(None),
+        Err(e) => Err(e),
     }
 }
 
@@ -99,7 +161,9 @@ async fn send_telegram(app: &Arc<App>, item: &OutboxItem) -> Result<Option<Strin
     } else if item.payload["forceReply"] == json!(true) {
         body["reply_markup"] = json!({ "force_reply": true, "input_field_placeholder": "Ваш ответ" });
     }
-    let sent = if let Some(scope) = item.payload["telegramScope"].as_str() {
+    let sent = if item.payload["telegramScope"].as_str() == crate::notify::global_scope(app).as_deref() {
+        tg(app, "sendMessage", body).await?
+    } else if let Some(scope) = item.payload["telegramScope"].as_str() {
         let scope = scope.to_string();
         let user = item.user;
         let chat = item.address.clone();
@@ -123,7 +187,7 @@ async fn send_telegram(app: &Arc<App>, item: &OutboxItem) -> Result<Option<Strin
             })
             .await
             .map_err(|_| "Cannot read Telegram configuration")?;
-        let Some(bot) = bot else { return Ok(None) };
+        let Some(bot) = bot else { return Err("recipient no longer authorized for this bot".into()) };
         crate::telegram::call(app, &bot.token.0, "sendMessage", body).await?
     } else {
         tg(app, "sendMessage", body).await?
@@ -185,23 +249,27 @@ async fn telegram_poll(app: Arc<App>) {
             }
         };
         for u in updates {
-            offset = offset.max(u["update_id"].as_i64().unwrap_or(0) + 1);
             if let Err(e) = handle_update(&app, &u).await {
                 eprintln!("genie telegram: {e}");
+                break;
             }
-        }
-        let off = offset;
-        let _ = app
-            .blocking(move |app| {
-                app.with_server(|db| {
-                    db.conn().execute(
-                        "INSERT INTO meta(key, value) VALUES ('telegram_offset', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                        [off.to_string()],
-                    )?;
-                    Ok(())
+            let off = offset.max(u["update_id"].as_i64().unwrap_or(0).saturating_add(1));
+            let saved = app
+                .blocking(move |app| {
+                    app.with_server(|db| {
+                        db.conn().execute(
+                            "INSERT INTO meta(key,value) VALUES ('telegram_offset',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                            [off.to_string()],
+                        )?;
+                        Ok(())
+                    })
                 })
-            })
-            .await;
+                .await;
+            if saved.is_err() {
+                break;
+            }
+            offset = off;
+        }
     }
 }
 
@@ -212,33 +280,26 @@ async fn reply(app: &App, chat: &str, text: &str) {
 /// Handle one Telegram update (public for tests).
 pub async fn handle_update(app: &Arc<App>, u: &Value) -> Result<(), String> {
     if let Some(cb) = u.get("callback_query") {
-        let chat = cb["message"]["chat"]["id"].as_i64().map(|c| c.to_string()).unwrap_or_default();
-        let data = cb["data"].as_str().unwrap_or_default().to_string();
-        let _ = tg(app, "answerCallbackQuery", json!({ "callback_query_id": cb["id"], "text": "Принято" })).await;
-        let parts: Vec<&str> = data.split(':').collect();
-        if let ["q", qn, n, opt] = parts.as_slice() {
-            let (qn, n, opt): (i64, i64, usize) =
-                (qn.parse().map_err(|_| "bad data")?, n.parse().map_err(|_| "bad data")?, opt.parse().map_err(|_| "bad data")?);
-            let chat2 = chat.clone();
-            let res = app
-                .blocking(move |app| {
-                    let q = app.with_server(|db| db.questionnaire(qn))?;
-                    let owner = app.with_server(|db| db.user_by_channel("telegram", &chat2))?;
-                    if owner != Some(q.recipient) {
-                        return Ok(None);
-                    }
-                    let label = q.questions.iter().find(|x| x.n == n).and_then(|x| x.options.get(opt).cloned()).unwrap_or_default();
-                    crate::questions::answer(app, qn, n, &label, "telegram").map(|(_, done)| Some((label, done)))
-                })
-                .await
-                .map_err(|e| e.to_string())?;
-            if let Some((label, done)) = res {
-                reply(app, &chat, &format!("Ответ записан: {label}{}", if done { "\nВсе вопросы отвечены — спасибо!" } else { "" })).await;
-            }
+        let Some(chat) = cb["message"]["chat"]["id"].as_i64() else { return Ok(()) };
+        let Some(message) = cb["message"]["message_id"].as_i64() else { return Ok(()) };
+        if cb["message"]["chat"]["type"] != "private" || cb["from"]["id"].as_i64() != Some(chat) {
+            return Ok(());
         }
+        let data = cb["data"].as_str().unwrap_or_default();
+        let Some(callback) = crate::interactions::TelegramCallback::parse(data) else { return Ok(()) };
+        let (text, selection) = match callback {
+            crate::interactions::TelegramCallback::Action(action) => (action.to_string(), None),
+            crate::interactions::TelegramCallback::Option(index) => (String::new(), Some(index)),
+        };
+        let result = app.blocking(move |app| crate::interactions::global_telegram_response(app, chat, message, &text, selection)).await;
+        let notice = crate::telegram::interaction_result(result)?;
+        let _ = tg(app, "answerCallbackQuery", json!({"callback_query_id":cb["id"],"text":notice})).await;
         return Ok(());
     }
     let msg = &u["message"];
+    if msg["chat"]["type"] != "private" {
+        return Ok(());
+    }
     let Some(chat) = msg["chat"]["id"].as_i64().map(|c| c.to_string()) else { return Ok(()) };
     let text = msg["text"].as_str().unwrap_or_default().trim().to_string();
     if let Some(code) = text.strip_prefix("/start") {
@@ -264,23 +325,12 @@ pub async fn handle_update(app: &Arc<App>, u: &Value) -> Result<(), String> {
         return Ok(());
     };
     if let Some(reply_to) = msg["reply_to_message"]["message_id"].as_i64() {
-        let key = format!("{chat}:{reply_to}");
-        let text2 = text.clone();
-        let res = app
-            .blocking(move |app| {
-                let Some((qn, n)) = app.with_server(|db| db.question_by_message(&key))? else { return Ok(None) };
-                let q = app.with_server(|db| db.questionnaire(qn))?;
-                if q.recipient != user || q.status != "open" {
-                    return Ok(None);
-                }
-                crate::questions::answer(app, qn, n, &text2, "telegram").map(|(_, done)| Some(done))
-            })
-            .await
-            .map_err(|e| e.to_string())?;
-        if let Some(done) = res {
-            reply(app, &chat, if done { "Все вопросы отвечены — спасибо!" } else { "Ответ записан." }).await;
-            return Ok(());
-        }
+        let chat_id = chat.parse::<i64>().map_err(|_| "invalid chat")?;
+        let answer = text.clone();
+        let result = app.blocking(move |app| crate::interactions::global_telegram_response(app, chat_id, reply_to, &answer, None)).await;
+        let notice = crate::telegram::interaction_result(result)?;
+        reply(app, &chat, notice).await;
+        return Ok(());
     }
     if let Some(title) = text.strip_prefix("/new") {
         let title = title.trim().to_string();

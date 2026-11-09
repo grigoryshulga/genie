@@ -164,7 +164,7 @@ async fn new_task_triage_asks_the_author_in_telegram() {
     install_spec(app, &new_task_triage_rule());
 
     // The PM files a task (through Telegram: /new …).
-    let update = json!({ "update_id": 1, "message": { "message_id": 1, "chat": { "id": 4242 }, "text": "/new Экспорт заказов\nНужна выгрузка для бухгалтерии" } });
+    let update = json!({ "update_id": 1, "message": { "message_id": 1, "chat": { "id": 4242, "type":"private" }, "text": "/new Экспорт заказов\nНужна выгрузка для бухгалтерии" } });
     genie::channels::handle_update(app, &update).await.unwrap();
     let task = app.with_tracker("shop", |t| t.get("SHOP-1")).unwrap();
     assert!(matches!(task.status, Status::Inbox | Status::Refining), "{:?}", task.status);
@@ -189,9 +189,9 @@ async fn new_task_triage_asks_the_author_in_telegram() {
     let _ = msg_q1;
 
     // The PM taps "XLSX" and replies to the second question.
-    let tap = json!({ "update_id": 2, "callback_query": { "id": "cb1", "data": format!("q:{}:1:1", qn.id), "message": { "message_id": msg_q1, "chat": { "id": 4242 } } } });
+    let tap = json!({ "update_id": 2, "callback_query": { "id": "cb1", "from":{"id":4242}, "data": format!("q:{}:1:1", qn.id), "message": { "message_id": msg_q1, "chat": { "id": 4242, "type":"private" } } } });
     genie::channels::handle_update(app, &tap).await.unwrap();
-    let reply = json!({ "update_id": 3, "message": { "message_id": 9, "chat": { "id": 4242 }, "text": "Бухгалтерия", "reply_to_message": { "message_id": msg_q2 } } });
+    let reply = json!({ "update_id": 3, "message": { "message_id": 9, "chat": { "id": 4242, "type":"private" }, "text": "Бухгалтерия", "reply_to_message": { "message_id": msg_q2 } } });
     genie::channels::handle_update(app, &reply).await.unwrap();
 
     wait_for(app, "the triage run to finish", 60, |app| {

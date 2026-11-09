@@ -17,6 +17,7 @@ use std::collections::BTreeSet;
 use genie_core::{Actor, CLOSED, CommentKind, CreateInput, OwnerAction, Role, Status, StatusOptions, Task, TaskType, UpdateInput};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use crate::state::{App, AppError, AppResult};
 
@@ -74,7 +75,7 @@ pub enum Touch {
 /// people are not limited here (the workflow rules still apply).
 pub fn authorize(app: &App, caller: &Caller, id: &str, touch: Touch) -> AppResult<()> {
     if !caller.is_person() {
-        app.with_tracker(&caller.project, |t| t.execution().ensure_running(id))?;
+        ensure_running(app, &caller.project, id)?;
     }
     if let Kind::Ingress { response } = &caller.kind {
         return crate::conversations::authorize_task(app, caller, response, id);
@@ -107,6 +108,14 @@ pub fn authorize(app: &App, caller: &Caller, id: &str, touch: Touch) -> AppResul
         Ok(Err(format!("agents change only their own task ({home}) and its subtasks, and leave notes on its epic; {target} is outside")))
     })?;
     verdict.map_err(AppError::Forbidden)
+}
+
+/// A durable limit intent fences work even while its project DB is unavailable.
+pub(crate) fn ensure_running(app: &App, project: &str, task: &str) -> AppResult<()> {
+    if crate::runtime::pending_limit(app, project, task)? {
+        return Err(AppError::Conflict("a hard-limit pause is awaiting persistence; task execution remains blocked".into()));
+    }
+    app.with_tracker(project, |t| t.execution().ensure_running(task))
 }
 
 /// Something changed in a project: wake the workers that react to it.
@@ -154,11 +163,14 @@ pub struct CreateBody {
     pub request_key: Option<String>,
 }
 
-/// Fields of a task to change; absent ones stay.
+/// Fields of a task to change; absent ones stay. A null or empty assignee clears
+/// the responsible person; a null or empty parent takes the task out of its epic.
 #[derive(Debug, Default, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export, optional_fields)]
 pub struct UpdateBody {
+    #[serde(default)]
+    pub expected_version: String,
     #[serde(default, deserialize_with = "lenient::text")]
     pub title: Option<String>,
     #[serde(rename = "type", default, deserialize_with = "lenient::parsed_opt")]
@@ -179,7 +191,7 @@ pub struct UpdateBody {
     pub assignees: Option<Vec<String>>,
     #[serde(default, deserialize_with = "lenient::text")]
     pub merge_strategy: Option<String>,
-    /// The person responsible by login; `null` or `""` clears it.
+    // The person responsible by login; null or an empty string clears it.
     #[serde(default, deserialize_with = "lenient::nullable", skip_serializing_if = "Option::is_none")]
     pub assignee: Option<Option<String>>,
     #[serde(default, deserialize_with = "lenient::list")]
@@ -190,9 +202,28 @@ pub struct UpdateBody {
     pub add_deps: Option<Vec<String>>,
     #[serde(default, deserialize_with = "lenient::list")]
     pub remove_deps: Option<Vec<String>>,
-    /// An epic to move the task into; `null` or `""` takes it out.
+    // An epic to move the task into; null or an empty string takes it out.
     #[serde(default, deserialize_with = "lenient::nullable", skip_serializing_if = "Option::is_none")]
     pub parent: Option<Option<String>>,
+}
+
+#[derive(Serialize, ts_rs::TS)]
+// Share Task's generated type rather than copying all of its fields and docs.
+#[ts(export, type = "import('./Task.ts').Task & { editVersion: string }")]
+pub struct TaskSnapshot<'a> {
+    #[serde(flatten)]
+    pub task: &'a Task,
+    #[serde(rename = "editVersion")]
+    pub edit_version: String,
+}
+
+/// The editable snapshot has its own version: unlike an acceptance proposal,
+/// replacing notes or labels must also detect a concurrent writer.
+pub fn view(task: &Task) -> genie_core::Result<Value> {
+    let value = serde_json::to_value(task)?;
+    let digest = Sha256::digest(value.to_string().as_bytes());
+    let edit_version = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    Ok(serde_json::to_value(TaskSnapshot { task, edit_version })?)
 }
 
 /// A move to another status.
@@ -393,6 +424,10 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
     {
         return Err(AppError::Forbidden("scope, requirements and priority changes belong to the project manager".into()));
     }
+    if body.expected_version.is_empty() {
+        return Err(AppError::Bad("expectedVersion is required for task edits; read the task's editVersion first".into()));
+    }
+    let expected_version = body.expected_version;
     let assignee = body.assignee.map(|a| a.map(|s| s.trim().trim_start_matches('@').to_lowercase()).filter(|s| !s.is_empty()));
     let assigned = assignee.clone().flatten();
     // The person responsible is someone who works in the project.
@@ -424,9 +459,16 @@ pub fn update(app: &App, caller: &Caller, id: &str, body: UpdateBody) -> AppResu
         parent: body.parent,
     };
     let task = app.with_tracker(&caller.project, |t| {
-        crate::conversations::ensure_active(t, &caller.actor.name)?;
-        t.update(&caller.actor, id, input)
-    })?;
+        t.tx(|| {
+            crate::conversations::ensure_active(t, &caller.actor.name)?;
+            if view(&t.get(id)?)?["editVersion"].as_str() != Some(&expected_version) {
+                return Ok(Err(AppError::Conflict(
+                    "task changed since it was read; reload it and reconcile the pending changes before saving".into(),
+                )));
+            }
+            t.update(&caller.actor, id, input).map(Ok)
+        })
+    })??;
     // A new person responsible hears of it (not when they assign themselves).
     if let Some(login) = task.assignee.clone().filter(|l| before.as_ref() != Some(l) && *l != caller.actor.name) {
         let users = crate::notify::resolve(app, &caller.project, &[format!("@{login}")], &json!({}))?;
@@ -524,7 +566,7 @@ fn set_status_inner(app: &App, caller: &Caller, id: &str, body: StatusBody, prop
             }
             let task = t.set_status(&caller.actor, id, to, opts)?;
             if let Some(proposal) = proposal {
-                t.conversations().decide(proposal, true)?;
+                t.conversations().decide_as(proposal, true, &caller.actor)?;
             }
             if crate::conversations::has_result(&task)
                 && let Some(conversation) = t.conversations().conversation_for_task(&task.id)?
@@ -605,6 +647,14 @@ pub fn comment(app: &App, caller: &Caller, id: &str, body: CommentBody) -> AppRe
     }
     changed(app);
     Ok(task)
+}
+
+/// Complete a previously authorized human answer, with the identity frozen on acceptance.
+/// This is durable delivery of that decision, so a replay does not solicit new authority.
+pub(crate) fn record_answers(app: &App, project: &str, actor: &str, task: &str, receipt: &str, text: &str) -> AppResult<()> {
+    app.with_tracker(project, |t| t.comment_once(receipt, &Actor::new(actor, Role::Human), task, text))?;
+    changed(app);
+    Ok(())
 }
 
 /// A task deleted for good, with what happened to the teams that worked on it.
@@ -748,34 +798,182 @@ pub fn resolve_intelligence(
 
 /// Common human-only execution control; workflow status and artifacts are retained.
 pub fn pause_execution(app: &App, caller: &Caller, task: &str, reason: &str, note: &str) -> AppResult<serde_json::Value> {
+    pause_execution_inner(app, caller, task, reason, note, None)
+}
+
+/// A deterministic control reply commits with its execution generation. Replaying
+/// the response after a crash must not stop or resume a later generation.
+pub(crate) struct ControlReply<'a> {
+    pub response: &'a str,
+    pub text: &'a str,
+}
+
+pub(crate) fn pause_execution_inner(
+    app: &App,
+    caller: &Caller,
+    task: &str,
+    reason: &str,
+    note: &str,
+    reply: Option<ControlReply<'_>>,
+) -> AppResult<serde_json::Value> {
     if !caller.is_person() {
         return Err(AppError::Forbidden("only a person stops or resumes task execution".into()));
     }
-    pause_inner(app, &caller.project, &caller.actor, task, reason, note)
+    pause_inner(app, &caller.project, &caller.actor, task, reason, note, reply)
 }
 
 pub(crate) fn pause_for_limit(app: &App, project: &str, task: &str, reason: &str, note: &str) -> AppResult<serde_json::Value> {
-    pause_inner(app, project, &Actor::new("genie", Role::Orchestrator), task, reason, note)
+    pause_inner(app, project, &Actor::new("genie", Role::Orchestrator), task, reason, note, None)
 }
 
-fn pause_inner(app: &App, project: &str, actor: &Actor, task: &str, reason: &str, note: &str) -> AppResult<serde_json::Value> {
+/// Stage a hard-limit intent and, if its server write fails, retain the pause in
+/// the project DB. Live and one-shot workers use the same persistence policy.
+pub(crate) fn queue_turn_pause(
+    app: &App,
+    project: &str,
+    task: &str,
+    note: &str,
+    prepare_turn: impl FnOnce(&genie_core::server_db::ServerDb) -> genie_core::Result<i64>,
+) -> AppResult<genie_core::work::ExecutionPause> {
+    let queued = {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        app.with_server(|db| db.tx(|| db.queue_turn_pause(prepare_turn(db)?, task, note)))
+    };
+    match queued {
+        Ok(pause) => Ok(pause),
+        Err(error) => {
+            if let Err(pause_error) = pause_for_limit(app, project, task, "time", note) {
+                eprintln!("genie runtime: {project}/{task}: project hard-limit fallback pending: {pause_error}");
+            }
+            Err(error)
+        }
+    }
+}
+
+pub(crate) fn apply_execution_pause(app: &App, pause: &genie_core::work::ExecutionPause) -> AppResult<()> {
     let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
-    let state = app.with_tracker(project, |t| t.execution().pause(actor, task, reason, note))?;
+    let halt = app.with_tracker(&pause.project, |t| {
+        t.tx(|| {
+            let applied =
+                t.execution().pause_once(&Actor::new("genie", Role::Orchestrator), &pause.task, &pause.reason, &pause.note, &pause.id)?;
+            Ok(t.execution().state(&pause.task)?.is_some_and(|s| s.paused && s.generation == applied.generation))
+        })
+    })?;
+    if halt {
+        crate::runtime::halt_scope(app, &pause.project, Some(&pause.task))?;
+    }
+    changed(app);
+    Ok(())
+}
+
+/// Persist the budget fence before interrupting workers. If the server intent
+/// cannot be stored, retain its in-memory fence and try the project database.
+pub(crate) fn queue_budget_pause(app: &App, project: &str, task: &str, note: &str) -> AppResult<genie_core::work::ExecutionPause> {
+    let (queued, note) = {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        let note = app.sched.remember_budget_pause(project, task, note);
+        let queued = app.with_server(|db| db.queue_budget_pause(project, task, &note));
+        if queued.is_ok() {
+            app.sched.forget_budget_pause(project, task);
+        }
+        (queued, note)
+    };
+    match queued {
+        Ok(pause) => Ok(pause),
+        Err(error) => {
+            match pause_for_limit(app, project, task, "budget", &note) {
+                Ok(_) => {}
+                Err(AppError::Genie(genie_core::GenieError::NotFound(_))) => app.sched.forget_budget_pause(project, task),
+                Err(fallback) => eprintln!("genie runtime: {project}/{task}: project budget-pause fallback pending: {fallback}"),
+            }
+            Err(error)
+        }
+    }
+}
+
+/// Every budget stop uses the same durable fence, including admission refusal
+/// before any credit is spent. Stop workers even if applying the pause fails;
+/// intentional interruption must preserve jobs and their failure allowance.
+pub(crate) fn pause_for_budget(app: &App, project: &str, task: &str, note: &str) -> AppResult<()> {
+    let result = queue_budget_pause(app, project, task, note).and_then(|pause| crate::runtime::apply_limit_pause(app, &pause));
+    if result.is_err() {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        if let Err(error) = crate::runtime::halt_scope(app, project, Some(task)) {
+            eprintln!("genie runtime: {project}/{task}: budget interruption pending: {error}");
+        }
+    }
+    result
+}
+
+fn pause_inner(
+    app: &App,
+    project: &str,
+    actor: &Actor,
+    task: &str,
+    reason: &str,
+    note: &str,
+    reply: Option<ControlReply<'_>>,
+) -> AppResult<serde_json::Value> {
+    let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    let state = app.with_tracker(project, |t| {
+        t.tx(|| {
+            let state = t.execution().pause(actor, task, reason, note)?;
+            if let Some(reply) = reply {
+                t.conversations().complete(reply.response, reply.text)?;
+            }
+            Ok(state)
+        })
+    })?;
     let stopped = crate::runtime::halt_scope(app, project, Some(&state.task))?;
     changed(app);
     Ok(serde_json::json!({"execution":state,"stopped":stopped}))
 }
 
 pub fn resume_execution(app: &App, caller: &Caller, task: &str) -> AppResult<serde_json::Value> {
+    resume_inner(app, caller, task, None, None)
+}
+
+pub(crate) fn resume_execution_with_reply(app: &App, caller: &Caller, task: &str, reply: ControlReply<'_>) -> AppResult<serde_json::Value> {
+    resume_inner(app, caller, task, None, Some(reply))
+}
+
+pub(crate) fn resume_interaction(app: &App, caller: &Caller, task: &str, generation: i64) -> AppResult<serde_json::Value> {
+    resume_inner(app, caller, task, Some(generation), None)
+}
+
+fn resume_inner(
+    app: &App,
+    caller: &Caller,
+    task: &str,
+    generation: Option<i64>,
+    reply: Option<ControlReply<'_>>,
+) -> AppResult<serde_json::Value> {
     if !caller.is_person() {
         return Err(AppError::Forbidden("only a person stops or resumes task execution".into()));
     }
     let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    if crate::runtime::pending_limit(app, &caller.project, task)? {
+        return Err(AppError::Conflict("an execution-limit pause is awaiting persistence; inspect it before resuming".into()));
+    }
+    if let Some(expected) = generation {
+        let current = app.with_tracker(&caller.project, |t| t.execution().state(task))?;
+        if let Some(current) = current.filter(|s| !s.paused && expected.checked_add(1) == Some(s.generation)) {
+            return Ok(serde_json::json!({"execution":current}));
+        }
+    }
     if let Some(exceeded) = crate::budget::check(app, &caller.project, Some(task))? {
         return Err(AppError::Conflict(exceeded.explain()));
     }
     let state = app.with_tracker(&caller.project, |t| {
         t.tx(|| {
+            if let Some(expected) = generation {
+                let current = t.execution().state(task)?.ok_or_else(|| genie_core::GenieError::not_found("execution pause"))?;
+                if current.paused && current.generation != expected
+                    || !current.paused && expected.checked_add(1) != Some(current.generation)
+                {
+                    return Err(genie_core::GenieError::invalid("this execution pause is obsolete; inspect the current pause"));
+                }
+            }
             let was_paused = t.execution().state(task)?.is_some_and(|s| s.paused);
             let state = t.execution().resume(&caller.actor, task)?;
             t.execution().ensure_running(task)?;
@@ -792,22 +990,24 @@ pub fn resume_execution(app: &App, caller: &Caller, task: &str) -> AppResult<ser
                     }
                 }
             }
-            if !was_paused {
-                return Ok(state);
-            }
-            // Mail already exists for interrupted turns. Settled sessions need one explicit wake-up.
-            let index = crate::spend::TaskIndex::load(t.conn())?;
-            for manager in t.management().managers()? {
-                if index.is_under(&manager.task, &t.normalize_id(task)?) && manager.state != "completed" {
-                    t.bus().notify_manager(
-                        &genie_core::management::manager_name(&manager.task),
-                        &caller.actor.name,
-                        "human",
-                        "system",
-                        "Execution explicitly resumed. Read current task state and continue retained work.",
-                        Some(&manager.task),
-                    )?;
+            if was_paused {
+                // Mail already exists for interrupted turns. Settled sessions need one explicit wake-up.
+                let index = crate::spend::TaskIndex::load(t.conn())?;
+                for manager in t.management().managers()? {
+                    if index.is_under(&manager.task, &t.normalize_id(task)?) && manager.state != "completed" {
+                        t.bus().notify_manager(
+                            &genie_core::management::manager_name(&manager.task),
+                            &caller.actor.name,
+                            "human",
+                            "system",
+                            "Execution explicitly resumed. Read current task state and continue retained work.",
+                            Some(&manager.task),
+                        )?;
+                    }
                 }
+            }
+            if let Some(reply) = reply {
+                t.conversations().complete(reply.response, reply.text)?;
             }
             Ok(state)
         })

@@ -11,7 +11,7 @@ use serde_json::json;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 /// Accepts one session at a time and records the DATA of each message.
-async fn fake_smtp() -> (u16, Arc<Mutex<Vec<String>>>) {
+pub(super) async fn fake_smtp() -> (u16, Arc<Mutex<Vec<String>>>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let got = Arc::new(Mutex::new(Vec::new()));

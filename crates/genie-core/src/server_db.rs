@@ -223,6 +223,17 @@ CREATE TABLE IF NOT EXISTS turns (
 );
 CREATE INDEX IF NOT EXISTS turns_status ON turns(status);
 CREATE INDEX IF NOT EXISTS turns_agent ON turns(project, agent, id);
+CREATE TABLE IF NOT EXISTS execution_pauses (
+  id TEXT PRIMARY KEY,
+  turn INTEGER UNIQUE REFERENCES turns(id) ON DELETE CASCADE,
+  project TEXT NOT NULL,
+  task TEXT NOT NULL,
+  reason TEXT NOT NULL CHECK(reason IN ('time','budget')),
+  note TEXT NOT NULL,
+  applied INTEGER NOT NULL DEFAULT 0 CHECK(applied IN (0,1))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS execution_pauses_budget_pending ON execution_pauses(project,task)
+  WHERE reason='budget' AND applied=0;
 CREATE TABLE IF NOT EXISTS questionnaires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project TEXT NOT NULL,
@@ -495,7 +506,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 12;
+pub const SERVER_SCHEMA_VERSION: i64 = 15;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -771,7 +782,22 @@ pub(crate) fn open_migrated(path: &Path) -> Result<Db> {
     db.conn().execute_batch(crate::observation::sources::SCHEMA)?;
     db.conn().execute_batch(crate::decisions::SCHEMA)?;
     db.conn().execute_batch(crate::telegram::SCHEMA)?;
+    db.conn().execute_batch(crate::inbox::SCHEMA)?;
+    db.conn().execute_batch(crate::human_delivery::SCHEMA)?;
     db.add_columns(SERVER_COLUMN_MIGRATIONS)?;
+    if db
+        .conn()
+        .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='turn_pauses')", [], |r| r.get::<_, bool>(0))?
+    {
+        db.tx(|| {
+            db.conn().execute_batch(
+                "INSERT INTO execution_pauses(id,turn,project,task,reason,note,applied)
+                   SELECT p.id,p.turn,t.project,p.task,'time',p.note,p.applied FROM turn_pauses p JOIN turns t ON t.id=p.turn;
+                 DROP TABLE turn_pauses;",
+            )?;
+            Ok(())
+        })?;
+    }
     // Indexes on the columns the background loops filter and order by every couple of seconds —
     // open questionnaires, queued jobs, an automation's run history and the delivery poller.
     // After `add_columns`: the poller's `ci_sha` is one of the columns just applied, and an
@@ -798,7 +824,10 @@ impl ServerDb {
             std::fs::create_dir_all(dir)?;
         }
         // A pending migration is rehearsed on a copy before this file is touched.
-        crate::migrate::preflight(path, SERVER_SCHEMA_VERSION, SERVER_COLUMN_MIGRATIONS, &|p| open_migrated(p).map(|_| ()))?;
+        let report = crate::migrate::check_server(path)?;
+        if report.rehearsed {
+            crate::migrate::remember(report);
+        }
         let db = open_migrated(path)?;
         Ok(ServerDb { db, secrets_key: crate::secrets::key_path(path) })
     }
@@ -1253,11 +1282,13 @@ impl ServerDb {
         Ok(())
     }
 
-    /// Fence an earlier process of this exact agent before retrying its durable work.
-    /// Other agents, projects and personal tokens retain their credentials.
-    pub fn revoke_named_agent_tokens(&self, project: &str, name: &str) -> Result<()> {
-        self.conn()
-            .execute("UPDATE api_tokens SET revoked = 1 WHERE kind = 'agent' AND project = ?1 AND member = ?2", params![project, name])?;
+    /// Fence this exact agent, retaining its team/job identity. Absent scope
+    /// fields match NULL rather than selecting every scope with the same name.
+    pub fn revoke_named_agent_tokens(&self, project: &str, name: &str, team: Option<&str>, job: Option<i64>) -> Result<()> {
+        self.conn().execute(
+            "UPDATE api_tokens SET revoked = 1 WHERE kind = 'agent' AND project = ?1 AND member = ?2 AND team IS ?3 AND job IS ?4",
+            params![project, name, team, job],
+        )?;
         Ok(())
     }
 
@@ -1746,7 +1777,7 @@ mod tests {
         let second = token("shop", "request:one");
         let neighbor = token("shop", "request:two");
         let foreign = token("other", "request:one");
-        db.revoke_named_agent_tokens("shop", "request:one").unwrap();
+        db.revoke_named_agent_tokens("shop", "request:one", None, None).unwrap();
         assert!(db.resolve_token(&first).unwrap().is_none());
         assert!(db.resolve_token(&second).unwrap().is_none());
         for preserved in [personal, neighbor, foreign] {
@@ -1754,6 +1785,24 @@ mod tests {
         }
         let replacement = token("shop", "request:one");
         assert!(db.resolve_token(&replacement).unwrap().is_some());
+    }
+
+    #[test]
+    fn named_agent_revocation_matches_team_and_job_even_when_scope_is_absent() {
+        let (_d, db) = db();
+        db.create_project("shop", "Shop", "/tmp/shop", None, None).unwrap();
+        let scopes = [(Some("G-1"), None), (Some("G-2"), None), (None, Some(1)), (None, Some(2)), (None, None)];
+        for target in scopes {
+            let tokens = scopes
+                .map(|(team, job)| db.create_agent_token("shop", Role::Executor, "worker", team, job, ChronoDuration::hours(1)).unwrap());
+            let duplicate = db.create_agent_token("shop", Role::Executor, "worker", target.0, target.1, ChronoDuration::hours(1)).unwrap();
+            db.revoke_named_agent_tokens("shop", "worker", target.0, target.1).unwrap();
+            db.revoke_named_agent_tokens("shop", "worker", target.0, target.1).unwrap();
+            assert!(db.resolve_token(&duplicate).unwrap().is_none());
+            for (scope, token) in scopes.into_iter().zip(tokens) {
+                assert_eq!(db.resolve_token(&token).unwrap().is_none(), scope == target, "revoking {target:?} affects {scope:?}");
+            }
+        }
     }
 
     #[test]

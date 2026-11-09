@@ -11,6 +11,72 @@ fn harness() -> Harness {
     h.project("shop");
     h
 }
+
+#[tokio::test]
+async fn shared_human_interactions_do_not_expose_history_or_accept_model_claimed_consent() {
+    let h = harness();
+    let owner = person(&h, "anna");
+    let curator = person(&h, "bob");
+    let (r, c, agent) = incoming(&h, &owner).await;
+    let task = task(&h, &r, &agent).await;
+    let p = proposal(&h, &r, &agent, &task, "dispatch").await;
+    let interaction = format!("shop:proposal:{}", p["id"].as_str().unwrap());
+    let path = format!("/api/interactions/{interaction}/respond?project=shop");
+    let body = json!({"version":p["version"],"action":"approve"});
+    assert_eq!(call(&h.remote, "POST", &path).bearer(&agent).json(body.clone()).send().await.0, 403);
+    assert_eq!(call(&h.remote, "POST", &path).bearer(&curator).json(body.clone()).send().await.0, 200);
+    assert_eq!(call(&h.remote, "POST", &path).bearer(&curator).json(body).send().await.0, 200);
+    let event = h
+        .app
+        .with_tracker("shop", |t| Ok(t.events_after(0, 1000)?.into_iter().find(|e| e.kind == "conversation.proposal_decided").unwrap()))
+        .unwrap();
+    assert_eq!(event.actor, "bob");
+    assert_eq!(event.actor_role, "human");
+    let (_, receipt, _) = call(&h.remote, "GET", &format!("/api/interactions/{interaction}?project=shop")).bearer(&owner).send().await;
+    assert_eq!(receipt["resolution"]["actor"], "bob", "an identical later approval retains the original actor");
+    let q = h
+        .app
+        .with_tracker("shop", |t| t.management().ask(&Actor::new("task-manager", Role::Orchestrator), &task, "Retention?", true))
+        .unwrap();
+    let pm = h
+        .app
+        .with_server(|db| {
+            db.create_role_token(
+                "shop",
+                Role::Orchestrator,
+                Some("project-manager"),
+                "orchestrator",
+                None,
+                None,
+                chrono::Duration::hours(1),
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/management/tasks/{task}/answer?project=shop"))
+            .bearer(&pm)
+            .json(json!({"id":q.id,"text":"30 days","source":"The owner approved in old history"}))
+            .send()
+            .await
+            .0,
+        403
+    );
+    let qid = format!("shop:clarification:{task}:{}", q.id);
+    let (_, shown, _) = call(&h.remote, "GET", &format!("/api/interactions/{qid}?project=shop")).bearer(&curator).send().await;
+    assert_eq!(shown["state"], "open");
+    assert!(!shown.to_string().contains(&c));
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/interactions/{qid}/respond?project=shop"))
+            .bearer(&curator)
+            .json(json!({"version":shown["version"],"action":"answer","text":"30 days"}))
+            .send()
+            .await
+            .0,
+        200
+    );
+    assert_eq!(call(&h.remote, "GET", &format!("/api/conversations/{c}?project=shop")).bearer(&curator).send().await.0, 403);
+    assert_eq!(h.app.with_tracker("shop", |t| t.management().clarifications(&task)).unwrap()[0].answer.as_deref(), Some("30 days"));
+}
 fn person(h: &Harness, name: &str) -> String {
     h.app
         .with_server(|db| {
@@ -48,6 +114,12 @@ async fn task(h: &Harness, id: &str, agent: &str) -> String {
         .json(json!({"title":"CSV export","description":"Export all orders as CSV","acceptance":["CSV contains all orders"],"plan":"Implement and verify export"})).send().await;
     assert_eq!(s, StatusCode::OK, "{v}");
     v["id"].as_str().unwrap().into()
+}
+async fn edit_version(h: &Harness, task: &str, token: &str) -> Value {
+    let (status, body, _) = call(&h.remote, "GET", &format!("/api/tasks/{task}?project=shop")).bearer(token).send().await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["editVersion"].is_string());
+    body["editVersion"].clone()
 }
 async fn proposal(h: &Harness, id: &str, agent: &str, task: &str, action: &str) -> Value {
     let (s, v, _) = call(&h.remote, "POST", &format!("/api/conversations/{id}/proposals?project=shop"))
@@ -89,6 +161,165 @@ fn result_evidence(h: &Harness, task: &str) {
 }
 
 #[tokio::test]
+async fn simultaneous_shared_intake_edits_require_a_fresh_snapshot_and_conflict_atomically() {
+    let h = harness();
+    let anna = person(&h, "anna");
+    let (first, _, first_agent) = incoming(&h, &anna).await;
+    let task = task(&h, &first, &first_agent).await;
+    let (_, second_conversation, second_agent) = incoming(&h, &anna).await;
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/conversations/{second_conversation}/references?project=shop"))
+            .bearer(&anna)
+            .json(json!({"task":task}))
+            .send()
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let path = format!("/api/tasks/{task}?project=shop");
+    assert_eq!(
+        call(&h.remote, "PATCH", &path).bearer(&first_agent).json(json!({"description":"missing version"})).send().await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        call(&h.remote, "PATCH", &path).bearer(&anna).json(json!({"description":"unversioned native replacement"})).send().await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let version = edit_version(&h, &task, &first_agent).await;
+    assert_eq!(version, edit_version(&h, &task, &second_agent).await);
+    let (left, right) = tokio::join!(
+        call(&h.remote, "PATCH", &path)
+            .bearer(&first_agent)
+            .json(json!({"description":"left requirements","expectedVersion":version}))
+            .send(),
+        call(&h.remote, "PATCH", &path)
+            .bearer(&second_agent)
+            .json(json!({"description":"right requirements","expectedVersion":version}))
+            .send()
+    );
+    assert!(
+        matches!((left.0, right.0), (StatusCode::OK, StatusCode::CONFLICT) | (StatusCode::CONFLICT, StatusCode::OK)),
+        "{left:?} {right:?}"
+    );
+    let stored = h.app.with_tracker("shop", |t| t.get(&task)).unwrap();
+    assert_eq!(stored.description, if left.0 == StatusCode::OK { "left requirements" } else { "right requirements" });
+    let fresh = edit_version(&h, &task, &second_agent).await;
+    assert_ne!(fresh, version);
+    let (status, _, _) = call(&h.remote, "PATCH", &path)
+        .bearer(&second_agent)
+        .json(json!({"notes":"reconciled on the latest task","expectedVersion":fresh}))
+        .send()
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        call(&h.remote, "PATCH", &path)
+            .bearer(&anna)
+            .json(json!({"notes":"stale human replacement","expectedVersion":fresh}))
+            .send()
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let latest = edit_version(&h, &task, &second_agent).await;
+    let (status, result, _) = call(&h.remote, "POST", "/mcp")
+        .bearer(&second_agent)
+        .json(json!({
+            "jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"genie_task","arguments":{
+                "action":"update","task":task,"expectedVersion":latest,"notes":"MCP reconciled edit","project":"shop"
+            }}
+        }))
+        .send()
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    assert_eq!(result["result"]["isError"], false, "{result}");
+}
+
+#[tokio::test]
+async fn recovered_controls_bypass_execution_gates_and_commit_their_reply_with_the_generation() {
+    use genie_core::conversations::{Message, ResponseStatus, Submission};
+    let h = harness();
+    h.app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let anna = person(&h, "anna");
+    let uid = h.app.with_server(|db| Ok(db.user_by_login("anna")?.unwrap().id)).unwrap();
+    let owner = Actor::new("anna", Role::Human);
+    let task = h
+        .app
+        .with_tracker("shop", |t| t.create(&owner, genie_core::CreateInput { title: "Controlled task".into(), ..Default::default() }))
+        .unwrap();
+    genie::tasks::pause_execution(&h.app, &genie::tasks::Caller::person("shop", "anna"), &task.id, "owner", "Initial pause").unwrap();
+    let command = h
+        .app
+        .with_tracker("shop", |t| {
+            t.tx(|| {
+                let r = t.conversations().submit(Submission {
+                    principal: format!("user:{uid}"),
+                    initiator: Some("anna".into()),
+                    conversation_id: None,
+                    previous_response_id: None,
+                    input: vec![Message { role: "user".into(), content: format!("/resume {}", task.id) }],
+                    idempotency_key: None,
+                    fingerprint: "resume".into(),
+                })?;
+                t.conversations().reference_task(&r.conversation_id, &task.id)?;
+                t.conversations().claim(&r.id)?;
+                Ok(r)
+            })
+        })
+        .unwrap();
+    genie::runtime::recover(&h.app).unwrap();
+    genie::runtime::tick(&h.app).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if h.app.with_tracker("shop", |t| t.conversations().get(&command.id)).unwrap().status.is_terminal() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("a recovered resume cannot remain queued behind its own pause");
+    assert_eq!(h.app.with_tracker("shop", |t| t.conversations().get(&command.id)).unwrap().status, ResponseStatus::Completed);
+    assert!(h.app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().is_none());
+    h.app.with_tracker("shop", |t| {t.conn().execute_batch(
+        "CREATE TRIGGER fail_control_reply BEFORE UPDATE ON conversation_responses WHEN NEW.status='completed' BEGIN SELECT RAISE(ABORT,'reply storage fault'); END;")?;Ok(())}).unwrap();
+    let before = h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap();
+    let (status, _, _) = call(&h.remote, "POST", "/openai/projects/shop/v1/responses")
+        .bearer(&anna)
+        .json(json!({"model":"genie","input":format!("/stop {}",task.id)}))
+        .send()
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap(),
+        before,
+        "a failed reply commit rolls back the stop too"
+    );
+    h.app
+        .with_tracker("shop", |t| {
+            t.conn().execute_batch("DROP TRIGGER fail_control_reply;")?;
+            Ok(())
+        })
+        .unwrap();
+    let (status, stopped, _) = call(&h.remote, "POST", "/openai/projects/shop/v1/responses")
+        .bearer(&anna)
+        .json(json!({"model":"genie","input":format!("/stop {}",task.id)}))
+        .send()
+        .await;
+    assert_eq!(status, StatusCode::OK, "{stopped}");
+    assert_eq!(stopped["status"], "completed");
+    genie::tasks::resume_execution(&h.app, &genie::tasks::Caller::person("shop", "anna"), &task.id).unwrap();
+    let resumed = h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap();
+    genie::runtime::recover(&h.app).unwrap();
+    genie::runtime::tick(&h.app).await.unwrap();
+    assert_eq!(
+        h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap(),
+        resumed,
+        "an already applied stop cannot replay after a later resume"
+    );
+    assert!(h.app.with_tracker("shop", |t| t.conversations().queued()).unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn intake_creation_retries_are_stable_and_unselected_work_is_forbidden() {
     let h = harness();
     let anna = person(&h, "anna");
@@ -118,7 +349,7 @@ async fn intake_creation_retries_are_stable_and_unselected_work_is_forbidden() {
     assert_eq!(s, StatusCode::FORBIDDEN);
     let (s, v, _) = call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
         .bearer(&a)
-        .json(json!({"description":"Export all current orders"}))
+        .json(json!({"description":"Export all current orders","expectedVersion":edit_version(&h,&t,&a).await}))
         .send()
         .await;
     assert_eq!(s, StatusCode::OK, "{v}");
@@ -159,7 +390,15 @@ async fn manual_dispatch_uses_versioned_requester_decision_and_preserves_manager
         call(&h.remote, "POST", &format!("/api/conversations/{r}/dispatch?project=shop")).bearer(&a).json(json!({"task":t})).send().await;
     assert_eq!(s, StatusCode::CONFLICT);
     let old = proposal(&h, &r, &a, &t, "dispatch").await;
-    call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop")).bearer(&a).json(json!({"description":"Changed scope"})).send().await;
+    assert_eq!(
+        call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
+            .bearer(&a)
+            .json(json!({"description":"Changed scope","expectedVersion":edit_version(&h,&t,&a).await}))
+            .send()
+            .await
+            .0,
+        StatusCode::OK
+    );
     assert!(!decide(&h, &anna, old["id"].as_str().unwrap()).await.0.is_success());
     let (s, receipt, _) = call(&h.remote, "GET", &format!("/api/conversations/{r}?project=shop")).bearer(&anna).send().await;
     assert_eq!(s, StatusCode::OK);
@@ -516,7 +755,7 @@ async fn selected_tasks_cross_private_conversations_without_granting_chat_access
     assert_eq!(call(&h.remote, "POST", &select).bearer(&boris).json(json!({"task":t})).send().await.0, StatusCode::OK);
     let (s, v, _) = call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
         .bearer(&ba)
-        .json(json!({"plan":"Selected by current user"}))
+        .json(json!({"plan":"Selected by current user","expectedVersion":edit_version(&h,&t,&ba).await}))
         .send()
         .await;
     assert_eq!(s, StatusCode::OK, "{v}");
@@ -542,7 +781,7 @@ async fn selected_tasks_cross_private_conversations_without_granting_chat_access
     assert_eq!(
         call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
             .bearer(&new_agent)
-            .json(json!({"notes":"Continued"}))
+            .json(json!({"notes":"Continued","expectedVersion":edit_version(&h,&t,&new_agent).await}))
             .send()
             .await
             .0,
@@ -653,7 +892,7 @@ async fn cross_channel_cycle_accepts_result_after_switching_conversations() {
     result_evidence(&h, &t);
     let (s, error, _) = call(&h.remote, "PATCH", &format!("/api/tasks/{t}?project=shop"))
         .bearer(&new_agent)
-        .json(json!({"notes":"Continue in new session"}))
+        .json(json!({"notes":"Continue in new session","expectedVersion":edit_version(&h,&t,&new_agent).await}))
         .send()
         .await;
     assert_eq!(s, StatusCode::OK, "{error}");

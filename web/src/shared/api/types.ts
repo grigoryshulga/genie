@@ -46,6 +46,7 @@ export type { Role } from "./generated/Role.ts";
 export type { Status } from "./generated/Status.ts";
 export type { StatusBody } from "./generated/StatusBody.ts";
 export type { Task } from "./generated/Task.ts";
+export type { TaskSnapshot } from "./generated/TaskSnapshot.ts";
 export type { TaskRepo } from "./generated/TaskRepo.ts";
 export type { TaskSummary } from "./generated/TaskSummary.ts";
 export type { TaskType } from "./generated/TaskType.ts";

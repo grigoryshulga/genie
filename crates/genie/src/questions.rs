@@ -31,10 +31,28 @@ pub fn ask(app: &App, a: Ask<'_>) -> AppResult<i64> {
     } else {
         "web"
     };
-    let (qn, secret) = app.with_server(|db| {
-        db.create_questionnaire(a.project, a.task, a.asked_by, a.recipient, channel, &a.questions, a.run_step, a.remind_after, a.timeout)
+    let qn = app.with_server(|db| {
+        db.tx(|| {
+            let user = db.user(a.recipient)?;
+            if user.disabled || !db.project_role(a.project, &user)?.is_some_and(|r| r.can_write()) {
+                return Err(genie_core::GenieError::Denied("questions require a current project member as recipient".into()));
+            }
+            let (qn, _) = db.create_questionnaire(
+                a.project,
+                a.task,
+                a.asked_by,
+                a.recipient,
+                channel,
+                &a.questions,
+                a.run_step,
+                a.remind_after,
+                a.timeout,
+            )?;
+            db.queue_questionnaire_send(qn.id, false)?;
+            Ok(qn)
+        })
     })?;
-    send(app, &qn, &secret, false)?;
+    flush_sends(app)?;
     // Its reminder and deadline are new deadlines for the engine to sleep until.
     app.wake_engine.notify_one();
     Ok(qn.id)
@@ -44,87 +62,104 @@ fn answer_link(app: &App, secret: &str) -> String {
     format!("{}/answer?token={secret}", app.cfg.public_url())
 }
 
-/// Deliver (or remind about) a questionnaire.
-pub fn send(app: &App, qn: &Questionnaire, secret: &str, reminder: bool) -> AppResult<()> {
-    let task = qn.task.clone().unwrap_or_default();
-    let title = format!(
-        "{}{} · {} вопрос(а) от {}",
-        if reminder { "Напоминание: " } else { "" },
-        if task.is_empty() { qn.project.clone() } else { task.clone() },
-        qn.questions.iter().filter(|q| q.answer.is_none()).count(),
-        qn.asked_by
-    );
-    let link = answer_link(app, secret);
-    let listing = qn
-        .questions
-        .iter()
-        .filter(|q| q.answer.is_none())
-        .map(|q| {
-            format!("{}. {}{}", q.n, q.text, if q.options.is_empty() { String::new() } else { format!(" ({})", q.options.join(" / ")) })
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    // Web center (+ e-mail when the person has no Telegram).
-    let web = Message {
-        kind: "question".into(),
-        title: title.clone(),
-        body: format!("{listing}\n\nОтветить: {link}"),
-        project: Some(qn.project.clone()),
-        task: qn.task.clone(),
-        link: Some(format!("/answer?token={secret}")),
-        channels: if qn.channel == "telegram" { vec!["web".into()] } else { vec![] },
-        ..Default::default()
-    };
-    let key = format!("qn:{}:{}", qn.id, if reminder { "remind" } else { "ask" });
-    notify::send(app, &[qn.recipient], &web, Some(&key))?;
-    if qn.channel == "telegram" {
-        let chat = app.with_server(|db| db.channel_address(qn.recipient, "telegram"))?.unwrap_or_default();
-        app.with_server(|db| {
-            db.enqueue(
-                Some(&format!("{key}:head")),
-                Some(qn.recipient),
-                "telegram",
-                &chat,
-                &title,
-                &format!("{title}\n\nОтветьте на каждое сообщение (reply) или нажмите вариант. Все вопросы сразу: {link}"),
-                &json!({}),
-            )?;
-            for q in qn.questions.iter().filter(|q| q.answer.is_none()) {
-                let buttons: Vec<(String, String)> =
-                    q.options.iter().enumerate().map(|(i, o)| (o.clone(), format!("q:{}:{}:{i}", qn.id, q.n))).collect();
-                let text = format!("{}. {}{}", q.n, q.text, if q.why.is_empty() { String::new() } else { format!("\n\nЗачем: {}", q.why) });
-                db.enqueue(
-                    Some(&format!("{key}:q{}", q.n)),
-                    Some(qn.recipient),
-                    "telegram",
-                    &chat,
-                    &title,
-                    &text,
-                    &json!({ "buttons": buttons, "question": { "questionnaire": qn.id, "n": q.n }, "forceReply": q.options.is_empty() }),
-                )?;
-            }
+/// The send intent survives a crash before projection into the notification/outbox tables.
+/// Replaying a partially projected questionnaire uses the same per-item delivery keys.
+pub fn flush_sends(app: &App) -> AppResult<()> {
+    for (id, reminder) in app.with_server(|db| db.due_questionnaire_sends())? {
+        let qn = app.with_server(|db| db.questionnaire(id))?;
+        let result = if qn.status == "open" && qn.due.as_ref().is_none_or(|d| *d > genie_core::db::now()) {
+            let secret = app.with_server(|db| db.questionnaire_link(id))?;
+            send(app, &qn, &secret, reminder)
+        } else {
             Ok(())
-        })?;
-        app.wake_outbox.notify_one();
+        };
+        app.with_server(|db| db.questionnaire_sent(id, reminder, result.as_ref().err().map(|e| e.to_string()).as_deref()))?;
     }
     Ok(())
 }
 
-/// Record one answer; when the questionnaire is complete, write the answers into the task.
-pub fn answer(app: &App, id: i64, n: i64, text: &str, via: &str) -> AppResult<(Questionnaire, bool)> {
-    let (qn, done) = app.with_server(|db| db.answer_question(id, n, text, via))?;
-    if done {
-        record(app, &qn)?;
+/// Deliver (or remind about) a questionnaire.
+pub fn send(app: &App, qn: &Questionnaire, secret: &str, reminder: bool) -> AppResult<()> {
+    let link = answer_link(app, secret);
+    for q in qn.questions.iter().filter(|q| q.answer.is_none()) {
+        let title = format!(
+            "{}{} · Вопрос {} от {}",
+            if reminder { "Напоминание: " } else { "" },
+            qn.task.as_deref().unwrap_or(&qn.project),
+            q.n,
+            qn.asked_by
+        );
+        let id = format!("{}:questionnaire:{}:{}", qn.project, qn.id, q.n);
+        let buttons = q.options.iter().enumerate().map(|(i, o)| (o.clone(), format!("q:{}:{}:{i}", qn.id, q.n))).collect();
+        notify::send(
+            app,
+            &[qn.recipient],
+            &Message {
+                kind: "question".into(),
+                title,
+                body: format!(
+                    "{}{}\n\nОтветить в Genie: {link}\nВ Telegram можно ответить на это сообщение или выбрать вариант.",
+                    q.text,
+                    if q.why.is_empty() { String::new() } else { format!("\n\nЗачем: {}", q.why) }
+                ),
+                project: Some(qn.project.clone()),
+                task: qn.task.clone(),
+                link: Some(format!("/answer?token={secret}")),
+                buttons,
+                interaction: Some(json!({"id":id,"version":format!("{}:{}",qn.created,q.n)})),
+                ..Default::default()
+            },
+            Some(&format!("qn:{}:{}:q{}", qn.id, if reminder { "remind" } else { "ask" }, q.n)),
+        )?;
     }
+    Ok(())
+}
+
+/// Check the current recipient account and project rights, including for a scoped answer link.
+pub fn authorize(db: &genie_core::server_db::ServerDb, qn: &Questionnaire, recipient: i64) -> genie_core::Result<()> {
+    let user = db.user(recipient)?;
+    if qn.recipient != recipient || user.disabled || !db.project_role(&qn.project, &user)?.is_some_and(|r| r.can_write()) {
+        return Err(genie_core::GenieError::Denied("this person cannot answer this questionnaire".into()));
+    }
+    Ok(())
+}
+
+pub(crate) fn authorization_error(error: crate::state::AppError) -> crate::state::AppError {
+    match error {
+        crate::state::AppError::Genie(genie_core::GenieError::Denied(message)) => crate::state::AppError::Forbidden(message),
+        other => other,
+    }
+}
+
+pub fn answer(app: &App, recipient: i64, id: i64, n: i64, text: &str, via: &str) -> AppResult<(Questionnaire, bool)> {
+    answer_many(app, recipient, id, &[(n, text.to_string())], via)
+}
+
+/// Accept one whole submission and its durable continuation together. Transports never write
+/// answers themselves and cannot bypass a revoked account with an old message or link.
+pub fn answer_many(app: &App, recipient: i64, id: i64, answers: &[(i64, String)], via: &str) -> AppResult<(Questionnaire, bool)> {
+    let qn = app
+        .with_server(|db| {
+            db.tx(|| {
+                let qn = db.questionnaire(id)?;
+                authorize(db, &qn, recipient)?;
+                let (qn, completed) = db.answer_questions(id, answers, via)?;
+                if completed && qn.task.is_some() {
+                    db.queue_answer_record(qn.id, &db.user(recipient)?.login, &record_text(&qn))?;
+                }
+                Ok(qn)
+            })
+        })
+        .map_err(authorization_error)?;
+    // A failed task-side write leaves a pending receipt; accepting the answer is already durable.
+    flush_records(app)?;
     app.wake_engine.notify_one();
+    let done = qn.status == "answered";
     Ok((qn, done))
 }
 
-/// Answers → one owner comment on the task (wakes the orchestrator).
-fn record(app: &App, qn: &Questionnaire) -> AppResult<()> {
-    let Some(task) = &qn.task else { return Ok(()) };
-    let user = app.with_server(|db| db.user(qn.recipient))?;
-    let text = format!(
+fn record_text(qn: &Questionnaire) -> String {
+    format!(
         "Ответы на вопросы ({}):\n\n{}",
         qn.asked_by,
         qn.questions
@@ -132,19 +167,27 @@ fn record(app: &App, qn: &Questionnaire) -> AppResult<()> {
             .map(|q| format!("{}. {}\n   → {}", q.n, q.text, q.answer.clone().unwrap_or_default()))
             .collect::<Vec<_>>()
             .join("\n")
-    );
-    crate::tasks::comment(
-        app,
-        &crate::tasks::Caller::person(&qn.project, &user.login),
-        task,
-        crate::tasks::CommentBody { text, kind: None },
-    )?;
+    )
+}
+
+/// The server DB and a project tracker commit separately. The tracker receipt makes replay
+/// after a crash between those commits harmless, including orchestrator mail.
+pub fn flush_records(app: &App) -> AppResult<()> {
+    for record in app.with_server(|db| db.due_answer_records())? {
+        let qn = app.with_server(|db| db.questionnaire(record.questionnaire))?;
+        let Some(task) = qn.task else { continue };
+        match crate::tasks::record_answers(app, &qn.project, &record.actor, &task, &record.id, &record.body) {
+            Ok(()) => app.with_server(|db| db.answer_recorded(&record.id))?,
+            Err(e) => app.with_server(|db| db.answer_record_failed(&record.id, &e.to_string()))?,
+        }
+    }
     Ok(())
 }
 
 /// Reminders and deadlines of open questionnaires (called by the engine's pass). Returns when the
 /// next reminder or deadline falls: the engine sleeps until then.
 pub fn tick(app: &App) -> AppResult<Option<DateTime<Utc>>> {
+    flush_records(app)?;
     let now = genie_core::db::now();
     let mut next: Option<DateTime<Utc>> = None;
     let mut soonest = |at: &str| {
@@ -153,6 +196,9 @@ pub fn tick(app: &App) -> AppResult<Option<DateTime<Utc>>> {
             next = Some(next.map_or(t, |n| n.min(t)));
         }
     };
+    if let Some(at) = app.with_server(|db| db.next_answer_record_at())? {
+        soonest(&at);
+    }
     for qn in app.with_server(|db| db.open_questionnaires())? {
         if qn.due.as_ref().is_some_and(|d| *d <= now) {
             app.with_server(|db| db.close_questionnaire(qn.id, "expired"))?;
@@ -164,21 +210,20 @@ pub fn tick(app: &App) -> AppResult<Option<DateTime<Utc>>> {
         }
         match &qn.remind_at {
             Some(r) if *r <= now => {
-                app.with_server(|db| db.clear_reminder(qn.id))?;
-                // The secret is not stored; a reminder carries a fresh answer link.
-                let secret = genie_core::server_db::new_secret();
                 app.with_server(|db| {
-                    db.conn().execute(
-                        "UPDATE questionnaires SET token_hash = ?1 WHERE id = ?2",
-                        rusqlite::params![genie_core::server_db::hash_secret(&secret), qn.id],
-                    )?;
-                    Ok(())
+                    db.tx(|| {
+                        db.clear_reminder(qn.id)?;
+                        db.queue_questionnaire_send(qn.id, true)
+                    })
                 })?;
-                send(app, &qn, &secret, true)?;
             }
             Some(r) => soonest(r),
             None => {}
         }
+    }
+    flush_sends(app)?;
+    if let Some(at) = app.with_server(|db| db.next_questionnaire_send_at())? {
+        soonest(&at);
     }
     Ok(next)
 }

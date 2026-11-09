@@ -290,6 +290,9 @@ impl Management<'_> {
         }
         self.0.tx(|| {
             let q = self.clarifications(task)?.into_iter().find(|q| q.id == id).ok_or_else(|| GenieError::not_found("clarification"))?;
+            if q.state == "owner" && actor.role != crate::Role::Human {
+                return Err(GenieError::Denied("a question addressed to a person requires an authenticated human answer".into()));
+            }
             if q.state == "answered" && q.answer.as_deref() == Some(answer) && q.source.as_deref() == Some(source) { return Ok(()) }
             let m = self.manager(task)?.ok_or_else(|| GenieError::not_found("manager"))?;
             if !matches!(q.state.as_str(), "project" | "owner") || q.brief_version != m.brief_version || m.state != "active" {

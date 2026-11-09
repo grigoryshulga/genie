@@ -94,6 +94,9 @@ pub fn task(t: &Value, history: bool) -> String {
         format!("# {}{} — {}", if s(t, "type") == "epic" { "Epic " } else { "" }, s(t, "id"), s(t, "title")),
         format!("type {} · status {} · priority P{}", s(t, "type"), s(t, "status"), t["priority"]),
     ];
+    if let Some(version) = t["editVersion"].as_str() {
+        out.push(format!("editVersion: {version}"));
+    }
     if t["execution"]["paused"] == true {
         out.push(format!(
             "EXECUTION PAUSED ({}): {} · resume with /resume {}",

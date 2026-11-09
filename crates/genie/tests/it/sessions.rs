@@ -1200,6 +1200,208 @@ async fn a_manual_manager_interrupted_by_a_restart_finishes_its_chat_answer() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_taskless_project_manager_reaching_its_hard_limit_stops_its_live_session() {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(
+        pi,
+        |cfg| {
+            cfg.runtime.turn_timeout_secs = 30;
+            cfg.runtime.run_timeout_secs = 3;
+        },
+        clock.clone(),
+    )
+    .await;
+    let app = &l.app;
+    app.with_tracker("shop", |t| t.bus().notify_manager(ORCHESTRATOR, "anna", "human", CHAT_MAIL, "RUN: sleep 120", None)).unwrap();
+    app.wake_runtime.notify_one();
+    let session = until("project manager's long tool started", 20, || {
+        app.sessions.get(&orchestrator()).filter(|s| s.live().tool.as_ref().is_some_and(|tool| tool["name"] == "bash"))
+    })
+    .await;
+    assert!(session.task.is_none(), "exercise the taskless hard-limit path");
+    // The active session is responsive: its hard deadline, rather than silence,
+    // must trigger the stop and terminalize this turn.
+    clock.advance(Duration::from_millis(2999));
+    assert!(session.request(json!({"type":"get_state"}), Duration::from_secs(5)).await.is_some());
+    clock.advance(Duration::from_millis(1));
+    genie::runtime::tick(app).await.unwrap();
+    until("project manager's limited turn interrupted", 10, || {
+        app.with_server(|db| db.turns("shop", Some(ORCHESTRATOR), 10))
+            .unwrap()
+            .iter()
+            .any(|turn| turn.pid == Some(i64::from(session.pid)) && turn.status == "interrupted")
+            .then_some(())
+    })
+    .await;
+    until("limited project-manager process removed", 10, || {
+        app.sessions.get(&orchestrator()).is_none_or(|next| next.pid != session.pid).then_some(())
+    })
+    .await;
+    assert!(app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_none());
+    genie::sessions::stop_all(app);
+}
+
+async fn owned_tool_pid(work: &std::path::Path, file: &str) -> String {
+    until("owned tool's host PID", 10, || {
+        let inside = std::fs::read_to_string(work.join(file)).ok()?;
+        // bubblewrap uses a PID namespace: match the shell's namespace PID
+        // and this test's unique workspace to identify the host process.
+        std::fs::read_dir("/proc").ok()?.flatten().find_map(|entry| {
+            let path = entry.path();
+            if std::fs::read_link(path.join("cwd")).ok()? != work {
+                return None;
+            }
+            let status = std::fs::read_to_string(path.join("status")).ok()?;
+            let pids = status.lines().find_map(|line| line.strip_prefix("NSpid:"))?;
+            (pids.split_whitespace().last()? == inside.trim()).then(|| entry.file_name().to_string_lossy().into_owned())
+        })
+    })
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_live_hard_limit_stops_work_and_allows_independent_work_while_its_pause_write_fails() {
+    hard_limit_storage_failure(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_live_hard_limit_keeps_its_fence_after_exit_until_its_server_intent_can_be_stored() {
+    hard_limit_storage_failure(true).await;
+}
+
+async fn hard_limit_storage_failure(server: bool) {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(
+        pi,
+        |cfg| {
+            cfg.runtime.max_concurrent = 1;
+            cfg.runtime.max_sessions = 1;
+            cfg.runtime.turn_timeout_secs = 30;
+            cfg.runtime.run_timeout_secs = 3;
+        },
+        clock.clone(),
+    )
+    .await;
+    let app = &l.app;
+    let fault = format!(
+        "CREATE TRIGGER fail_time_pause BEFORE INSERT ON {} BEGIN SELECT RAISE(ABORT,'pause storage fault'); END;",
+        if server { "execution_pauses" } else { "task_execution" },
+    );
+    if server {
+        app.with_server(|db| db.conn().execute_batch(&fault).map_err(Into::into)).unwrap();
+    } else {
+        app.with_tracker("shop", |t| t.conn().execute_batch(&fault).map_err(Into::into)).unwrap();
+    }
+    mail(app, "anna", "human", "bender", "RUN: echo $BASHPID > limit-tool.pid; echo kept > partial.txt; sleep 120", None);
+    until("limited session's long tool", 20, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
+    let old = app.sessions.get(&member("bender")).unwrap();
+    let work = l._dir.path().join("work");
+    let tool = owned_tool_pid(&work, "limit-tool.pid").await;
+    clock.advance(Duration::from_secs(3));
+    genie::runtime::tick(app).await.unwrap();
+    until("limited owned tool stopped despite storage failure", 5, || {
+        let running = std::fs::read_to_string(format!("/proc/{tool}/stat"))
+            .is_ok_and(|stat| !stat.split(") ").nth(1).is_some_and(|tail| tail.starts_with('Z')));
+        (!running).then_some(())
+    })
+    .await;
+    assert_eq!(
+        app.with_server(|db| Ok(db.conn().query_row(
+            "SELECT COUNT(*) FROM api_tokens WHERE project='shop' AND member='bender' AND revoked=0",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?))
+        .unwrap(),
+        0,
+        "the interrupted worker has no remaining authority"
+    );
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
+    if server {
+        assert_eq!(
+            app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().unwrap().reason,
+            "time",
+            "the project DB preserves the pause across a restart while its server intent write is unavailable"
+        );
+        assert!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+        assert_eq!(app.sessions.get(&member("bender")).unwrap().pid, old.pid, "the stopped session retains the memory fence");
+    } else {
+        assert!(app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_none());
+        assert_eq!(app.with_server(|db| db.pending_execution_pauses(None)).unwrap().len(), 1);
+    }
+    let other = app
+        .with_tracker("shop", |t| {
+            let task = t.create(
+                &Actor::new("anna", Role::Human),
+                CreateInput { title: "Independent work".into(), quiet: true, ..Default::default() },
+            )?;
+            t.bus().create(
+                "anna",
+                "human",
+                NewTeam {
+                    id: task.id.clone(),
+                    task: task.id.clone(),
+                    cwd: work.to_string_lossy().into_owned(),
+                    members: vec![NewMember { name: "independent".into(), role: "executor".into(), ..Default::default() }],
+                    ..Default::default()
+                },
+            )?;
+            t.bus().send(SendMail {
+                team: &task.id,
+                from: "anna",
+                from_role: "human",
+                to: "independent",
+                text: "Independent hello",
+                kind: "owner",
+                ..Default::default()
+            })?;
+            Ok(task.id)
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    until("independent task uses the freed run slot", 20, || {
+        app.with_server(|db| db.turns("shop", Some(&format!("{other}/independent")), 10))
+            .unwrap()
+            .iter()
+            .any(|turn| turn.status == "succeeded")
+            .then_some(())
+    })
+    .await;
+    assert!(
+        app.sessions.get(&member("bender")).is_none_or(|session| session.pid == old.pid),
+        "the failed pause cannot restart the old task"
+    );
+    if server {
+        app.with_server(|db| db.conn().execute_batch("DROP TRIGGER fail_time_pause").map_err(Into::into)).unwrap();
+        clock.advance(Duration::from_secs(1));
+    } else {
+        app.with_tracker("shop", |t| t.conn().execute_batch("DROP TRIGGER fail_time_pause").map_err(Into::into)).unwrap();
+    }
+    genie::runtime::tick(app).await.unwrap();
+    until("pause persisted after storage recovery", 10, || {
+        app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().filter(|state| state.reason == "time")
+    })
+    .await;
+    until("intent acknowledged after storage recovery", 10, || {
+        app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty().then_some(())
+    })
+    .await;
+    assert_eq!(std::fs::read_to_string(work.join("partial.txt")).unwrap(), "kept\n");
+    genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    until("explicit resume starts a new live worker", 20, || app.sessions.get(&member("bender")).filter(|session| session.pid != old.pid))
+        .await;
+    genie::sessions::stop_all(app);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn hard_run_limit_pauses_productive_work_and_explicit_resume_keeps_progress() {
     let Some(pi) = pi_bin() else {
         assert!(std::env::var("CI").is_err(), "pi is required in CI");
@@ -1220,21 +1422,7 @@ async fn hard_run_limit_pauses_productive_work_and_explicit_resume_keeps_progres
     until("long tool started", 20, || session_state(app, "bender").filter(|s| s.1.as_deref() == Some("bash"))).await;
     let s = app.sessions.get(&member("bender")).unwrap();
     let work = l._dir.path().join("work");
-    let tool_pid = until("owned tool's host PID", 10, || {
-        let inside = std::fs::read_to_string(work.join("tool.pid")).ok()?;
-        // bubblewrap uses a PID namespace: the shell's BASHPID is not its
-        // host PID. Match the namespace PID and this test's unique workspace.
-        std::fs::read_dir("/proc").ok()?.flatten().find_map(|entry| {
-            let path = entry.path();
-            if std::fs::read_link(path.join("cwd")).ok()? != work {
-                return None;
-            }
-            let status = std::fs::read_to_string(path.join("status")).ok()?;
-            let pids = status.lines().find_map(|line| line.strip_prefix("NSpid:"))?;
-            (pids.split_whitespace().last()? == inside.trim()).then(|| entry.file_name().to_string_lossy().into_owned())
-        })
-    })
-    .await;
+    let tool_pid = owned_tool_pid(&work, "tool.pid").await;
     clock.advance(Duration::from_millis(2999));
     // This is recent activity, so the silence watchdog cannot justify the stop.
     assert!(s.request(json!({"type":"get_state"}), Duration::from_secs(5)).await.is_some());
@@ -1262,6 +1450,453 @@ async fn hard_run_limit_pauses_productive_work_and_explicit_resume_keeps_progres
     genie::runtime::tick(app).await.unwrap();
     until("explicit resume starts a fresh process", 20, || app.sessions.get(&member("bender")).filter(|next| next.pid != s.pid)).await;
     genie::sessions::stop_all(app);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn task_stop_releases_live_capacity_when_a_tool_inherits_stdout() {
+    inherited_stdout_stop(ToolStop::Owner, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_live_deadline_releases_capacity_when_a_tool_inherits_stdout() {
+    inherited_stdout_stop(ToolStop::Deadline, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn task_stop_releases_live_capacity_when_a_tool_clears_its_environment() {
+    inherited_stdout_stop(ToolStop::Owner, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_live_deadline_releases_capacity_when_a_tool_clears_its_environment() {
+    inherited_stdout_stop(ToolStop::Deadline, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn parent_exit_cleans_an_environment_cleared_tool_before_draining_stdout() {
+    inherited_stdout_stop(ToolStop::ParentExit, true).await;
+}
+
+#[derive(Clone, Copy)]
+enum ToolStop {
+    Owner,
+    Deadline,
+    ParentExit,
+}
+
+async fn inherited_stdout_stop(stop: ToolStop, clear_env: bool) {
+    let clock = Arc::new(crate::common::ManualClock::default());
+    let l = live_with_clock(
+        PathBuf::from("/unused"),
+        |cfg| {
+            cfg.runtime.enabled = false;
+            cfg.runtime.sandbox.mode = "off".into();
+            cfg.runtime.max_concurrent = 1;
+            cfg.runtime.run_timeout_secs = if matches!(stop, ToolStop::Deadline) { 3 } else { 0 };
+            cfg.runtime.session_command = vec![vec![
+                "bash".into(),
+                "-c".into(),
+                r#"while IFS= read -r line; do
+                  case "$line" in
+                    *'"get_state"'*) printf '%s\n' '{"type":"response","success":true}' ;;
+                    *'"prompt"'*)
+                      printf '%s\n' '{"type":"agent_start"}'
+                      echo kept > partial.txt
+                      if [ "$GENIE_TEST_CLEAR_TOOL_ENV" = "true" ]; then
+                        env -i /bin/sleep 120 &
+                      else
+                        sleep 120 &
+                      fi
+                      echo "$!" > inherited-stdout-tool.pid
+                      printf '%s\n' '{"type":"tool_execution_start","toolName":"bash","args":{"command":"sleep 120"}}'
+                      if [ "$GENIE_TEST_PARENT_EXIT" = "true" ]; then
+                        while [ ! -f exit-parent ]; do sleep 0.02; done
+                        exit 0
+                      fi
+                      ;;
+                  esac
+                done"#
+                    .into(),
+            ]];
+            cfg.runtime.command = vec![vec!["bash".into(), "-c".into(), r#""$GENIE_BIN" job output '{"ok":true}'"#.into()]];
+            cfg.runtime.env.insert("GENIE_BIN".into(), env!("CARGO_BIN_EXE_genie").into());
+            cfg.runtime.env.insert("GENIE_TEST_CLEAR_TOOL_ENV".into(), clear_env.to_string());
+            cfg.runtime.env.insert("GENIE_TEST_PARENT_EXIT".into(), matches!(stop, ToolStop::ParentExit).to_string());
+        },
+        clock.clone(),
+    )
+    .await;
+    let app = &l.app;
+    mail(app, "anna", "human", "bender", "Start an owned tool with inherited stdout", None);
+    genie::runtime::tick(app).await.unwrap();
+    until("scripted live harness ready", 5, || app.sessions.get(&member("bender")).filter(|s| s.live().startup.ready_ms.is_some())).await;
+    genie::runtime::tick(app).await.unwrap();
+    let work = l._dir.path().join("work");
+    let tool = until("stdout-inheriting tool and registered run", 5, || {
+        let pid = std::fs::read_to_string(work.join("inherited-stdout-tool.pid")).ok()?.trim().parse::<i64>().ok()?;
+        let turn = app.with_server(|db| db.turns("shop", Some("SHOP-1/bender"), 10)).unwrap();
+        turn.iter().any(|t| t.status == "running" && t.pid.is_some()).then_some(pid)
+    })
+    .await;
+    let session = app.sessions.get(&member("bender")).unwrap();
+    if clear_env {
+        until("tool exec cleared its environment", 5, || {
+            std::fs::read(format!("/proc/{tool}/environ")).is_ok_and(|env| env.is_empty()).then_some(())
+        })
+        .await;
+    }
+    let stat = std::fs::read_to_string(format!("/proc/{tool}/stat")).unwrap();
+    let group = stat.rsplit_once(") ").unwrap().1.split_whitespace().nth(2).unwrap().parse::<u32>().unwrap();
+    assert_eq!(group, session.pid, "the tool stays in the harness's owned group");
+    assert_eq!(app.slots.available_permits(), 0);
+    let next = app
+        .with_tracker("shop", |t| {
+            t.create(&Actor::new("anna", Role::Human), CreateInput { title: "Independent job".into(), quiet: true, ..Default::default() })
+        })
+        .unwrap();
+    let job = app
+        .with_server(|db| {
+            db.create_job(genie_core::work::NewJob {
+                project: "shop".into(),
+                task: Some(next.id.clone()),
+                role: "executor".into(),
+                goal: "Independent work after live stop".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    match stop {
+        ToolStop::Deadline => {
+            clock.advance(Duration::from_secs(3));
+            genie::runtime::tick(app).await.unwrap();
+        }
+        ToolStop::Owner => {
+            genie::tasks::pause_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1", "owner", "Stop inherited stdout")
+                .unwrap();
+        }
+        ToolStop::ParentExit => std::fs::write(work.join("exit-parent"), "exit").unwrap(),
+    }
+    until("parent and stdout-inheriting tool stopped and capacity released", 5, || {
+        (!process_running(i64::from(session.pid))
+            && !process_running(tool)
+            && app.sessions.get(&member("bender")).is_none()
+            && app.slots.available_permits() == 1)
+            .then_some(())
+    })
+    .await;
+    let pause = app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap();
+    match stop {
+        ToolStop::Owner => assert_eq!(pause.unwrap().reason, "owner"),
+        ToolStop::Deadline => assert_eq!(pause.unwrap().reason, "time"),
+        ToolStop::ParentExit => assert!(pause.is_none()),
+    }
+    assert_eq!(std::fs::read_to_string(work.join("partial.txt")).unwrap(), "kept\n");
+    genie::runtime::tick(app).await.unwrap();
+    until("independent job completes on the only run slot", 5, || {
+        app.with_server(|db| db.job(job.id)).unwrap().status.eq("succeeded").then_some(())
+    })
+    .await;
+}
+
+fn process_running(pid: i64) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| !s.split(") ").nth(1).is_some_and(|s| s.starts_with('Z')))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_deleted_job_does_not_abort_daily_budget_termination_of_other_work() {
+    daily_budget_termination(BudgetFault::DeletedTask).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_pause_write_does_not_abort_daily_budget_termination_of_other_work() {
+    daily_budget_termination(BudgetFault::ProjectWrite).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_budget_intent_write_preserves_the_project_pause_and_job_across_restart() {
+    daily_budget_termination(BudgetFault::ServerIntent).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn admission_refusal_preserves_the_last_job_attempt_during_a_pause_write_fault() {
+    budget_start_refusal(false, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn admission_refusal_uses_a_project_fallback_when_the_intent_write_fails() {
+    budget_start_refusal(true, false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn unpriced_startup_retains_a_retryable_budget_pause_despite_a_project_write_fault() {
+    budget_start_refusal(false, true).await;
+}
+
+async fn budget_start_refusal(server_fault: bool, unpriced: bool) {
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let l = live(pi.clone(), |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 1;
+        cfg.runtime.max_attempts = 1;
+        // No committed spend: the next full-context reservation cannot fit.
+        cfg.budgets.per_task = 0.05;
+        if !unpriced {
+            cfg.model_prices.insert(
+                "fake/executor".into(),
+                genie::config::ModelPrice { input: 1.0, output: 1.0, cache_read: Some(0.0), cache_write: Some(0.0) },
+            );
+        }
+        cfg.runtime.command = vec![
+            vec![pi.to_string_lossy().into_owned(), "--print".into(), "--model".into(), "{model}".into()],
+            vec![
+                "--no-session".into(),
+                "--no-skills".into(),
+                "--no-context-files".into(),
+                "--no-prompt-templates".into(),
+                "--no-mcp".into(),
+            ],
+            vec!["{message}".into()],
+        ];
+    })
+    .await;
+    let app = &l.app;
+    let job = app
+        .with_server(|db| {
+            db.create_job(genie_core::work::NewJob {
+                project: "shop".into(),
+                task: Some("SHOP-1".into()),
+                role: "executor".into(),
+                goal: "RUN: test -f retained-budget.txt && genie job output '{\"ok\":true}'".into(),
+                workspace: "none".into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    let workspace = app.data.join(format!("workspaces/shop/job-{}", job.id));
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(workspace.join("retained-budget.txt"), "kept\n").unwrap();
+    if server_fault {
+        app.with_server(|db| db.conn().execute_batch("CREATE TRIGGER fail_budget_pause BEFORE INSERT ON execution_pauses WHEN NEW.reason='budget' BEGIN SELECT RAISE(ABORT,'budget pause fault'); END;").map_err(Into::into)).unwrap();
+    } else {
+        app.with_tracker("shop", |t| {
+            t.conn()
+                .execute_batch(
+                    "CREATE TRIGGER fail_budget_pause BEFORE INSERT ON task_execution BEGIN SELECT RAISE(ABORT,'budget pause fault'); END;",
+                )
+                .map_err(Into::into)
+        })
+        .unwrap();
+    }
+    genie::runtime::tick(app).await.unwrap();
+    until("admission refusal retains the job, pause and capacity", 20, || {
+        let retained = app.with_server(|db| db.job(job.id)).unwrap();
+        let fenced = if server_fault {
+            app.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().is_some()
+        } else {
+            !app.with_server(|db| db.pending_execution_pauses(Some("shop"))).unwrap().is_empty()
+        };
+        (fenced && retained.status == "queued" && retained.attempts == 0 && app.slots.available_permits() == 1).then_some(())
+    })
+    .await;
+    assert_eq!(app.attempts.failures(&AgentKey::Job { project: "shop".into(), job: job.id }), 0);
+    assert!(
+        app.with_server(|db| db.turns("shop", None, 10))
+            .unwrap()
+            .iter()
+            .filter(|turn| turn.job == Some(job.id))
+            .all(|turn| turn.status == "interrupted")
+    );
+    assert!(l.log.lock().unwrap().is_empty(), "no provider request may precede the required human resume");
+    assert!(app.with_tracker("shop", |t| t.model_calls().list(None, 10)).unwrap().is_empty());
+    assert!(genie::budget::check(app, "shop", Some("SHOP-1")).unwrap().is_none(), "the committed budget is not exhausted");
+    assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
+    resume_budget_job_after_restart(&l, job.id, server_fault).await;
+}
+
+enum BudgetFault {
+    DeletedTask,
+    ProjectWrite,
+    ServerIntent,
+}
+
+async fn daily_budget_termination(fault: BudgetFault) {
+    let deleted = matches!(fault, BudgetFault::DeletedTask);
+    let server_fault = matches!(fault, BudgetFault::ServerIntent);
+    let Some(pi) = pi_bin() else {
+        assert!(std::env::var("CI").is_err(), "pi is required in CI");
+        return;
+    };
+    let l = live(pi.clone(), |cfg| {
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_concurrent = 3;
+        cfg.budgets.per_day = 1.0;
+        cfg.runtime.max_attempts = 1;
+        cfg.model_prices.insert(
+            "fake/executor".into(),
+            genie::config::ModelPrice { input: 1.0, output: 1.0, cache_read: Some(0.0), cache_write: Some(0.0) },
+        );
+        cfg.runtime.command = vec![
+            vec![pi.to_string_lossy().into_owned(), "--print".into(), "--model".into(), "{model}".into()],
+            vec![
+                "--no-session".into(),
+                "--no-skills".into(),
+                "--no-context-files".into(),
+                "--no-prompt-templates".into(),
+                "--no-mcp".into(),
+            ],
+            vec!["{message}".into()],
+        ];
+    })
+    .await;
+    let app = &l.app;
+    let task = app
+        .with_tracker("shop", |t| {
+            t.create(
+                &Actor::new("anna", Role::Human),
+                CreateInput { title: "Surviving budgeted job".into(), quiet: true, ..Default::default() },
+            )
+        })
+        .unwrap();
+    let jobs = app
+        .with_server(|db| {
+            ["SHOP-1", task.id.as_str()]
+                .into_iter()
+                .map(|task| {
+                    db.create_job(genie_core::work::NewJob {
+                        project: "shop".into(),
+                        task: Some(task.into()),
+                        role: "executor".into(),
+                        goal: "RUN: if [ -f retained-budget.txt ]; then genie job output '{\"ok\":true}'; else echo kept > retained-budget.txt; sleep 120; fi".into(),
+                        workspace: "none".into(),
+                        ..Default::default()
+                    })
+                })
+                .collect::<genie_core::Result<Vec<_>>>()
+        })
+        .unwrap();
+    genie::runtime::tick(app).await.unwrap();
+    let pids = until("both budgeted one-shot job processes", 20, || {
+        let turns = app.with_server(|db| db.turns("shop", None, 10)).unwrap();
+        assert!(turns.iter().all(|t| t.status != "failed"), "{turns:?}");
+        let pids: Vec<_> = turns.iter().filter(|t| t.job.is_some()).filter_map(|t| t.pid).collect();
+        (pids.len() == 2 && l.log.lock().unwrap().len() >= 2).then_some(pids)
+    })
+    .await;
+    until("both budgeted jobs retained progress", 10, || {
+        jobs.iter().all(|job| app.data.join(format!("workspaces/shop/job-{}/retained-budget.txt", job.id)).exists()).then_some(())
+    })
+    .await;
+    if deleted {
+        genie::tasks::delete(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1", false).unwrap();
+        let obsolete = app.with_server(|db| db.job(jobs[0].id)).unwrap();
+        assert_eq!(obsolete.status, "cancelled");
+        assert_eq!(obsolete.task.as_deref(), Some("SHOP-1"));
+    } else if server_fault {
+        app.with_server(|db| {
+            db.conn().execute_batch("CREATE TRIGGER fail_budget_pause BEFORE INSERT ON execution_pauses WHEN NEW.reason='budget' AND NEW.task='SHOP-1' BEGIN SELECT RAISE(ABORT,'budget pause fault'); END;").map_err(Into::into)
+        }).unwrap();
+    } else {
+        app.with_tracker("shop", |t| {
+            t.conn().execute_batch(
+                "CREATE TRIGGER fail_budget_pause BEFORE INSERT ON task_execution WHEN NEW.task='SHOP-1' BEGIN SELECT RAISE(ABORT,'budget pause fault'); END;",
+            ).map_err(Into::into)
+        })
+        .unwrap();
+    }
+    app.with_tracker("shop", |t| {
+        t.record_usage("legacy", Some(&task.id), "fake/executor", &genie_core::usage::Tokens { input: 1_000_000, ..Default::default() })
+    })
+    .unwrap();
+    let result = genie::budget::enforce(app, "shop", Some(&task.id));
+    if deleted {
+        result.unwrap();
+    } else {
+        assert!(result.unwrap_err().to_string().contains("budget pause fault"));
+    }
+    until("all one-shot workers stopped despite the obsolete or unwritable scope", 5, || {
+        (app.sched.snapshot(3, app.slots.available_permits()).running == 0 && pids.iter().all(|pid| !process_running(*pid))).then_some(())
+    })
+    .await;
+    assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "budget");
+    assert_eq!(app.slots.available_permits(), 3);
+    assert_eq!(app.with_server(|db| db.job(jobs[1].id)).unwrap().status, "queued");
+    let tokens: i64 = app
+        .with_server(|db| {
+            Ok(db
+                .conn()
+                .query_row("SELECT COUNT(*) FROM api_tokens WHERE project=?1 AND kind='agent' AND revoked=0", ["shop"], |r| r.get(0))?)
+        })
+        .unwrap();
+    assert_eq!(tokens, 0);
+    if !deleted {
+        let retained = app.with_server(|db| db.job(jobs[0].id)).unwrap();
+        assert_eq!((retained.status.as_str(), retained.attempts), ("queued", 0), "a budget stop cannot consume the last failure attempt");
+        let pending = app.with_server(|db| db.pending_execution_pauses(Some("shop"))).unwrap();
+        assert_eq!(pending.len(), if server_fault { 0 } else { 1 });
+        if let Some(pending) = pending.first() {
+            assert_eq!((pending.task.as_str(), pending.reason.as_str()), ("SHOP-1", "budget"));
+        }
+        assert!(genie::tasks::resume_execution(app, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
+
+        resume_budget_job_after_restart(&l, jobs[0].id, server_fault).await;
+    }
+}
+
+async fn resume_budget_job_after_restart(l: &Live, job: i64, server_fault: bool) {
+    let app = &l.app;
+    // A fresh runtime has no in-memory cancellation/fence state. Its raised
+    // allowance cannot implicitly resume the retained job through the fault.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = app.cfg.clone();
+    cfg.port = listener.local_addr().unwrap().port();
+    cfg.budgets.per_day = 10.0;
+    cfg.budgets.per_task = 10.0;
+    cfg.model_prices.insert(
+        "fake/executor".into(),
+        genie::config::ModelPrice { input: 1.0, output: 1.0, cache_read: Some(0.0), cache_write: Some(0.0) },
+    );
+    let recovered = App::open(l._dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+    let router = genie::http::router(recovered.clone());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>()).await.unwrap();
+    });
+    genie::runtime::recover(&recovered).unwrap();
+    genie::runtime::recover(&recovered).unwrap();
+    genie::runtime::tick(&recovered).await.unwrap();
+    if !server_fault {
+        assert!(genie::tasks::resume_execution(&recovered, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").is_err());
+    }
+    assert_eq!(recovered.with_server(|db| db.job(job)).unwrap().attempts, 0);
+    if server_fault {
+        recovered.with_server(|db| db.conn().execute_batch("DROP TRIGGER fail_budget_pause").map_err(Into::into)).unwrap();
+    } else {
+        recovered.with_tracker("shop", |t| t.conn().execute_batch("DROP TRIGGER fail_budget_pause").map_err(Into::into)).unwrap();
+    }
+    genie::runtime::tick(&recovered).await.unwrap();
+    let paused = recovered.with_tracker("shop", |t| t.execution().blocking("SHOP-1")).unwrap().unwrap();
+    assert_eq!(paused.reason, "budget");
+    assert!(recovered.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+    let interactions: Value =
+        reqwest::get(format!("http://127.0.0.1:{}/api/interactions?project=shop", recovered.cfg.port)).await.unwrap().json().await.unwrap();
+    assert!(
+        interactions.as_array().unwrap().iter().any(|item| item["kind"] == "execution_pause" && item["task"] == "SHOP-1"),
+        "{interactions}"
+    );
+    genie::tasks::resume_execution(&recovered, &genie::tasks::Caller::person("shop", "anna"), "SHOP-1").unwrap();
+    genie::runtime::tick(&recovered).await.unwrap();
+    until("retained last-attempt job completes after persistence recovery and explicit resume", 20, || {
+        recovered.with_server(|db| db.job(job)).unwrap().status.eq("succeeded").then_some(())
+    })
+    .await;
+    let finished = recovered.with_server(|db| db.job(job)).unwrap();
+    assert_eq!(finished.attempts, 1);
+    assert_eq!(finished.output, Some(json!({"ok":true})));
+    assert_eq!(std::fs::read_to_string(recovered.data.join(format!("workspaces/shop/job-{}/retained-budget.txt", job))).unwrap(), "kept\n");
+    server.abort();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

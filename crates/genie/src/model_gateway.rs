@@ -51,6 +51,7 @@ pub(crate) fn enabled(app: &App) -> bool {
     b.per_task > 0.0 || b.per_epic > 0.0 || b.per_day > 0.0
 }
 
+#[derive(Clone)]
 pub(crate) struct Prepared {
     pub path: PathBuf,
     pub source: PathBuf,
@@ -216,6 +217,9 @@ fn validate_principal(app: &App, project: &str, worker: &Worker, principal: &Pri
     if token_project != project || agent != worker.agent || worker.closed {
         return Err(AppError::Forbidden("the model enrollment does not belong to this worker".into()));
     }
+    if let Some(task) = &worker.task {
+        crate::tasks::ensure_running(app, project, task)?;
+    }
     if crate::conversations::request_id(name).is_some() {
         crate::conversations::validate_agent(app, project, name)?;
     }
@@ -316,7 +320,7 @@ async fn run(app: &Arc<App>, project: &str, id: &str, token: &str, body: Value, 
                 );
                 let (p, task, note2) = (project.to_string(), current_task, note.clone());
                 if let Some(task) = task {
-                    app.blocking(move |app| crate::tasks::pause_for_limit(app, &p, &task, "budget", &note2)).await?;
+                    app.blocking(move |app| crate::tasks::pause_for_budget(app, &p, &task, &note2)).await?;
                 }
                 return Err(ApiError::new(StatusCode::PAYMENT_REQUIRED, note));
             }
@@ -350,7 +354,7 @@ async fn run(app: &Arc<App>, project: &str, id: &str, token: &str, body: Value, 
                 let fault =
                     app.with_tracker(&p, |t| t.model_calls().profile_fault(&t.model_calls().worker(&receipt.worker)?.profile_fingerprint))?;
                 if let Some(note) = fault {
-                    crate::tasks::pause_for_limit(app, &p, task, "budget", &note)?;
+                    crate::tasks::pause_for_budget(app, &p, task, &note)?;
                 }
             }
             Ok(())

@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -38,8 +39,12 @@ pub(super) struct Profile {
     pub source: PathBuf,
 }
 
-pub(super) async fn resolve(app: &App, model: &str, keys: &Keys, dir: &Path) -> Result<Profile, String> {
-    let pi = crate::doctor::pi_program(&app.cfg).ok_or("monetary budgets require the supported Pi harness")?;
+pub(super) async fn resolve(app: &Arc<App>, model: &str, keys: &Keys, dir: &Path) -> Result<Profile, String> {
+    let pi = app
+        .blocking(|app| Ok(crate::doctor::pi_program(&app.cfg)))
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("monetary budgets require the supported Pi harness")?;
     let source = match keys {
         Keys::Person { pi_dir: Some(dir), .. } => dir.clone(),
         _ => crate::runtime::pi_dir(app),

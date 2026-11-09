@@ -91,6 +91,7 @@ pub(crate) fn response_task(app: &App, project: &str, response: &str) -> AppResu
                 | Command::Answer { task, .. },
             ) => Ok(Some(t.get(&task)?.id)),
             Some(Command::Decide { proposal, .. }) => Ok(Some(t.conversations().proposal(&proposal)?.task)),
+            Some(Command::Interactions | Command::Interaction(_) | Command::Respond { .. }) => Ok(None),
             None => {
                 let tasks = t.conversations().created_tasks(response)?;
                 Ok((tasks.len() == 1).then(|| tasks[0].clone()))
@@ -128,6 +129,12 @@ pub fn submit(app: &App, a: &Access, input: Submit) -> AppResult<Response> {
     let target_task = command
         .as_ref()
         .map(|command| {
+            if matches!(command, Command::Interactions) {
+                return Ok(None);
+            }
+            if let Command::Interaction(id) | Command::Respond { id, .. } = command {
+                return crate::interactions::show(app, a, id).map(|i| i.task);
+            }
             app.with_tracker(&a.project, |t| {
                 let task = match command {
                     Command::Decide { proposal, .. } => t.conversations().proposal(proposal)?.task,
@@ -136,11 +143,13 @@ pub fn submit(app: &App, a: &Access, input: Submit) -> AppResult<Response> {
                     | Command::Resume(task)
                     | Command::Status(task)
                     | Command::Continue(task) => task.clone(),
+                    Command::Interactions | Command::Interaction(_) | Command::Respond { .. } => unreachable!(),
                 };
-                Ok(t.get(&task)?.id)
+                Ok(Some(t.get(&task)?.id))
             })
         })
-        .transpose()?;
+        .transpose()?
+        .flatten();
     let direct = command.as_ref().is_some_and(|c| !matches!(c, Command::Continue(_)));
     let (r, claimed) = app.with_tracker(&a.project, |t| {
         t.tx(|| {
@@ -182,12 +191,35 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
         Command::Status(_) => {
             show(app, a, &r.conversation_id).map(|v| status_summary(&v, app.cfg.language.user.to_lowercase().starts_with("rus")))
         }
-        Command::Stop { task, note } => tasks::pause_execution(app, &a.caller(), &task, "owner", &note)
-            .map(|_| format!("Task {task}: execution stopped; progress retained. Use /resume {task} to continue.")),
+        Command::Stop { task, note } => {
+            let text = format!("Task {task}: execution stopped; progress retained. Use /resume {task} to continue.");
+            tasks::pause_execution_inner(
+                app,
+                &a.caller(),
+                &task,
+                "owner",
+                &note,
+                Some(tasks::ControlReply { response: &r.id, text: &text }),
+            )
+            .map(|_| text)
+        }
         Command::Resume(task) => {
-            tasks::resume_execution(app, &a.caller(), &task).map(|_| format!("Task {task}: execution resumed within current limits."))
+            let text = format!("Task {task}: execution resumed within current limits.");
+            tasks::resume_execution_with_reply(app, &a.caller(), &task, tasks::ControlReply { response: &r.id, text: &text }).map(|_| text)
         }
         Command::Continue(_) => unreachable!(),
+        Command::Interactions => crate::interactions::list(app, a, false).map(|items| {
+            if items.is_empty() {
+                "No pending interactions.".into()
+            } else {
+                items.iter().map(interaction_summary).collect::<Vec<_>>().join("\n\n")
+            }
+        }),
+        Command::Interaction(id) => crate::interactions::show(app, a, &id).map(|i| interaction_summary(&i)),
+        Command::Respond { id, version, action, text } => {
+            crate::interactions::respond(app, a, &id, crate::interactions::Response { version, action, text }, "openai")
+                .map(|i| interaction_summary(&i))
+        }
     };
     match result {
         Ok(text) => app.with_tracker(&a.project, |t| t.conversations().complete(&r.id, &text)),
@@ -196,6 +228,32 @@ fn execute_command(app: &App, a: &Access, r: &Response, command: Command) -> App
             Err(e)
         }
     }
+}
+
+fn interaction_summary(i: &crate::interactions::Interaction) -> String {
+    let mut text = format!("{} · {}\n{}", i.id, i.state, i.prompt);
+    if i.state == "open" {
+        text.push_str(&format!("\n\nVersion: {}", i.version));
+        for action in &i.actions {
+            text.push_str(&format!(
+                "\n/respond {} {} {action}{}",
+                i.id,
+                i.version,
+                if *action == crate::interactions::Action::Answer { " YOUR ANSWER" } else { "" }
+            ));
+        }
+    } else if let Some(resolution) = &i.resolution
+        && let Some(answer) = resolution["answer"].as_str()
+    {
+        text.push_str(&format!("\n\n→ {answer}"));
+    }
+    if !i.deliveries.is_empty() {
+        text.push_str(&format!(
+            "\nDelivery: {}",
+            i.deliveries.iter().map(|d| format!("{} {} ({})", d.channel, d.status, d.attempts)).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    text
 }
 
 fn public_proposals(t: &Tracker, conversation: &str) -> genie_core::Result<Vec<Value>> {
@@ -295,6 +353,9 @@ enum Command {
     Continue(String),
     Stop { task: String, note: String },
     Resume(String),
+    Interactions,
+    Interaction(String),
+    Respond { id: String, version: String, action: crate::interactions::Action, text: Option<String> },
 }
 impl Command {
     fn parse(text: &str) -> AppResult<Option<Self>> {
@@ -303,6 +364,31 @@ impl Command {
         let rest = words.next().unwrap_or_default().trim();
         let bad = || AppError::Bad(format!("invalid {command} command; use a task/proposal ID and the documented arguments"));
         Ok(match command {
+            "/interactions" => {
+                if !rest.is_empty() {
+                    return Err(bad());
+                }
+                Some(Self::Interactions)
+            }
+            "/interaction" => {
+                if rest.is_empty() || rest.split_whitespace().count() != 1 {
+                    return Err(bad());
+                }
+                Some(Self::Interaction(rest.into()))
+            }
+            "/respond" => {
+                let mut args = rest.splitn(4, char::is_whitespace);
+                let id = args.next().filter(|s| !s.is_empty()).ok_or_else(bad)?.to_string();
+                let version = args.next().filter(|s| !s.is_empty()).ok_or_else(bad)?.to_string();
+                let action = match args.next() {
+                    Some("answer") => crate::interactions::Action::Answer,
+                    Some("approve") => crate::interactions::Action::Approve,
+                    Some("reject") => crate::interactions::Action::Reject,
+                    Some("resume") => crate::interactions::Action::Resume,
+                    _ => return Err(bad()),
+                };
+                Some(Self::Respond { id, version, action, text: args.next().map(str::trim).map(str::to_string) })
+            }
             "/approve" | "/reject" => {
                 if rest.is_empty() || rest.split_whitespace().count() != 1 {
                     return Err(bad());
@@ -380,7 +466,7 @@ pub fn show(app: &App, a: &Access, id: &str) -> AppResult<Value> {
             .tasks(&c.id)?
             .iter()
             .map(|id| {
-                Ok(json!({"task":t.get(id)?,"clarifications":t.management().clarifications(id)?,"execution":t.execution().blocking(id)?}))
+                Ok(json!({"task":tasks::view(&t.get(id)?)?,"clarifications":t.management().clarifications(id)?,"execution":t.execution().blocking(id)?}))
             })
             .collect::<genie_core::Result<Vec<_>>>()?;
         let proposals = public_proposals(t, &c.id)?;
@@ -511,8 +597,7 @@ pub fn dispatch(app: &App, a: &Access, response: &str, task: &str) -> AppResult<
 }
 
 pub fn decide(app: &App, a: &Access, proposal: &str, approved: bool) -> AppResult<Proposal> {
-    person(a)?;
-    current_principal(app, &a.project, &person(a)?, true)?;
+    let a = &crate::interactions::access(app, a)?;
     let p = app.with_tracker(&a.project, |t| t.conversations().proposal(proposal))?;
     let wanted = if approved { ProposalStatus::Approved } else { ProposalStatus::Rejected };
     if p.status == wanted {
@@ -522,7 +607,18 @@ pub fn decide(app: &App, a: &Access, proposal: &str, approved: bool) -> AppResul
         return Err(AppError::Conflict("this proposal already has a different decision".into()));
     }
     if !approved {
-        return app.with_tracker(&a.project, |t| t.conversations().decide(proposal, false));
+        let result = app.with_tracker(&a.project, |t| {
+            t.tx(|| {
+                let current = t.conversations().proposal(proposal)?;
+                if current.status == ProposalStatus::Rejected {
+                    return Ok(current);
+                }
+                check_proposal(t, proposal, p.action)?;
+                t.conversations().decide_as(proposal, false, &a.actor)
+            })
+        })?;
+        tasks::changed(app);
+        return Ok(result);
     }
     match p.action {
         ProposalAction::Dispatch => {
@@ -540,11 +636,11 @@ pub fn answer(app: &App, a: &Access, conversation: &str, task: &str, question: i
     person(a)?;
     let c = resolve(app, &a.project, conversation)?;
     authorize(app, a, &c, true)?;
+    let a = &crate::interactions::access(app, a)?;
     app.with_tracker(&a.project, |t| {
         t.tx(|| {
             t.conversations().reference_task(&c.id, task)?;
-            // Stable provenance across channels/conversations for the same authenticated person.
-            t.management().answer(&a.actor, task, question, text, &format!("requester:{}", c.principal))
+            crate::interactions::answer_in(t, a, task, question, text, None)
         })
     })?;
     tasks::changed(app);
@@ -562,6 +658,19 @@ pub fn reference_task(app: &App, a: &Access, conversation: &str, task: &str) -> 
 
 pub fn queued(app: &App, project: &str) -> AppResult<Vec<String>> {
     app.with_tracker(project, |t| Ok(t.conversations().queued()?.into_iter().map(|r| r.id).collect()))
+}
+
+/// Deterministic human controls do not spend model capacity or require a running
+/// task. In particular, a recovered resume must reach its own budget/authority gates.
+pub(crate) fn is_direct_response(app: &App, project: &str, response: &str) -> AppResult<bool> {
+    let r = app.with_tracker(project, |t| t.conversations().get(response))?;
+    Ok(r.input
+        .last()
+        .filter(|m| m.role == "user")
+        .map(|m| Command::parse(&m.content))
+        .transpose()?
+        .flatten()
+        .is_some_and(|c| !matches!(c, Command::Continue(_))))
 }
 
 pub fn prepare_run(app: &App, project: &str, response: &str) -> AppResult<Option<RunContext>> {
@@ -612,7 +721,7 @@ pub fn prepare_run(app: &App, project: &str, response: &str) -> AppResult<Option
             .conversations()
             .tasks(&r.conversation_id)?
             .iter()
-            .map(|id| Ok(json!({"task":t.get(id)?,"questions":t.management().clarifications(id)?})))
+            .map(|id| Ok(json!({"task":tasks::view(&t.get(id)?)?,"questions":t.management().clarifications(id)?})))
             .collect::<genie_core::Result<Vec<_>>>()?;
         Ok(Some(json!({"conversation":r.conversation_id,"response":r.id,
             "history":recent_context(history.iter().rev().filter(|past| past.id != r.id && past.status == ResponseStatus::Completed)

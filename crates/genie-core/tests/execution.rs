@@ -41,3 +41,42 @@ fn version_eleven_upgrade_adds_execution_control_without_changing_tasks() {
     assert_eq!(t.get(&task.id).unwrap().status, task.status);
     t.execution().pause(&actor, &task.id, "owner", "New control").unwrap();
 }
+
+#[test]
+fn a_replayed_limit_receipt_never_pauses_a_later_execution_generation() {
+    let dir = tempfile::tempdir().unwrap();
+    let t = Tracker::init(dir.path().join(".genie"), None, None).unwrap();
+    let owner = Actor::new("owner", Role::Human);
+    let server = Actor::new("genie", Role::Orchestrator);
+    let task = t.create(&owner, CreateInput { title: "Timed work".into(), ..Default::default() }).unwrap();
+    let first = t.execution().pause_once(&server, &task.id, "time", "run limit reached", "turn-one").unwrap();
+    // Schema-14 receipts did not store the requested reason separately.
+    t.conn().execute("UPDATE events SET payload=json_remove(payload,'$.reason') WHERE type='task.execution_limit_applied'", []).unwrap();
+    t.execution().resume(&owner, &task.id).unwrap();
+    let resumed = t.execution().state(&task.id).unwrap();
+    let event = t.last_event_id().unwrap();
+    assert_eq!(t.execution().pause_once(&server, &task.id, "time", "run limit reached", "turn-one").unwrap(), first);
+    assert_eq!(t.execution().state(&task.id).unwrap(), resumed);
+    assert_eq!(t.last_event_id().unwrap(), event);
+    assert!(t.execution().pause_once(&server, &task.id, "time", "different limit", "turn-one").is_err());
+    let second = t.execution().pause_once(&server, &task.id, "time", "another run limit", "turn-two").unwrap();
+    assert!(second.generation > first.generation);
+    assert_eq!(t.execution().pause_once(&server, &task.id, "time", "run limit reached", "turn-one").unwrap(), first);
+    assert_eq!(t.execution().state(&task.id).unwrap(), Some(second));
+}
+
+#[test]
+fn a_budget_receipt_preserves_an_existing_owner_pause_and_later_resume() {
+    let dir = tempfile::tempdir().unwrap();
+    let t = Tracker::init(dir.path().join(".genie"), None, None).unwrap();
+    let owner = Actor::new("owner", Role::Human);
+    let server = Actor::new("genie", Role::Orchestrator);
+    let task = t.create(&owner, CreateInput { title: "Budgeted work".into(), ..Default::default() }).unwrap();
+    let original = t.execution().pause(&owner, &task.id, "owner", "Inspect retained work").unwrap();
+    assert_eq!(t.execution().pause_once(&server, &task.id, "budget", "Budget exhausted", "budget-one").unwrap(), original);
+    t.execution().resume(&owner, &task.id).unwrap();
+    let resumed = t.execution().state(&task.id).unwrap();
+    assert_eq!(t.execution().pause_once(&server, &task.id, "budget", "Budget exhausted", "budget-one").unwrap(), original);
+    assert_eq!(t.execution().state(&task.id).unwrap(), resumed);
+    assert!(t.execution().pause_once(&server, &task.id, "time", "Budget exhausted", "budget-one").is_err());
+}

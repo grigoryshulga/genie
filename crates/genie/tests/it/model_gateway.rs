@@ -390,6 +390,36 @@ async fn failed_upstream_attempts_keep_exposure_and_bound_violations_keep_the_ac
 }
 
 #[tokio::test]
+async fn gateway_budget_refusals_and_profile_overruns_recover_a_failed_pause_write() {
+    for mode in ["credit", "overrun"] {
+        let upstream = Provider::new(if mode == "overrun" { "overrun" } else { "normal" }, false).await;
+        let h = harness(if mode == "credit" { 0.00001 } else { 1.0 });
+        let (task, worker, token) = enroll(&h, &upstream, None);
+        h.app.with_tracker("shop", |t| {
+            t.conn().execute_batch("CREATE TRIGGER fail_gateway_pause BEFORE INSERT ON task_execution BEGIN SELECT RAISE(ABORT,'gateway pause fault'); END;").map_err(Into::into)
+        }).unwrap();
+        let (status, _, _) = call(&h.router, "POST", &endpoint(&worker)).bearer(&token).json(body(false)).send().await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{mode}");
+        assert_eq!(upstream.wire.hits.load(Ordering::SeqCst), usize::from(mode == "overrun"));
+        let pauses = h.app.with_server(|db| db.pending_execution_pauses(Some("shop"))).unwrap();
+        assert_eq!(pauses.len(), 1, "{mode}: retain admission and settlement pauses alike");
+        assert_eq!((&pauses[0].task, pauses[0].reason.as_str()), (&task, "budget"));
+        assert!(h.app.with_tracker("shop", |t| t.execution().blocking(&task)).unwrap().is_none());
+        assert!(genie::tasks::resume_execution(&h.app, &genie::tasks::Caller::person("shop", "owner"), &task).is_err());
+        h.app.with_tracker("shop", |t| t.conn().execute_batch("DROP TRIGGER fail_gateway_pause").map_err(Into::into)).unwrap();
+        genie::runtime::tick(&h.app).await.unwrap();
+        assert_eq!(h.app.with_tracker("shop", |t| t.execution().blocking(&task)).unwrap().unwrap().reason, "budget");
+        assert!(h.app.with_server(|db| db.pending_execution_pauses(None)).unwrap().is_empty());
+        if mode == "overrun" {
+            settled(&h, &task, CallState::Settled).await;
+            assert_eq!(h.app.with_tracker("shop", |t| t.model_calls().exposure(&Scope::Task(task.clone()))).unwrap().value(), 123_000);
+        } else {
+            assert!(h.app.with_tracker("shop", |t| t.model_calls().list(Some(&task), 10)).unwrap().is_empty());
+        }
+    }
+}
+
+#[tokio::test]
 async fn unknown_or_incomplete_tariffs_and_insufficient_credit_do_not_send_a_request() {
     for mode in ["unknown", "incomplete", "credit"] {
         let upstream = Provider::new("normal", false).await;

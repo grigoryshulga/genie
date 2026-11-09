@@ -15,6 +15,7 @@ pub mod env;
 pub mod error;
 pub mod events;
 pub mod execution;
+pub mod human_delivery;
 pub mod inbox;
 pub mod intelligence;
 pub mod management;

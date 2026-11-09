@@ -7,7 +7,10 @@ export interface StoredTask {
   id: string;
   title: string;
   status: string;
+  editVersion: string;
+  mergeStrategy: string;
   description?: string;
+  plan?: string;
   labels: string[];
   /** The epic the server saved; absent when the task stands on its own. */
   parent?: string;

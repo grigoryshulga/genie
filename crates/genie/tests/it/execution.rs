@@ -5,6 +5,73 @@ use genie_core::{Actor, CreateInput, Role};
 use serde_json::json;
 
 #[tokio::test]
+async fn restart_revokes_every_old_worker_before_a_paused_task_can_resume() {
+    let h = Harness::new();
+    h.project("shop");
+    let owner = h
+        .app
+        .with_server(|db| {
+            let user = db.create_user("owner", "", None, None, true)?;
+            db.create_user_token(user.id, "owner")
+        })
+        .unwrap();
+    let task = h
+        .app
+        .with_tracker("shop", |t| {
+            t.create(&Actor::new("owner", Role::Human), CreateInput { title: "Interrupted stop".into(), ..Default::default() })
+        })
+        .unwrap();
+    let stale = h
+        .app
+        .with_server(|db| {
+            ["task-manager:G-1", "old-member", "job-1", "not-yet-registered"]
+                .into_iter()
+                .map(|name| db.create_agent_token("shop", Role::Orchestrator, name, None, None, chrono::Duration::hours(1)))
+                .collect::<genie_core::Result<Vec<_>>>()
+        })
+        .unwrap();
+    // Crash exactly after the durable fence, before halt_scope can revoke tokens.
+    h.app.with_tracker("shop", |t| t.execution().pause(&Actor::new("owner", Role::Human), &task.id, "owner", "Keep progress")).unwrap();
+    assert!(stale.iter().all(|token| h.app.with_server(|db| db.resolve_token(token)).unwrap().is_some()));
+    genie::runtime::recover(&h.app).unwrap();
+    genie::tasks::resume_execution(&h.app, &genie::tasks::Caller::person("shop", "owner"), &task.id).unwrap();
+    for token in stale {
+        assert!(h.app.with_server(|db| db.resolve_token(&token)).unwrap().is_none());
+        assert_eq!(
+            call(&h.remote, "POST", &format!("/api/tasks/{}/comments?project=shop", task.id))
+                .bearer(&token)
+                .json(json!({"text":"stale mutation"}))
+                .send()
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/tasks/{}/comments?project=shop", task.id))
+            .bearer(&owner)
+            .json(json!({"text":"current owner"}))
+            .send()
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let fresh = h
+        .app
+        .with_server(|db| db.create_agent_token("shop", Role::Orchestrator, "replacement", None, None, chrono::Duration::hours(1)))
+        .unwrap();
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/tasks/{}/comments?project=shop", task.id))
+            .bearer(&fresh)
+            .json(json!({"text":"current worker"}))
+            .send()
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+}
+
+#[tokio::test]
 async fn only_people_with_write_access_control_execution_and_response_cancel_is_separate() {
     let h = Harness::new();
     h.project("shop");

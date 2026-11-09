@@ -1015,6 +1015,31 @@ impl Tracker {
         self.get(&r.id)
     }
 
+    /// A durable cross-database answer delivery can replay after the comment committed.
+    /// Its receipt and the comment share this transaction, including orchestrator mail.
+    pub fn comment_once(&self, key: &str, actor: &Actor, id: &str, text: &str) -> Result<Task> {
+        if key.is_empty() || actor.role != Role::Human {
+            return Err(GenieError::invalid("an answer receipt needs a key and a human actor"));
+        }
+        self.tx(|| {
+            let task = self.get(id)?;
+            let old: Option<(String, String, String)> = self.conn().query_row(
+                "SELECT subject, actor, payload FROM events WHERE type = 'human_interaction.recorded' AND json_extract(payload, '$.key') = ?1 LIMIT 1",
+                [key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            ).optional()?;
+            if let Some((subject, name, payload)) = old {
+                let payload: Value = serde_json::from_str(&payload)?;
+                if subject != task.id || name != actor.name || payload["text"] != text.trim() {
+                    return Err(GenieError::invalid("the answer receipt is already bound to another comment"));
+                }
+                return Ok(task);
+            }
+            let task = self.comment(actor, &task.id, text, CommentKind::Owner)?;
+            self.event("human_interaction.recorded", &task.id, actor, json!({"key":key,"text":text.trim()}))?;
+            Ok(task)
+        })
+    }
+
     pub fn check(&self, actor: &Actor, id: &str, criterion: i64, done: bool) -> Result<Task> {
         require_cap(actor, "check acceptance criteria", Capability::TaskCheck)?;
         let r = self.row(id)?;

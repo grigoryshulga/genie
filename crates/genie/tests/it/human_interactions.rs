@@ -1,0 +1,947 @@
+//! Human answers commit once across transports and survive the server/tracker commit gap.
+
+use crate::common::{Harness, call};
+use genie_core::inbox::NewQuestion;
+use genie_core::server_db::ProjectRole;
+use genie_core::{Actor, CreateInput, Role};
+use serde_json::{Value, json};
+
+fn person(h: &Harness, name: &str) -> (i64, String) {
+    h.app
+        .with_server(|db| {
+            let u = db.create_user(name, "", Some(&format!("{name}@example.test")), None, false)?;
+            db.set_membership("shop", u.id, ProjectRole::Member)?;
+            db.link_channel(u.id, "telegram", if name == "anna" { "42" } else { "43" })?;
+            Ok((u.id, db.create_user_token(u.id, "interactions")?))
+        })
+        .unwrap()
+}
+
+fn questionnaire(h: &Harness, user: i64, questions: &[NewQuestion]) -> (genie_core::inbox::Questionnaire, String) {
+    h.app.with_server(|db| db.create_questionnaire("shop", None, "analyst", user, "web", questions, None, None, None)).unwrap()
+}
+
+#[tokio::test]
+async fn personal_interaction_contract_is_versioned_and_opencode_commands_do_not_start_workers() {
+    let h = Harness::new();
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    let (_, other) = person(&h, "bob");
+    let (qn, link) = questionnaire(
+        &h,
+        uid,
+        &[NewQuestion { text: "Format?".into(), ..Default::default() }, NewQuestion { text: "Recipient?".into(), ..Default::default() }],
+    );
+    let path = format!("/api/interactions/shop:questionnaire:{}:1?project=shop", qn.id);
+    let (s, items, _) = call(&h.remote, "GET", "/api/interactions?project=shop").bearer(&token).send().await;
+    assert_eq!(s, 200, "{items}");
+    assert_eq!(items.as_array().unwrap().len(), 2);
+    assert_eq!(call(&h.remote, "GET", "/api/interactions?project=shop").bearer(&other).send().await.1, json!([]));
+    assert_eq!(call(&h.remote, "GET", &path).bearer(&other).send().await.0, 403);
+    let first = &items[0];
+    let respond = format!("/api/interactions/{}/respond?project=shop", first["id"].as_str().unwrap());
+    assert_eq!(
+        call(&h.remote, "POST", &respond).bearer(&token).json(json!({"version":"old","action":"answer","text":"CSV"})).send().await.0,
+        409
+    );
+    let batch = format!("/api/questions/{}/answer", qn.id);
+    assert_eq!(call(&h.remote, "POST", &batch).bearer(&token).json(json!({"answers":{"1":"CSV","99":"bad"}})).send().await.0, 422);
+    assert!(h.app.with_server(|db| db.questionnaire(qn.id)).unwrap().questions[0].answer.is_none());
+    let body = json!({"version":first["version"],"action":"answer","text":"CSV"});
+    assert_eq!(call(&h.remote, "POST", &respond).bearer(&token).json(body.clone()).send().await.0, 200);
+    assert_eq!(call(&h.remote, "POST", &respond).bearer(&token).json(body).send().await.0, 200);
+    let (_,mcp,_)=call(&h.remote,"POST","/mcp").bearer(&token).no_csrf().json(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"genie_interaction","arguments":{"action":"respond","decision":"answer","id":first["id"],"version":first["version"],"text":"CSV","project":"shop"}}})).send().await;
+    assert_ne!(mcp["result"]["isError"], true, "{mcp}");
+    assert!(mcp["result"]["content"][0]["text"].as_str().unwrap().contains("CSV"), "{mcp}");
+    assert_eq!(call(&h.remote, "POST", &batch).bearer(&token).json(json!({"answers":{"1":"XLSX","2":"Bob"}})).send().await.0, 422);
+    assert!(h.app.with_server(|db| db.questionnaire(qn.id)).unwrap().questions[1].answer.is_none());
+    let second = &items[1];
+    let input = format!("/respond {} {} answer Accounting", second["id"].as_str().unwrap(), second["version"].as_str().unwrap());
+    let (s, v, _) = call(&h.remote, "POST", "/openai/projects/shop/v1/responses")
+        .bearer(&token)
+        .json(json!({"model":"genie","input":input}))
+        .send()
+        .await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["status"], "completed");
+    assert!(v.to_string().contains("Accounting"));
+    let (_, v, _) = call(&h.remote, "POST", "/openai/projects/shop/v1/chat/completions")
+        .bearer(&token)
+        .json(json!({"model":"genie","messages":[{"role":"user","content":"/interactions"}]}))
+        .send()
+        .await;
+    assert!(v["choices"][0]["message"]["content"].as_str().unwrap().contains("No pending interactions"));
+    assert!(h.app.with_server(|db| db.turns("shop", None, 10)).unwrap().is_empty());
+    h.app.with_server(|db| db.remove_membership("shop", uid)).unwrap();
+    assert_eq!(
+        call(&h.remote, "GET", &format!("/api/answer/{link}")).send().await.0,
+        403,
+        "old links do not bypass revoked project access"
+    );
+}
+
+#[tokio::test]
+async fn old_pause_reference_cannot_resume_a_later_pause() {
+    let h = Harness::new();
+    h.project("shop");
+    let (_, token) = person(&h, "anna");
+    let task = h
+        .app
+        .with_tracker("shop", |t| t.create(&Actor::new("anna", Role::Human), CreateInput { title: "Export".into(), ..Default::default() }))
+        .unwrap();
+    let stop = format!("/api/tasks/{}/stop?project=shop", task.id);
+    assert_eq!(call(&h.remote, "POST", &stop).bearer(&token).json(json!({"note":"hold"})).send().await.0, 200);
+    let (_, items, _) = call(&h.remote, "GET", "/api/interactions?project=shop").bearer(&token).send().await;
+    let pause = items.as_array().unwrap().iter().find(|i| i["kind"] == "execution_pause").unwrap();
+    let respond = format!("/api/interactions/{}/respond?project=shop", pause["id"].as_str().unwrap());
+    let body = json!({"version":pause["version"],"action":"resume"});
+    assert_eq!(call(&h.remote, "POST", &respond).bearer(&token).json(body.clone()).send().await.0, 200);
+    assert_eq!(call(&h.remote, "POST", &respond).bearer(&token).json(body.clone()).send().await.0, 200);
+    assert_eq!(call(&h.remote, "POST", &stop).bearer(&token).json(json!({"note":"new hold"})).send().await.0, 200);
+    assert_eq!(call(&h.remote, "POST", &respond).bearer(&token).json(body).send().await.0, 422);
+    assert!(h.app.with_tracker("shop", |t| t.execution().state(&task.id)).unwrap().unwrap().paused);
+}
+
+#[derive(Default)]
+struct Telegram {
+    fail: std::sync::atomic::AtomicBool,
+    block: std::sync::atomic::AtomicBool,
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+    requests: std::sync::Mutex<Vec<(String, Value)>>,
+}
+async fn telegram() -> (String, std::sync::Arc<Telegram>) {
+    use axum::{
+        Json, Router,
+        extract::{Path, State},
+        routing::post,
+    };
+    async fn handler(
+        State(state): State<std::sync::Arc<Telegram>>,
+        Path((_, method)): Path<(String, String)>,
+        Json(body): Json<Value>,
+    ) -> Json<Value> {
+        state.requests.lock().unwrap().push((method.clone(), body));
+        if method == "sendMessage" {
+            if state.block.load(std::sync::atomic::Ordering::SeqCst) {
+                state.entered.notify_one();
+                state.release.notified().await;
+            }
+            if state.fail.load(std::sync::atomic::Ordering::SeqCst) {
+                return Json(json!({"ok":false,"description":"simulated unavailable recipient"}));
+            }
+        }
+        Json(json!({"ok":true,"result":{"message_id":501}}))
+    }
+    let state = std::sync::Arc::new(Telegram::default());
+    let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", socket.local_addr().unwrap());
+    let router = Router::new().route("/{bot}/{method}", post(handler)).with_state(state.clone());
+    tokio::spawn(async move {
+        axum::serve(socket, router).await.unwrap();
+    });
+    (url, state)
+}
+fn ask(h: &Harness, user: i64) -> i64 {
+    genie::questions::ask(
+        &h.app,
+        genie::questions::Ask {
+            project: "shop",
+            task: None,
+            asked_by: "analyst",
+            recipient: user,
+            questions: vec![NewQuestion { text: "Format?".into(), options: vec!["CSV".into(), "XLSX".into()], ..Default::default() }],
+            run_step: None,
+            remind_after: None,
+            timeout: None,
+        },
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn fallback_requires_explicit_preference_and_rechecks_recipient_rights() {
+    let (url, tg) = telegram().await;
+    tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let (port, mail) = super::channels::fake_smtp().await;
+    let h = Harness::with_config(|cfg| {
+        cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+        cfg.smtp = Some(genie::config::SmtpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            from: "genie@example.test".into(),
+            security: "none".into(),
+            ..Default::default()
+        });
+    });
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    let first = ask(&h, uid);
+    genie::channels::dispatch(&h.app).await;
+    assert!(mail.lock().unwrap().is_empty());
+    assert_eq!(h.app.with_server(|db| db.questionnaire(first)).unwrap().status, "open");
+    let prefs = json!({"policy":{"order":["telegram","email"],"fallbackAfterAttempts":1}});
+    assert_eq!(call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(prefs).send().await.0, 200);
+    assert_eq!(
+        call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(json!({})).send().await.0,
+        400,
+        "reset must be explicit, not a missing field"
+    );
+    let second = ask(&h, uid);
+    genie::channels::dispatch(&h.app).await;
+    genie::channels::dispatch(&h.app).await;
+    assert_eq!(mail.lock().unwrap().len(), 1, "one configured fallback goes to the same person");
+    assert_eq!(h.app.with_server(|db| db.questionnaire(second)).unwrap().status, "open", "delivery is not an answer or approval");
+    ask(&h, uid);
+    genie::channels::dispatch(&h.app).await;
+    h.app.with_server(|db| db.remove_membership("shop", uid)).unwrap();
+    genie::channels::dispatch(&h.app).await;
+    assert_eq!(mail.lock().unwrap().len(), 1, "queued fallback does not survive revoked authority");
+    assert_eq!(
+        call(&h.remote, "PUT", "/api/me/delivery")
+            .bearer(&token)
+            .json(json!({"policy":{"order":["email","email"],"fallbackAfterAttempts":1}}))
+            .send()
+            .await
+            .0,
+        422
+    );
+}
+
+#[tokio::test]
+async fn resetting_preferences_cancels_a_queued_fallback_after_restart_and_keeps_legacy_routing() {
+    let (url, tg) = telegram().await;
+    tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let (port, mail) = super::channels::fake_smtp().await;
+    let h = Harness::with_config(|cfg| {
+        cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+        cfg.smtp = Some(genie::config::SmtpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            from: "genie@example.test".into(),
+            security: "none".into(),
+            ..Default::default()
+        });
+    });
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    assert_eq!(
+        call(&h.remote, "PUT", "/api/me/delivery")
+            .bearer(&token)
+            .json(json!({
+                "policy":{"order":["telegram","email"],"fallbackAfterAttempts":1}
+            }))
+            .send()
+            .await
+            .0,
+        200
+    );
+    let qn = ask(&h, uid);
+    genie::channels::dispatch(&h.app).await;
+    let email = h
+        .app
+        .with_server(|db| {
+            let items = db.due_outbox(50)?;
+            Ok(items.into_iter().find(|item| item.channel == "email").unwrap())
+        })
+        .unwrap();
+    assert!(mail.lock().unwrap().is_empty(), "the fallback is queued, not yet dispatched");
+    assert_eq!(call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(json!({"policy":null})).send().await.0, 200);
+
+    let recovered = genie::state::App::open(h.dir.path(), h.app.cfg.clone(), std::path::PathBuf::from("/nonexistent")).unwrap();
+    assert!(recovered.with_server(|db| db.delivery_policy(uid)).unwrap().is_none());
+    genie::channels::dispatch(&recovered).await;
+    assert!(mail.lock().unwrap().is_empty(), "reset withdraws email fallback while Telegram remains linked");
+    assert_eq!(recovered.with_server(|db| db.outbox_item(email.id)).unwrap().status, "cancelled");
+    assert_eq!(recovered.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+    assert_eq!(tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count(), 1);
+
+    // Reset restores Telegram-otherwise-email rather than disabling delivery.
+    h.app.with_server(|db| db.unlink_channel(uid, "telegram")).unwrap();
+    let legacy = ask(&h, uid);
+    genie::channels::dispatch(&recovered).await;
+    assert_eq!(mail.lock().unwrap().len(), 1, "email is still the default when Telegram is disconnected");
+    assert_eq!(recovered.with_server(|db| db.questionnaire(legacy)).unwrap().status, "open");
+
+    // A message's original channel restriction remains part of its authority.
+    h.app.with_server(|db| db.link_channel(uid, "telegram", "42")).unwrap();
+    genie::notify::send(
+        &h.app,
+        &[uid],
+        &genie::notify::Message {
+            kind: "test".into(),
+            title: "Explicit email".into(),
+            body: "Only this allowed channel".into(),
+            project: Some("shop".into()),
+            channels: vec!["email".into()],
+            ..Default::default()
+        },
+        Some("email-only-after-reset"),
+    )
+    .unwrap();
+    genie::channels::dispatch(&recovered).await;
+    assert_eq!(mail.lock().unwrap().len(), 2, "explicit email-only messages retain their original restriction");
+    assert_eq!(tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count(), 1);
+}
+
+#[tokio::test]
+async fn raising_the_fallback_threshold_before_dispatch_applies_to_queued_messages() {
+    changed_fallback_threshold(ThresholdChange::RaiseBeforeSend).await;
+}
+
+#[tokio::test]
+async fn lowering_the_fallback_threshold_before_dispatch_applies_to_queued_messages() {
+    changed_fallback_threshold(ThresholdChange::LowerBeforeSend).await;
+}
+
+#[tokio::test]
+async fn lowering_the_fallback_threshold_reuses_completed_attempts_without_an_extra_send() {
+    changed_fallback_threshold(ThresholdChange::LowerAfterFailure).await;
+}
+
+#[tokio::test]
+async fn raising_the_fallback_threshold_defers_an_already_queued_copy_after_restart() {
+    changed_fallback_threshold(ThresholdChange::RaiseQueuedCopy).await;
+}
+
+#[tokio::test]
+async fn a_recovered_preferred_delivery_cancels_its_deferred_fallback_copy() {
+    changed_fallback_threshold(ThresholdChange::PreferredRecovers).await;
+}
+
+#[derive(Clone, Copy)]
+enum ThresholdChange {
+    RaiseBeforeSend,
+    LowerBeforeSend,
+    LowerAfterFailure,
+    RaiseQueuedCopy,
+    PreferredRecovers,
+}
+
+async fn changed_fallback_threshold(change: ThresholdChange) {
+    let (url, tg) = telegram().await;
+    tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let (port, mail) = super::channels::fake_smtp().await;
+    let h = Harness::with_config(|cfg| {
+        cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+        cfg.smtp = Some(genie::config::SmtpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            from: "genie@example.test".into(),
+            security: "none".into(),
+            ..Default::default()
+        });
+    });
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    let lowering = matches!(change, ThresholdChange::LowerBeforeSend | ThresholdChange::LowerAfterFailure);
+    let preferences = |attempts| json!({"policy":{"order":["telegram","email"],"fallbackAfterAttempts":attempts}});
+    assert_eq!(
+        call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(preferences(if lowering { 8 } else { 1 })).send().await.0,
+        200
+    );
+    let qn = ask(&h, uid);
+    let prior = i64::from(matches!(
+        change,
+        ThresholdChange::LowerAfterFailure | ThresholdChange::RaiseQueuedCopy | ThresholdChange::PreferredRecovers
+    ));
+    if prior > 0 {
+        genie::channels::dispatch(&h.app).await;
+    }
+    let after = if lowering { 1 } else { 8 };
+    assert_eq!(call(&h.remote, "PUT", "/api/me/delivery").bearer(&token).json(preferences(after)).send().await.0, 200);
+    let recovered = genie::state::App::open(h.dir.path(), h.app.cfg.clone(), std::path::PathBuf::from("/nonexistent")).unwrap();
+    assert_eq!(recovered.with_server(|db| db.delivery_policy(uid)).unwrap().unwrap().fallback_after_attempts, after);
+    let sends = || tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count() as i64;
+    let retry_now = || {
+        recovered
+            .with_server(|db| {
+                db.conn().execute("UPDATE outbox SET next_at='2000-01-01' WHERE status='pending'", [])?;
+                Ok(())
+            })
+            .unwrap()
+    };
+    if matches!(change, ThresholdChange::RaiseQueuedCopy | ThresholdChange::PreferredRecovers) {
+        assert!(mail.lock().unwrap().is_empty());
+        genie::channels::dispatch(&recovered).await;
+        assert!(mail.lock().unwrap().is_empty(), "the already-queued email must wait for the raised threshold");
+        let preferred = recovered
+            .with_server(|db| {
+                Ok(db.conn().query_row("SELECT status,attempts FROM outbox WHERE channel='telegram'", [], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                })?)
+            })
+            .unwrap();
+        assert_eq!(preferred, ("pending".into(), 1), "continue the original attempts instead of resetting its retry accounting");
+    }
+    if matches!(change, ThresholdChange::PreferredRecovers) {
+        tg.fail.store(false, std::sync::atomic::Ordering::SeqCst);
+        retry_now();
+        genie::channels::dispatch(&recovered).await;
+        genie::channels::dispatch(&recovered).await;
+        assert_eq!(sends(), 2);
+        assert!(mail.lock().unwrap().is_empty(), "a successful preferred delivery cancels the waiting fallback");
+        assert_eq!(
+            recovered
+                .with_server(|db| Ok(db
+                    .conn()
+                    .query_row("SELECT status FROM outbox WHERE channel='email'", [], |r| r.get::<_, String>(0))?))
+                .unwrap(),
+            "cancelled"
+        );
+    } else {
+        for attempt in prior + 1..=after {
+            retry_now();
+            genie::channels::dispatch(&recovered).await;
+            assert_eq!(sends(), attempt);
+            if attempt < after {
+                assert!(mail.lock().unwrap().is_empty());
+                if prior == 0 {
+                    assert_eq!(
+                        recovered
+                            .with_server(|db| Ok(db
+                                .conn()
+                                .query_row("SELECT COUNT(*) FROM outbox WHERE channel='email'", [], |r| r.get::<_, i64>(0))?))
+                            .unwrap(),
+                        0
+                    );
+                }
+            }
+        }
+        if prior == after {
+            retry_now();
+            genie::channels::dispatch(&recovered).await;
+        }
+        genie::channels::dispatch(&recovered).await;
+        assert_eq!(sends(), after, "lowering the threshold must not require another failed network attempt");
+        assert_eq!(mail.lock().unwrap().len(), 1, "deliver one fallback at the current threshold");
+    }
+    assert_eq!(recovered.with_server(|db| db.questionnaire(qn)).unwrap().status, "open", "delivery never supplies an answer or approval");
+}
+
+struct DeliveryLab {
+    h: Harness,
+    tg: std::sync::Arc<Telegram>,
+    mail: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    user: i64,
+    token: String,
+}
+
+impl DeliveryLab {
+    async fn new() -> Self {
+        let (url, tg) = telegram().await;
+        let (port, mail) = super::channels::fake_smtp().await;
+        let h = Harness::with_config(|cfg| {
+            cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+            cfg.smtp = Some(genie::config::SmtpConfig {
+                host: "127.0.0.1".into(),
+                port,
+                from: "genie@example.test".into(),
+                security: "none".into(),
+                ..Default::default()
+            });
+        });
+        h.project("shop");
+        let (user, token) = person(&h, "anna");
+        Self { h, tg, mail, user, token }
+    }
+
+    async fn policy(&self, order: &[&str], attempts: i64) {
+        assert_eq!(
+            call(&self.h.remote, "PUT", "/api/me/delivery")
+                .bearer(&self.token)
+                .json(json!({"policy":{"order":order,"fallbackAfterAttempts":attempts}}))
+                .send()
+                .await
+                .0,
+            200
+        );
+    }
+
+    fn reopen(&self) -> std::sync::Arc<genie::state::App> {
+        genie::state::App::open(self.h.dir.path(), self.h.app.cfg.clone(), std::path::PathBuf::from("/nonexistent")).unwrap()
+    }
+
+    fn sends(&self) -> usize {
+        self.tg.requests.lock().unwrap().iter().filter(|(method, _)| method == "sendMessage").count()
+    }
+
+    fn retry_now(&self) {
+        self.h
+            .app
+            .with_server(|db| {
+                db.conn().execute("UPDATE outbox SET next_at='2000-01-01' WHERE status='pending'", [])?;
+                Ok(())
+            })
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn reordered_priority_selects_email_before_the_first_send_after_restart() {
+    priority_before_send(false).await;
+}
+
+#[tokio::test]
+async fn reordered_priority_selects_telegram_before_the_first_send_after_restart() {
+    priority_before_send(true).await;
+}
+
+async fn priority_before_send(telegram_first: bool) {
+    let lab = DeliveryLab::new().await;
+    let before = if telegram_first { ["email", "telegram"] } else { ["telegram", "email"] };
+    let after = [before[1], before[0]];
+    lab.policy(&before, 8).await;
+    let qn = ask(&lab.h, lab.user);
+    lab.policy(&after, 8).await;
+    let app = lab.reopen();
+    for _ in 0..3 {
+        genie::channels::dispatch(&app).await;
+    }
+    assert_eq!(lab.sends(), usize::from(telegram_first));
+    assert_eq!(lab.mail.lock().unwrap().len(), usize::from(!telegram_first));
+    assert_eq!(app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_after_failure_preserves_attempts_and_cannot_repeat_a_known_delivery() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 8).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let qn = ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    assert_eq!(lab.sends(), 1);
+    lab.policy(&["email", "telegram"], 8).await;
+    let app = lab.reopen();
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    genie::channels::dispatch(&app).await;
+    assert_eq!(lab.sends(), 1, "do not finish the obsolete eight-attempt Telegram order");
+    assert_eq!(lab.mail.lock().unwrap().len(), 1);
+    lab.policy(&["telegram", "email"], 8).await;
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    let tg = app
+        .with_server(|db| {
+            Ok(db.conn().query_row("SELECT status,attempts FROM outbox WHERE channel='telegram'", [], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })?)
+        })
+        .unwrap();
+    assert_eq!(tg, ("cancelled".into(), 1), "a successful peer remains authoritative even after priorities reverse again");
+    assert_eq!(lab.sends(), 1);
+    assert_eq!(app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_is_rechecked_when_an_in_flight_send_fails() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 8).await;
+    lab.tg.block.store(true, std::sync::atomic::Ordering::SeqCst);
+    let qn = ask(&lab.h, lab.user);
+    let app = lab.h.app.clone();
+    let sending = tokio::spawn(async move { genie::channels::dispatch(&app).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), lab.tg.entered.notified()).await.unwrap();
+    lab.policy(&["email", "telegram"], 8).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    lab.tg.release.notify_one();
+    sending.await.unwrap();
+    genie::channels::dispatch(&lab.reopen()).await;
+    assert_eq!(lab.sends(), 1);
+    assert_eq!(lab.mail.lock().unwrap().len(), 1, "use the new priority in the failed-attempt transaction");
+    assert_eq!(lab.h.app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_makes_an_already_queued_fallback_the_primary() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.policy(&["email", "telegram"], 8).await;
+    genie::channels::dispatch(&lab.reopen()).await;
+    assert_eq!(lab.sends(), 1, "do not revive the former primary under its old priority");
+    assert_eq!(lab.mail.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn reordered_priority_cannot_expand_the_original_channel_restriction() {
+    for allowed in ["telegram", "email"] {
+        let lab = DeliveryLab::new().await;
+        let other = if allowed == "telegram" { "email" } else { "telegram" };
+        lab.policy(&[allowed, other], 8).await;
+        genie::notify::send(
+            &lab.h.app,
+            &[lab.user],
+            &genie::notify::Message {
+                kind: "test".into(),
+                title: "Restricted delivery".into(),
+                body: "Keep the sender's channel restriction".into(),
+                project: Some("shop".into()),
+                channels: vec![allowed.into()],
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+        lab.policy(&[other, allowed], 8).await;
+        let app = lab.reopen();
+        for _ in 0..3 {
+            genie::channels::dispatch(&app).await;
+        }
+        assert_eq!(lab.sends(), usize::from(allowed == "telegram"));
+        assert_eq!(lab.mail.lock().unwrap().len(), usize::from(allowed == "email"));
+    }
+}
+
+#[tokio::test]
+async fn reordered_priority_waits_for_a_peer_send_without_blocking_another_person() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.policy(&["telegram", "email"], 8).await;
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.retry_now();
+    lab.tg.fail.store(false, std::sync::atomic::Ordering::SeqCst);
+    lab.tg.block.store(true, std::sync::atomic::Ordering::SeqCst);
+    let app = lab.h.app.clone();
+    let sending = tokio::spawn(async move { genie::channels::dispatch(&app).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), lab.tg.entered.notified()).await.unwrap();
+    lab.policy(&["email", "telegram"], 8).await;
+    let (bob, token) = person(&lab.h, "bob");
+    assert_eq!(
+        call(&lab.h.remote, "PUT", "/api/me/delivery")
+            .bearer(&token)
+            .json(json!({"policy":{"order":["email"],"fallbackAfterAttempts":8}}))
+            .send()
+            .await
+            .0,
+        200
+    );
+    ask(&lab.h, bob);
+    let recovered = lab.reopen();
+    genie::channels::dispatch(&recovered).await;
+    let messages = lab.mail.lock().unwrap().clone();
+    assert_eq!(messages.len(), 1, "a peer lease blocks only its own delivery group");
+    assert!(messages[0].contains("bob@example.test"));
+    lab.tg.release.notify_one();
+    sending.await.unwrap();
+    lab.retry_now();
+    genie::channels::dispatch(&recovered).await;
+    assert_eq!(lab.sends(), 2);
+    assert_eq!(lab.mail.lock().unwrap().len(), 1, "no email duplicate goes to Anna while her Telegram send is accepted");
+}
+
+#[tokio::test]
+async fn active_peer_leases_cannot_fill_the_dispatch_batch_or_force_a_busy_wake() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    for _ in 0..50 {
+        ask(&lab.h, lab.user);
+    }
+    // Each question also has a web copy: two batches drain the original 100
+    // rows before any subsequently enqueued email copy becomes the next batch.
+    genie::channels::dispatch(&lab.h.app).await;
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.policy(&["telegram", "email"], 8).await;
+    genie::channels::dispatch(&lab.h.app).await;
+    lab.retry_now();
+    lab.h
+        .app
+        .with_server(|db| {
+            let mut stmt = db.conn().prepare("SELECT id FROM outbox WHERE channel='telegram' AND status='pending'")?;
+            let ids = stmt.query_map([], |r| r.get::<_, i64>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            assert_eq!(ids.len(), 50);
+            for id in ids {
+                assert!(db.claim_outbox(id)?);
+            }
+            Ok(())
+        })
+        .unwrap();
+    let (bob, token) = person(&lab.h, "bob");
+    assert_eq!(
+        call(&lab.h.remote, "PUT", "/api/me/delivery")
+            .bearer(&token)
+            .json(json!({"policy":{"order":["email"],"fallbackAfterAttempts":8}}))
+            .send()
+            .await
+            .0,
+        200
+    );
+    ask(&lab.h, bob);
+    let app = lab.reopen();
+    genie::channels::dispatch(&app).await;
+    let messages = lab.mail.lock().unwrap().clone();
+    assert_eq!(messages.len(), 1, "fifty blocked copies must not hide another person's runnable message");
+    assert!(messages[0].contains("bob@example.test"));
+    let next = app.with_server(|db| db.next_outbox_at()).unwrap().unwrap();
+    assert!(next > genie_core::db::now(), "with only blocked copies left, wait for the peer lease instead of spinning");
+}
+
+#[tokio::test]
+async fn reordered_priority_can_restore_a_policy_cancelled_copy_of_still_pending_work() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 1).await;
+    lab.tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let qn = ask(&lab.h, lab.user);
+    genie::channels::dispatch(&lab.h.app).await;
+    assert_eq!(call(&lab.h.remote, "PUT", "/api/me/delivery").bearer(&lab.token).json(json!({"policy":null})).send().await.0, 200);
+    genie::channels::dispatch(&lab.h.app).await;
+    assert_eq!(
+        lab.h
+            .app
+            .with_server(|db| Ok(db.conn().query_row("SELECT status FROM outbox WHERE channel='email'", [], |r| r.get::<_, String>(0))?))
+            .unwrap(),
+        "cancelled"
+    );
+    lab.policy(&["email", "telegram"], 8).await;
+    let app = lab.reopen();
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    lab.retry_now();
+    genie::channels::dispatch(&app).await;
+    assert_eq!(lab.sends(), 1, "the now-preferred email must not remain disabled by an obsolete policy cancellation");
+    assert_eq!(lab.mail.lock().unwrap().len(), 1);
+    assert_eq!(app.with_server(|db| db.questionnaire(qn)).unwrap().status, "open");
+}
+
+#[tokio::test]
+async fn reordered_priority_does_not_starve_new_copies_behind_a_full_old_batch() {
+    let lab = DeliveryLab::new().await;
+    lab.policy(&["telegram", "email"], 8).await;
+    for _ in 0..60 {
+        ask(&lab.h, lab.user);
+    }
+    lab.policy(&["email", "telegram"], 8).await;
+    let app = lab.reopen();
+    for _ in 0..8 {
+        genie::channels::dispatch(&app).await;
+    }
+    assert_eq!(lab.sends(), 0);
+    assert_eq!(lab.mail.lock().unwrap().len(), 60, "newly selected channels must progress through the bounded dispatcher batch");
+}
+
+#[tokio::test]
+async fn undeliverable_interaction_stays_open_and_failure_is_visible_only_to_its_person() {
+    let (url, tg) = telegram().await;
+    tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let h = Harness::with_config(|cfg| {
+        cfg.telegram = Some(genie::config::TelegramConfig { token: "DUMMY-PRIVATE-TOKEN".into(), api_base: Some(url) })
+    });
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    let qn = ask(&h, uid);
+    for _ in 0..genie_core::inbox::MAX_DELIVERY_ATTEMPTS {
+        h.app
+            .with_server(|db| {
+                db.conn().execute("UPDATE outbox SET next_at='2000-01-01' WHERE channel='telegram' AND status='pending'", [])?;
+                Ok(())
+            })
+            .unwrap();
+        genie::channels::dispatch(&h.app).await;
+    }
+    let notifications = h.app.with_server(|db| db.notifications(uid, false, 20)).unwrap();
+    assert_eq!(notifications.iter().filter(|n| n.kind == "delivery_failed").count(), 1);
+    let (_, item, _) =
+        call(&h.remote, "GET", &format!("/api/interactions/shop:questionnaire:{qn}:1?project=shop")).bearer(&token).send().await;
+    assert_eq!(item["state"], "open");
+    assert!(item["deliveries"].as_array().unwrap().iter().any(|d| d["channel"] == "telegram" && d["status"] == "failed"));
+    assert!(!item.to_string().contains("DUMMY-PRIVATE-TOKEN"));
+    h.app
+        .with_server(|db| {
+            db.set_delivery_policy(uid, Some(&genie_core::human_delivery::DeliveryPolicy { order: vec![], fallback_after_attempts: 1 }))
+        })
+        .unwrap();
+    ask(&h, uid);
+    genie::channels::dispatch(&h.app).await;
+    assert_eq!(
+        tg.requests.lock().unwrap().iter().filter(|(m, _)| m == "sendMessage").count() as i64,
+        genie_core::inbox::MAX_DELIVERY_ATTEMPTS
+    );
+}
+
+#[tokio::test]
+async fn failed_attempt_and_fallback_projection_roll_back_together_on_storage_failure() {
+    let (url, tg) = telegram().await;
+    tg.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let (port, mail) = super::channels::fake_smtp().await;
+    let h = Harness::with_config(|cfg| {
+        cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) });
+        cfg.smtp = Some(genie::config::SmtpConfig {
+            host: "127.0.0.1".into(),
+            port,
+            from: "genie@example.test".into(),
+            security: "none".into(),
+            ..Default::default()
+        });
+    });
+    h.project("shop");
+    let (uid, _) = person(&h, "anna");
+    h.app
+        .with_server(|db| {
+            db.set_delivery_policy(
+                uid,
+                Some(&genie_core::human_delivery::DeliveryPolicy {
+                    order: vec!["telegram".into(), "email".into()],
+                    fallback_after_attempts: 1,
+                }),
+            )
+        })
+        .unwrap();
+    ask(&h, uid);
+    h.app.with_server(|db| {db.conn().execute_batch("CREATE TRIGGER fail_fallback BEFORE INSERT ON outbox WHEN NEW.channel='email' BEGIN SELECT RAISE(ABORT,'simulated storage failure'); END;")?;Ok(())}).unwrap();
+    genie::channels::dispatch(&h.app).await;
+    let (status, attempts) = h
+        .app
+        .with_server(|db| {
+            Ok(db.conn().query_row("SELECT status,attempts FROM outbox WHERE channel='telegram'", [], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })?)
+        })
+        .unwrap();
+    assert_eq!((status.as_str(), attempts), ("delivering", 0), "do not commit a final failure before its fallback exists");
+    h.app
+        .with_server(|db| {
+            db.conn().execute_batch("DROP TRIGGER fail_fallback; UPDATE outbox SET next_at='2000-01-01' WHERE channel='telegram';")?;
+            Ok(())
+        })
+        .unwrap();
+    genie::channels::dispatch(&h.app).await;
+    genie::channels::dispatch(&h.app).await;
+    assert_eq!(mail.lock().unwrap().len(), 1, "recovery creates one fallback after the interrupted transaction");
+}
+
+#[tokio::test]
+async fn an_answer_during_send_updates_the_eventual_telegram_copy_without_sending_twice() {
+    let (url, tg) = telegram().await;
+    tg.block.store(true, std::sync::atomic::Ordering::SeqCst);
+    let h = Harness::with_config(|cfg| cfg.telegram = Some(genie::config::TelegramConfig { token: "TEST".into(), api_base: Some(url) }));
+    h.project("shop");
+    let (uid, token) = person(&h, "anna");
+    let qn = ask(&h, uid);
+    let app = h.app.clone();
+    let sending = tokio::spawn(async move { genie::channels::dispatch(&app).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), tg.entered.notified()).await.unwrap();
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/questions/{qn}/answer")).bearer(&token).json(json!({"answers":{"1":"CSV"}})).send().await.0,
+        200
+    );
+    genie::interactions::reconcile(&h.app, "shop").unwrap();
+    genie::channels::dispatch(&h.app).await; // Sync sees the in-flight send and waits for its reference.
+    tg.release.notify_one();
+    sending.await.unwrap();
+    genie::channels::dispatch(&h.app).await;
+    let requests = tg.requests.lock().unwrap().clone();
+    assert_eq!(requests.iter().filter(|(m, _)| m == "sendMessage").count(), 1);
+    let edited = requests.iter().find(|(m, _)| m == "editMessageText").expect("a late send still loses its obsolete buttons");
+    assert_eq!(edited.1["message_id"], 501);
+    assert_eq!(edited.1["reply_markup"]["inline_keyboard"], json!([]));
+    tg.block.store(false, std::sync::atomic::Ordering::SeqCst);
+    let update = json!({"message":{"chat":{"id":42,"type":"private"},"text":"XLSX","reply_to_message":{"message_id":501}}});
+    genie::channels::handle_update(&h.app, &update).await.unwrap();
+    assert_eq!(h.app.with_server(|db| db.questionnaire(qn)).unwrap().questions[0].answer.as_deref(), Some("CSV"));
+    let web = h.app.with_server(|db| db.notifications(uid, false, 10)).unwrap();
+    assert_eq!(web[0].kind, "interaction_closed");
+    assert!(web[0].read_at.is_none(), "resolution does not impersonate reading");
+}
+
+#[test]
+fn questionnaire_answers_require_current_recipient_authority_and_replay_task_effect_once() {
+    let h = Harness::new();
+    h.project("shop");
+    let user = h.app.with_server(|db| db.create_user("anna", "", None, None, false)).unwrap();
+    h.app.with_server(|db| db.set_membership("shop", user.id, ProjectRole::Member)).unwrap();
+    let task = h
+        .app
+        .with_tracker("shop", |t| t.create(&Actor::new("anna", Role::Human), CreateInput { title: "Export".into(), ..Default::default() }))
+        .unwrap();
+    let (qn, _) = h
+        .app
+        .with_server(|db| {
+            db.create_questionnaire(
+                "shop",
+                Some(&task.id),
+                "analyst",
+                user.id,
+                "web",
+                &[NewQuestion { text: "Format?".into(), ..Default::default() }],
+                None,
+                None,
+                None,
+            )
+        })
+        .unwrap();
+    h.app.with_server(|db| db.remove_membership("shop", user.id)).unwrap();
+    assert!(genie::questions::answer(&h.app, user.id, qn.id, 1, "CSV", "web").is_err());
+    assert!(h.app.with_server(|db| db.questionnaire(qn.id)).unwrap().questions[0].answer.is_none());
+    h.app.with_server(|db| db.set_membership("shop", user.id, ProjectRole::Member)).unwrap();
+
+    // Crash point 1: the accepted answer and continuation exist, but the tracker has not received it.
+    h.app
+        .with_server(|db| {
+            db.tx(|| {
+                db.answer_question(qn.id, 1, "CSV", "telegram")?;
+                db.queue_answer_record(qn.id, "anna", "Ответы на вопросы: CSV")
+            })
+        })
+        .unwrap();
+    let pending = h.app.with_server(|db| db.due_answer_records()).unwrap().remove(0);
+    // Crash point 2: task comment/mail committed, while the server still sees the record as pending.
+    h.app.with_tracker("shop", |t| t.comment_once(&pending.id, &Actor::new("anna", Role::Human), &task.id, &pending.body)).unwrap();
+    genie::questions::flush_records(&h.app).unwrap();
+    genie::questions::flush_records(&h.app).unwrap();
+    assert!(h.app.with_server(|db| db.due_answer_records()).unwrap().is_empty());
+    let task = h.app.with_tracker("shop", |t| t.get(&task.id)).unwrap();
+    assert_eq!(task.comments.iter().filter(|c| c.text == pending.body).count(), 1);
+    let (_, done) = genie::questions::answer(&h.app, user.id, qn.id, 1, "CSV", "api").unwrap();
+    assert!(done);
+    assert!(genie::questions::answer(&h.app, user.id, qn.id, 1, "XLSX", "api").is_err());
+    assert!(h.app.with_tracker("shop", |t| t.comment_once(&pending.id, &Actor::new("anna", Role::Human), &task.id, "rebound")).is_err());
+}
+
+#[test]
+fn questionnaire_creation_and_reminder_delivery_replay_without_invalidating_previous_links() {
+    let h = Harness::new();
+    h.project("shop");
+    let (uid, _) = person(&h, "anna");
+    let (qn, original) = h
+        .app
+        .with_server(|db| {
+            db.tx(|| {
+                let result = db.create_questionnaire(
+                    "shop",
+                    None,
+                    "analyst",
+                    uid,
+                    "web",
+                    &[NewQuestion { text: "When?".into(), ..Default::default() }],
+                    None,
+                    None,
+                    None,
+                )?;
+                db.queue_questionnaire_send(result.0.id, false)?;
+                Ok(result)
+            })
+        })
+        .unwrap();
+    assert!(h.app.with_server(|db| db.notifications(uid, false, 10)).unwrap().is_empty());
+    genie::questions::flush_sends(&h.app).unwrap();
+    // Rehearse a crash after outbox projection but before acknowledging the send intent.
+    h.app
+        .with_server(|db| {
+            db.conn().execute("UPDATE questionnaire_sends SET status='pending' WHERE questionnaire=?1", [qn.id])?;
+            Ok(())
+        })
+        .unwrap();
+    genie::questions::flush_sends(&h.app).unwrap();
+    assert_eq!(h.app.with_server(|db| db.notifications(uid, false, 10)).unwrap().len(), 1);
+    h.app.with_server(|db| db.queue_questionnaire_send(qn.id, true)).unwrap();
+    genie::questions::flush_sends(&h.app).unwrap();
+    assert_eq!(h.app.with_server(|db| db.notifications(uid, false, 10)).unwrap().len(), 2);
+    assert_eq!(h.app.with_server(|db| db.questionnaire_by_secret(&original)).unwrap().unwrap().id, qn.id);
+    assert!(h.app.with_server(|db| db.due_questionnaire_sends()).unwrap().is_empty());
+}

@@ -175,13 +175,29 @@ pub struct Call<'a> {
     raw: Option<Vec<u8>>,
     headers: Vec<(String, String)>,
     csrf: bool,
+    current_version: bool,
 }
 
 pub fn call<'a>(router: &'a Router, method: &str, uri: &str) -> Call<'a> {
-    Call { router, method: method.parse().unwrap(), uri: uri.to_string(), body: None, raw: None, headers: Vec::new(), csrf: true }
+    Call {
+        router,
+        method: method.parse().unwrap(),
+        uri: uri.to_string(),
+        body: None,
+        raw: None,
+        headers: Vec::new(),
+        csrf: true,
+        current_version: false,
+    }
 }
 
 impl<'a> Call<'a> {
+    /// An immediate fixture edit explicitly reads its snapshot before writing.
+    /// Conflict tests supply their own frozen expectedVersion and skip this helper.
+    pub fn current_version(mut self) -> Self {
+        self.current_version = true;
+        self
+    }
     pub fn json(mut self, v: Value) -> Self {
         self.body = Some(v);
         self
@@ -217,7 +233,22 @@ impl<'a> Call<'a> {
         (status, body, cookies)
     }
     /// The response as it came: status, headers and body bytes.
-    pub async fn send_raw(self) -> (StatusCode, HeaderMap, Vec<u8>) {
+    pub async fn send_raw(mut self) -> (StatusCode, HeaderMap, Vec<u8>) {
+        if self.current_version {
+            assert_eq!(self.method, Method::PATCH);
+            let mut get = call(self.router, "GET", &self.uri);
+            get.headers = self.headers.clone();
+            let (status, _, bytes) = Box::pin(get.send_raw()).await;
+            assert!(status.is_success(), "fixture task snapshot failed: {status}");
+            let task: Value = serde_json::from_slice(&bytes).unwrap();
+            assert!(task["editVersion"].is_string());
+            self.body
+                .as_mut()
+                .and_then(Value::as_object_mut)
+                .expect("task patch body")
+                .entry("expectedVersion")
+                .or_insert_with(|| task["editVersion"].clone());
+        }
         let mut req = Request::builder().method(self.method).uri(&self.uri);
         if !self.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("host")) {
             req = req.header(header::HOST, "127.0.0.1:7420");

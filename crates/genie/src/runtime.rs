@@ -29,7 +29,7 @@ use genie_core::work::Job;
 use genie_core::{Actor, CLOSED, Capability, GenieError, Role, Status, StatusOptions, Task, TeamState};
 use serde_json::json;
 use tokio::io::AsyncReadExt;
-use tokio::sync::{Semaphore, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
 
 use crate::agent_config::{AgentConfig, FileAccess, MailMode, RelKind, Relation, RoleDef, SpecMember, Stage, TeamDef, TeamSpec, Workspace};
 use crate::config::MemberSpec;
@@ -84,6 +84,16 @@ impl AgentKey {
         }
     }
 
+    /// A member name is local to its team; a job's credential name differs from
+    /// its display label. Keep that complete identity at every stop boundary.
+    fn revoke_tokens(&self, db: &genie_core::server_db::ServerDb) -> genie_core::Result<()> {
+        match self {
+            Self::Member { project, team, member } => db.revoke_named_agent_tokens(project, member, Some(team), None),
+            Self::Job { project, job } => db.revoke_named_agent_tokens(project, &format!("job-{job}"), None, Some(*job)),
+            _ => db.revoke_named_agent_tokens(self.project(), &self.label(), None, None),
+        }
+    }
+
     pub fn mailbox(project: &str, recipient: &str) -> Self {
         if let Some(response) = recipient.strip_prefix("request:") {
             return Self::Request { project: project.into(), response: response.into() };
@@ -109,6 +119,13 @@ struct SchedState {
     /// Cancellation is kept separate from the durable response state; losing the server
     /// drops these handles, while recovery rebuilds runnable work from the tracker.
     cancels: HashMap<AgentKey, watch::Sender<bool>>,
+    /// Dead turns finishing a hard-limit pause fence their task without holding
+    /// an execution slot. This also covers failure to store the server intent.
+    pending_limits: HashMap<AgentKey, String>,
+    /// Budget scopes awaiting a server intent or the project-side fallback.
+    budget_pauses: HashMap<(String, String), String>,
+    /// Intentional cancellation is independent of whether a pause write succeeds.
+    interrupted: HashSet<AgentKey>,
     /// What the last pass saw waiting for a slot, by kind — the queue the web and
     /// `genie server runtime` show (`waiting`).
     waiting: [usize; 4],
@@ -117,6 +134,14 @@ struct SchedState {
 impl Sched {
     fn with<T>(&self, f: impl FnOnce(&mut SchedState) -> T) -> T {
         f(&mut self.state.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub(crate) fn remember_budget_pause(&self, project: &str, task: &str, note: &str) -> String {
+        self.with(|s| s.budget_pauses.entry((project.into(), task.into())).or_insert_with(|| note.into()).clone())
+    }
+
+    pub(crate) fn forget_budget_pause(&self, project: &str, task: &str) {
+        self.with(|s| s.budget_pauses.remove(&(project.into(), task.into())));
     }
 
     /// Whether a turn of any member of `team` is running now.
@@ -218,8 +243,16 @@ pub fn start(app: &Arc<App>) {
 /// Explicit and background passes share the same serialization and scheduling rules.
 pub async fn tick(app: &Arc<App>) -> AppResult<Duration> {
     let _tick = app.sched.tick.lock().await;
+    let pause_retry = match app.blocking(flush_execution_pauses).await {
+        Ok(()) => false,
+        Err(e) => {
+            eprintln!("genie runtime: execution-limit pause pending: {e}");
+            true
+        }
+    };
     let next = schedule(app, &app.slots).await?;
-    Ok(next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET)).max(Duration::from_millis(50)))
+    let next = next.0.map_or(SAFETY_NET, |d| d.min(SAFETY_NET));
+    Ok(if pause_retry { next.min(Duration::from_secs(1)) } else { next }.max(Duration::from_millis(50)))
 }
 
 /// When the scheduler has to look again without being woken: the soonest of the deadlines it
@@ -237,10 +270,53 @@ impl Next {
 /// After a restart: interrupted turns give their mail back, running jobs are requeued,
 /// and agents whose live session was lost mid-step are told to continue.
 pub fn recover(app: &App) -> AppResult<()> {
-    let interrupted = app.with_server(|db| {
-        db.requeue_running_jobs()?;
-        db.interrupt_running_turns()
+    let jobs = app.with_server(|db| {
+        db.tx(|| {
+            // All process credentials belong to the previous runtime, including a
+            // worker that crashed before its turn or PID was registered. Revoke
+            // them before replay can create replacements or a person can resume.
+            for project in db.projects()? {
+                db.revoke_agent_tokens(&project.slug, None, None)?;
+            }
+            db.running_jobs()
+        })
     })?;
+    let interrupted = {
+        let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        let mut stopped = Vec::new();
+        let mut deleted = Vec::new();
+        for job in jobs {
+            let Some(task) = &job.task else { continue };
+            let paused = pending_limit(app, &job.project, task).and_then(|pending| {
+                if pending { Ok(true) } else { app.with_tracker(&job.project, |t| Ok(t.execution().blocking(task)?.is_some())) }
+            });
+            match paused {
+                Ok(true) => stopped.push(job.id),
+                Ok(false) => {}
+                Err(AppError::Genie(GenieError::NotFound(_))) => deleted.push(job.id),
+                Err(error) => eprintln!("genie runtime: cannot inspect interrupted job {}: {error}", job.id),
+            }
+        }
+        // Refund stopped attempts in the same transaction that requeues and
+        // interrupts them. Recovery replay cannot debit the same retry twice.
+        app.with_server(|db| {
+            db.tx(|| {
+                for job in stopped {
+                    db.interrupt_job(job)?;
+                }
+                for job in deleted {
+                    db.cancel_job(job)?;
+                }
+                db.requeue_running_jobs()?;
+                db.interrupt_running_turns()
+            })
+        })?
+    };
+    if let Err(error) = flush_execution_pauses(app) {
+        // The persisted intent continues to fence its scope and tick retries it.
+        // Other interrupted work still needs its leases and continuation restored.
+        eprintln!("genie runtime: execution-limit recovery pending: {error}");
+    }
     for p in app.with_server(|db| db.projects())? {
         app.with_tracker(&p.slug, |t| t.model_calls().recover())?;
         match app.with_tracker(&p.slug, |t| t.bus().release_all_leases()) {
@@ -255,20 +331,14 @@ pub fn recover(app: &App) -> AppResult<()> {
     // An agent process may have outlived the server; its turn will run again, so
     // stop the stray one — only if /proc shows it is really that agent.
     for t in &interrupted {
-        if t.agent.starts_with("request:") {
-            // A restarted response keeps its identity. Revoke its former worker's
-            // credentials before reclaiming that identity, even if it ignores TERM.
-            app.with_server(|db| db.revoke_named_agent_tokens(&t.project, &t.agent))?;
-        }
         let Some(pid) = t.pid else { continue };
         let name = match (&t.member, t.job) {
             (Some(m), _) => m.clone(),
             (None, Some(j)) => format!("job-{j}"),
             _ => t.agent.clone(),
         };
-        if is_our_agent(pid, &t.project, &name) {
-            let _ = std::process::Command::new("kill").arg("-TERM").arg(pid.to_string()).status();
-            println!("genie runtime: stopped stray agent process {pid} ({}/{name})", t.project);
+        if stop_stray_agent(pid, &t.project, &name) {
+            println!("genie runtime: stopped stray agent {pid} ({}/{name})", t.project);
         }
     }
     // A live session's mail was acknowledged inside the lost step, so nothing is pending and the
@@ -332,8 +402,10 @@ pub(crate) fn active_tasks(app: &App, project: &str) -> AppResult<Vec<String>> {
     let keys = app.sched.with(|s| s.running.iter().filter(|k| k.project() == project).cloned().collect::<Vec<_>>());
     let mut tasks = Vec::new();
     for key in keys {
-        if let Some(task) = key_task(app, &key)? {
-            tasks.push(task);
+        match key_task(app, &key) {
+            Ok(Some(task)) => tasks.push(task),
+            Ok(None) | Err(AppError::Genie(GenieError::NotFound(_))) => {}
+            Err(error) => return Err(error),
         }
     }
     tasks.extend(app.sessions.all().into_iter().filter(|s| s.key.project() == project).filter_map(|s| s.task.clone()));
@@ -342,6 +414,13 @@ pub(crate) fn active_tasks(app: &App, project: &str) -> AppResult<Vec<String>> {
         tasks.extend(t.management().managers()?.into_iter().filter(|m| m.state != "completed").map(|m| m.task));
         Ok(tasks)
     })?);
+    // Job records and scheduler keys outlive deletion of their task. They must
+    // not make a project-wide budget pause fail before its process sweep.
+    app.with_tracker(project, |t| {
+        let index = crate::spend::TaskIndex::load(t.conn())?;
+        tasks.retain(|task| index.0.contains_key(task));
+        Ok(())
+    })?;
     tasks.sort();
     tasks.dedup();
     Ok(tasks)
@@ -351,11 +430,19 @@ fn execution_stamp(app: &App, project: &str, task: Option<&str>) -> AppResult<Op
     task.map(|task| app.with_tracker(project, |t| t.execution().stamp(task))).transpose()
 }
 
+fn execution_blocked(app: &App, project: &str, task: Option<&str>) -> AppResult<bool> {
+    let Some(task) = task else { return Ok(false) };
+    Ok(pending_limit(app, project, task)? || app.with_tracker(project, |t| t.execution().blocking(task))?.is_some())
+}
+
 pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
-    let task = key_task(app, key)?;
-    if let Some(task) = &task
-        && app.with_tracker(key.project(), |t| t.execution().blocking(task))?.is_some()
+    if let AgentKey::Request { project, response } = key
+        && crate::conversations::is_direct_response(app, project, response)?
     {
+        return Ok(true);
+    }
+    let task = key_task(app, key)?;
+    if execution_blocked(app, key.project(), task.as_deref())? {
         return Ok(false);
     }
     if crate::budget::check(app, key.project(), task.as_deref())?.is_some() {
@@ -365,6 +452,59 @@ pub(crate) fn runnable(app: &App, key: &AgentKey) -> AppResult<bool> {
     Ok(true)
 }
 
+pub(crate) fn pending_limit(app: &App, project: &str, task: &str) -> AppResult<bool> {
+    let mut roots =
+        app.with_server(|db| db.pending_execution_pauses(Some(project)))?.into_iter().map(|pause| pause.task).collect::<Vec<_>>();
+    roots
+        .extend(app.sessions.all().into_iter().filter(|s| s.key.project() == project).filter_map(|s| s.limited_task().map(str::to_string)));
+    roots.extend(
+        app.sched.with(|s| {
+            s.pending_limits.iter().filter(|(key, _)| key.project() == project).map(|(_, task)| task.clone()).collect::<Vec<_>>()
+        }),
+    );
+    roots.extend(
+        app.sched.with(|s| s.budget_pauses.keys().filter(|(scope, _)| scope == project).map(|(_, task)| task.clone()).collect::<Vec<_>>()),
+    );
+    if roots.is_empty() {
+        return Ok(false);
+    }
+    app.with_tracker(project, |t| {
+        let task = t.get(task)?.id;
+        let index = crate::spend::TaskIndex::load(t.conn())?;
+        Ok(roots.iter().any(|root| index.is_under(&task, root)))
+    })
+}
+
+pub(crate) fn flush_execution_pauses(app: &App) -> AppResult<()> {
+    let mut failure = None;
+    let budgets = app
+        .sched
+        .with(|s| s.budget_pauses.iter().map(|((project, task), note)| (project.clone(), task.clone(), note.clone())).collect::<Vec<_>>());
+    for (project, task, note) in budgets {
+        if let Err(error) = crate::tasks::queue_budget_pause(app, &project, &task, &note) {
+            failure.get_or_insert(error);
+        }
+    }
+    for pause in app.with_server(|db| db.pending_execution_pauses(None))? {
+        if let Err(error) = apply_limit_pause(app, &pause) {
+            failure.get_or_insert(error);
+        }
+    }
+    failure.map_or(Ok(()), Err)
+}
+
+pub(crate) fn apply_limit_pause(app: &App, pause: &genie_core::work::ExecutionPause) -> AppResult<()> {
+    match crate::tasks::apply_execution_pause(app, pause) {
+        Ok(()) => {}
+        Err(AppError::Genie(GenieError::NotFound(_))) => {
+            // Deletion is permanent. Acknowledge obsolete work rather than
+            // retaining its run slot and retrying an impossible pause forever.
+        }
+        Err(error) => return Err(error),
+    }
+    app.with_server(|db| db.execution_pause_applied(&pause.id))
+}
+
 /// Stop task-scoped processes without discarding teams, mail or artifacts. A caller
 /// persists the execution fence first, so a late startup cannot revive the task.
 pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec<String>> {
@@ -372,40 +512,64 @@ pub fn halt_scope(app: &App, project: &str, root: Option<&str>) -> AppResult<Vec
     let covered = |task: Option<&str>| root.is_none_or(|root| task.is_some_and(|task| index.is_under(task, root)));
     let keys = app.sched.with(|s| s.running.iter().filter(|k| k.project() == project).cloned().collect::<Vec<_>>());
     let mut report = Vec::new();
+    let mut failure = None;
     for key in keys {
-        if covered(key_task(app, &key)?.as_deref()) {
+        let stop = match key_task(app, &key) {
+            Ok(Some(task)) if !index.0.contains_key(&task) => true,
+            Ok(task) => covered(task.as_deref()),
+            // A deleted scope cannot own valid work. Clean up its stale worker
+            // without preventing termination of other, still-known scopes.
+            Err(AppError::Genie(GenieError::NotFound(_))) => true,
+            Err(error) => {
+                failure.get_or_insert(error);
+                continue;
+            }
+        };
+        if stop {
             app.sched.with(|s| {
+                s.interrupted.insert(key.clone());
                 if let Some(cancel) = s.cancels.get(&key) {
                     let _ = cancel.send(true);
                 }
             });
-            let name = match &key {
-                AgentKey::Member { member, .. } => member.clone(),
-                AgentKey::Job { job, .. } => format!("job-{job}"),
-                _ => key.label(),
-            };
-            app.with_server(|db| db.revoke_named_agent_tokens(project, &name))?;
+            if let Err(error) = app.with_server(|db| {
+                db.tx(|| {
+                    key.revoke_tokens(db)?;
+                    if let AgentKey::Job { job, .. } = &key {
+                        db.interrupt_job(*job)?;
+                    }
+                    Ok(())
+                })
+            }) {
+                failure.get_or_insert(error);
+            }
             report.push(key.label());
         }
     }
     for session in app.sessions.all() {
         if session.key.project() == project && covered(session.task.as_deref()) {
-            if session.live().state == "working" {
-                note_to_self(
+            let was_working = session.live().state == "working";
+            // Process termination cannot depend on a continuation-mail write.
+            crate::sessions::halt(app, &session.key, "execution paused");
+            if let Err(error) = app.with_server(|db| session.key.revoke_tokens(db)) {
+                failure.get_or_insert(error);
+            }
+            if was_working
+                && let Err(error) = note_to_self(
                     app,
                     &session.key,
                     "Execution was paused by the server. After an explicit resume, read current task state and continue retained work; do not repeat completed external actions.",
-                )?;
+                )
+            {
+                failure.get_or_insert(error);
             }
-            crate::sessions::halt(app, &session.key, "execution paused");
-            app.with_server(|db| db.revoke_named_agent_tokens(project, &session.name))?;
             report.push(session.key.label());
         }
     }
     app.wake_runtime.notify_one();
     report.sort();
     report.dedup();
-    Ok(report)
+    failure.map_or(Ok(report), Err)
 }
 
 /// Does `/proc/<pid>/environ` belong to this project's agent `name`?
@@ -414,6 +578,35 @@ pub(crate) fn is_our_agent(pid: i64, project: &str, name: &str) -> bool {
     let vars: Vec<&[u8]> = env.split(|b| *b == 0).collect();
     let has = |kv: String| vars.contains(&kv.as_bytes());
     has(format!("GENIE_PROJECT={project}")) && has(format!("GENIE_AGENT_NAME={name}"))
+}
+
+/// Recovery uses the same verified group cleanup for active turns and warm
+/// sessions, including groups whose leader has already exited.
+pub(crate) fn stop_stray_agent(pid: i64, project: &str, name: &str) -> bool {
+    let Some(group) = u32::try_from(pid).ok().filter(|pid| *pid > 1) else { return false };
+    if owned_process_group(group, project, name) {
+        kill_process_group(group);
+        true
+    } else if is_our_agent(pid, project, name) {
+        // Legacy harnesses had no dedicated group. Never signal the server's
+        // group merely because its verified child inherited that group.
+        signal_process(group, libc::SIGKILL);
+        true
+    } else {
+        false
+    }
+}
+
+/// A group may outlive its leader. Verify an inherited agent identity on a
+/// remaining member before signalling it, protecting reused/unrelated PIDs.
+fn owned_process_group(group: u32, project: &str, name: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir("/proc") else { return false };
+    entries.flatten().any(|entry| {
+        let Some(pid) = entry.file_name().to_str().and_then(|p| p.parse::<i64>().ok()) else { return false };
+        let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else { return false };
+        let Some((_, rest)) = stat.rsplit_once(") ") else { return false };
+        rest.split_whitespace().nth(2).and_then(|p| p.parse::<u32>().ok()) == Some(group) && is_our_agent(pid, project, name)
+    })
 }
 
 async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
@@ -546,15 +739,16 @@ async fn schedule(app: &Arc<App>, slots: &Arc<Semaphore>) -> AppResult<Next> {
         });
         let app = app.clone();
         tokio::spawn(async move {
-            run_turn(&app, &key, cancel).await;
+            run_turn(&app, &key, cancel, permit).await;
             app.sched.with(|s| {
                 s.running.remove(&key);
                 s.cancels.remove(&key);
+                s.pending_limits.remove(&key);
+                s.interrupted.remove(&key);
             });
             if matches!(key, AgentKey::Request { .. }) {
                 app.attempts.clear(&key);
             }
-            drop(permit);
             app.wake_runtime.notify_one();
             app.wake_engine.notify_one();
         });
@@ -575,7 +769,8 @@ struct Prepared {
 }
 
 /// Run one turn and persist its result.
-async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver<bool>>) {
+async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver<bool>>, permit: OwnedSemaphorePermit) {
+    let mut permit = Some(permit);
     let k = key.clone();
     let prepared = app.blocking(move |app| prepare(app, &k)).await;
     let mut p = match prepared {
@@ -594,11 +789,22 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
     match app.blocking(move |app| spec.token(app, &slug, ttl)).await {
         Ok(t) => p.token = t,
         Err(e) => {
-            app.attempts.failed_to_start(key);
+            let interrupted = app.sched.with(|s| s.interrupted.contains(key));
+            if interrupted {
+                app.attempts.clear(key);
+            } else {
+                app.attempts.failed_to_start(key);
+            }
             eprintln!("genie runtime: turn {turn}: {e}");
             let error = e.to_string();
             let recorded = if matches!(key, AgentKey::Request { .. }) { "incoming response could not start".into() } else { error.clone() };
-            let _ = app.blocking(move |app| app.with_server(|db| db.finish_turn(turn, "failed", None, Some(&recorded), None))).await;
+            let _ = app
+                .blocking(move |app| {
+                    app.with_server(|db| {
+                        db.finish_turn(turn, if interrupted { "interrupted" } else { "failed" }, None, Some(&recorded), None)
+                    })
+                })
+                .await;
             let (k, turn) = (key.clone(), p.turn);
             let _ = app
                 .blocking(move |app| {
@@ -621,8 +827,36 @@ async fn run_turn(app: &Arc<App>, key: &AgentKey, cancel: Option<watch::Receiver
     if error.as_deref().is_some_and(|e| e.starts_with("run limit reached"))
         && let Some(task) = p.spec.task.clone()
     {
-        let (slug, note) = (key.project().to_string(), error.clone().unwrap_or_default());
-        let _ = app.blocking(move |app| crate::tasks::pause_for_limit(app, &slug, &task, "time", &note)).await;
+        let note = error.clone().unwrap_or_default();
+        // The process has ended. Retain its scope/turn/retry accounting until
+        // persistence recovers, while letting unrelated work use the run slot.
+        app.sched.with(|s| {
+            s.pending_limits.insert(key.clone(), task.clone());
+            s.running.remove(key);
+        });
+        drop(permit.take());
+        app.wake_runtime.notify_one();
+        loop {
+            let (project, task, note, token) = (key.project().to_string(), task.clone(), note.clone(), p.token.clone());
+            let result = app
+                .blocking(move |app| {
+                    let revoked = app.with_server(|db| db.revoke_token(&token));
+                    let paused = crate::tasks::queue_turn_pause(app, &project, &task, &note, |_| Ok(turn))
+                        .and_then(|pause| apply_limit_pause(app, &pause));
+                    paused?;
+                    revoked?;
+                    Ok(())
+                })
+                .await;
+            match result {
+                Ok(()) => break,
+                Err(AppError::Genie(GenieError::NotFound(_))) => break,
+                Err(e) => {
+                    eprintln!("genie runtime: turn {turn}: cannot persist hard-limit pause: {e}");
+                    app.clock.sleep_until(app.clock.now() + Duration::from_secs(1)).await;
+                }
+            }
+        }
     }
     let k = key.clone();
     let res = app.blocking(move |app| finish(app, &k, &p, ok, code, error.as_deref(), &log)).await;
@@ -778,28 +1012,74 @@ fn prepare(app: &App, key: &AgentKey) -> AppResult<Option<Prepared>> {
             Ok(Some(Prepared { spec, turn, message: member_message(&mail), token: String::new(), llm }))
         }
         AgentKey::Job { project: slug, job } => {
-            let j = app.with_server(|db| {
-                let j = db.job(*job)?;
-                if j.status != "queued" {
-                    return Ok(None);
-                }
-                db.start_job(*job)?;
-                Ok(Some(j))
-            })?;
-            let Some(j) = j else { return Ok(None) };
-            let turn = app.with_server(|db| db.start_turn(slug, &label, None, None, Some(*job)))?;
-            // A job that cannot start (its role removed, no worktree) fails this attempt instead of hanging.
-            let prepared = prepare_job(app, &project, &j, turn);
-            if let Err(e) = &prepared {
-                let (error, max) = (e.to_string(), i64::from(app.cfg.runtime.max_attempts.max(1)));
-                app.with_server(|db| {
-                    db.finish_turn(turn, "failed", None, Some(&error), None)?;
-                    db.finish_job(*job, false, Some(&error), max).map(|_| ())
-                })?;
-            }
-            prepared.map(Some)
+            let Some(claimed) = claim_job(app, slug, *job)? else { return Ok(None) };
+            prepare_claimed_job(app, &project, claimed)
         }
     }
+}
+
+struct ClaimedJob {
+    job: Job,
+    turn: i64,
+    execution_stamp: Option<String>,
+}
+
+/// Claim and snapshot execution in the same gate as stop/resume. Preparation
+/// may do slow filesystem work later, but can never adopt a newer generation.
+fn claim_job(app: &App, project: &str, job: i64) -> AppResult<Option<ClaimedJob>> {
+    let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    let key = AgentKey::Job { project: project.into(), job };
+    let j = app.with_server(|db| db.job(job))?;
+    if j.project != project {
+        return Err(AppError::Forbidden("the job belongs to another project".into()));
+    }
+    if j.status != "queued" || app.sched.with(|s| s.interrupted.contains(&key)) || execution_blocked(app, project, j.task.as_deref())? {
+        return Ok(None);
+    }
+    let stamp = execution_stamp(app, project, j.task.as_deref())?;
+    app.with_server(|db| {
+        db.tx(|| {
+            if db.job(job)?.status != "queued" {
+                return Ok(None);
+            }
+            db.start_job(job)?;
+            let turn = db.start_turn(project, &key.label(), None, None, Some(job))?;
+            Ok(Some(ClaimedJob { job: j, turn, execution_stamp: stamp }))
+        })
+    })
+}
+
+fn prepare_claimed_job(app: &App, project: &Project, claimed: ClaimedJob) -> AppResult<Option<Prepared>> {
+    let ClaimedJob { job, turn, execution_stamp: stamp } = claimed;
+    let key = AgentKey::Job { project: project.slug.clone(), job: job.id };
+    let prepared = prepare_job(app, project, &job, turn, stamp.clone());
+    // A stop can complete while worktree/model preparation is in progress.
+    // Classify and finalize behind its gate, even if preparation itself failed.
+    let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    let interrupted = app.sched.with(|s| s.interrupted.contains(&key))
+        || execution_blocked(app, &project.slug, job.task.as_deref())?
+        || execution_stamp(app, &project.slug, job.task.as_deref())? != stamp;
+    if interrupted {
+        app.with_server(|db| {
+            db.tx(|| {
+                db.finish_turn(turn, "interrupted", None, Some("execution changed while the job was preparing"), None)?;
+                db.interrupt_job(job.id)
+            })
+        })?;
+        app.attempts.clear(&key);
+        return Ok(None);
+    }
+    // Configuration/workspace errors without an interruption remain real failures.
+    if let Err(error) = &prepared {
+        let (error, max) = (error.to_string(), i64::from(app.cfg.runtime.max_attempts.max(1)));
+        app.with_server(|db| {
+            db.tx(|| {
+                db.finish_turn(turn, "failed", None, Some(&error), None)?;
+                db.finish_job(job.id, false, Some(&error), max).map(|_| ())
+            })
+        })?;
+    }
+    prepared.map(Some)
 }
 
 /// The key of a turn's agent; when it cannot have one, the turn ends without
@@ -819,7 +1099,7 @@ fn turn_key(
     })
 }
 
-fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Prepared> {
+fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64, stamp: Option<String>) -> AppResult<Prepared> {
     let agents = app.agents();
     let def = running_role(&agents, &j.role)?;
     let (model, thinking) = role_model(&def, j.model.clone(), None)?;
@@ -834,7 +1114,7 @@ fn prepare_job(app: &App, project: &Project, j: &Job, turn: i64) -> AppResult<Pr
         name: format!("job-{}", j.id),
         team: None,
         task: j.task.clone(),
-        execution_stamp: execution_stamp(app, &project.slug, j.task.as_deref())?,
+        execution_stamp: stamp,
         job: Some(j.id),
         kit: kit(app, &agents, &project.slug, &def, place.files, &place.cwd),
         cwd: place.cwd,
@@ -932,11 +1212,11 @@ async fn execute(
     #[cfg(unix)]
     cmd.process_group(0);
     let mut child = cmd.spawn().map_err(|e| format!("cannot start {program}: {e}"))?;
+    let group = ProcessGroup::new(child.id());
     if let Some(pid) = child.id() {
         let turn = p.turn;
         let _ = app.blocking(move |app| app.with_server(|db| db.set_turn_pid(turn, pid))).await;
     }
-    let mut group = ProcessGroup(child.id());
     let mut stdout = child.stdout.take();
     let mut stderr = child.stderr.take();
     let read = async {
@@ -956,8 +1236,7 @@ async fn execute(
         app.cfg.runtime.turn_timeout_secs.max(1)
     });
     let run = tokio::time::timeout(timeout, async {
-        let (out, err) = read.await;
-        let status = child.wait().await;
+        let (status, (out, err)) = tokio::join!(group.wait(&mut child), read);
         (status, out, err)
     });
     let cancelled = async move {
@@ -984,7 +1263,9 @@ async fn execute(
             ));
         }
     };
-    group.0 = None;
+    // A successful parent exit does not transfer ownership of its tools. End
+    // their lifetime before logging or releasing this turn's scheduling slot.
+    drop(group);
     let mut log = String::from_utf8_lossy(&out).into_owned();
     let err = String::from_utf8_lossy(&err);
     if !err.trim().is_empty() {
@@ -996,20 +1277,100 @@ async fn execute(
     Ok((status.map_err(|e| e.to_string())?.code(), tail))
 }
 
-/// An interrupted one-shot must not leave tools running in the background.
-struct ProcessGroup(Option<u32>);
-impl Drop for ProcessGroup {
-    fn drop(&mut self) {
+/// Ownership comes from spawning a dedicated group, not from its descendants'
+/// mutable environment. Closing it once also disarms delayed cleanup callbacks.
+pub(crate) struct ProcessGroup {
+    pid: Option<u32>,
+    closed: Mutex<bool>,
+}
+
+impl ProcessGroup {
+    pub(crate) fn new(pid: Option<u32>) -> Self {
+        Self { pid, closed: Mutex::new(false) }
+    }
+
+    pub(crate) fn kill(&self) {
+        let mut closed = self.closed.lock().unwrap_or_else(|e| e.into_inner());
+        if !*closed {
+            if let Some(pid) = self.pid {
+                kill_process_group(pid);
+            }
+            // Hold the lock through the signal: the waiter must not reap the
+            // leader while another thread is still closing its numeric group.
+            *closed = true;
+        }
+    }
+
+    /// Keep the unreaped leader's PID reserved until its group is closed. Tools
+    /// may clear their environment and keep stdout open after the leader exits.
+    pub(crate) async fn wait(&self, child: &mut tokio::process::Child) -> std::io::Result<std::process::ExitStatus> {
         #[cfg(unix)]
-        if let Some(pid) = self.0 {
-            kill_process_group(pid);
+        let observed = self.observe_exit().await;
+        self.kill();
+        let status = child.wait().await;
+        #[cfg(unix)]
+        observed?;
+        status
+    }
+
+    #[cfg(unix)]
+    async fn observe_exit(&self) -> std::io::Result<()> {
+        use std::io::{Error, ErrorKind};
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let pid = self.pid.ok_or_else(|| Error::new(ErrorKind::InvalidInput, "missing owned child PID"))?;
+        // Register before checking: an exit before registration remains waitable,
+        // and one after the check wakes this listener. Notifications may coalesce.
+        let mut changed = signal(SignalKind::child())?;
+        loop {
+            // SAFETY: zero is a valid initial siginfo_t; waitid writes through a
+            // live pointer. WNOHANG cannot block, and WNOWAIT leaves reaping to Child.
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            let result = unsafe { libc::waitid(libc::P_PID, pid, &mut info, libc::WEXITED | libc::WNOHANG | libc::WNOWAIT) };
+            if result != 0 {
+                let error = Error::last_os_error();
+                if error.kind() == ErrorKind::Interrupted {
+                    continue;
+                }
+                if error.raw_os_error() == Some(libc::ECHILD) {
+                    // Someone else reaped it: its numeric PID no longer proves
+                    // ownership, including for a delayed shutdown callback.
+                    *self.closed.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                }
+                return Err(error);
+            }
+            // SAFETY: waitid initialized the siginfo_t, including its child PID.
+            if unsafe { info.si_pid() } != 0 {
+                return Ok(());
+            }
+            changed.recv().await.ok_or_else(|| Error::new(ErrorKind::BrokenPipe, "child-exit signal stream closed"))?;
         }
     }
 }
 
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        self.kill();
+    }
+}
+
 pub(crate) fn kill_process_group(pid: u32) {
+    signal_target(pid, true, libc::SIGKILL);
+}
+
+pub(crate) fn signal_process(pid: u32, signal: i32) {
+    signal_target(pid, false, signal);
+}
+
+fn signal_target(pid: u32, group: bool, signal: i32) {
     #[cfg(unix)]
-    let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).stderr(Stdio::null()).status();
+    if let Ok(pid) = libc::pid_t::try_from(pid)
+        && pid > 1
+    {
+        // SAFETY: kill takes an integer target and no pointers. Callers own the
+        // spawned group or verify a recovery reference. ESRCH means exit.
+        unsafe { libc::kill(if group { -pid } else { pid }, signal) };
+    }
 }
 
 /// How an agent process runs: one turn on its mail, or a live session fed over RPC.
@@ -1093,11 +1454,17 @@ pub(crate) async fn agent_process(
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
     let prompt_file = dir.join("prompt.md");
     tokio::fs::write(&prompt_file, &spec.prompt).await.map_err(|e| e.to_string())?;
-    let files = spec.kit.write(app, &dir).map_err(|e| e.to_string())?;
-    // Agents run on genie's own pi profile (or the operator's chosen one): keep it clean
-    // before the harness reads it — no packages or extension lists, models seeded once.
-    let legacy = app.cfg.runtime.pi_dir_override().is_none().then(legacy_pi_dir).flatten();
-    seed_pi_profile(&pi_dir(app), legacy.as_deref());
+    let (kit, kit_dir) = (spec.kit.clone(), dir.clone());
+    let files = app
+        .blocking(move |app| {
+            let files = kit.write(app, &kit_dir).map_err(GenieError::from)?;
+            // Keep the agent profile clean before the harness reads it.
+            let legacy = app.cfg.runtime.pi_dir_override().is_none().then(legacy_pi_dir).flatten();
+            seed_pi_profile(&pi_dir(app), legacy.as_deref());
+            Ok(files)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     let sessions = harness_sessions(app, key.project(), &spec.name, &dir);
     tokio::fs::create_dir_all(&sessions).await.map_err(|e| e.to_string())?;
     let mut vars: HashMap<&str, String> = HashMap::from([
@@ -1117,7 +1484,10 @@ pub(crate) async fn agent_process(
                 // Linux limits each argv string separately, including JSON escapes. Keep
                 // the full input private and let custom harnesses opt into file delivery.
                 let path = dir.join("input.txt");
-                write_private(&path, message).map_err(|e| e.to_string())?;
+                let (input_path, input_text) = (path.clone(), message.to_string());
+                app.blocking(move |_| write_private(&input_path, &input_text).map_err(|e| AppError::from(GenieError::from(e))))
+                    .await
+                    .map_err(|e| e.to_string())?;
                 vars.insert("messageFile", path.to_string_lossy().into_owned());
                 if message.len() > 64 * 1024 {
                     vars.insert("message", format!(
@@ -1152,7 +1522,24 @@ pub(crate) async fn agent_process(
     } else {
         None
     };
-    let mut cmd = agent_command(app, &argv, &spec.cwd, &dir, key.project(), &spec.identity(), token, bounded.as_ref())?;
+    let (command_spec, command_dir, project, command_token, command_profile) =
+        (spec.clone(), dir.clone(), key.project().to_string(), token.to_string(), bounded.clone());
+    let mut cmd = app
+        .blocking(move |app| {
+            agent_command(
+                app,
+                &argv,
+                &command_spec.cwd,
+                &command_dir,
+                &project,
+                &command_spec.identity(),
+                &command_token,
+                command_profile.as_ref(),
+            )
+            .map_err(AppError::Internal)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     match stdin {
         Some(path) => {
             let file = tokio::fs::File::open(path).await.map_err(|e| e.to_string())?.into_std().await;
@@ -1607,7 +1994,7 @@ impl AgentSpec {
         self.with_current_execution(app, project, || {
             app.with_server(|db| {
                 if self.role_id == "intake" {
-                    db.revoke_named_agent_tokens(project, &self.name)?;
+                    db.revoke_named_agent_tokens(project, &self.name, self.team.as_deref(), self.job)?;
                 }
                 db.create_role_token(project, self.role, Some(&self.role_id), &self.name, self.team.as_deref(), self.job, ttl)
             })
@@ -1618,6 +2005,9 @@ impl AgentSpec {
     /// process may finish starting after its token was issued and then revoked.
     pub(crate) fn with_current_execution<T>(&self, app: &App, project: &str, action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
         let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+        if let Some(task) = &self.task {
+            crate::tasks::ensure_running(app, project, task)?;
+        }
         if let Some(over) = crate::budget::check(app, project, self.task.as_deref())? {
             return Err(AppError::Conflict(over.explain()));
         }
@@ -1981,12 +2371,17 @@ fn expand_group(g: &[String], vars: &HashMap<&str, String>, lists: &HashMap<&str
 /// A turn ended: close its row, its token and its mail lease (or job), then record how it went.
 fn finish(app: &App, key: &AgentKey, p: &Prepared, ok: bool, code: Option<i32>, error: Option<&str>, log: &str) -> AppResult<()> {
     let slug = key.project();
-    let stopped = match (&p.spec.task, &p.spec.execution_stamp) {
-        (Some(task), Some(stamp)) => {
-            app.with_tracker(slug, |t| Ok(t.execution().blocking(task)?.is_some() || t.execution().stamp(task)? != *stamp))?
-        }
-        _ => false,
-    };
+    let stopped = app.sched.with(|s| s.interrupted.contains(key))
+        || match (&p.spec.task, &p.spec.execution_stamp) {
+            (Some(task), Some(stamp)) => {
+                match app.with_tracker(slug, |t| Ok(t.execution().blocking(task)?.is_some() || t.execution().stamp(task)? != *stamp)) {
+                    Ok(stopped) => stopped,
+                    Err(AppError::Genie(GenieError::NotFound(_))) => true,
+                    Err(error) => return Err(error),
+                }
+            }
+            _ => false,
+        };
     let mut ok = ok;
     let mut error = error.map(str::to_owned);
     if let AgentKey::Request { response, .. } = key {
@@ -2160,6 +2555,7 @@ fn agent_prompt(
         }
     }
     out.push_str(&tools_section(live, role, reader, app.cfg.runtime.ask_timeout_secs));
+    out.push_str("\nTask edits require a snapshot version: read `genie task show <id>` and pass its `editVersion` to `genie task update --expected-version <version>` (MCP: `expectedVersion`). On conflict, reread the task and reconcile the intended change before retrying; never reuse stale requirements with a newer version blindly.\n");
     out.push_str(&mcp_section(agents, &project.slug, role));
     out.push_str(&format!(
         "\n## Project\n\nProject `{}` ({}). {}\n\nLanguage: write tasks, comments, artifacts and team mail in {}; anything addressed to people (questions for the owner, needs_owner notes) in {}.\n",
@@ -2215,7 +2611,7 @@ fn agent_prompt(
             })
             .collect();
         if !people.is_empty() {
-            out.push_str(&format!("\nPeople of the project: {}. Set a task's person responsible with `genie task update --assignee login` when someone owns the decision or the review.\n", people.join(", ")));
+            out.push_str(&format!("\nPeople of the project: {}. Set a task's person responsible with `genie task update --expected-version <version> --assignee login` when someone owns the decision or the review.\n", people.join(", ")));
         }
     }
     out
@@ -3403,6 +3799,116 @@ pub fn restart_member(app: &App, slug: &str, team: &str, member: &str) -> AppRes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_budget_stop_before_or_during_job_preparation_preserves_the_last_attempt() {
+        for before_claim in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(dir.path().join("agents")).unwrap();
+            std::fs::write(dir.path().join("agents/executor.md"), "---\nmodel: fake/executor\n---\n").unwrap();
+            let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+            cfg.runtime.enabled = false;
+            cfg.runtime.max_attempts = 1;
+            cfg.budgets.per_day = 1.0;
+            cfg.model_prices.insert(
+                "fake/executor".into(),
+                crate::config::ModelPrice { input: 1.0, output: 1.0, cache_read: Some(0.0), cache_write: Some(0.0) },
+            );
+            let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+            app.create_project("shop", "Shop", None, None, None).unwrap();
+            let task = app
+                .with_tracker("shop", |t| {
+                    t.create(
+                        &Actor::new("owner", Role::Human),
+                        genie_core::CreateInput { title: "Retained preparation".into(), quiet: true, ..Default::default() },
+                    )
+                })
+                .unwrap();
+            let job = app
+                .with_server(|db| {
+                    db.create_job(genie_core::work::NewJob {
+                        project: "shop".into(),
+                        task: Some(task.id.clone()),
+                        role: "executor".into(),
+                        goal: "Keep progress".into(),
+                        workspace: "none".into(),
+                        ..Default::default()
+                    })
+                })
+                .unwrap();
+            let key = AgentKey::Job { project: "shop".into(), job: job.id };
+            app.sched.with(|s| {
+                s.running.insert(key.clone());
+            });
+            assert!(runnable(&app, &key).unwrap());
+            // These are the actual boundaries used by prepare: after its first
+            // runnable check, and after the atomic claim but before slow setup.
+            let claimed = (!before_claim).then(|| claim_job(&app, "shop", job.id).unwrap().unwrap());
+            app.with_tracker("shop", |t| {
+                t.record_usage(
+                    "another-worker",
+                    Some(&task.id),
+                    "fake/executor",
+                    &genie_core::usage::Tokens { input: 1_000_000, ..Default::default() },
+                )
+            })
+            .unwrap();
+            crate::budget::enforce(&app, "shop", Some(&task.id)).unwrap();
+            let project = app.with_server(|db| db.project("shop")).unwrap();
+            if let Some(claimed) = claimed {
+                assert!(prepare_claimed_job(&app, &project, claimed).unwrap().is_none());
+            } else {
+                assert!(claim_job(&app, "shop", job.id).unwrap().is_none());
+            }
+            let retained = app.with_server(|db| db.job(job.id)).unwrap();
+            assert_eq!((retained.status.as_str(), retained.attempts), ("queued", 0));
+            assert_eq!(app.attempts.failures(&key), 0);
+            assert_eq!(app.with_tracker("shop", |t| t.execution().blocking(&task.id)).unwrap().unwrap().reason, "budget");
+            assert!(app.with_server(|db| db.turns("shop", None, 10)).unwrap().iter().all(|turn| turn.status == "interrupted"));
+
+            let mut cfg = app.cfg.clone();
+            cfg.budgets.per_day = 10.0;
+            let recovered = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+            recover(&recovered).unwrap();
+            recover(&recovered).unwrap();
+            assert!(claim_job(&recovered, "shop", job.id).unwrap().is_none(), "raising credit cannot implicitly resume");
+            crate::tasks::resume_execution(&recovered, &crate::tasks::Caller::person("shop", "owner"), &task.id).unwrap();
+            let project = recovered.with_server(|db| db.project("shop")).unwrap();
+            let claimed = claim_job(&recovered, "shop", job.id).unwrap().unwrap();
+            let mut prepared = prepare_claimed_job(&recovered, &project, claimed).unwrap().unwrap();
+            prepared.token = prepared.spec.token(&recovered, "shop", chrono::Duration::hours(1)).unwrap();
+            recovered.with_server(|db| db.set_job_output(job.id, &json!({"ok":true}))).unwrap();
+            finish(&recovered, &key, &prepared, true, Some(0), None, "Retained job completed").unwrap();
+            let finished = recovered.with_server(|db| db.job(job.id)).unwrap();
+            assert_eq!((finished.status.as_str(), finished.attempts, finished.output), ("succeeded", 1, Some(json!({"ok":true}))));
+        }
+    }
+
+    #[test]
+    fn an_uninterrupted_job_preparation_error_still_consumes_its_attempt() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = crate::config::Config::load(dir.path()).unwrap();
+        cfg.runtime.enabled = false;
+        cfg.runtime.max_attempts = 1;
+        let app = App::open(dir.path(), cfg, PathBuf::from("/nonexistent")).unwrap();
+        app.create_project("shop", "Shop", None, None, None).unwrap();
+        let job = app
+            .with_server(|db| {
+                db.create_job(genie_core::work::NewJob {
+                    project: "shop".into(),
+                    role: "missing-role".into(),
+                    goal: "Real configuration error".into(),
+                    workspace: "none".into(),
+                    ..Default::default()
+                })
+            })
+            .unwrap();
+        let project = app.with_server(|db| db.project("shop")).unwrap();
+        let claimed = claim_job(&app, "shop", job.id).unwrap().unwrap();
+        assert!(prepare_claimed_job(&app, &project, claimed).is_err());
+        let failed = app.with_server(|db| db.job(job.id)).unwrap();
+        assert_eq!((failed.status.as_str(), failed.attempts), ("failed", 1));
+    }
 
     fn incoming(app: &App, principal: &str) -> String {
         app.with_tracker("shop", |t| {

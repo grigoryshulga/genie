@@ -98,6 +98,44 @@ fn open_app() -> (tempfile::TempDir, std::sync::Arc<App>) {
     (dir, app)
 }
 
+#[test]
+fn automation_edits_use_the_read_snapshot_and_reject_missing_or_stale_versions() {
+    let (_dir, app) = open_app();
+    app.with_server(|db| db.set_autonomy("shop", "manual")).unwrap();
+    let task = create_task(&app, "Shared requirements");
+    let original = app.with_tracker("shop", |t| t.get(&task)).unwrap();
+    let stale = genie::tasks::view(&original).unwrap()["editVersion"].clone();
+    for (name, version, expected) in [
+        ("Read then edit", Some(json!("{{ steps.read.output.editVersion }}")), "succeeded"),
+        ("Missing version", None, "failed"),
+        ("Stale version", Some(stale), "failed"),
+    ] {
+        let mut edit = json!({ "plan": name });
+        if let Some(version) = version {
+            edit["expectedVersion"] = version;
+        }
+        let spec = json!({
+            "name": name, "on": { "manual": true },
+            "steps": [ { "id": "read", "task.get": {} }, { "id": "edit", "task.update": edit } ]
+        });
+        let rule = app.with_server(|db| db.create_automation("shop", &spec, "anna")).unwrap();
+        let run =
+            genie::engine::start_run(&app, &rule, name, json!({ "project": "shop", "task": { "id": task } }), 0, None).unwrap().unwrap();
+        genie::engine::tick(&app).unwrap();
+        assert_eq!(app.with_server(|db| db.run(run.id)).unwrap().status, expected, "{name}");
+        let steps = app.with_server(|db| db.steps(run.id)).unwrap();
+        assert!(steps[0].output.as_ref().unwrap()["editVersion"].is_string(), "task.get exposes an editing snapshot");
+        if expected == "failed" {
+            assert!(steps[1].error.as_deref().is_some_and(|error| error.contains(if name == "Missing version" {
+                "expectedVersion is required"
+            } else {
+                "task changed since it was read"
+            })));
+        }
+        assert_eq!(app.with_tracker("shop", |t| t.get(&task)).unwrap().plan, "Read then edit");
+    }
+}
+
 /// Whether the loop behind `notify` has a wake-up waiting (the permit `notify_one` keeps).
 async fn woken(notify: &tokio::sync::Notify) -> bool {
     tokio::time::timeout(std::time::Duration::from_millis(20), notify.notified()).await.is_ok()

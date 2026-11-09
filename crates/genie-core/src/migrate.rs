@@ -13,8 +13,8 @@
 //! an interrupted `ALTER` or a tracker from before the version column existed.
 //!
 //! The rehearsal is meant to be honest, not strict for its own sake: a migration that
-//! deletes or merges rows must say so here, since the check refuses a changed row count
-//! (no migration today moves rows), and a foreign-key violation the database already had
+//! moves rows must declare its source and destination, preserving their combined row
+//! count. Other changed row counts are refused. A foreign-key violation the database already had
 //! does not block the update — only one the migration *adds* does (the copy's violations
 //! must be a subset of the source's, compared row by row, not by count).
 
@@ -46,7 +46,7 @@ pub struct Report {
     pub rehearsed: bool,
     /// Tables in the rehearsed copy.
     pub tables: usize,
-    /// Rows in it (all tables; the ones that existed before kept their counts). `None` when
+    /// Rows in it (unchanged counts, including declared table moves). `None` when
     /// nothing was rehearsed and no row was counted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rows: Option<u64>,
@@ -73,6 +73,16 @@ pub fn preflight(path: &Path, target: i64, columns: &[Column], apply: &dyn Fn(&P
 /// genie, and when a migration is pending rehearse it on a copy and check the copy —
 /// integrity, foreign keys, the tables, the row counts and the version.
 pub fn check(path: &Path, target: i64, columns: &[Column], apply: &dyn Fn(&Path) -> Result<()>) -> Result<Report> {
+    check_moves(path, target, columns, apply, &[])
+}
+
+fn check_moves(
+    path: &Path,
+    target: i64,
+    columns: &[Column],
+    apply: &dyn Fn(&Path) -> Result<()>,
+    moves: &[(&str, &str)],
+) -> Result<Report> {
     let current = |tables: usize| Report {
         path: path.to_path_buf(),
         from: target,
@@ -98,7 +108,7 @@ pub fn check(path: &Path, target: i64, columns: &[Column], apply: &dyn Fn(&Path)
     let rows = row_counts(&conn, &before.tables).map_err(|e| context(path, e))?;
     let foreign = foreign_key_violations(&conn).map_err(|e| context(path, e))?;
     drop(conn);
-    let (tables, rows) = rehearse(path, target, columns, apply, &rows, &foreign)?;
+    let (tables, rows) = rehearse(path, target, columns, apply, &rows, &foreign, moves)?;
     Ok(Report {
         path: path.to_path_buf(),
         from: before.version,
@@ -117,9 +127,13 @@ pub fn check_tracker(path: &Path) -> Result<Report> {
 
 /// Check `server.db` (`genie migrate --check`).
 pub fn check_server(path: &Path) -> Result<Report> {
-    check(path, crate::server_db::SERVER_SCHEMA_VERSION, crate::server_db::SERVER_COLUMN_MIGRATIONS, &|p| {
-        crate::server_db::open_migrated(p).map(|_| ())
-    })
+    check_moves(
+        path,
+        crate::server_db::SERVER_SCHEMA_VERSION,
+        crate::server_db::SERVER_COLUMN_MIGRATIONS,
+        &|p| crate::server_db::open_migrated(p).map(|_| ()),
+        &[("turn_pauses", "execution_pauses")],
+    )
 }
 
 /// The schema version a database records: `None` when the file is not there, `0` when it
@@ -268,6 +282,7 @@ fn rehearse(
     apply: &dyn Fn(&Path) -> Result<()>,
     rows_before: &BTreeMap<String, i64>,
     foreign_before: &BTreeSet<String>,
+    moves: &[(&str, &str)],
 ) -> Result<(usize, u64)> {
     let dir = std::env::temp_dir().join(format!("genie-migrate-{}-{}", std::process::id(), unique()));
     std::fs::create_dir_all(&dir).map_err(|e| {
@@ -316,7 +331,19 @@ fn rehearse(
         )));
     }
     let rows_after = row_counts(&conn, &after.tables).map_err(|e| context(path, e))?;
-    for (table, expected) in rows_before {
+    let mut expected_rows = rows_before.clone();
+    for (source, destination) in moves {
+        if let Some(count) = expected_rows.remove(*source) {
+            if rows_after.contains_key(*source) {
+                return Err(GenieError::invalid(format!(
+                    "{}: the rehearsal did not move {source} to {destination}; the database was not touched",
+                    path.display()
+                )));
+            }
+            *expected_rows.entry((*destination).into()).or_default() += count;
+        }
+    }
+    for (table, expected) in &expected_rows {
         let got = rows_after.get(table).copied().unwrap_or(0);
         if got != *expected {
             return Err(GenieError::invalid(format!(
