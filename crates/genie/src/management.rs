@@ -77,7 +77,7 @@ pub(crate) fn dispatch_proposal(app: &App, project: &str, actor: &Actor, proposa
                     &format!("Dispatched on behalf of {} through proposal {}.", actor.name, p.id),
                     CommentKind::Note,
                 )?;
-                t.conversations().decide(proposal, true)?;
+                t.conversations().decide_as(proposal, true, actor)?;
             }
             Ok(manager)
         })

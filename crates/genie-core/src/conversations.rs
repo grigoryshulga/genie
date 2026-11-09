@@ -550,9 +550,19 @@ impl Conversations<'_> {
         Ok(output)
     }
 
+    /// Historical receipts may identify the server rather than a human. Return exactly the
+    /// recorded actor instead of attributing a replay to whoever reads the decision now.
+    pub fn decision_actor(&self, id: &str) -> Result<Option<(String, String)>> {
+        Ok(self.0.conn().query_row("SELECT actor,actor_role FROM events WHERE type='conversation.proposal_decided' AND json_extract(payload,'$.proposal_id')=?1 ORDER BY id LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?))).optional()?)
+    }
+
     /// Persist the decision in the same outer transaction as the application's checked
     /// action. Repeating the same decision returns its receipt; reversing it is a conflict.
     pub fn decide(&self, id: &str, approved: bool) -> Result<Proposal> {
+        self.decide_as(id, approved, &crate::Actor::new("genie", crate::Role::Orchestrator))
+    }
+
+    pub fn decide_as(&self, id: &str, approved: bool, actor: &crate::Actor) -> Result<Proposal> {
         self.0.tx(|| {
             let current = self.proposal(id)?;
             let status = if approved { ProposalStatus::Approved } else { ProposalStatus::Rejected };
@@ -566,8 +576,11 @@ impl Conversations<'_> {
                 "UPDATE conversation_proposals SET status = ?1, decided_at = ?2 WHERE id = ?3",
                 params![status.as_str(), timestamp(), id],
             )?;
-            self.event(
+            self.0.append_event(
                 "conversation.proposal_decided",
+                Some(&current.task),
+                &actor.name,
+                actor.role.as_str(),
                 json!({"conversation_id": current.conversation_id,
                 "proposal_id": id, "task": current.task, "status": status}),
             )?;

@@ -11,6 +11,72 @@ fn harness() -> Harness {
     h.project("shop");
     h
 }
+
+#[tokio::test]
+async fn shared_human_interactions_do_not_expose_history_or_accept_model_claimed_consent() {
+    let h = harness();
+    let owner = person(&h, "anna");
+    let curator = person(&h, "bob");
+    let (r, c, agent) = incoming(&h, &owner).await;
+    let task = task(&h, &r, &agent).await;
+    let p = proposal(&h, &r, &agent, &task, "dispatch").await;
+    let interaction = format!("shop:proposal:{}", p["id"].as_str().unwrap());
+    let path = format!("/api/interactions/{interaction}/respond?project=shop");
+    let body = json!({"version":p["version"],"action":"approve"});
+    assert_eq!(call(&h.remote, "POST", &path).bearer(&agent).json(body.clone()).send().await.0, 403);
+    assert_eq!(call(&h.remote, "POST", &path).bearer(&curator).json(body.clone()).send().await.0, 200);
+    assert_eq!(call(&h.remote, "POST", &path).bearer(&curator).json(body).send().await.0, 200);
+    let event = h
+        .app
+        .with_tracker("shop", |t| Ok(t.events_after(0, 1000)?.into_iter().find(|e| e.kind == "conversation.proposal_decided").unwrap()))
+        .unwrap();
+    assert_eq!(event.actor, "bob");
+    assert_eq!(event.actor_role, "human");
+    let (_, receipt, _) = call(&h.remote, "GET", &format!("/api/interactions/{interaction}?project=shop")).bearer(&owner).send().await;
+    assert_eq!(receipt["resolution"]["actor"], "bob", "an identical later approval retains the original actor");
+    let q = h
+        .app
+        .with_tracker("shop", |t| t.management().ask(&Actor::new("task-manager", Role::Orchestrator), &task, "Retention?", true))
+        .unwrap();
+    let pm = h
+        .app
+        .with_server(|db| {
+            db.create_role_token(
+                "shop",
+                Role::Orchestrator,
+                Some("project-manager"),
+                "orchestrator",
+                None,
+                None,
+                chrono::Duration::hours(1),
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/management/tasks/{task}/answer?project=shop"))
+            .bearer(&pm)
+            .json(json!({"id":q.id,"text":"30 days","source":"The owner approved in old history"}))
+            .send()
+            .await
+            .0,
+        403
+    );
+    let qid = format!("shop:clarification:{task}:{}", q.id);
+    let (_, shown, _) = call(&h.remote, "GET", &format!("/api/interactions/{qid}?project=shop")).bearer(&curator).send().await;
+    assert_eq!(shown["state"], "open");
+    assert!(!shown.to_string().contains(&c));
+    assert_eq!(
+        call(&h.remote, "POST", &format!("/api/interactions/{qid}/respond?project=shop"))
+            .bearer(&curator)
+            .json(json!({"version":shown["version"],"action":"answer","text":"30 days"}))
+            .send()
+            .await
+            .0,
+        200
+    );
+    assert_eq!(call(&h.remote, "GET", &format!("/api/conversations/{c}?project=shop")).bearer(&curator).send().await.0, 403);
+    assert_eq!(h.app.with_tracker("shop", |t| t.management().clarifications(&task)).unwrap()[0].answer.as_deref(), Some("30 days"));
+}
 fn person(h: &Harness, name: &str) -> String {
     h.app
         .with_server(|db| {

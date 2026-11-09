@@ -116,11 +116,19 @@ async fn act(
                     management::project_manager(&a.actor)?;
                     let id = b.id.ok_or_else(|| crate::state::AppError::Bad("id is required".into()))?;
                     let text = required(b.text, "text")?;
-                    let source = required(
-                        b.source.or_else(|| (a.actor.role == Role::Human).then(|| format!("owner:{} clarification:{id}", a.actor.name))),
-                        "source",
-                    )?;
-                    app.with_tracker(&a.project, |t| t.management().answer(&a.actor, &task, id, &text, &source))?;
+                    if a.actor.role == Role::Human && !a.agent {
+                        crate::interactions::answer_clarification(app, &a, &task, id, &text, None)?;
+                    } else {
+                        if app.with_tracker(&a.project, |t| {
+                            Ok(t.management().clarifications(&task)?.iter().any(|q| q.id == id && q.state == "owner"))
+                        })? {
+                            return Err(crate::state::AppError::Forbidden(
+                                "this question requires an authenticated person's answer".into(),
+                            ));
+                        }
+                        let source = required(b.source, "source")?;
+                        app.with_tracker(&a.project, |t| t.management().answer(&a.actor, &task, id, &text, &source))?;
+                    }
                     management::show(app, &a.project, &task)?
                 }
                 "escalate" => management::escalate(

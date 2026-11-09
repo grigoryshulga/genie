@@ -127,11 +127,34 @@ async fn people_answer_the_questions_they_were_asked_and_read_their_notification
         .with_server(|db| db.create_questionnaire("shop", Some("G-1"), "analyst", anna_id, "web", &questions, None, None, None))
         .unwrap();
 
+    let preference = cli(&anna, &["me", "delivery", "--order", "telegram,email", "--after-attempts", "2"]).await.unwrap();
+    assert!(preference.text.contains("telegram → email"));
+    let interactions = op(&anna, "interaction", "list", json!({})).await.unwrap();
+    assert_eq!(interactions.data.as_array().unwrap().len(), 2);
+
     let waiting = cli(&anna, &["me", "questions"]).await.unwrap();
     assert!(waiting.text.contains("1. CSV or XLSX?\n     why: the library\n     options: CSV | XLSX"), "{}", waiting.text);
     let id = qn.id.to_string();
     let first = cli(&anna, &["me", "answer", &id, "1=XLSX"]).await.unwrap();
     assert!(first.text.contains("→ XLSX") && first.text.ends_with("some questions are still open"), "{}", first.text);
+    let item = &interactions.data[0];
+    let repeat = cli(
+        &anna,
+        &[
+            "interaction",
+            "respond",
+            item["id"].as_str().unwrap(),
+            "--version",
+            item["version"].as_str().unwrap(),
+            "--action",
+            "answer",
+            "--text",
+            "XLSX",
+        ],
+    )
+    .await
+    .unwrap();
+    assert_eq!(repeat.data["state"], "answered");
     assert!(cli(&bob, &["me", "answer", &id, "2=me"]).await.unwrap_err().contains("no such questionnaire for you"));
     let done = op(&anna, "me", "answer", json!({ "questionnaire": qn.id, "answers": ["2=Accounting"] })).await.unwrap();
     assert!(done.text.ends_with("the answers went to the task"), "{}", done.text);

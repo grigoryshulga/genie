@@ -99,7 +99,7 @@ impl ServerDb {
             let Some((user, project)) = row else { return Ok(false) };
             let u = self.user(user)?;
             if u.disabled || self.project_role(&project, &u)?.is_none() { return Ok(false); }
-            if self.user_by_channel(scope, chat)?.is_some_and(|id| id != user) { return Ok(false); }
+            if self.channel_claimed_by_other(user,scope,chat)? { return Ok(false); }
             self.conn().execute("DELETE FROM link_codes WHERE code = ?1", [hash_secret(code)])?;
             self.link_channel(user, scope, chat)?;
             Ok(true)

@@ -524,7 +524,7 @@ fn set_status_inner(app: &App, caller: &Caller, id: &str, body: StatusBody, prop
             }
             let task = t.set_status(&caller.actor, id, to, opts)?;
             if let Some(proposal) = proposal {
-                t.conversations().decide(proposal, true)?;
+                t.conversations().decide_as(proposal, true, &caller.actor)?;
             }
             if crate::conversations::has_result(&task)
                 && let Some(conversation) = t.conversations().conversation_for_task(&task.id)?
@@ -605,6 +605,14 @@ pub fn comment(app: &App, caller: &Caller, id: &str, body: CommentBody) -> AppRe
     }
     changed(app);
     Ok(task)
+}
+
+/// Complete a previously authorized human answer, with the identity frozen on acceptance.
+/// This is durable delivery of that decision, so a replay does not solicit new authority.
+pub(crate) fn record_answers(app: &App, project: &str, actor: &str, task: &str, receipt: &str, text: &str) -> AppResult<()> {
+    app.with_tracker(project, |t| t.comment_once(receipt, &Actor::new(actor, Role::Human), task, text))?;
+    changed(app);
+    Ok(())
 }
 
 /// A task deleted for good, with what happened to the teams that worked on it.
@@ -767,15 +775,37 @@ fn pause_inner(app: &App, project: &str, actor: &Actor, task: &str, reason: &str
 }
 
 pub fn resume_execution(app: &App, caller: &Caller, task: &str) -> AppResult<serde_json::Value> {
+    resume_inner(app, caller, task, None)
+}
+
+pub(crate) fn resume_interaction(app: &App, caller: &Caller, task: &str, generation: i64) -> AppResult<serde_json::Value> {
+    resume_inner(app, caller, task, Some(generation))
+}
+
+fn resume_inner(app: &App, caller: &Caller, task: &str, generation: Option<i64>) -> AppResult<serde_json::Value> {
     if !caller.is_person() {
         return Err(AppError::Forbidden("only a person stops or resumes task execution".into()));
     }
     let _gate = app.execution_gate.lock().map_err(|_| AppError::Internal("execution gate poisoned".into()))?;
+    if let Some(expected) = generation {
+        let current = app.with_tracker(&caller.project, |t| t.execution().state(task))?;
+        if let Some(current) = current.filter(|s| !s.paused && expected.checked_add(1) == Some(s.generation)) {
+            return Ok(serde_json::json!({"execution":current}));
+        }
+    }
     if let Some(exceeded) = crate::budget::check(app, &caller.project, Some(task))? {
         return Err(AppError::Conflict(exceeded.explain()));
     }
     let state = app.with_tracker(&caller.project, |t| {
         t.tx(|| {
+            if let Some(expected) = generation {
+                let current = t.execution().state(task)?.ok_or_else(|| genie_core::GenieError::not_found("execution pause"))?;
+                if current.paused && current.generation != expected
+                    || !current.paused && expected.checked_add(1) != Some(current.generation)
+                {
+                    return Err(genie_core::GenieError::invalid("this execution pause is obsolete; inspect the current pause"));
+                }
+            }
             let was_paused = t.execution().state(task)?.is_some_and(|s| s.paused);
             let state = t.execution().resume(&caller.actor, task)?;
             t.execution().ensure_running(task)?;

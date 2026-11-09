@@ -34,6 +34,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/questions/{id}/answer", post(answer_mine))
         .route("/answer/{token}", get(answer_form).post(answer))
         .route("/me/channels", get(channels))
+        .route("/me/delivery", get(delivery).put(set_delivery))
         .route("/me/channels/telegram/code", post(telegram_code))
         .route("/me/channels/{channel}", axum::routing::delete(unlink))
 }
@@ -273,6 +274,25 @@ struct ReadBody {
     id: Option<i64>,
 }
 
+async fn delivery(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
+    let uid = ctx.user()?.id;
+    Ok(Json(app.blocking(move |app| Ok(json!({"policy":app.with_server(|db|db.delivery_policy(uid))?}))).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeliveryBody {
+    #[serde(deserialize_with = "Option::deserialize")]
+    policy: Option<genie_core::human_delivery::DeliveryPolicy>,
+}
+
+async fn set_delivery(State(app): State<Arc<App>>, ctx: Ctx, super::Body(body): super::Body<DeliveryBody>) -> ApiResult<Json<Value>> {
+    let uid = ctx.user()?.id;
+    app.blocking(move |app| app.with_server(|db| db.set_delivery_policy(uid, body.policy.as_ref()))).await?;
+    app.wake_outbox.notify_one();
+    Ok(Json(json!({"ok":true})))
+}
+
 async fn read(State(app): State<Arc<App>>, ctx: Ctx, body: Option<Json<ReadBody>>) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
     let id = body.and_then(|Json(b)| b.id);
@@ -282,16 +302,39 @@ async fn read(State(app): State<Arc<App>>, ctx: Ctx, body: Option<Json<ReadBody>
 
 async fn my_questions(State(app): State<Arc<App>>, ctx: Ctx) -> ApiResult<Json<Value>> {
     let user = ctx.user()?.clone();
-    let list = app.blocking(move |app| app.with_server(|db| db.questionnaires_for(user.id, true))).await?;
+    let list = app
+        .blocking(move |app| {
+            app.with_server(|db| {
+                let mut items = Vec::new();
+                for qn in db.questionnaires_for(user.id, true)? {
+                    match crate::questions::authorize(db, &qn, user.id) {
+                        Ok(()) => items.push(qn),
+                        Err(genie_core::GenieError::Denied(_)) => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+                Ok(items)
+            })
+        })
+        .await?;
     Ok(Json(json!(list)))
 }
 
 /// Public: the questionnaire behind an answer link (the token is the credential).
 async fn answer_form(State(app): State<Arc<App>>, Path(token): Path<String>) -> ApiResult<Json<Value>> {
     let qn = app
-        .blocking(move |app| app.with_server(|db| db.questionnaire_by_secret(&token)))
-        .await?
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "the link is invalid or was replaced by a newer reminder"))?;
+        .blocking(move |app| {
+            app.with_server(|db| {
+                let qn = db.questionnaire_by_secret(&token)?;
+                if let Some(qn) = &qn {
+                    crate::questions::authorize(db, qn, qn.recipient)?;
+                }
+                Ok(qn)
+            })
+        })
+        .await
+        .map_err(crate::questions::authorization_error)?
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "the answer link is invalid"))?;
     let task_title = qn.task.clone().and_then(|t| app.with_tracker(&qn.project, |tr| Ok(tr.get(&t)?.title)).ok());
     Ok(Json(json!({ "questionnaire": qn, "taskTitle": task_title })))
 }
@@ -309,14 +352,18 @@ fn answer_all(
     answers: &std::collections::BTreeMap<String, String>,
     via: &str,
 ) -> crate::state::AppResult<bool> {
-    let mut done = false;
-    for (n, text) in answers.iter().filter(|(_, t)| !t.trim().is_empty()) {
-        let n: i64 = n.parse().map_err(|_| genie_core::GenieError::invalid(format!("bad question number {n}")))?;
-        if qn.questions.iter().any(|q| q.n == n && q.answer.is_none()) {
-            done = crate::questions::answer(app, qn.id, n, text, via)?.1;
+    let mut submitted = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (number, text) in answers {
+        let n: i64 = number.parse().map_err(|_| genie_core::GenieError::invalid(format!("bad question number {number}")))?;
+        if !seen.insert(n) || !qn.questions.iter().any(|q| q.n == n) {
+            return Err(genie_core::GenieError::invalid(format!("unknown or repeated question number {number}")).into());
+        }
+        if !text.trim().is_empty() {
+            submitted.push((n, text.clone()));
         }
     }
-    Ok(done)
+    Ok(crate::questions::answer_many(app, qn.recipient, qn.id, &submitted, via)?.1)
 }
 
 async fn answer(State(app): State<Arc<App>>, Path(token): Path<String>, Json(b): Json<AnswerBody>) -> ApiResult<Json<Value>> {
@@ -329,7 +376,7 @@ async fn answer(State(app): State<Arc<App>>, Path(token): Path<String>, Json(b):
             Ok(Some((app.with_server(|db| db.questionnaire(qn.id))?, done)))
         })
         .await?
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "the link is invalid or was replaced by a newer reminder"))?;
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "the answer link is invalid"))?;
     Ok(Json(json!({ "questionnaire": result.0, "complete": result.1 })))
 }
 
@@ -343,9 +390,6 @@ async fn answer_mine(State(app): State<Arc<App>>, ctx: Ctx, Path(id): Path<i64>,
                 Ok(_) | Err(crate::state::AppError::Genie(genie_core::GenieError::NotFound(_))) => return Ok(None),
                 Err(e) => return Err(e),
             };
-            if qn.status != "open" {
-                return Err(genie_core::GenieError::invalid(format!("questionnaire {id} is {}", qn.status)).into());
-            }
             let done = answer_all(app, &qn, &b.answers, "api")?;
             Ok(Some((app.with_server(|db| db.questionnaire(qn.id))?, done)))
         })

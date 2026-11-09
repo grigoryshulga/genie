@@ -8,11 +8,65 @@ use serde_json::{Value, json};
 use super::{Cx, Entry, Need, Op, Out, register};
 
 pub fn register(all: &mut Vec<Entry>) {
-    register!(all, Show, Notifications, Read, Questions, Answer);
+    register!(all, Show, Notifications, Read, Questions, Answer, Delivery);
 }
 
 fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or_default()
+}
+
+/// Inspect or set your preferred external channel and explicit ordered fallbacks.
+#[derive(clap::Args, Deserialize, JsonSchema)]
+pub struct Delivery {
+    /// Comma-separated channels, e.g. telegram,email. Used only after failed delivery.
+    #[arg(long, value_delimiter = ',')]
+    pub order: Option<Vec<String>>,
+    #[arg(long)]
+    pub after_attempts: Option<i64>,
+    #[arg(long)]
+    #[serde(default)]
+    pub web_only: bool,
+    #[arg(long)]
+    #[serde(default)]
+    pub reset: bool,
+}
+impl Op for Delivery {
+    const GROUP: &'static str = "me";
+    const NAME: &'static str = "delivery";
+    const NEED: Need = Need::Person;
+    async fn run(self, cx: &Cx) -> Result<Out, String> {
+        if self.reset && (self.order.is_some() || self.web_only || self.after_attempts.is_some()) || self.web_only && self.order.is_some() {
+            return Err("choose --reset, --web-only or --order".into());
+        }
+        if self.reset || self.web_only || self.order.is_some() {
+            let policy = if self.reset {
+                Value::Null
+            } else {
+                let policy = genie_core::human_delivery::DeliveryPolicy {
+                    order: self.order.unwrap_or_default(),
+                    fallback_after_attempts: self.after_attempts.unwrap_or(genie_core::inbox::MAX_DELIVERY_ATTEMPTS),
+                };
+                policy.validate().map_err(|e| e.to_string())?;
+                json!(policy)
+            };
+            cx.call("PUT", "/me/delivery", Some(json!({"policy":policy}))).await?;
+        } else if self.after_attempts.is_some() {
+            return Err("specify --order with --after-attempts".into());
+        }
+        let value = cx.call("GET", "/me/delivery", None).await?;
+        let text = if value["policy"].is_null() {
+            "Default: web and Telegram when linked, otherwise email; no external fallback after failure.".into()
+        } else if value["policy"]["order"].as_array().is_some_and(|v| v.is_empty()) {
+            "Web only.".into()
+        } else {
+            format!(
+                "External order: {}. Fallback after {} failed attempt(s).",
+                value["policy"]["order"].as_array().into_iter().flatten().filter_map(Value::as_str).collect::<Vec<_>>().join(" → "),
+                value["policy"]["fallbackAfterAttempts"]
+            )
+        };
+        Ok(Out::new(text, value))
+    }
 }
 
 /// Who you are to the server: a person and their projects, or an agent and its project and team.

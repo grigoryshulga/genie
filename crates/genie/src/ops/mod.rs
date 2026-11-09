@@ -31,6 +31,7 @@ mod conversations;
 mod decisions;
 mod docs;
 mod intelligence;
+mod interactions;
 mod mail;
 mod management;
 mod me;
@@ -372,6 +373,7 @@ pub const GROUPS: &[(&str, &str)] = &[
     ("me", "You: who you are, your notifications and the questions agents asked you"),
     ("server", "The running server: readiness, what happened, knowledge sync, model prices"),
     ("budget", "Model-call allowances, receipts and administrator reconciliation"),
+    ("interaction", "Human questions, proposals and versioned decisions"),
 ];
 
 /// Every operation of genie.
@@ -392,6 +394,7 @@ pub fn catalog() -> &'static [Entry] {
         agents::register(&mut all);
         admin::register(&mut all);
         budget::register(&mut all);
+        interactions::register(&mut all);
         me::register(&mut all);
         repos::register(&mut all);
         observation::register(&mut all);
