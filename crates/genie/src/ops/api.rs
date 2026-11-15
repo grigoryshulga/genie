@@ -167,7 +167,7 @@ impl Api for InProcess {
             if matches!(self.auth, Auth::Operator) {
                 req.extensions_mut().insert(OperatorAccess);
             }
-            let res = self.router.clone().oneshot(req).await.map_err(|e| e.to_string())?;
+            let res = self.router.clone().oneshot(req).await.unwrap_or_else(|never| match never {});
             let status = res.status();
             let bytes = axum::body::to_bytes(res.into_body(), 64 * 1024 * 1024).await.map_err(|e| e.to_string())?;
             answer(status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
