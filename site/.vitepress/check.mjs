@@ -2,12 +2,14 @@ import { readFile, readdir, access } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createMarkdownRenderer } from 'vitepress'
+import { checkRequiredReading } from '../scripts/required-reading.mjs'
 
 const site = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const root = path.dirname(site)
 const content = path.join(site, 'content')
+const vault = path.resolve(process.env.GENIE_VAULT_DIR ?? path.join(site, '.vault'))
 const markdown = await createMarkdownRenderer(content)
-const errors = []
+const errors = await checkRequiredReading(vault)
 
 // The glossary maps the product's Russian UI labels, so it is the only page allowed non-English text.
 const cyrillicAllowed = new Set([path.join(content, 'glossary.md')])
@@ -77,5 +79,5 @@ if (errors.length) {
   for (const error of errors) console.error(error)
   process.exitCode = 1
 } else {
-  console.log(`Checked ${files.length} English Markdown files and their local links and headings.`)
+  console.log(`Checked ${files.length} English Markdown files, their local links and headings, and required reading.`)
 }
