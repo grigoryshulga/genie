@@ -13,7 +13,7 @@ use genie_core::changesets::{
     Changeset, ChangesetFilter, ChangesetOrigin, ChangesetStatus, DocMerge, MergeStatus, NewChangeset, ReviewDecision,
 };
 use genie_core::doc_ops::{DocOp, apply_ops};
-use genie_core::vault::{AuthorKind, DocPage, DocRead, Publish, Vault, parse_doc};
+use genie_core::vault::{AuthorKind, DocPage, DocRead, Publish, Vault, WikiLinks, parse_doc};
 use genie_core::vault_git::{CommitInfo, CommitMeta, FileMerge, Git};
 use genie_core::work::NewJob;
 use serde_json::{Value, json};
@@ -240,8 +240,9 @@ fn commit_changes(
     changes: Vec<(String, Option<Vec<u8>>)>,
     message: &str,
     paths: &[String],
+    trailers: &[(&str, String)],
 ) -> AppResult<String> {
-    let commit = git.commit_tree(tip, &[tip], &changes, &meta(ed, message, cs, &[]))?;
+    let commit = git.commit_tree(tip, &[tip], &changes, &meta(ed, message, cs, trailers))?;
     git.update_ref(&branch_ref(cs), &commit, Some(tip))?;
     app.with_server(|db| db.touch_changeset(cs.id, paths))?;
     Ok(commit)
@@ -273,6 +274,7 @@ pub fn edit(app: &App, ed: &Editor, path: &str, ops: &[DocOp], note: &str, chang
             vec![(rel.clone(), Some(content.clone().into_bytes()))],
             &message,
             std::slice::from_ref(&rel),
+            &[],
         )?;
         let cs = app.with_server(|db| db.changeset(cs.id))?;
         let events = vec![Event {
@@ -297,7 +299,7 @@ pub fn remove_page(app: &App, ed: &Editor, path: &str, note: &str, changeset: Op
         }
         locked(v, &rel, ed.kind)?;
         let message = message_or(format!("remove {rel}"), note);
-        let commit = commit_changes(app, &git, ed, &cs, &tip, vec![(rel.clone(), None)], &message, std::slice::from_ref(&rel))?;
+        let commit = commit_changes(app, &git, ed, &cs, &tip, vec![(rel.clone(), None)], &message, std::slice::from_ref(&rel), &[])?;
         let cs = app.with_server(|db| db.changeset(cs.id))?;
         let events = vec![Event {
             path: rel.clone(),
@@ -317,17 +319,49 @@ pub fn move_page(app: &App, ed: &Editor, from: &str, to: &str, note: &str, chang
         if from == to {
             return Err(GenieError::invalid("a page cannot be moved onto itself"));
         }
+        if to.contains(['[', ']', '#', '|', '\r', '\n']) {
+            return Err(GenieError::invalid("the destination path cannot contain wiki-link delimiters or newlines"));
+        }
         let git = git_of(v)?;
         let cs = changeset_for(v, app, &git, ed, &from, note, changeset)?;
         let tip = tip_of(&git, &cs)?;
-        let content = git.show(&tip, &from)?.ok_or_else(|| GenieError::not_found(format!("documentation page {from} not found")))?;
+        if git.show(&tip, &from)?.is_none() {
+            return Err(GenieError::not_found(format!("documentation page {from} not found")));
+        }
         if git.show(&tip, &to)?.is_some() {
             return Err(GenieError::invalid(format!("documentation page {to} already exists")));
         }
         locked(v, &from, ed.kind)?;
         locked(v, &to, ed.kind)?;
-        let text = utf8(content.clone())?;
-        validate_content(v, &to, &text, ed.kind)?;
+        // Resolve and rewrite against this branch, including its new pages and earlier edits.
+        // The main index cannot describe unpublished aliases, deleted pages or link targets.
+        let mut pages = BTreeMap::new();
+        for path in git.paths(&tip)? {
+            if path.ends_with(".md")
+                && !path.split('/').any(|part| part.starts_with('.'))
+                && v.project_of(&path).as_deref() == Some(ed.project.as_str())
+                && let Some(content) = git.show(&tip, &path)?
+            {
+                pages.insert(path, utf8(content)?);
+            }
+        }
+        let links = WikiLinks::new(pages.iter().map(|(path, content)| (path.clone(), parse_doc(content, path).aliases)));
+        let mut changes = vec![(from.clone(), None)];
+        let mut paths = vec![from.clone()];
+        let mut text = String::new();
+        for (path, content) in pages {
+            let rewritten = links.rewrite_move(&content, &from, &to);
+            if path == from || rewritten != content {
+                let destination = if path == from { to.clone() } else { in_project(v, &ed.project, &path)? };
+                // An uneditable backlink blocks the entire move, before any branch commit.
+                validate_content(v, &destination, &rewritten, ed.kind)?;
+                if path == from {
+                    text = rewritten.clone();
+                }
+                paths.push(destination.clone());
+                changes.push((destination, Some(rewritten.into_bytes())));
+            }
+        }
         let message = message_or(format!("move {from} to {to}"), note);
         let commit = commit_changes(
             app,
@@ -335,12 +369,13 @@ pub fn move_page(app: &App, ed: &Editor, from: &str, to: &str, note: &str, chang
             ed,
             &cs,
             &tip,
-            vec![(from.clone(), None), (to.clone(), Some(content))],
+            changes,
             &message,
-            &[from.clone(), to.clone()],
+            &paths,
+            &[("Genie-Page-Move", json!({ "from": from, "to": to }).to_string())],
         )?;
         let cs = app.with_server(|db| db.changeset(cs.id))?;
-        let events = vec![
+        let mut events = vec![
             Event {
                 path: from.clone(),
                 kind: "doc.changeset_edited",
@@ -352,6 +387,11 @@ pub fn move_page(app: &App, ed: &Editor, from: &str, to: &str, note: &str, chang
                 payload: json!({ "path": to, "moveFrom": from, "changeset": cs.id, "task": cs.task }),
             },
         ];
+        events.extend(paths.into_iter().filter(|path| path != &from && path != &to).map(|path| Event {
+            payload: json!({ "path": path, "changeset": cs.id, "task": cs.task, "moveFrom": from, "moveTo": to }),
+            path,
+            kind: "doc.changeset_edited",
+        }));
         Ok((Edited { changeset: cs, commit, content: text }, events))
     })?;
     emit(app, events, ed);
@@ -519,6 +559,21 @@ pub fn publish(app: &App, id: i64, by: &Editor) -> AppResult<Published> {
             cs.title.clone()
         };
         let mut extra: Vec<(&str, String)> = Vec::new();
+        // Preserve the logical move against main as well as on the editing branch.
+        // A rewrite can make Git's similarity-based rename detection lose the old name.
+        for (path, bytes) in &changes {
+            if bytes.is_none() || !path.ends_with(".md") || git.show(&tip, path)?.is_none() {
+                continue;
+            }
+            if let Some(previous) = git.path_at(&tip, path, &base)?
+                && previous != *path
+            {
+                if !vault_wide {
+                    in_project(v, &by.project, &previous)?;
+                }
+                extra.push(("Genie-Page-Move", json!({ "from": previous, "to": path }).to_string()));
+            }
+        }
         if let Some(merge) = app.with_server(|db| db.merges(&[MergeStatus::Resolved], 1000))?.into_iter().find(|m| m.changeset == id) {
             let by_merger = merge
                 .resolution
@@ -651,9 +706,28 @@ pub fn revert(app: &App, id: i64, by: &Editor) -> AppResult<Published> {
             changes.push((path.clone(), git.show(&parent, path)?));
         }
         if !changes.is_empty() {
+            let mut extra = Vec::new();
+            let mut moved_back = Vec::new();
+            for path in &paths {
+                if git.show(&fork, path)?.is_some()
+                    && let Some(previous) = git.path_at(&fork, path, &parent)?
+                    && previous != *path
+                {
+                    in_project(v, &by.project, &previous)?;
+                    extra.push(("Genie-Page-Move", json!({ "from": path, "to": previous }).to_string()));
+                    moved_back.push(previous);
+                }
+            }
+            for (path, content) in &changes {
+                if content.is_some() && !moved_back.contains(path) && git.show(&fork, path)?.is_none() {
+                    // Reverting a deletion restores the earlier page, rather than
+                    // introducing a new page that happens to reuse the old name.
+                    extra.push(("Genie-Page-Restore", json!({ "path": path, "at": parent, "source": path }).to_string()));
+                }
+            }
             let message =
                 format!("Revert changeset #{id}: {}", if cs.title.trim().is_empty() { "undo the published change" } else { &cs.title });
-            let commit = git.commit_tree(&fork, &[&fork], &changes, &meta(by, &message, &new, &[]))?;
+            let commit = git.commit_tree(&fork, &[&fork], &changes, &meta(by, &message, &new, &extra))?;
             git.update_ref(&branch_ref(&new), &commit, Some(&fork))?;
         }
         let new = app.with_server(|db| db.changeset(new.id))?;
@@ -672,12 +746,12 @@ pub fn restore(app: &App, ed: &Editor, path: &str, at: &str) -> AppResult<Publis
         let rel = in_project(v, &ed.project, path)?;
         let git = git_of(v)?;
         let main = head(&git)?;
-        let commit = git.resolve(at)?.ok_or_else(|| GenieError::not_found(format!("version {at} not found")))?;
-        if git.merge_base(&main, &commit)? != Some(commit.clone()) {
-            return Err(GenieError::invalid(format!("version {commit} is not on main")));
-        }
-        let content =
-            git.show(&commit, &rel)?.ok_or_else(|| GenieError::not_found(format!("documentation page {rel} not found at {commit}")))?;
+        let commit = main_version(&git, &main, at)?;
+        let historical = page_path_at(v, &git, &ed.project, &main, &rel, &commit)?
+            .ok_or_else(|| GenieError::not_found(format!("documentation page {rel} not found at {commit}")))?;
+        let content = git
+            .show(&commit, &historical)?
+            .ok_or_else(|| GenieError::not_found(format!("documentation page {rel} not found at {commit}")))?;
         validate_content(v, &rel, &utf8(content.clone())?, ed.kind)?;
         let short: String = commit.chars().take(10).collect();
         let title = format!("Restore {rel} at {short}");
@@ -697,7 +771,8 @@ pub fn restore(app: &App, ed: &Editor, path: &str, at: &str) -> AppResult<Publis
         })?;
         git.update_ref(&branch_ref(&new), &main, None)?;
         let message = message_or(title.clone(), "");
-        let commit = git.commit_tree(&main, &[&main], &[(rel.clone(), Some(content))], &meta(ed, &message, &new, &[]))?;
+        let restored = [("Genie-Page-Restore", json!({ "path": rel, "at": commit, "source": historical }).to_string())];
+        let commit = git.commit_tree(&main, &[&main], &[(rel.clone(), Some(content))], &meta(ed, &message, &new, &restored))?;
         git.update_ref(&branch_ref(&new), &commit, Some(&main))?;
         Ok(app.with_server(|db| db.changeset(new.id))?)
     })?;
@@ -708,7 +783,13 @@ pub fn history(app: &App, project: &str, path: &str, limit: usize) -> AppResult<
     app.with_vault(|v| {
         let rel = in_project(v, project, path)?;
         let git = git_of(v)?;
-        git.log_full("HEAD", Some(&rel), limit)
+        let history = git.page_history("HEAD", &rel, limit)?;
+        for (_, paths) in &history {
+            for path in paths {
+                in_project(v, project, path)?;
+            }
+        }
+        Ok(history.into_iter().map(|(commit, _)| commit).collect())
     })
 }
 
@@ -716,8 +797,25 @@ pub fn diff(app: &App, project: &str, path: &str, from: &str, to: &str) -> AppRe
     app.with_vault(|v| {
         let rel = in_project(v, project, path)?;
         let git = git_of(v)?;
-        git.diff(from, to, &[rel])
+        let main = head(&git)?;
+        let from = main_version(&git, &main, from)?;
+        let to = main_version(&git, &main, to)?;
+        let from_path = page_path_at(v, &git, project, &main, &rel, &from)?;
+        let to_path = page_path_at(v, &git, project, &main, &rel, &to)?;
+        git.diff_page(&from, from_path.as_deref(), &to, to_path.as_deref())
     })
+}
+
+fn main_version(git: &Git, main: &str, at: &str) -> genie_core::Result<String> {
+    let commit = git.resolve(at)?.ok_or_else(|| GenieError::not_found(format!("version {at} not found")))?;
+    if git.merge_base(main, &commit)? != Some(commit.clone()) {
+        return Err(GenieError::invalid(format!("version {commit} is not on main")));
+    }
+    Ok(commit)
+}
+
+fn page_path_at(v: &Vault, git: &Git, project: &str, main: &str, path: &str, at: &str) -> genie_core::Result<Option<String>> {
+    git.path_at(main, path, at)?.map(|historical| in_project(v, project, &historical)).transpose()
 }
 
 pub fn changeset_detail(app: &App, project: &str, id: i64) -> AppResult<Value> {
@@ -820,7 +918,7 @@ pub fn read_for(
                 (tip_of(&git, &cs)?, false)
             }
         } else if let Some(at) = at {
-            let rev = git.resolve(at)?.ok_or_else(|| GenieError::not_found(format!("version {at} not found")))?;
+            let rev = main_version(&git, &main, at)?;
             (rev.clone(), rev == main)
         } else {
             // Read-your-writes: the reader's changeset for its task, else any open one of theirs touching the page
@@ -855,8 +953,14 @@ pub fn read_for(
             let read = v.project_read(&ed.project, &rel, heading, max_chars)?;
             json!(read)
         } else {
+            let historical = if at.is_some() && changeset.is_none() {
+                page_path_at(v, &git, &ed.project, &main, &rel, &rev)?
+                    .ok_or_else(|| GenieError::not_found(format!("documentation page {rel} not found at {rev}")))?
+            } else {
+                rel.clone()
+            };
             let content = git
-                .show(&rev, &rel)?
+                .show(&rev, &historical)?
                 .map(utf8)
                 .transpose()?
                 .ok_or_else(|| GenieError::not_found(format!("documentation page {rel} not found at {rev}")))?;

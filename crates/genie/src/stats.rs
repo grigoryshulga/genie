@@ -198,6 +198,9 @@ fn tracker_stats(p: &mut ProjectStats, db: &Path, since: &str) -> rusqlite::Resu
 }
 
 fn server_stats(p: &mut ProjectStats, conn: &Connection, since: &str) -> rusqlite::Result<()> {
+    // Keep table discovery and reads in one snapshot if startup retires proposals concurrently.
+    let snapshot = conn.unchecked_transaction()?;
+    let conn = &snapshot;
     let pair = |sql: &str| -> rusqlite::Result<(usize, usize)> {
         conn.query_row(sql, params![p.project, since], |r| {
             Ok((r.get::<_, i64>(0)? as usize, r.get::<_, Option<i64>>(1)?.unwrap_or(0) as usize))
@@ -206,8 +209,18 @@ fn server_stats(p: &mut ProjectStats, conn: &Connection, since: &str) -> rusqlit
     (p.runs, p.runs_failed) =
         pair("SELECT COUNT(*), SUM(status = 'failed') FROM turns WHERE project = ?1 AND started >= ?2 AND status != 'skipped'")?;
     (p.jobs, p.jobs_failed) = pair("SELECT COUNT(*), SUM(status = 'failed') FROM agent_jobs WHERE project = ?1 AND created >= ?2")?;
-    let (proposals, approved) = pair("SELECT COUNT(*), SUM(status = 'approved') FROM proposals WHERE project = ?1 AND created >= ?2")?;
-    let (_, rejected) = pair("SELECT COUNT(*), SUM(status = 'rejected') FROM proposals WHERE project = ?1 AND created >= ?2")?;
+    // During an interrupted vault migration the original table still owns its records;
+    // afterwards the immutable archive preserves the same historical statistics.
+    let legacy: bool =
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'proposals')", [], |r| r.get(0))?;
+    let records = if legacy {
+        "(SELECT project, created, status FROM doc_proposal_archive UNION ALL SELECT project, created, status FROM proposals)"
+    } else {
+        "doc_proposal_archive"
+    };
+    let (proposals, approved) =
+        pair(&format!("SELECT COUNT(*), SUM(status = 'approved') FROM {records} WHERE project = ?1 AND created >= ?2"))?;
+    let (_, rejected) = pair(&format!("SELECT COUNT(*), SUM(status = 'rejected') FROM {records} WHERE project = ?1 AND created >= ?2"))?;
     (p.proposals, p.proposals_approved, p.proposals_rejected) = (proposals, approved, rejected);
     let mut stmt = conn.prepare(
         "SELECT substr(started, 1, 10), COUNT(*), SUM(status = 'failed') FROM turns

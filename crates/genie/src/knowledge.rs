@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use genie_core::changesets::Changeset;
 use genie_core::vault::AuthorKind;
-use genie_core::work::Proposal;
 use serde_json::{Value, json};
 
 use crate::state::{App, AppResult};
@@ -156,24 +155,6 @@ pub fn note_page(title: &str, body: &str, tags: &[String], related: &[String]) -
     lines.push("---".into());
     let body = body.trim();
     format!("{}\n\n{}", lines.join("\n"), if body.is_empty() { String::new() } else { format!("{body}\n") })
-}
-
-/// Apply or reject a proposal. Applying writes as the proposal's author.
-pub fn decide(app: &App, id: i64, approve: bool, by: &str, note: Option<&str>, force: bool) -> AppResult<Proposal> {
-    let p = app.with_server(|db| db.proposal(id))?;
-    if p.status != "open" {
-        return Err(genie_core::GenieError::invalid(format!("proposal {id} is {}", p.status)).into());
-    }
-    if approve {
-        let base = if force { None } else { p.base_hash.as_deref() };
-        let msg =
-            format!("{} (proposal #{id}, approved by {by})", if p.note.is_empty() { format!("update {}", p.path) } else { p.note.clone() });
-        app.with_vault(|v| v.write(&p.path, &p.content, AuthorKind::System, (&p.author, &p.author), base, &msg))?;
-        doc_event(app, &p.path, "doc.changed", by, "human", json!({ "path": p.path, "proposal": id, "task": p.task }));
-    }
-    let decided = app.with_server(|db| db.decide_proposal(id, if approve { "approved" } else { "rejected" }, by, note))?;
-    doc_event(app, &p.path, "doc.proposal_decided", by, "human", json!({ "path": p.path, "proposal": id, "approved": approve }));
-    Ok(decided)
 }
 
 const WATCH_MIN: Duration = Duration::from_secs(4);

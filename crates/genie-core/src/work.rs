@@ -529,61 +529,100 @@ impl Proposal {
 }
 
 impl ServerDb {
-    #[allow(clippy::too_many_arguments)]
-    pub fn create_proposal(
-        &self,
-        path: &str,
-        base_hash: Option<&str>,
-        content: &str,
-        author: &str,
-        author_kind: &str,
-        project: Option<&str>,
-        task: Option<&str>,
-        note: &str,
-    ) -> Result<Proposal> {
-        self.conn().execute(
-            "INSERT INTO proposals(path, base_hash, content, author, author_kind, project, task, note, status, created)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'open', ?9)",
-            params![path, base_hash, content, author, author_kind, project, task, note, now()],
-        )?;
-        self.proposal(self.conn().last_insert_rowid())
+    /// Only an older database has the retired live table. Fresh installations never create it.
+    pub fn has_legacy_proposals(&self) -> Result<bool> {
+        Ok(self
+            .conn()
+            .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'proposals')", [], |r| r.get(0))?)
     }
 
-    pub fn proposal(&self, id: i64) -> Result<Proposal> {
-        self.conn()
-            .query_row("SELECT * FROM proposals WHERE id = ?1", [id], Proposal::from_row)
-            .optional()?
-            .ok_or_else(|| GenieError::not_found(format!("proposal {id} not found")))
-    }
-
-    pub fn proposals(&self, status: Option<&str>, limit: i64) -> Result<Vec<Proposal>> {
-        self.proposals_scoped(status, None, limit)
-    }
-
-    /// Filter by configured roots before the result limit; persisted project metadata may be stale after root reconfiguration.
-    pub fn proposals_in_roots(&self, status: Option<&str>, roots: &[String], limit: i64) -> Result<Vec<Proposal>> {
-        self.proposals_scoped(status, Some(roots), limit)
-    }
-
-    fn proposals_scoped(&self, status: Option<&str>, roots: Option<&[String]>, limit: i64) -> Result<Vec<Proposal>> {
-        let roots_json = serde_json::to_string(roots.unwrap_or_default())?;
-        let mut stmt = self.conn().prepare(
-            "SELECT * FROM proposals WHERE (?1 IS NULL OR status = ?1)
-             AND (?3 = 0 OR substr(path, 1, instr(path, '/') - 1) IN (SELECT value FROM json_each(?4)))
-             ORDER BY id DESC LIMIT ?2",
-        )?;
-        Ok(stmt.query_map(params![status, limit, roots.is_some(), roots_json], Proposal::from_row)?.collect::<rusqlite::Result<_>>()?)
-    }
-
-    /// Close an open proposal: `approved`, `rejected` or `superseded`.
-    pub fn decide_proposal(&self, id: i64, status: &str, by: &str, note: Option<&str>) -> Result<Proposal> {
-        let n = self.conn().execute(
-            "UPDATE proposals SET status = ?1, decided_by = ?2, decided_at = ?3, decision_note = ?4 WHERE id = ?5 AND status = 'open'",
-            params![status, by, now(), note, id],
-        )?;
-        if n == 0 {
-            return Err(GenieError::invalid(format!("proposal {id} is not open")));
+    /// All pending drafts, without a feed limit: each must survive the one-time conversion.
+    pub fn legacy_proposals(&self) -> Result<Vec<Proposal>> {
+        if !self.has_legacy_proposals()? {
+            return Ok(Vec::new());
         }
-        self.proposal(id)
+        let mut stmt = self.conn().prepare("SELECT * FROM proposals WHERE status = 'open' ORDER BY id")?;
+        Ok(stmt.query_map([], Proposal::from_row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Decided legacy proposals remain available as immutable audit records, not a write API.
+    pub fn archived_proposal(&self, id: i64) -> Result<Proposal> {
+        self.conn()
+            .query_row("SELECT * FROM doc_proposal_archive WHERE id = ?1", [id], Proposal::from_row)
+            .optional()?
+            .ok_or_else(|| GenieError::not_found(format!("archived proposal {id} not found")))
+    }
+
+    /// Allocate a changeset and its durable migration identity together. A crash before the git
+    /// ref is written resumes this exact changeset; two drafts on one page never share it.
+    pub fn proposal_migration(&self, id: i64, new: &crate::changesets::NewChangeset<'_>) -> Result<crate::changesets::Changeset> {
+        self.tx(|| {
+            if let Some(changeset) =
+                self.conn().query_row("SELECT changeset FROM doc_proposal_migrations WHERE proposal = ?1", [id], |r| r.get(0)).optional()?
+            {
+                return self.changeset(changeset);
+            }
+            // Before migration receipts existed, the title recorded the proposal's exact ID.
+            // Adopt only an unambiguous match; the caller verifies its git content before closing
+            // the source record. Author/path alone can conflate independent drafts.
+            let mut stmt = self.conn().prepare(
+                "SELECT id FROM doc_changesets WHERE origin = 'migration' AND title = ?1 AND author = ?2
+                 AND author_kind = ?3 AND project IS ?4 AND task IS ?5 AND status = 'open'
+                 AND NOT EXISTS(SELECT 1 FROM doc_proposal_migrations m WHERE m.changeset = doc_changesets.id) LIMIT 2",
+            )?;
+            let previous: Vec<i64> = stmt
+                .query_map(params![new.title, new.author, new.author_kind, new.project, new.task], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            if previous.len() > 1 {
+                return Err(GenieError::invalid(format!(
+                    "proposal {id} has ambiguous prior migration changesets; original draft retained"
+                )));
+            }
+            let changeset = match previous.first() {
+                Some(previous) => self.changeset(*previous)?,
+                None => self.create_changeset(new)?,
+            };
+            self.conn().execute("INSERT INTO doc_proposal_migrations(proposal, changeset) VALUES (?1, ?2)", params![id, changeset.id])?;
+            Ok(changeset)
+        })
+    }
+
+    /// Called only after the draft's content is durably reachable from its changeset ref.
+    pub fn finish_proposal_migration(&self, id: i64, changeset: i64, path: &str) -> Result<()> {
+        self.tx(|| {
+            self.touch_changeset(changeset, &[path.to_string()])?;
+            let n = self.conn().execute(
+                "UPDATE proposals SET status = 'migrated', decided_by = 'genie', decided_at = ?1, decision_note = ?2
+                 WHERE id = ?3 AND status = 'open' AND EXISTS
+                   (SELECT 1 FROM doc_proposal_migrations WHERE proposal = ?3 AND changeset = ?4)",
+                params![now(), format!("changeset #{changeset}"), id, changeset],
+            )?;
+            if n != 1 {
+                return Err(GenieError::invalid(format!("proposal {id} has no pending migration to changeset {changeset}")));
+            }
+            Ok(())
+        })
+    }
+
+    /// Retire the old table only when every open draft has been converted. Copy and drop commit
+    /// together: an interrupted or failed migration retains all original records for retry.
+    pub fn retire_legacy_proposals(&self) -> Result<bool> {
+        self.tx(|| {
+            if !self.has_legacy_proposals()? {
+                return Ok(true);
+            }
+            let open: bool = self.conn().query_row("SELECT EXISTS(SELECT 1 FROM proposals WHERE status = 'open')", [], |r| r.get(0))?;
+            if open {
+                return Ok(false);
+            }
+            self.conn().execute_batch(
+                "INSERT INTO doc_proposal_archive(id, path, base_hash, content, author, author_kind, project, task,
+                   note, status, created, decided_by, decided_at, decision_note)
+                 SELECT id, path, base_hash, content, author, author_kind, project, task,
+                   note, status, created, decided_by, decided_at, decision_note FROM proposals;
+                 DROP TABLE proposals;",
+            )?;
+            Ok(true)
+        })
     }
 }

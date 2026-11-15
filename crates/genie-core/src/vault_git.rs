@@ -14,17 +14,19 @@
 //! error carrying git's stderr; caller mistakes (unsafe paths, malformed refs,
 //! stale compare-and-swap expectations) as `Invalid`.
 
+use std::collections::{BTreeSet, HashMap};
 use std::io::{ErrorKind, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{GenieError, Result};
 
 /// The zero object id `update-ref` expects when a ref must not exist yet.
 const ZERO_OID: &str = "0000000000000000000000000000000000000000";
+const LOG_FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%(trailers:only,unfold)%x00%b";
 
 /// Distinguishes the scratch files of concurrent callers in one process.
 static SCRATCH: AtomicU64 = AtomicU64::new(0);
@@ -106,11 +108,23 @@ impl Git {
         check_rev(rev)?;
         check_path(path)?;
         let spec = format!("{rev}:{path}");
-        if !self.exec_raw(&["cat-file", "-e", &spec])?.status.success() {
+        let kind = self.exec_raw(&["cat-file", "-t", &spec])?;
+        if !kind.status.success() || kind.stdout != b"blob\n" {
             return Ok(None);
         }
         let out = self.exec(&["cat-file", "blob", &spec], &[], None)?;
         Ok(Some(out.stdout))
+    }
+
+    /// Tracked paths at a revision, including unpublished changeset pages.
+    pub fn paths(&self, rev: &str) -> Result<Vec<String>> {
+        check_rev(rev)?;
+        let out = self.exec(&["ls-tree", "-r", "--name-only", "-z", rev, "--"], &[], None)?;
+        out.stdout
+            .split(|b| *b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|path| String::from_utf8(path.to_vec()).map_err(|_| GenieError::invalid("the vault contains a non-UTF-8 path")))
+            .collect()
     }
 
     /// Paths that differ between two revisions (`diff --name-only -z --no-renames`), sorted.
@@ -330,9 +344,229 @@ impl Git {
         self.log_with(rev, path, limit, false)
     }
 
-    /// Page history that keeps merge commits (`--full-history` instead of `--follow`): a publication is a merge commit, and `--follow` simplifies it away.
+    /// History retaining publication merges and following page renames on every parent.
     pub fn log_full(&self, rev: &str, path: Option<&str>, limit: usize) -> Result<Vec<CommitInfo>> {
+        if let Some(path) = path {
+            return Ok(self.page_history(rev, path, limit)?.into_iter().map(|(commit, _)| commit).collect());
+        }
         self.log_with(rev, path, limit, true)
+    }
+
+    /// Page versions, newest first, with their historical paths for the caller's scope checks.
+    /// A merge is a publication when the page differs from its first parent. Its other
+    /// parents are still followed, preserving edits authored on changeset branches.
+    pub fn page_history(&self, rev: &str, path: &str, limit: usize) -> Result<Vec<(CommitInfo, Vec<String>)>> {
+        check_rev(rev)?;
+        check_path(path)?;
+        let mut history = Vec::new();
+        if limit == 0 {
+            return Ok(history);
+        }
+        self.walk_page(rev, path, |commit, paths, changed| {
+            if changed {
+                history.push((commit.clone(), paths.iter().cloned().collect()));
+            }
+            Ok(history.len() == limit)
+        })?;
+        Ok(history)
+    }
+
+    /// Resolve the current page's path at an ancestor, following its lineage rather
+    /// than an old, unrelated page that happens to reuse the same filename.
+    pub fn path_at(&self, rev: &str, path: &str, at: &str) -> Result<Option<String>> {
+        check_rev(at)?;
+        check_path(path)?;
+        let at = self.resolve(at)?.ok_or_else(|| GenieError::not_found(format!("version {at} not found")))?;
+        if self.resolve(rev)?.as_deref() == Some(&at) {
+            return Ok(self.show(&at, path)?.map(|_| path.to_string()));
+        }
+        let mut found = None;
+        self.walk_page(rev, path, |commit, paths, _| {
+            let sha = &commit.sha;
+            if *sha != at {
+                return Ok(false);
+            }
+            for candidate in paths {
+                if self.show(sha, candidate)?.is_some() {
+                    if found.is_some() {
+                        return Err(GenieError::invalid(format!("page {path} has ambiguous paths at {at}")));
+                    }
+                    found = Some(candidate.clone());
+                }
+            }
+            Ok(true)
+        })?;
+        Ok(found)
+    }
+
+    /// Walk the commit DAG with a separate path per parent. Git's `--follow`
+    /// maintains one path for the entire walk and simplifies publication merges
+    /// away; a global list of old names also conflates pages when names are reused.
+    fn walk_page(&self, rev: &str, path: &str, mut visit: impl FnMut(&CommitInfo, &BTreeSet<String>, bool) -> Result<bool>) -> Result<()> {
+        check_rev(rev)?;
+        check_path(path)?;
+        let head = self.resolve(rev)?.ok_or_else(|| GenieError::not_found(format!("version {rev} not found")))?;
+        let graph = parse_log(&self.exec(&["log", "--topo-order", "-z", LOG_FORMAT, &head], &[], None)?.stdout)?;
+        let mut input = String::new();
+        let mut edge_count = 0;
+        for commit in &graph {
+            for parent in &commit.parents {
+                input.push_str(&format!("genie-edge-{edge_count}\n{} {parent}\n", commit.sha));
+                edge_count += 1;
+            }
+        }
+        input.push_str(&format!("genie-edge-{edge_count}\n"));
+        // A file avoids opposing stdin/stdout pipe buffers blocking each other
+        // when both the graph and its diffs exceed the pipe capacity.
+        let input_file = self.scratch("history");
+        let raw = (|| -> Result<Output> {
+            std::fs::write(&input_file, input)?;
+            let input = std::fs::File::open(&input_file)?;
+            let args = ["diff-tree", "--stdin", "--no-commit-id", "-r", "--name-status", "-z", "--find-renames"];
+            finish(&args, self.command(&args).stdin(input).output())
+        })();
+        let _ = std::fs::remove_file(input_file);
+        let raw = raw?.stdout;
+        let mut diffs = batch_path_changes(&raw, edge_count)?.into_iter();
+        let mut lineage = HashMap::from([(head.clone(), BTreeSet::from([path.to_string()]))]);
+        let mut revisions = Vec::new();
+        for commit in &graph {
+            let sha = &commit.sha;
+            let parents = &commit.parents;
+            let changes: Vec<_> =
+                parents.iter().map(|_| diffs.next().ok_or_else(|| unexpected("missing git history edge"))).collect::<Result<_>>()?;
+            let Some(paths) = lineage.remove(sha) else { continue };
+            let mut page_paths: Vec<_> = paths.into_iter().map(|path| PageLineage { path, parents: Vec::new(), changed: false }).collect();
+            let moves = self.page_moves(commit)?;
+            let restores = self.page_restores(commit)?;
+            for restore in &restores {
+                if let Some(page) = page_paths.iter_mut().find(|page| page.path == restore.path) {
+                    // Restore explicitly chooses an earlier page identity, even
+                    // across deletion or later reuse of the destination name.
+                    page.parents.push((restore.at.clone(), restore.source.clone()));
+                    lineage.entry(restore.at.clone()).or_default().insert(restore.source.clone());
+                }
+            }
+            for (index, (parent, changes)) in parents.iter().zip(&changes).enumerate() {
+                // Compare whole trees: restricting the diff to the new name would
+                // hide the rename's source. NUL-delimited names preserve whitespace.
+                for page in &mut page_paths {
+                    let path = &page.path;
+                    let change = changes
+                        .iter()
+                        .find(|change| change.to == *path)
+                        .or_else(|| changes.iter().find(|change| change.from.as_deref() == Some(path)));
+                    if index == 0 {
+                        page.changed = change.is_some();
+                    }
+                    let explicit = (index == 0).then(|| moves.iter().find(|movement| movement.to == *path)).flatten();
+                    let previous = match (explicit, change) {
+                        (Some(movement), _) => Some(&movement.from),
+                        (_, Some(change)) if change.to == *path && change.kind == b'A' && !restores.iter().any(|r| r.path == *path) => None,
+                        (_, Some(change)) if change.to == *path && change.kind == b'R' => change.from.as_ref(),
+                        _ => Some(path),
+                    };
+                    if let Some(previous) = previous {
+                        lineage.entry(parent.to_string()).or_default().insert(previous.clone());
+                        page.parents.push((parent.to_string(), previous.clone()));
+                    }
+                }
+            }
+            revisions.push((commit, page_paths));
+        }
+
+        // Establish each page's creation boundary before joining merge parents.
+        // The first parent's lineage wins when both parents contain different
+        // pages at the same name (e.g. a stale branch after deletion/recreation).
+        // A page added by publication inherits its changeset parent's lineage.
+        let mut origins = HashMap::new();
+        for (commit, paths) in revisions.iter().rev() {
+            let sha = &commit.sha;
+            for page in paths {
+                let key = (sha.clone(), page.path.clone());
+                let origin = page.parents.iter().find_map(|parent| origins.get(parent).cloned().flatten());
+                let origin = match origin {
+                    Some(origin) => Some(origin),
+                    None if page.parents.is_empty() && self.show(sha, &page.path)?.is_some() => Some(key.clone()),
+                    None => None,
+                };
+                origins.insert(key, origin);
+            }
+        }
+        let wanted = origins.get(&(head.clone(), path.to_string())).cloned().flatten();
+        let Some(wanted) = wanted else { return Ok(()) };
+        let mut active = HashMap::from([(head, BTreeSet::from([path.to_string()]))]);
+        for (commit, paths) in revisions {
+            let Some(current) = active.remove(&commit.sha) else { continue };
+            let mut changed = false;
+            for page in paths.iter().filter(|page| current.contains(&page.path)) {
+                changed |= page.changed || page.parents.is_empty();
+                for (parent, path) in &page.parents {
+                    if origins.get(&(parent.clone(), path.clone())).and_then(Option::as_ref) == Some(&wanted) {
+                        active.entry(parent.clone()).or_default().insert(path.clone());
+                    }
+                }
+            }
+            if visit(commit, &current, changed)? {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Explicit moves survive edits that make Git's similarity heuristic miss
+    /// the rename. Imported trailers are only accepted when the trees agree.
+    fn page_moves(&self, commit: &CommitInfo) -> Result<Vec<PageMove>> {
+        let values: Vec<_> = commit.trailers.iter().filter(|(key, _)| key == "Genie-Page-Move").collect();
+        if values.is_empty() {
+            return Ok(Vec::new());
+        }
+        let Some(parent) = commit.parents.first() else { return Ok(Vec::new()) };
+        let Ok(moves) = values.iter().map(|(_, value)| serde_json::from_str::<PageMove>(value)).collect::<std::result::Result<Vec<_>, _>>()
+        else {
+            return Ok(Vec::new());
+        };
+        let sources: BTreeSet<_> = moves.iter().map(|m| m.from.clone()).collect();
+        let destinations: BTreeSet<_> = moves.iter().map(|m| m.to.clone()).collect();
+        if sources.len() != moves.len()
+            || destinations.len() != moves.len()
+            || moves.iter().any(|m| m.from == m.to || check_path(&m.from).is_err() || check_path(&m.to).is_err())
+        {
+            return Ok(Vec::new());
+        }
+        let before: BTreeSet<_> = self.paths(parent)?.into_iter().collect();
+        let after: BTreeSet<_> = self.paths(&commit.sha)?.into_iter().collect();
+        if moves.iter().any(|m| {
+            !before.contains(&m.from)
+                || !after.contains(&m.to)
+                || (before.contains(&m.to) && !sources.contains(&m.to))
+                || (after.contains(&m.from) && !destinations.contains(&m.from))
+        }) {
+            return Ok(Vec::new());
+        }
+        Ok(moves)
+    }
+
+    fn page_restores(&self, commit: &CommitInfo) -> Result<Vec<PageRestore>> {
+        let mut restores = Vec::new();
+        for (_, value) in commit.trailers.iter().filter(|(key, _)| key == "Genie-Page-Restore") {
+            let Ok(restore) = serde_json::from_str::<PageRestore>(value) else { continue };
+            if check_path(&restore.path).is_err()
+                || check_path(&restore.source).is_err()
+                || restore.at.len() != 40
+                || !restore.at.bytes().all(|b| b.is_ascii_hexdigit())
+                || restore.at == commit.sha
+                || self.resolve(&restore.at)?.as_deref() != Some(&restore.at)
+                || self.merge_base(&commit.sha, &restore.at)?.as_deref() != Some(&restore.at)
+            {
+                continue;
+            }
+            let old = self.show(&restore.at, &restore.source)?;
+            if old.is_some() && old == self.show(&commit.sha, &restore.path)? {
+                restores.push(restore);
+            }
+        }
+        Ok(restores)
     }
 
     fn log_with(&self, rev: &str, path: Option<&str>, limit: usize, full_history: bool) -> Result<Vec<CommitInfo>> {
@@ -342,9 +576,8 @@ impl Git {
         }
         // The body is the only field that may contain newlines, so it goes last; every other
         // field is NUL-separated and records are NUL-terminated by `-z`.
-        let format = "--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00%(trailers:only,unfold)%x00%b";
         let count = format!("--max-count={limit}");
-        let mut args: Vec<&str> = vec!["log", "-z", format, &count];
+        let mut args: Vec<&str> = vec!["log", "-z", LOG_FORMAT, &count];
         if full_history {
             args.push("--full-history");
         } else if path.is_some() {
@@ -355,31 +588,7 @@ impl Git {
             args.push("--");
             args.push(path);
         }
-        let raw = self.exec(&args, &[], None)?.stdout;
-        let text = String::from_utf8_lossy(&raw);
-        let mut fields: Vec<&str> = text.split('\0').collect();
-        // `-z` terminates every record, so the last split piece is empty.
-        if fields.last() == Some(&"") {
-            fields.pop();
-        }
-        if !fields.len().is_multiple_of(8) {
-            return Err(unexpected("unexpected git log output"));
-        }
-        let mut commits = Vec::with_capacity(fields.len() / 8);
-        for chunk in fields.chunks(8) {
-            let parents = chunk[1].split_whitespace().map(str::to_string).collect();
-            commits.push(CommitInfo {
-                sha: chunk[0].to_string(),
-                parents,
-                author_name: chunk[2].to_string(),
-                author_email: chunk[3].to_string(),
-                date: chunk[4].to_string(),
-                subject: chunk[5].to_string(),
-                trailers: parse_trailers(chunk[6]),
-                body: chunk[7].trim_end_matches('\n').to_string(),
-            });
-        }
-        Ok(commits)
+        parse_log(&self.exec(&args, &[], None)?.stdout)
     }
 
     /// Commits reachable from `to` but not `from` (`rev-list --reverse from..to`), oldest first.
@@ -404,6 +613,27 @@ impl Git {
             args.extend(paths.iter().map(String::as_str));
         }
         Ok(String::from_utf8_lossy(&self.exec(&args, &[], None)?.stdout).into_owned())
+    }
+
+    /// Compare the page's resolved versions, even when the names differ. An
+    /// absent endpoint uses the empty blob, so a reused path cannot add another
+    /// page's contents to the diff. Writing that immutable object changes no refs.
+    pub fn diff_page(&self, from: &str, from_path: Option<&str>, to: &str, to_path: Option<&str>) -> Result<String> {
+        check_rev(from)?;
+        check_rev(to)?;
+        let mut specs = Vec::new();
+        for (rev, path) in [(from, from_path), (to, to_path)] {
+            let spec = match path {
+                Some(path) => {
+                    check_path(path)?;
+                    format!("{rev}:{path}")
+                }
+                None => String::from_utf8_lossy(&self.exec(&["hash-object", "-w", "--stdin"], &[], Some(b""))?.stdout).trim().to_string(),
+            };
+            specs.push(spec);
+        }
+        Ok(String::from_utf8_lossy(&self.exec(&["diff", "--no-color", "--no-ext-diff", "-U3", &specs[0], &specs[1]], &[], None)?.stdout)
+            .into_owned())
     }
 
     // --- plumbing helpers ----------------------------------------------------
@@ -500,6 +730,95 @@ impl Git {
     }
 }
 
+fn parse_log(raw: &[u8]) -> Result<Vec<CommitInfo>> {
+    let text = String::from_utf8_lossy(raw);
+    let mut fields: Vec<&str> = text.split('\0').collect();
+    // `-z` terminates every record, so the last split piece is empty.
+    if fields.last() == Some(&"") {
+        fields.pop();
+    }
+    if !fields.len().is_multiple_of(8) {
+        return Err(unexpected("unexpected git log output"));
+    }
+    let mut commits = Vec::with_capacity(fields.len() / 8);
+    for chunk in fields.chunks(8) {
+        let parents = chunk[1].split_whitespace().map(str::to_string).collect();
+        commits.push(CommitInfo {
+            sha: chunk[0].to_string(),
+            parents,
+            author_name: chunk[2].to_string(),
+            author_email: chunk[3].to_string(),
+            date: chunk[4].to_string(),
+            subject: chunk[5].to_string(),
+            trailers: parse_trailers(chunk[6]),
+            body: chunk[7].trim_end_matches('\n').to_string(),
+        });
+    }
+    Ok(commits)
+}
+
+struct PathChange {
+    kind: u8,
+    from: Option<String>,
+    to: String,
+}
+
+struct PageLineage {
+    path: String,
+    parents: Vec<(String, String)>,
+    changed: bool,
+}
+
+#[derive(Deserialize)]
+struct PageMove {
+    from: String,
+    to: String,
+}
+
+#[derive(Deserialize)]
+struct PageRestore {
+    path: String,
+    at: String,
+    source: String,
+}
+
+/// Edge markers occur only where a status is expected; path fields are consumed
+/// as NUL-delimited bytes, so a filename cannot impersonate an edge marker.
+fn batch_path_changes(mut raw: &[u8], count: usize) -> Result<Vec<Vec<PathChange>>> {
+    let mut edges = Vec::with_capacity(count);
+    for index in 0..=count {
+        let marker = format!("genie-edge-{index}\n");
+        raw = raw.strip_prefix(marker.as_bytes()).ok_or_else(|| unexpected("missing git history edge marker"))?;
+        if index == count {
+            if !raw.is_empty() {
+                return Err(unexpected("trailing git history output"));
+            }
+            break;
+        }
+        let next = format!("genie-edge-{}\n", index + 1);
+        let mut changes = Vec::new();
+        while !raw.starts_with(next.as_bytes()) {
+            let status = nul_field(&mut raw)?;
+            let kind = *status.first().ok_or_else(|| unexpected("empty git name-status output"))?;
+            let mut path = || -> Result<String> {
+                String::from_utf8(nul_field(&mut raw)?.to_vec()).map_err(|_| unexpected("vault history contains a non-UTF-8 path"))
+            };
+            let first = path()?;
+            let (from, to) = if kind == b'R' || kind == b'C' { (Some(first), path()?) } else { (None, first) };
+            changes.push(PathChange { kind, from, to });
+        }
+        edges.push(changes);
+    }
+    Ok(edges)
+}
+
+fn nul_field<'a>(raw: &mut &'a [u8]) -> Result<&'a [u8]> {
+    let end = raw.iter().position(|byte| *byte == 0).ok_or_else(|| unexpected("incomplete git name-status output"))?;
+    let field = &raw[..end];
+    *raw = &raw[end + 1..];
+    Ok(field)
+}
+
 /// Compose the commit message: the caller's text, then trailers after a blank line.
 fn commit_message(meta: &CommitMeta) -> String {
     let mut message = meta.message.trim_end().to_string();
@@ -547,7 +866,7 @@ fn check_path(path: &str) -> Result<()> {
     let unsafe_component = relative
         .components()
         .any(|c| matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)) || c.as_os_str().is_empty());
-    if path.is_empty() || relative.is_absolute() || unsafe_component {
+    if path.is_empty() || path.contains('\0') || relative.is_absolute() || unsafe_component {
         return Err(GenieError::invalid(format!("invalid vault path {path:?}")));
     }
     Ok(())
@@ -896,6 +1215,142 @@ mod tests {
         assert_eq!(history.len(), 2, "{history:?}");
         assert_eq!(history[0].subject, "docs: rename home");
         assert_eq!(history[1].sha, head, "the rename history reaches back to the original path");
+    }
+
+    #[test]
+    fn page_history_follows_multiple_changeset_moves_and_keeps_publications() {
+        let (dir, git) = repo();
+        let original = seed(dir.path());
+        let first = git
+            .commit_tree(
+                &original,
+                &[&original],
+                &[("docs/home.md".into(), None), change("docs/first name.md", b"home\n")],
+                &meta("move on changeset"),
+            )
+            .unwrap();
+        let unrelated = git.commit_tree(&original, &[&original], &[change("docs/other.md", b"other\n")], &meta("unrelated")).unwrap();
+        let mut publication = meta("publish first move");
+        publication.trailers = vec![("Genie-Changeset".into(), "12".into()), ("Genie-Task".into(), "GNE-113".into())];
+        let published = git
+            .commit_tree(
+                &unrelated,
+                &[&unrelated, &first],
+                &[("docs/home.md".into(), None), change("docs/first name.md", b"home\n")],
+                &publication,
+            )
+            .unwrap();
+        let edited =
+            git.commit_tree(&published, &[&published], &[change("docs/first name.md", b"home\nupdated\n")], &meta("edit")).unwrap();
+        let moved = git
+            .commit_tree(
+                &edited,
+                &[&edited],
+                &[("docs/first name.md".into(), None), change("docs/final.md", b"home\nupdated\n")],
+                &meta("second move"),
+            )
+            .unwrap();
+        let final_publication = git.commit_tree(&moved, &[&edited, &moved], &[], &meta("publish second move")).unwrap();
+        let history = git.page_history(&final_publication, "docs/final.md", 20).unwrap();
+        let commits: Vec<_> = history.iter().map(|(commit, _)| commit.sha.as_str()).collect();
+        assert_eq!(commits, [&final_publication, &moved, &edited, &published, &first, &original]);
+        assert_eq!(history[3].0.trailers, publication.trailers);
+        assert_eq!(history.last().unwrap().1, ["docs/home.md"]);
+        assert_eq!(git.log_full(&final_publication, Some("docs/final.md"), 2).unwrap().len(), 2);
+        assert!(git.log_full(&final_publication, Some("docs/final.md"), 0).unwrap().is_empty());
+        assert_eq!(git.path_at(&final_publication, "docs/final.md", &original).unwrap().as_deref(), Some("docs/home.md"));
+        assert_eq!(git.path_at(&final_publication, "docs/final.md", &first).unwrap().as_deref(), Some("docs/first name.md"));
+        assert_eq!(git.path_at(&final_publication, "docs/final.md", &moved).unwrap().as_deref(), Some("docs/final.md"));
+    }
+
+    #[test]
+    fn page_history_does_not_mix_reused_names_or_unrelated_merges() {
+        let (dir, git) = repo();
+        let original = seed(dir.path());
+        let moved = git
+            .commit_tree(&original, &[&original], &[("docs/home.md".into(), None), change("docs/new.md", b"home\n")], &meta("move"))
+            .unwrap();
+        let reused = git.commit_tree(&moved, &[&moved], &[change("docs/home.md", b"a different page\n")], &meta("reuse name")).unwrap();
+        let branch = git.commit_tree(&original, &[&original], &[change("docs/other.md", b"other\n")], &meta("unrelated branch")).unwrap();
+        let merged =
+            git.commit_tree(&reused, &[&reused, &branch], &[change("docs/other.md", b"other\n")], &meta("unrelated merge")).unwrap();
+        let old_page = git.log_full(&merged, Some("docs/new.md"), 10).unwrap();
+        assert_eq!(old_page.iter().map(|c| c.sha.as_str()).collect::<Vec<_>>(), [&moved, &original]);
+        let new_page = git.log_full(&merged, Some("docs/home.md"), 10).unwrap();
+        assert_eq!(new_page.iter().map(|c| c.sha.as_str()).collect::<Vec<_>>(), [&reused]);
+        assert_eq!(git.path_at(&merged, "docs/home.md", &original).unwrap(), None);
+        let diff = git.diff_page(&original, None, &merged, Some("docs/home.md")).unwrap();
+        assert!(diff.contains("+a different page"), "{diff}");
+        assert!(!diff.contains("-home"), "{diff}");
+    }
+
+    #[test]
+    fn page_history_handles_literal_unusual_paths_and_diff_before_rename() {
+        let (dir, git) = repo();
+        let original = seed(dir.path());
+        let path = "docs/space [*] café\tline\n.md";
+        let moved = git
+            .commit_tree(&original, &[&original], &[("docs/home.md".into(), None), change(path, b"home\n")], &meta("unusual move"))
+            .unwrap();
+        let edited = git.commit_tree(&moved, &[&moved], &[change(path, b"home\nmore\n")], &meta("edit unusual name")).unwrap();
+        let history = git.log_full(&edited, Some(path), 10).unwrap();
+        assert_eq!(history.iter().map(|c| c.sha.as_str()).collect::<Vec<_>>(), [&edited, &moved, &original]);
+        assert!(git.log_full(&edited, Some("docs/*.md"), 10).unwrap().is_empty());
+        let from_path = git.path_at(&edited, path, &original).unwrap().unwrap();
+        let to_path = git.path_at(&edited, path, &edited).unwrap().unwrap();
+        let diff = git.diff_page(&original, Some(&from_path), &edited, Some(&to_path)).unwrap();
+        assert!(diff.contains("+more") && diff.contains(" home"), "{diff}");
+        assert!(matches!(git.path_at("--all", path, &original).unwrap_err(), GenieError::Invalid(_)));
+        assert!(matches!(git.path_at(&edited, path, "--all").unwrap_err(), GenieError::Invalid(_)));
+    }
+
+    #[test]
+    fn page_history_limit_counts_page_versions_in_a_long_vault_history() {
+        let (dir, git) = repo();
+        let original = seed(dir.path());
+        let mut stream = String::new();
+        for index in 1..=200 {
+            let message = format!("unrelated change {index}");
+            let content = format!("other page {index}\n");
+            stream.push_str(&format!(
+                "commit refs/heads/main\nmark :{index}\ncommitter Test <test@example.com> {} +0000\ndata {}\n{message}\nfrom {}\nM 100644 inline docs/other.md\ndata {}\n{content}\n",
+                1_800_000_000 + index, message.len(), if index == 1 { original.clone() } else { format!(":{}", index - 1) }, content.len()
+            ));
+        }
+        git.exec(&["fast-import", "--quiet"], &[], Some(stream.as_bytes())).unwrap();
+        let started = std::time::Instant::now();
+        let history = git.log_full("HEAD", Some("docs/home.md"), 1).unwrap();
+        eprintln!("page history after 200 unrelated commits: {:?}", started.elapsed());
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].sha, original);
+        assert_eq!(git.path_at("HEAD", "docs/home.md", &original).unwrap().as_deref(), Some("docs/home.md"));
+    }
+
+    #[test]
+    fn page_history_ignores_unverifiable_imported_lineage_trailers() {
+        let (dir, git) = repo();
+        let original = seed(dir.path());
+        let mut invalid = meta("an unrelated new page with invalid metadata");
+        invalid.trailers = vec![
+            ("Genie-Page-Move".into(), r#"{"from":"docs/home.md","to":"docs/new.md"}"#.into()),
+            (
+                "Genie-Page-Restore".into(),
+                r#"{"path":"docs/new.md","source":"docs/home.md","at":"1111111111111111111111111111111111111111"}"#.into(),
+            ),
+        ];
+        invalid.trailers.push((
+            "Genie-Page-Restore".into(),
+            serde_json::json!({ "path": "docs/new.md", "source": "docs/home\u{0}.md", "at": original }).to_string(),
+        ));
+        invalid.trailers.push((
+            "Genie-Page-Restore".into(),
+            serde_json::json!({ "path": "docs/new.md", "source": "docs", "at": original }).to_string(),
+        ));
+        let added = git.commit_tree(&original, &[&original], &[change("docs/new.md", b"different\n")], &invalid).unwrap();
+        let history = git.log_full(&added, Some("docs/new.md"), 10).unwrap();
+        assert_eq!(history.iter().map(|c| c.sha.as_str()).collect::<Vec<_>>(), [&added]);
+        assert_eq!(git.path_at(&added, "docs/new.md", &original).unwrap(), None);
+        assert!(scratch_files(dir.path()).is_empty());
     }
 
     #[test]

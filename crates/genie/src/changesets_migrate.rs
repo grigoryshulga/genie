@@ -11,7 +11,7 @@ use std::path::Path;
 use std::process::Command;
 
 use genie_core::GenieError;
-use genie_core::changesets::{ChangesetFilter, ChangesetOrigin, ChangesetStatus, NewChangeset};
+use genie_core::changesets::{ChangesetOrigin, NewChangeset};
 use genie_core::vault::AuthorKind;
 use genie_core::vault_git::{CommitMeta, Git};
 use genie_core::work::Proposal;
@@ -26,11 +26,16 @@ const SYSTEM_EMAIL: &str = "genie@genie.local";
 /// Move open proposals and conflict copies onto changesets. Called once at server start;
 /// idempotent, and errors leave the rest for the next start.
 pub fn migrate_legacy(app: &App) -> AppResult<()> {
+    // Decided-only databases need no git work; retirement also retries an interrupted final copy.
+    app.with_server(|db| db.retire_legacy_proposals())?;
+    let proposals = app.with_server(|db| db.legacy_proposals())?;
     let root = app.with_vault(|v| Ok(v.root().to_path_buf()))?;
     if !root.join(".git").exists() {
+        if !proposals.is_empty() {
+            return Err(GenieError::invalid("cannot migrate documentation proposals: the vault has no git repository").into());
+        }
         return Ok(());
     }
-    let proposals = app.with_server(|db| db.proposals(Some("open"), 1000))?;
     let copies = conflict_copies(&root).map_err(GenieError::invalid)?;
     if proposals.is_empty() && copies.is_empty() {
         return Ok(());
@@ -43,6 +48,7 @@ pub fn migrate_legacy(app: &App) -> AppResult<()> {
             errors.push(e);
         }
     }
+    app.with_server(|db| db.retire_legacy_proposals())?;
 
     // A copy whose page could not be handed to a changeset stays where it is.
     let mut removable: Vec<String> = Vec::new();
@@ -109,18 +115,32 @@ fn git_out(root: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// The newest `main` commit whose version of `path` has the proposal's `base_hash`; `main` itself
-/// when none does (also when the proposal carries no hash).
-fn base_for_hash(vgit: &Git, main: &str, path: &str, hash: Option<&str>) -> Result<String, String> {
-    let Some(hash) = hash.map(str::trim).filter(|h| !h.is_empty()) else { return Ok(main.to_string()) };
-    for commit in vgit.log(main, Some(path), 200).map_err(|e| e.to_string())? {
-        if let Some(bytes) = vgit.show(&commit.sha, path).map_err(|e| e.to_string())?
-            && sha_hex(&bytes) == hash
-        {
-            return Ok(commit.sha);
+/// Search the full published history. When no hash matches, preserve the main version the
+/// author started from at creation, rather than silently rebasing the draft onto today's main.
+fn base_for_proposal(vgit: &Git, root: &Path, main: &str, proposal: &Proposal) -> Result<String, String> {
+    if let Some(hash) = proposal.base_hash.as_deref().map(str::trim).filter(|h| !h.is_empty()) {
+        let history = git_out(root, &["rev-list", "--first-parent", main])?;
+        for commit in history.lines() {
+            if let Some(bytes) = vgit.show(commit, &proposal.path).map_err(|e| e.to_string())?
+                && sha_hex(&bytes) == hash
+            {
+                return Ok(commit.to_string());
+            }
         }
     }
-    Ok(main.to_string())
+    let created =
+        chrono::DateTime::parse_from_rfc3339(&proposal.created).map_err(|e| format!("invalid proposal creation time: {e}"))?.timestamp();
+    // Compare timestamps ourselves: git's human-date parser can silently reinterpret dates
+    // outside its supported range. Walk the ancestry rather than relying on date ordering.
+    let history = git_out(root, &["log", "--first-parent", "--format=%ct %H", main])?;
+    for line in history.lines() {
+        let (at, commit) = line.split_once(' ').ok_or("invalid timestamp in published vault history")?;
+        let at = at.parse::<i64>().map_err(|e| format!("invalid timestamp in published vault history: {e}"))?;
+        if at <= created {
+            return Ok(commit.to_string());
+        }
+    }
+    Err(format!("proposal #{}: no published vault history at its creation time; restore that history and retry", proposal.id))
 }
 
 /// Fork an open proposal's content onto a changeset branch and close the proposal. A changeset
@@ -128,36 +148,39 @@ fn base_for_hash(vgit: &Git, main: &str, path: &str, hash: Option<&str>) -> Resu
 fn migrate_proposal(app: &App, root: &Path, proposal: &Proposal) -> AppResult<()> {
     let vgit = Git::open(root)?;
     let main = vgit.resolve("HEAD")?.ok_or_else(|| GenieError::invalid("the vault has no commits"))?;
-    let existing = app.with_server(|db| {
-        db.changesets(&ChangesetFilter {
-            statuses: vec![ChangesetStatus::Open],
-            path: Some(proposal.path.clone()),
-            limit: 0,
-            ..Default::default()
-        })
-    })?;
-    if let Some(cs) = existing.into_iter().find(|c| c.origin == ChangesetOrigin::Migration && c.author == proposal.author) {
-        close_proposal(app, proposal.id, cs.id)?;
-        return Ok(());
-    }
-
-    let base = base_for_hash(&vgit, &main, &proposal.path, proposal.base_hash.as_deref()).map_err(GenieError::invalid)?;
+    let base = base_for_proposal(&vgit, root, &main, proposal).map_err(GenieError::invalid)?;
     let (author_name, author_email) = author_of(app, &proposal.author);
     let title = format!("Migrate proposal #{} to {}", proposal.id, proposal.path);
     let cs = app.with_server(|db| {
-        db.create_changeset(&NewChangeset {
-            branch: "",
-            project: proposal.project.as_deref(),
-            task: proposal.task.as_deref(),
-            author: &proposal.author,
-            author_name: &author_name,
-            author_kind: &proposal.author_kind,
-            title: &title,
-            base: &base,
-            origin: ChangesetOrigin::Migration,
-            reverts: None,
-        })
+        db.proposal_migration(
+            proposal.id,
+            &NewChangeset {
+                branch: "",
+                project: proposal.project.as_deref(),
+                task: proposal.task.as_deref(),
+                author: &proposal.author,
+                author_name: &author_name,
+                author_kind: &proposal.author_kind,
+                title: &title,
+                base: &base,
+                origin: ChangesetOrigin::Migration,
+                reverts: None,
+            },
+        )
     })?;
+
+    let branch = format!("refs/heads/{}", cs.branch);
+    if let Some(tip) = vgit.resolve(&branch)? {
+        if vgit.show(&tip, &proposal.path)?.as_deref() != Some(proposal.content.as_bytes()) {
+            return Err(GenieError::invalid(format!(
+                "proposal #{}: migration changeset #{} has different content; original draft retained",
+                proposal.id, cs.id
+            ))
+            .into());
+        }
+        app.with_server(|db| db.finish_proposal_migration(proposal.id, cs.id, &proposal.path))?;
+        return Ok(());
+    }
 
     let mut trailers =
         vec![("Genie-Changeset".to_string(), cs.id.to_string()), ("Genie-Author-Kind".to_string(), proposal.author_kind.clone())];
@@ -170,16 +193,10 @@ fn migrate_proposal(app: &App, root: &Path, proposal: &Proposal) -> AppResult<()
         proposal.note.clone()
     };
     let changes = vec![(proposal.path.clone(), Some(proposal.content.clone().into_bytes()))];
-    let commit = vgit.commit_tree(&base, &[&base], &changes, &commit_meta(&author_name, &author_email, &message, trailers))?;
-    vgit.update_ref(&format!("refs/heads/{}", cs.branch), &commit, None)?;
-    app.with_server(|db| db.touch_changeset(cs.id, std::slice::from_ref(&proposal.path)))?;
-    close_proposal(app, proposal.id, cs.id)?;
+    let commit = vgit.commit_tree(&cs.base, &[&cs.base], &changes, &commit_meta(&author_name, &author_email, &message, trailers))?;
+    vgit.update_ref(&branch, &commit, None)?;
+    app.with_server(|db| db.finish_proposal_migration(proposal.id, cs.id, &proposal.path))?;
     eprintln!("genie docs migration: proposal #{} → changeset #{} ({})", proposal.id, cs.id, proposal.path);
-    Ok(())
-}
-
-fn close_proposal(app: &App, id: i64, changeset: i64) -> AppResult<()> {
-    app.with_server(|db| db.decide_proposal(id, "migrated", "genie", Some(&format!("changeset #{changeset}"))))?;
     Ok(())
 }
 
