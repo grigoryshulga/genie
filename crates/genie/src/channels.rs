@@ -62,10 +62,7 @@ pub async fn dispatch(app: &Arc<App>) {
                     app.with_server(|db| db.outbox_cancelled(copy.id, "interaction is closed"))?;
                     return Ok(false);
                 }
-                if copy.channel != "web" && !crate::notify::ready(app, &copy)? {
-                    return Ok(false);
-                }
-                Ok(true)
+                Ok(copy.channel == "web" || crate::notify::ready(app, &copy)?)
             })
             .await
             .unwrap_or(false)

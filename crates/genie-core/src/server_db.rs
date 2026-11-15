@@ -261,8 +261,8 @@ CREATE TABLE IF NOT EXISTS questions (
   message_ref TEXT,
   PRIMARY KEY (questionnaire, n)
 );
-CREATE TABLE IF NOT EXISTS proposals (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS doc_proposal_archive (
+  id INTEGER PRIMARY KEY,
   path TEXT NOT NULL,
   base_hash TEXT,
   content TEXT NOT NULL,
@@ -277,6 +277,10 @@ CREATE TABLE IF NOT EXISTS proposals (
   decided_at TEXT,
   decision_note TEXT
 );
+CREATE TRIGGER IF NOT EXISTS doc_proposal_archive_no_update BEFORE UPDATE ON doc_proposal_archive
+BEGIN SELECT RAISE(ABORT, 'archived documentation proposals are read-only'); END;
+CREATE TRIGGER IF NOT EXISTS doc_proposal_archive_no_delete BEFORE DELETE ON doc_proposal_archive
+BEGIN SELECT RAISE(ABORT, 'archived documentation proposals are read-only'); END;
 CREATE TABLE IF NOT EXISTS doc_changesets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   branch TEXT NOT NULL UNIQUE,
@@ -304,6 +308,10 @@ CREATE TABLE IF NOT EXISTS doc_changesets (
   merged_by_agent INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS doc_changesets_status ON doc_changesets(status, project);
+CREATE TABLE IF NOT EXISTS doc_proposal_migrations (
+  proposal INTEGER PRIMARY KEY,
+  changeset INTEGER NOT NULL UNIQUE REFERENCES doc_changesets(id)
+);
 CREATE TABLE IF NOT EXISTS doc_merges (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   changeset INTEGER NOT NULL REFERENCES doc_changesets(id),
@@ -506,7 +514,7 @@ pub const SESSION_DAYS: i64 = 30;
 /// The schema version this binary understands for `server.db`. It is recorded in `meta`
 /// like a tracker's, so an update, a rollback of the binary and a restore can all tell
 /// what the file holds.
-pub const SERVER_SCHEMA_VERSION: i64 = 15;
+pub const SERVER_SCHEMA_VERSION: i64 = 16;
 
 /// Project membership role (distinct from the workflow `Role` of agents).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

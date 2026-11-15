@@ -157,6 +157,119 @@ fn an_edit_opens_a_branch_and_leaves_main_alone() {
 }
 
 #[test]
+fn moving_a_page_rewrites_branch_links_atomically_and_can_be_reverted() {
+    let h = harness();
+    let from = "shop/old.md";
+    let to = "shop/archive/new.md";
+    seed(&h, from, "---\naliases: [старое]\n---\n# Old\n\n[[old#Self]]\n");
+    let original = "# Index\n\n[[old]] ![[shop/old.md#Heading|Label]] [[старое]]\n`[[old]]`\n```md\n[[old]]\n```\n";
+    seed(&h, "shop/index.md", original);
+    let main = head(&h);
+    let anna = person("anna");
+    let draft = open_edit(&h, &anna, "shop/index.md", &[DocOp::Append { heading: None, text: "\nUnpublished [[old]].\n".into() }], "draft");
+    let cs = draft.changeset.id;
+    changesets::edit(&h.app, &anna, "shop/new-draft.md", &[write("# Draft\n\n[[old]]\n")], "draft", Some(cs)).unwrap();
+    let moved = changesets::move_page(&h.app, &anna, from, to, "move", Some(cs)).unwrap();
+    assert_eq!(head(&h), main, "moving is unpublished until the single changeset publishes");
+    assert_eq!(disk(&h, "shop/index.md"), original);
+    assert!(vault(&h).join(from).exists());
+    assert!(!vault(&h).join(to).exists());
+    assert!(moved.content.contains("[[shop/archive/new#Self]]"));
+    assert_eq!(moved.changeset.paths, vec!["shop/archive/new.md", "shop/index.md", "shop/new-draft.md", "shop/old.md"]);
+    let mine = changesets::read_for(&h.app, &anna, "shop/index.md", None, None, None, None).unwrap();
+    let text = mine["content"].as_str().unwrap();
+    assert!(text.contains("[[shop/archive/new]] ![[shop/archive/new.md#Heading|Label]] [[shop/archive/new]]"), "{text}");
+    assert!(text.contains("Unpublished [[shop/archive/new]]."));
+    assert!(text.contains("`[[old]]`\n```md\n[[old]]\n```"));
+    assert!(matches!(publish(&h, cs, &anna), Published::Published { .. }));
+    assert!(!vault(&h).join(from).exists());
+    assert!(disk(&h, "shop/new-draft.md").contains("[[shop/archive/new]]"));
+    let backlinks = h.app.with_vault(|v| v.project_read("shop", to, None, None)).unwrap().backlinks;
+    assert_eq!(backlinks, vec!["shop/index.md", "shop/new-draft.md"]);
+    changesets::revert(&h.app, cs, &anna).unwrap();
+    assert_eq!(disk(&h, "shop/index.md"), original);
+    assert!(vault(&h).join(from).exists());
+    assert!(!vault(&h).join(to).exists());
+}
+
+#[test]
+fn moving_uses_branch_aliases_and_follows_a_second_move() {
+    let h = harness();
+    seed(&h, "shop/old.md", "# Old\n");
+    let anna = person("anna");
+    let draft = open_edit(&h, &anna, "shop/old.md", &[write("---\naliases: [draft-alias]\n---\n# Old\n")], "alias");
+    let id = draft.changeset.id;
+    changesets::edit(&h.app, &anna, "shop/ref.md", &[write("[[draft-alias]]\n")], "ref", Some(id)).unwrap();
+    changesets::move_page(&h.app, &anna, "shop/old.md", "shop/intermediate.md", "first", Some(id)).unwrap();
+    changesets::move_page(&h.app, &anna, "shop/intermediate.md", "shop/final.md", "second", Some(id)).unwrap();
+    assert!(matches!(publish(&h, id, &anna), Published::Published { .. }));
+    assert_eq!(disk(&h, "shop/ref.md"), "[[shop/final]]\n");
+    assert!(!vault(&h).join("shop/old.md").exists());
+    assert!(!vault(&h).join("shop/intermediate.md").exists());
+}
+
+#[test]
+fn moving_respects_project_scope_and_does_not_guess_ambiguous_targets() {
+    let h = harness();
+    h.project("other");
+    let foreign = Editor { project: "other".into(), ..system() };
+    let draft = changesets::edit(&h.app, &foreign, "other/old.md", &[write("[[shop/a/old]]\n")], "foreign", None).unwrap();
+    changesets::publish(&h.app, draft.changeset.id, &foreign).unwrap();
+    seed(&h, "shop/a/old.md", "# Old\n");
+    seed(&h, "shop/b/old.md", "# Another old\n");
+    seed(&h, "shop/ref.md", "[[old]] [[shop/a/old]] [[shop/b/old]] [[other/old]]\n");
+    let anna = person("anna");
+    let moved = changesets::move_page(&h.app, &anna, "shop/a/old.md", "shop/new.md", "move", None).unwrap();
+    publish(&h, moved.changeset.id, &anna);
+    assert_eq!(disk(&h, "shop/ref.md"), "[[old]] [[shop/new]] [[shop/b/old]] [[other/old]]\n");
+    assert_eq!(disk(&h, "other/old.md"), "[[shop/a/old]]\n", "never edit another project's pages");
+    assert!(changesets::move_page(&h.app, &anna, "shop/new.md", "other/new.md", "escape", None).is_err());
+}
+
+#[test]
+fn a_locked_backlink_or_failed_ref_update_leaves_the_whole_move_uncommitted() {
+    let h = harness();
+    seed(&h, "shop/old.md", "# Old\n");
+    seed(&h, "shop/secret/ref.md", "[[old]]\n");
+    h.app
+        .with_vault(|v| {
+            v.config.spaces.get_mut("shop").unwrap().sections.insert(
+                "secret".into(),
+                genie_core::vault::Section {
+                    policy: Some(genie_core::vault::Policy {
+                        humans: genie_core::vault::Publish::Direct,
+                        agents: genie_core::vault::Publish::Locked,
+                    }),
+                    owners: vec![],
+                },
+            );
+            v.save_config()
+        })
+        .unwrap();
+    let bot = agent("bot", None);
+    let draft = open_edit(&h, &bot, "shop/old.md", &[write("# Old\n\nUnpublished\n")], "draft");
+    let main = head(&h);
+    let err = changesets::move_page(&h.app, &bot, "shop/old.md", "shop/new.md", "move", Some(draft.changeset.id)).unwrap_err();
+    assert!(err.to_string().contains("is locked"), "{err}");
+    assert_eq!(git(&vault(&h), &["rev-parse", &draft.changeset.branch]), draft.commit);
+    assert_eq!(h.app.with_server(|db| db.changeset(draft.changeset.id)).unwrap().paths, draft.changeset.paths);
+    assert_eq!(head(&h), main);
+
+    let anna = person("anna");
+    let draft = open_edit(&h, &anna, "shop/old.md", &[write("# Old\n\nHuman draft\n")], "draft");
+    let lock = vault(&h).join(format!(".git/refs/heads/{}.lock", draft.changeset.branch));
+    std::fs::write(&lock, "held").unwrap();
+    let result = changesets::move_page(&h.app, &anna, "shop/old.md", "shop/new.md", "move", Some(draft.changeset.id));
+    std::fs::remove_file(lock).unwrap();
+    assert!(result.is_err());
+    assert_eq!(git(&vault(&h), &["rev-parse", &draft.changeset.branch]), draft.commit);
+    assert_eq!(h.app.with_server(|db| db.changeset(draft.changeset.id)).unwrap().paths, draft.changeset.paths);
+    assert_eq!(head(&h), main);
+    assert_eq!(disk(&h, "shop/secret/ref.md"), "[[old]]\n");
+    assert!(!vault(&h).join("shop/new.md").exists());
+}
+
+#[test]
 fn publishing_moves_the_file_onto_disk_and_into_the_index() {
     let h = harness();
     let path = "shop/guide.md";
@@ -426,4 +539,49 @@ fn the_sweep_retries_a_finished_merger_job_then_fails_the_merge() {
     let failed = h.app.with_server(|db| db.doc_merge(merge_id)).unwrap();
     assert_eq!(failed.status, genie_core::changesets::MergeStatus::Failed);
     assert_eq!(failed.changeset, second.changeset.id);
+}
+
+#[test]
+fn moving_refuses_destinations_that_cannot_be_represented_in_wiki_links() {
+    let h = harness();
+    seed(&h, "shop/old.md", "# Old\n");
+    let anna = person("anna");
+    let main = head(&h);
+    for to in ["shop/new#part.md", "shop/new|label.md", "shop/new]].md", "shop/new\nline.md"] {
+        let err = changesets::move_page(&h.app, &anna, "shop/old.md", to, "move", None).unwrap_err();
+        assert!(err.to_string().contains("wiki-link delimiters"), "{err}");
+    }
+    assert_eq!(head(&h), main);
+    assert!(
+        h.app
+            .with_server(|db| db.changesets(&genie_core::changesets::ChangesetFilter {
+                statuses: vec![genie_core::changesets::ChangesetStatus::Open],
+                ..Default::default()
+            }))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[path = "changesets_history.rs"]
+mod history;
+
+#[test]
+fn reverting_moves_and_deletions_preserves_the_original_page_history() {
+    let h = harness();
+    let path = "shop/old.md";
+    let original = seed(&h, path, "[[old]]\n");
+    let anna = person("anna");
+    let moved = changesets::move_page(&h.app, &anna, path, "shop/new.md", "move", None).unwrap();
+    publish(&h, moved.changeset.id, &anna);
+    changesets::revert(&h.app, moved.changeset.id, &anna).unwrap();
+    let old = changesets::read_for(&h.app, &anna, path, None, Some(&original), None, None).unwrap();
+    assert_eq!(old["content"], "[[old]]\n");
+    assert!(changesets::history(&h.app, "shop", path, 100).unwrap().iter().any(|commit| commit.sha == original));
+    let removed = changesets::remove_page(&h.app, &anna, path, "remove", None).unwrap();
+    publish(&h, removed.changeset.id, &anna);
+    changesets::revert(&h.app, removed.changeset.id, &anna).unwrap();
+    let old = changesets::read_for(&h.app, &anna, path, None, Some(&original), None, None).unwrap();
+    assert_eq!(old["content"], "[[old]]\n");
+    assert!(changesets::history(&h.app, "shop", path, 100).unwrap().iter().any(|commit| commit.sha == original));
 }

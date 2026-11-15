@@ -24,6 +24,10 @@ use sha2::{Digest, Sha256};
 use crate::db::Db;
 use crate::error::{GenieError, Result};
 
+#[path = "vault_links.rs"]
+mod links;
+pub use links::WikiLinks;
+
 pub const DOC_TYPES: &[&str] = &["guide", "reference", "decision", "glossary", "runbook", "note"];
 pub const DOC_STATUSES: &[&str] = &["draft", "current", "deprecated"];
 
@@ -346,7 +350,6 @@ pub fn parse_doc(markdown: &str, path: &str) -> ParsedDoc {
     let mut in_fence: Option<String> = None;
     let mut first_h1 = None;
     let mut first_para = None;
-    let mut prose = String::new();
     for line in body.lines() {
         let t = line.trim_start();
         if let Some(f) = &in_fence {
@@ -368,15 +371,12 @@ pub fn parse_doc(markdown: &str, path: &str) -> ParsedDoc {
                     first_h1 = Some(text.clone());
                 }
                 doc.headings.push(text);
-                prose.push('\n');
                 continue;
             }
         }
         if first_para.is_none() && !t.is_empty() && !t.starts_with(['|', '>', '-', '*', '!', '<']) {
             first_para = Some(t.to_string());
         }
-        prose.push_str(line);
-        prose.push('\n');
         // Inline tags (#tag) count as tags.
         for word in t.split_whitespace() {
             if let Some(tag) = word.strip_prefix('#')
@@ -389,7 +389,7 @@ pub fn parse_doc(markdown: &str, path: &str) -> ParsedDoc {
             }
         }
     }
-    doc.links = wiki_targets(&prose);
+    doc.links = wiki_targets(body);
     doc.title =
         title.or(first_h1).unwrap_or_else(|| Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
     if doc.summary.is_none() {
@@ -399,42 +399,9 @@ pub fn parse_doc(markdown: &str, path: &str) -> ParsedDoc {
     doc
 }
 
-/// `[[target]]`, `[[target#heading|text]]` and `![[embed]]` targets outside inline code.
-pub fn wiki_targets(prose_without_fences: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in prose_without_fences.lines() {
-        // Blank out inline code spans (any backtick run length).
-        let mut clean = String::with_capacity(line.len());
-        let bytes: Vec<char> = line.chars().collect();
-        let mut i = 0;
-        while i < bytes.len() {
-            if bytes[i] == '`' {
-                let run = bytes[i..].iter().take_while(|c| **c == '`').count();
-                let rest: String = bytes[i + run..].iter().collect();
-                let fence = "`".repeat(run);
-                if let Some(end) = rest.find(&fence) {
-                    let skip = run + rest[..end].chars().count() + run;
-                    clean.extend(std::iter::repeat_n(' ', skip));
-                    i += skip;
-                    continue;
-                }
-            }
-            clean.push(bytes[i]);
-            i += 1;
-        }
-        let mut rest = clean.as_str();
-        while let Some(start) = rest.find("[[") {
-            let after = &rest[start + 2..];
-            let Some(end) = after.find("]]") else { break };
-            let inner = &after[..end];
-            let target = inner.split('|').next().unwrap_or_default().split('#').next().unwrap_or_default().trim();
-            if !target.is_empty() && !inner.contains('\n') {
-                out.push(target.to_string());
-            }
-            rest = &after[end + 2..];
-        }
-    }
-    out
+/// Wiki targets outside fenced blocks and inline code.
+pub fn wiki_targets(body: &str) -> Vec<String> {
+    links::target_ranges(body).into_iter().map(|range| body[range].to_string()).collect()
 }
 
 /// Case-folded, `ё` → `е`, so both spellings match each other.
@@ -950,30 +917,6 @@ impl Vault {
         .collect()
     }
 
-    /// Resolve a wiki-link target: canonical path, then unique file name or alias.
-    fn resolve_link(target: &str, pages: &[(String, String, Vec<String>)]) -> DocLink {
-        let t = target.trim().trim_start_matches("./").trim_end_matches(".md");
-        let exact = format!("{t}.md");
-        if pages.iter().any(|(p, ..)| *p == exact || (t.contains('.') && p == t)) {
-            let path = if pages.iter().any(|(p, ..)| *p == exact) { exact } else { t.to_string() };
-            return DocLink { target: target.into(), target_path: Some(path.clone()), resolution: "resolved".into(), matches: vec![path] };
-        }
-        let base = normalize(t.rsplit('/').next().unwrap_or(t));
-        let matches: Vec<String> = pages
-            .iter()
-            .filter(|(p, _, aliases)| {
-                let stem = normalize(Path::new(p).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default().as_str());
-                stem == base || aliases.iter().any(|a| normalize(a) == normalize(t))
-            })
-            .map(|(p, ..)| p.clone())
-            .collect();
-        match matches.len() {
-            1 => DocLink { target: target.into(), target_path: Some(matches[0].clone()), resolution: "resolved".into(), matches },
-            0 => DocLink { target: target.into(), target_path: None, resolution: "unresolved".into(), matches },
-            _ => DocLink { target: target.into(), target_path: None, resolution: "ambiguous".into(), matches },
-        }
-    }
-
     /// Read a page (or the section under `heading`), with links and backlinks.
     pub fn read(&mut self, path: &str, heading: Option<&str>, max_chars: Option<usize>) -> Result<DocRead> {
         self.read_scoped(path, heading, max_chars, None)
@@ -1021,13 +964,14 @@ impl Vault {
             .collect();
         let own: Vec<String> =
             all.iter().find(|(p, ..)| *p == rel).map(|(_, l, _)| serde_json::from_str(l).unwrap_or_default()).unwrap_or_default();
-        let links: Vec<DocLink> = own.iter().map(|t| Self::resolve_link(t, &all)).collect();
+        let index = WikiLinks::new(all.iter().map(|(p, _, a)| (p.clone(), a.clone())));
+        let links: Vec<DocLink> = own.iter().map(|t| index.resolve(t)).collect();
         let backlinks: Vec<String> = all
             .iter()
             .filter(|(p, ..)| *p != rel)
             .filter(|(_, l, _)| {
                 let targets: Vec<String> = serde_json::from_str(l).unwrap_or_default();
-                targets.iter().any(|t| Self::resolve_link(t, &all).target_path.as_deref() == Some(rel.as_str()))
+                targets.iter().any(|t| index.resolve(t).target_path.as_deref() == Some(rel.as_str()))
             })
             .map(|(p, ..)| p.clone())
             .collect();
@@ -1042,13 +986,14 @@ impl Vault {
         if !all.iter().any(|(p, ..)| p == rel) {
             all.push((rel.to_string(), serde_json::to_string(targets)?, Vec::new()));
         }
-        let links = targets.iter().map(|t| Self::resolve_link(t, &all)).collect();
+        let index = WikiLinks::new(all.iter().map(|(p, _, a)| (p.clone(), a.clone())));
+        let links = targets.iter().map(|t| index.resolve(t)).collect();
         let backlinks = all
             .iter()
             .filter(|(p, ..)| *p != rel)
             .filter(|(_, l, _)| {
                 let targets: Vec<String> = serde_json::from_str(l).unwrap_or_default();
-                targets.iter().any(|t| Self::resolve_link(t, &all).target_path.as_deref() == Some(rel))
+                targets.iter().any(|t| index.resolve(t).target_path.as_deref() == Some(rel))
             })
             .map(|(p, ..)| p.clone())
             .collect();
