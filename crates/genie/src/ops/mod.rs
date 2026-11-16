@@ -556,7 +556,7 @@ mod tests {
             "{orch}"
         );
         assert!(
-            orch.contains("`genie task status <STATUS> [--task …] [--note …] [--force] [--action …] [--option …]... [--repo …]` (review and approved are the team's verdicts"),
+            orch.contains("`genie task status <STATUS> [--context …] [--task …] [--note …] [--force] [--action …] [--option …]... [--repo …]` (review and approved are the team's verdicts"),
             "{orch}"
         );
         assert!(
