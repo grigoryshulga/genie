@@ -111,6 +111,10 @@ test("a decision is answered from the keyboard alone", async ({ page }) => {
 
   const box = page.getByRole("region", { name: "Нужно ваше решение" });
   await expect(box).toBeVisible();
+  await expect(box.locator(".od-question strong, .od-question b")).toHaveText("каналом");
+  await expect(box.getByRole("heading", { name: "Сравнение" })).toBeHidden();
+  await box.locator("summary").click();
+  await expect(box.getByRole("heading", { name: "Сравнение" })).toBeVisible();
   const options = box.getByRole("radiogroup", { name: "Варианты ответа" }).getByRole("radio");
   await expect(options).toHaveCount(3);
 
@@ -134,11 +138,17 @@ test("a decision is answered from the keyboard alone", async ({ page }) => {
   await expect(options.nth(1)).toHaveAttribute("tabindex", "0");
   await expect(options.nth(0)).toHaveAttribute("tabindex", "-1");
 
-  // Tab leaves the group for the words, then reaches the buttons in reading order.
+  // Tab leaves the group for the live Markdown editor.
   await page.keyboard.press("Tab");
   await expect(box.getByLabel("Ваш ответ")).toBeFocused();
   await page.keyboard.type("Так надёжнее.");
-  const answer = box.getByRole("button", { name: "Ответить и вернуть в работу" });
+  await box.getByRole("button", { name: "Развернуть на всю область" }).click();
+  await expect(box.locator(".mbx")).toHaveClass(/wide/);
+  await page.keyboard.press("Escape");
+  await expect(box.locator(".mbx")).not.toHaveClass(/wide/);
+  await expect(box).toBeVisible();
+  await expect(box.getByLabel("Ваш ответ")).toHaveText("Так надёжнее.");
+  const answer = box.getByRole("button", { name: /^Ответить и вернуть в/ });
   await tabTo(page, answer, "the answer button", 8);
   await page.keyboard.press("Enter");
   await expect(box).toBeHidden();

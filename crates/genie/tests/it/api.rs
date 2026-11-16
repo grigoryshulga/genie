@@ -351,14 +351,25 @@ async fn a_person_is_responsible_for_a_task_and_mentions_reach_people() {
     assert_eq!(s, StatusCode::CREATED);
     assert!(notes(anna).iter().any(|n| n.kind == "mention" && n.body.starts_with("orchestrator: @anna")), "{:#?}", notes(anna));
 
-    // A question to people goes to the person responsible and the author.
+    // An agent's question is short: a wall of text is sent back with the way to split it.
     let (s, e, _) = call(&h.remote, "POST", &format!("{task}/status"))
         .bearer(&orch)
         .no_csrf()
-        .json(json!({ "status": "needs_owner", "note": "CSV или XLSX?" }))
+        .json(json!({ "status": "needs_owner", "note": "Формат? ".repeat(80) }))
+        .send()
+        .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{e}");
+    assert!(e["error"].as_str().unwrap().contains("--context"), "the refusal says where the background goes: {e}");
+
+    // A question to people goes to the person responsible and the author; its background rides along.
+    let (s, e, _) = call(&h.remote, "POST", &format!("{task}/status"))
+        .bearer(&orch)
+        .no_csrf()
+        .json(json!({ "status": "needs_owner", "note": "CSV или XLSX?", "context": "- CSV проще\n- XLSX нужен бухгалтерии" }))
         .send()
         .await;
     assert_eq!(s, StatusCode::OK, "{e}");
+    assert_eq!(e["needsOwner"]["context"], "- CSV проще\n- XLSX нужен бухгалтерии");
     genie::engine::tick(&h.app).unwrap();
     for who in [boris, anna] {
         assert!(notes(who).iter().any(|n| n.kind == "needs_owner"), "{:#?}", notes(who));

@@ -332,6 +332,9 @@ impl Op for Update {
 #[derive(clap::Args, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
+    /// needs_owner: supporting Markdown, separate from the short --note question.
+    #[arg(long, allow_hyphen_values = true)]
+    pub context: Option<String>,
     /// inbox, draft, refining, ready, in_progress, review, changes_requested, approved, needs_owner, done, cancelled.
     pub status: String,
     #[arg(long)]
@@ -363,7 +366,7 @@ impl Op for Status {
     const CAPS: &'static [Capability] = STATUS_CAPS;
     fn arg_allowed(arg: &str, _can: &dyn Fn(Capability) -> bool) -> bool {
         // needs_owner and forcing are the orchestrator's.
-        !matches!(arg, "force" | "owner_action" | "options" | "repo")
+        !matches!(arg, "force" | "owner_action" | "options" | "repo" | "context")
     }
     fn prompt_note(kind: AgentKind, can: &dyn Fn(Capability) -> bool) -> Option<String> {
         if kind == AgentKind::Orchestrator {
@@ -389,6 +392,7 @@ impl Op for Status {
             (None, true, None) => None,
         };
         let body = StatusBody {
+            context: cx.text(self.context, None)?,
             status: self.status.parse().map_err(|e: GenieError| e.to_string())?,
             note: cx.text(self.note, None)?,
             force: Some(self.force),

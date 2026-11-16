@@ -7,7 +7,7 @@ import { StageBars, STAGES, stageOf, STATUS_NAME } from "@/entities/task";
 import { type LiveSession, type Mail, type MailLevel, MessageText, memberActivity, PartyAvatar, type TeamDetail, useSendMail, useTeam } from "@/entities/team";
 import { useOnline } from "@/shared/api";
 import { clock, dayLabel, plural, readPref, timeAgo, useTick, writePref } from "@/shared/lib";
-import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, Select, Skeleton, SplitButton, Tag, Textarea, useToast, WorkingArcs } from "@/shared/ui";
+import { Button, Character, characterState, Dialog, ErrorState, Icon, IconButton, MenuChip, MessageBox, Select, Skeleton, Tag, useToast, WorkingArcs } from "@/shared/ui";
 import { TeamScheme } from "./TeamScheme.tsx";
 import "./team-view-sheets.css";
 
@@ -343,54 +343,41 @@ export function TeamView({ teamId: embedded }: { teamId?: string }) {
         </div>
 
         {active && (
-          <form
-            className="tv-composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submit();
-            }}
-          >
-            <Textarea
-              className="tv-input"
-              aria-label="Сообщение"
-              rows={1}
+          <div className="tv-composer">
+            <MessageBox
               value={draft}
+              onChange={setDraft}
+              onSubmit={submit}
+              label="Сообщение"
               placeholder={to === "all" ? "Сообщение всей команде" : to === "orchestrator" ? "Сообщение оркестратору" : `Сообщение для ${displayName(to)}`}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = `${Math.min(180, e.target.scrollHeight)}px`;
-              }}
-              onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
+              canSend={!!draft.trim() && !send.isPending && !offline}
+              sendLabel={level === "interrupt" ? "Прервать шаг и отправить" : "Отправить"}
+              sendTitle={offline ? "Нет связи с сервером" : "Отправить (⌘↵)"}
+              urgent={level === "interrupt"}
+              footer={
+                <>
+                  <label className="tv-to">
+                    Кому
+                    <Select sm value={to} onChange={(e) => setTo(e.target.value)}>
+                      <option value="all">всем</option>
+                      {team.members.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {displayName(m.name)} — {ROLE_TITLE_RU[m.role] ?? m.role}
+                        </option>
+                      ))}
+                      <option value="orchestrator">оркестратору</option>
+                    </Select>
+                  </label>
+                  <MenuChip
+                    label="Как отправить"
+                    items={levels.map((l) => ({ id: l, label: LEVEL_LABEL[l], hint: LEVEL_HINT[l], checked: l === level, onSelect: () => choose(l) }))}
+                  >
+                    {LEVEL_LABEL[level]}
+                  </MenuChip>
+                </>
+              }
             />
-            <div className="tv-composer-row">
-              <label className="tv-to">
-                Кому
-                <Select sm value={to} onChange={(e) => setTo(e.target.value)}>
-                  <option value="all">всем</option>
-                  {team.members.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {displayName(m.name)} — {ROLE_TITLE_RU[m.role] ?? m.role}
-                    </option>
-                  ))}
-                  <option value="orchestrator">оркестратору</option>
-                </Select>
-              </label>
-              <i className="grow" />
-              <SplitButton
-                type="submit"
-                className="tv-send"
-                aria-label={level === "interrupt" ? "Прервать шаг и отправить" : "Отправить"}
-                title={offline ? "Нет связи с сервером" : "Отправить (⌘↵)"}
-                disabled={!draft.trim() || send.isPending || offline}
-                menuLabel="Как отправить"
-                items={levels.map((l) => ({ id: l, label: LEVEL_LABEL[l], hint: LEVEL_HINT[l], checked: l === level, onSelect: () => choose(l) }))}
-              >
-                {level === "interrupt" && "Прервать шаг"}
-                <Icon.send size={15} />
-              </SplitButton>
-            </div>
-          </form>
+          </div>
         )}
       </section>
 

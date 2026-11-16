@@ -384,7 +384,12 @@ fn a_question_for_the_owner_carries_an_action_with_checked_options() {
     let (_d, t) = fresh();
     let id = t.create(&orch(), task("Returns", "price of returns", &["agreed"])).unwrap().id;
     let ask = |action: OwnerAction| {
-        t.set_status(&orch(), &id, Status::NeedsOwner, StatusOptions { note: Some("Цена?".into()), force: false, action: Some(action) })
+        t.set_status(
+            &orch(),
+            &id,
+            Status::NeedsOwner,
+            StatusOptions { note: Some("Цена?".into()), force: false, action: Some(action), context: None },
+        )
     };
     assert_err(ask(OwnerAction::AskOwnerQuestion { options: vec!["Сохранять".into(), " Сохранять ".into()] }), "2 to 6");
     assert_err(ask(OwnerAction::AskForMergePr { repo: " ".into(), number: None, url: None }), "repository");
@@ -401,4 +406,29 @@ fn a_question_for_the_owner_carries_an_action_with_checked_options() {
     // What agents send: a kind the server knows, else the list of kinds.
     assert_err(OwnerAction::parse(&serde_json::json!({ "kind": "ask-doc-change" })), "ask-owner-question, ask-for-merge-pr, ask-free-form");
     assert_eq!(OwnerAction::parse(&serde_json::json!({ "kind": "ask-free-form" })).unwrap(), OwnerAction::AskFreeForm);
+}
+
+#[test]
+fn owner_context_is_optional_bounded_and_round_trips() {
+    let (_d, t) = fresh();
+    let id = t.create(&orch(), task("Decision", "Choose storage", &["agreed"])).unwrap().id;
+    let ask = |question: String, context: Option<String>| {
+        t.set_status(&orch(), &id, Status::NeedsOwner, StatusOptions { note: Some(question), context, ..Default::default() })
+    };
+    assert_err(ask("я".repeat(401), None), "--context");
+    assert_err(ask("Storage?".into(), Some("я".repeat(8001))), "8000");
+    let got = ask("**Storage?**".into(), Some("## Context\n\n- Keep history".into())).unwrap();
+    let owner = got.needs_owner.unwrap();
+    assert_eq!(owner.context.as_deref(), Some("## Context\n\n- Keep history"));
+    assert_eq!(t.get(&id).unwrap().needs_owner.unwrap(), owner);
+    assert!(t.get(&id).unwrap().comments.iter().any(|c| c.text.contains("## Context\n\n- Keep history")));
+    assert_err(
+        t.set_status(&human(), &id, owner.previous, StatusOptions { context: Some("Not a decision".into()), ..Default::default() }),
+        "needs_owner only",
+    );
+    let legacy: NeedsOwner = serde_json::from_value(serde_json::json!({
+        "question": "Old question", "by": "orchestrator", "at": "2026-01-01", "previous": "draft"
+    }))
+    .unwrap();
+    assert_eq!(legacy.context, None);
 }

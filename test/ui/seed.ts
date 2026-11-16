@@ -17,6 +17,8 @@ export interface SeedTask {
   statuses?: string[];
   /** The note recorded with the last status; needs_owner requires the question for the owner. */
   note?: string;
+  /** needs_owner: the question's background in Markdown. */
+  context?: string;
   /** The owner action attached to a needs_owner status: ask-owner-question, ask-for-merge-pr or ask-free-form. */
   action?: string;
   /** ask-owner-question: the options the owner picks from. */
@@ -104,7 +106,8 @@ export const FLOW_TASKS: SeedTask[] = [
     acceptance: ["Канал выбран и записан в задаче"],
     priority: 1,
     statuses: ["refining", "ready", "in_progress", "needs_owner"],
-    note: "Каким каналом отправлять уведомления о задачах?",
+    note: "Каким **каналом** отправлять уведомления о задачах?",
+    context: "## Сравнение\n\n- **Почта** привычнее\n- Telegram быстрее",
     action: "ask-owner-question",
     options: ["Почта", "Telegram", "Ничего не отправлять"],
   },

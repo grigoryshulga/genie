@@ -76,12 +76,7 @@
 .comment .head { display: flex; align-items: center; gap: var(--g-space-2); font-size: var(--g-text-caption); margin-bottom: 4px; }
 .comment .head .k { color: var(--g-text-muted); }
 .comment .head .when { margin-left: auto; color: var(--g-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.composer { display: flex; flex-direction: column; border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-md); background: var(--g-surface); margin-top: 8px; }
-.composer:focus-within { border-color: var(--g-accent); }
-.composer textarea { border: 0; outline: 0; background: none; resize: vertical; min-height: 60px; padding: var(--g-space-2) var(--g-space-3); color: var(--g-text); }
-.composer:has(textarea:focus) { outline: 2px solid var(--g-focus); outline-offset: 2px; border-color: transparent; }
-.composer .g-textarea:focus, .composer .g-textarea:focus-visible { outline: none; }
-.composer .bar { display: flex; align-items: center; gap: var(--g-space-2); padding: 0 var(--g-space-2) var(--g-space-2) var(--g-space-3); font-size: var(--g-text-eyebrow); color: var(--g-text-muted); }
+.composer { margin-top: 8px; }
 
 /* ---------------------------------------------- task detail in ink and paper (GNE-56) */
 /* The panel and the page share the headline, the property rail and the reading column;
@@ -185,11 +180,6 @@
 .timeline .comment.g-sheet .md { color: var(--sh-t2); }
 .timeline .comment.g-sheet .md code, .timeline .comment.g-sheet .md pre { background: color-mix(in srgb, var(--sh-t) 10%, transparent); border-color: var(--sh-line); color: var(--sh-t); }
 
-/* The comment composer. */
-.composer { border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-md); background: var(--g-surface); }
-.composer:focus-within { border-color: var(--g-focus); }
-.composer textarea.g-textarea { border: 0; background: none; min-height: var(--g-space-8); }
-.composer .bar { gap: var(--g-space-2); font-size: var(--g-text-caption); color: var(--g-text-muted); }
 
 /* Small inline forms (an observation case, a manager answer). */
 .td-form { display: flex; flex-direction: column; gap: var(--g-space-2); margin-bottom: var(--g-space-3); }

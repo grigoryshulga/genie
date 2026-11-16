@@ -3,9 +3,6 @@ section.owner-box { display: flex; flex-direction: column; gap: var(--g-space-3)
 section.owner-box .h { display: flex; align-items: center; gap: var(--g-space-2); font-weight: 700; color: var(--g-signal-text); }
 section.owner-box .h .when { margin-left: auto; font-weight: 500; font-size: var(--g-text-caption); font-variant-numeric: tabular-nums; color: var(--g-signal-text); }
 section.owner-box p { margin: 0; line-height: var(--g-leading-prose); }
-section.owner-box textarea { min-height: 72px; padding: var(--g-space-2) var(--g-space-3); border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-md); background: var(--g-surface); color: var(--g-text); font: 500 var(--g-text-dense) / 1.5 var(--g-font-sans); resize: vertical; outline: 0; }
-section.owner-box textarea:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
-section.owner-box .od-hint { margin: 0; font-size: var(--g-text-caption); color: var(--g-signal-text); }
 section.owner-box .od-options { display: flex; flex-wrap: wrap; gap: var(--g-space-2); }
 section.owner-box .od-options button { min-height: var(--g-control-sm); padding: var(--g-space-1) var(--g-space-3); border: 1.5px solid var(--g-border-strong); border-radius: var(--g-radius-pill); background: var(--g-surface); color: var(--g-text); font: 600 var(--g-text-dense) / 1.35 var(--g-font-sans); text-align: left; }
 section.owner-box .od-options button:hover { border-color: var(--g-signal); }
@@ -19,3 +16,13 @@ section.owner-box .od-why { font-size: var(--g-text-caption); color: var(--g-sig
 section.owner-box .od-buttons { display: flex; align-items: center; gap: var(--g-space-2); flex-wrap: wrap; }
 section.owner-box .od-buttons .hint { font-size: var(--g-text-caption); color: var(--g-signal-text); }
 section.owner-box .od-or { font-size: var(--g-text-caption); color: var(--g-signal-text); }
+section.owner-box .od-question .md { color: var(--g-text); font-size: var(--g-text-ui); line-height: var(--g-leading-prose); }
+section.owner-box .od-question .md > :last-child { margin-bottom: 0; }
+section.owner-box .od-context { border-top: 1px solid var(--g-signal); padding-top: var(--g-space-2); }
+section.owner-box .od-context summary { cursor: pointer; font-weight: 600; font-size: var(--g-text-dense); color: var(--g-signal-text); }
+section.owner-box .od-context summary:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; border-radius: var(--g-radius-xs); }
+section.owner-box .od-context .md { margin-top: var(--g-space-2); max-height: 360px; overflow: auto; color: var(--g-text); font-size: var(--g-text-dense); }
+section.owner-box .od-context .md > :last-child { margin-bottom: 0; }
+section.owner-box .md p { margin: 0 0 var(--g-space-2); }
+section.owner-box .md :is(ul, ol) { margin: 0 0 var(--g-space-2); }
+section.owner-box .mbx-prose p { margin: 0 0 var(--g-space-2); }

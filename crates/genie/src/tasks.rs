@@ -231,6 +231,9 @@ pub fn view(task: &Task) -> genie_core::Result<Value> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export, optional_fields)]
 pub struct StatusBody {
+    /// Supporting Markdown for needs_owner.
+    #[serde(default, deserialize_with = "lenient::text")]
+    pub context: Option<String>,
     #[serde(deserialize_with = "lenient::parsed")]
     pub status: Status,
     #[serde(default, deserialize_with = "lenient::text")]
@@ -245,7 +248,7 @@ pub struct StatusBody {
 
 impl StatusBody {
     pub fn to(status: Status, note: Option<String>) -> StatusBody {
-        StatusBody { status, note, force: None, action: None }
+        StatusBody { status, note, context: None, force: None, action: None }
     }
 }
 
@@ -541,7 +544,7 @@ fn set_status_inner(app: &App, caller: &Caller, id: &str, body: StatusBody, prop
     // The owner's moves are authoritative; agents follow the workflow and only the orchestrator forces, when asked to.
     let force = caller.is_person() || (caller.is_orchestrator() && body.force == Some(true));
     let action = body.action.map(|a| owner_action(app, &caller.project, id, a)).transpose()?;
-    let opts = StatusOptions { note: body.note.filter(|n| !n.is_empty()), force, action };
+    let opts = StatusOptions { context: body.context, note: body.note.filter(|n| !n.is_empty()), force, action };
     let policy = crate::decisions::policy(app, &caller.project)?;
     let agents = app.agents();
     let task = app.with_tracker(&caller.project, |t| {

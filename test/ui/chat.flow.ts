@@ -77,16 +77,17 @@ test("Enter sends the message to the server, and Shift+Enter starts a new line",
   await box.fill("Первая строка");
   await box.press("Shift+Enter");
   await box.pressSequentially("вторая строка");
-  await expect(box).toHaveValue("Первая строка\nвторая строка");
+  await expect(box).toHaveText(/Первая строка\s*вторая строка/);
   await box.press("Enter");
-  await expect(box).toHaveValue("");
+  await expect(box).toHaveText("");
 
   const own = page.getByRole("log", { name: LOG }).locator(".chat-bubble.mine").filter({ hasText: "вторая строка" });
   await expect(own).toContainText("Первая строка");
   const stored = await request.get("/api/chat?limit=50");
   expect(stored.ok()).toBe(true);
   const body: ChatPage = await stored.json();
-  expect(body.messages.map((m) => m.text)).toContain("Первая строка\nвторая строка");
+  // The field writes Markdown: a new line inside a paragraph is a hard break.
+  expect(body.messages.map((m) => m.text)).toContain("Первая строка  \nвторая строка");
 });
 
 test("@ offers the manager and the members; arrows, Enter and Tab pick, Escape closes the list", async ({ page }) => {
@@ -106,13 +107,13 @@ test("@ offers the manager and the members; arrows, Enter and Tab pick, Escape c
 
   await box.press("Escape");
   await expect(list).toBeHidden();
-  await expect(box).toHaveValue("Спроси @");
+  await expect(box).toHaveText("Спроси @");
 
   // Typing reopens the list; Tab picks the highlighted entry and keeps the focus in the field.
   await box.pressSequentially("p");
   await expect(list.getByRole("option")).toHaveCount(1);
   await box.press("Tab");
-  await expect(box).toHaveValue("Спроси @pm ");
+  await expect(box).toHaveText("Спроси @pm");
   await expect(list).toBeHidden();
   await expect(box).toBeFocused();
 
@@ -120,7 +121,7 @@ test("@ offers the manager and the members; arrows, Enter and Tab pick, Escape c
   await box.fill("");
   await box.pressSequentially("@o");
   await box.press("Enter");
-  await expect(box).toHaveValue("@owner ");
+  await expect(box).toHaveText("@owner");
 });
 
 test("replying quotes the message above the composer, and the cancel button drops the quote", async ({ page }) => {
@@ -153,7 +154,7 @@ test("a reply is sent with the id of the message it answers", async ({ page }) =
   const posted = page.waitForRequest((req) => req.method() === "POST" && new URL(req.url()).pathname === "/api/chat");
   await box.press("Enter");
   expect((await posted).postDataJSON()).toEqual({ text: "Уточню в ответ", replyTo: 1 });
-  await expect(box).toHaveValue("");
+  await expect(box).toHaveText("");
   await expect(page.locator(".chat-reply-to")).toBeHidden();
 });
 

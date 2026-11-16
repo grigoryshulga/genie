@@ -51,6 +51,7 @@ import {
   IconButton,
   Input,
   Markdown,
+  MessageBox,
   Segments,
   Select,
   Skeleton,
@@ -583,27 +584,14 @@ export function TaskDetail({ id, team, onClose, variant = "panel", tab = "about"
               </div>
               {writable ? (
                 <div className="composer">
-                  <textarea
-                    className="g-textarea"
-                    aria-label="Комментарий"
-                    placeholder="Написать комментарий"
+                  <MessageBox
                     value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && draft.trim()) comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail });
-                    }}
+                    onChange={setDraft}
+                    onSubmit={() => draft.trim() && comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
+                    label="Комментарий"
+                    placeholder="Написать комментарий"
+                    canSend={!!draft.trim() && !comment.isPending}
                   />
-                  <div className="bar">
-                    <span className="grow" />
-                    <Button
-                      variant="secondary"
-                      sm
-                      disabled={!draft.trim() || comment.isPending}
-                      onClick={() => comment.mutate({ id: t.id, text: draft.trim() }, { onSuccess: () => setDraft(""), onError: fail })}
-                    >
-                      Отправить
-                    </Button>
-                  </div>
                 </div>
               ) : (
                 <p className="muted">У вас доступ только для чтения: комментировать нельзя.</p>

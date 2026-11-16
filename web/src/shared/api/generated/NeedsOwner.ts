@@ -2,7 +2,11 @@
 import type { OwnerAction } from "./OwnerAction.ts";
 import type { Status } from "./Status.ts";
 
-export type NeedsOwner = { question: string, by: string, at: string, 
+export type NeedsOwner = { question: string, 
+/**
+ * Supporting Markdown, separate from the short question.
+ */
+context?: string, by: string, at: string, 
 /**
  * Status to return to once the owner has answered.
  */
