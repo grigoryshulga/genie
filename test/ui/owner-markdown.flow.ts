@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { storedTask } from "./api.ts";
 
 for (const theme of ["ink", "paper"]) for (const width of [1440, 390]) {
-  test(`owner Markdown preserves draft and reply-only (${theme}, ${width})`, async ({ page, request }) => {
+  test(`owner Markdown preserves draft and returns the task to work (${theme}, ${width})`, async ({ page, request }) => {
     const headers = { "x-genie": "1" };
     const created = await request.post("/api/tasks?project=demo", { headers, data: { title: "Markdown decision" } });
     expect(created.ok()).toBe(true);
@@ -28,10 +28,39 @@ for (const theme of ["ink", "paper"]) for (const width of [1440, 390]) {
     await expect(box.locator(".mbx")).not.toHaveClass(/wide/);
     await expect(editor).toHaveText("Keep history");
     await page.screenshot({ path: `test-results/owner-markdown-${theme}-${width}.png`, animations: "disabled" });
-    await box.getByRole("button", { name: "Только ответить", exact: true }).click();
-    await expect(editor).toHaveText("");
+    await expect(box.getByRole("button", { name: "Только ответить", exact: true })).toHaveCount(0);
+    await box.getByRole("button", { name: /^Ответить и вернуть/ }).click();
+    await expect(box).toHaveCount(0);
     const stored = await storedTask(request, id);
-    expect(stored.status).toBe("needs_owner");
+    expect(stored.status).toBe("inbox");
     expect(stored.comments.some((c) => c.text === "**Keep history**")).toBe(true);
   });
 }
+
+test("owner messages preserve literal code and display escaped prose", async ({ page, request }) => {
+  const headers = { "x-genie": "1" };
+  for (const code of [false, true]) {
+    const created = await request.post("/api/tasks?project=demo", { headers, data: { title: "Markdown round trip" } });
+    expect(created.ok()).toBe(true);
+    const { id } = await created.json();
+    const moved = await request.post(`/api/tasks/${id}/status?project=demo`, { headers, data: { status: "needs_owner", note: "Confirm?" } });
+    expect(moved.ok()).toBe(true);
+    await page.goto(`/tasks?task=${id}`);
+    const box = page.getByRole("region", { name: "Нужно ваше решение" });
+    const editor = box.getByRole("textbox", { name: "Ваш ответ" });
+    if (code) {
+      await editor.pressSequentially("``` ");
+      await expect(editor.locator("pre")).toHaveCount(1);
+    }
+    const literal = code ? "a\\_b" : "snake_case";
+    await editor.pressSequentially(literal);
+    await editor.press("Control+Enter");
+    await expect(box).toHaveCount(0);
+    const stored = await storedTask(request, id);
+    const answer = stored.comments.find((c) => c.text.includes(code ? "```" : "snake"));
+    expect(answer).toBeDefined();
+    if (code) expect(answer!.text).toContain("a\\_b");
+    await page.getByRole("tab", { name: "Активность", exact: true }).click();
+    await expect(page.getByText(literal, { exact: true }).last()).toBeVisible();
+  }
+});

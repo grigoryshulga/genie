@@ -160,8 +160,8 @@ export function MessageBox({
     },
     onFocus: () => live.current.onFocus?.(),
     onUpdate: ({ editor }) => {
-      // The serializer escapes a plain underscore inside a word (snake_case); the readers do not unescape it.
-      last.current = editor.getMarkdown().replace(/(?<=\w)\\_(?=\w)/g, "_");
+      // Keep the serializer's escaping intact, especially literal backslashes in code.
+      last.current = editor.getMarkdown();
       setClosed(false);
       setIndex(0);
       onChange(last.current);

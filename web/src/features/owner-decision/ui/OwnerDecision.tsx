@@ -191,7 +191,7 @@ export function OwnerDecision({ task }: { task: Task }) {
     move.mutate({ id: task.id, status, note }, { onSuccess: () => toast(`${task.id} → ${STATUS_NAME[status]} · оркестратор уведомлён`), onError: fail });
 
   const text = answerText(picked.line, words);
-  const send = (andReturn = true) => {
+  const send = () => {
     if (!text || comment.isPending || move.isPending) return;
     comment.mutate(
       { id: task.id, text },
@@ -204,10 +204,8 @@ export function OwnerDecision({ task }: { task: Task }) {
           const page = box.current?.closest(".task-page, .detail") ?? document;
           const headline = page.querySelector<HTMLElement>(".td-headline .title");
           setPicked({});
-          if (andReturn) {
-            back(owner.previous, "Owner answered");
-            requestAnimationFrame(() => headline?.focus());
-          } else toast("Ответ отправлен оркестратору");
+          back(owner.previous, "Owner answered");
+          requestAnimationFrame(() => headline?.focus());
         },
         onError: fail,
       },
@@ -241,7 +239,6 @@ export function OwnerDecision({ task }: { task: Task }) {
         label="Ваш ответ"
         placeholder={kind === "ask-for-merge-pr" ? "Например: сначала поправь название колонки" : "Ваш ответ уйдёт оркестратору и команде"}
         canSend={!!text && !comment.isPending && !move.isPending}
-        footer={<button type="button" className="g-btn ghost" disabled={!text || comment.isPending || move.isPending} onClick={() => send(false)}>Только ответить</button>}
         sendLabel={`Ответить и вернуть в «${STATUS_NAME[owner.previous]}»`}
         sendTitle={`Ответить и вернуть в «${STATUS_NAME[owner.previous]}» (⌘↵)`}
       />

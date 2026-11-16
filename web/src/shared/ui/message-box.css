@@ -41,3 +41,6 @@
 
 /* Leave the widen control its own space beside a reply or quoted step. */
 .mbx-top { padding-right: calc(var(--g-control-sm) + var(--g-space-3)); }
+
+/* Decisions and expanded reading surfaces use the comfortable body scale. */
+.owner-box .mbx-field, .owner-box .mbx-placeholder, .mbx.wide .mbx-field, .mbx.wide .mbx-placeholder { font-size: var(--g-text-body); }
