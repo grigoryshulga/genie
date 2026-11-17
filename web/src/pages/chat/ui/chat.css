@@ -43,27 +43,14 @@
 /* ---- the manager's line while it works on a message ---- */
 .chat-typing { flex: none; display: flex; align-items: center; gap: var(--g-space-2); width: calc(100% - 2 * var(--g-space-5)); max-width: var(--g-content); margin: var(--g-space-1) auto 0; font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-accent-text); }
 
-/* ---- the composer: the reply quote above the field, the field with its @ list and the send row ---- */
+/* ---- the composer: the shared message box, with the reply quote at the top of its frame ---- */
 .chat-composer { flex: none; display: flex; flex-direction: column; gap: var(--g-space-1); max-width: var(--g-content); width: calc(100% - 2 * var(--g-space-5)); margin: var(--g-space-2) auto var(--g-space-4); }
-.chat-reply-to { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; padding: var(--g-space-1) var(--g-space-3); border-inline-start: 3px solid var(--g-accent); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
+.chat-reply-to { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; margin: var(--g-space-2) var(--g-space-2) 0; padding: var(--g-space-1) var(--g-space-3); border-inline-start: 3px solid var(--g-accent); font-size: var(--g-text-dense); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
 .chat-reply-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-reply-line b { font-weight: var(--g-weight-bold); color: var(--g-text); }
-.chat-box { position: relative; display: flex; flex-direction: column; gap: var(--g-space-1); padding: var(--g-space-2) var(--g-space-2) var(--g-space-2) var(--g-space-4); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-xl); background: var(--g-surface); }
-/* The field is one control with its box: while the text has focus, the box draws the ring. */
-.chat-box:focus-within { border-color: var(--g-accent); outline: 2px solid var(--g-focus); outline-offset: 2px; }
-.chat-input.g-textarea { min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; resize: none; max-height: 40vh; }
-.chat-input.g-textarea:hover { border-color: transparent; }
-.chat-row { display: flex; align-items: center; gap: var(--g-space-2); min-width: 0; }
-.chat-hint { font-size: var(--g-text-caption); line-height: var(--g-leading-ui); color: var(--g-text-muted); }
-
-/* The @ list opens above the field and lists what the composer can insert. */
-.chat-mentions { position: absolute; left: 0; right: 0; bottom: calc(100% + var(--g-space-1)); z-index: var(--g-z-dropdown); display: flex; flex-direction: column; max-height: 40vh; overflow-y: auto; padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-md); background: var(--g-surface-raised); box-shadow: var(--g-shadow-overlay); }
-.chat-mention { padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); font-size: var(--g-text-ui); line-height: var(--g-leading-ui); color: var(--g-text); cursor: pointer; }
-.chat-mention[aria-selected="true"] { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
 
 @media (max-width: 640px) {
   .chat-feed { padding: var(--g-space-3) var(--g-space-4) var(--g-space-4); }
   .chat-msg { grid-template-columns: var(--g-space-5) minmax(0, 1fr); }
   .chat-msg.mine { padding-left: 8%; }
-  .chat-hint { display: none; }
 }

@@ -54,6 +54,8 @@ export function useModalFocus(ref: RefObject<HTMLElement | null>, open: boolean,
         // task underneath instead of cancelling the pending option; a closed select still delegates
         // Escape to the dialog as usual. Customizable pickers focus an option rather than the host.
         if (CSS.supports("selector(select:open)") && focused instanceof HTMLElement && focused.closest("select:open")) return;
+        // A control that keeps the first Escape for itself (a widened field) marks its box.
+        if (focused instanceof HTMLElement && focused.closest("[data-escape-own]")) return;
         // Capture phase: the page behind must not answer the same Escape. The default is cancelled too:
         // the browser would otherwise close the topmost dialog itself and, with two of them up, carry the
         // same Escape on to the one underneath. Closing goes through the owner of the state, once.

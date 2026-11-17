@@ -5,7 +5,11 @@ import type { Status } from "./Status.ts";
 /**
  * A move to another status.
  */
-export type StatusBody = { status: Status, note?: string, 
+export type StatusBody = { 
+/**
+ * Supporting Markdown for needs_owner.
+ */
+context?: string, status: Status, note?: string, 
 /**
  * Skip the Definition of Ready and Done (the orchestrator; people's moves always do).
  */

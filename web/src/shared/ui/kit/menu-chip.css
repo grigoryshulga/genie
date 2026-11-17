@@ -1,0 +1,10 @@
+/* MenuChip: the current choice as a quiet chip, its options in a menu that opens upwards. Ink and paper: g-tokens only. */
+.g-menu-chip { position: relative; flex: none; display: inline-flex; }
+.g-menu-chip-btn { display: inline-flex; align-items: center; gap: var(--g-space-1); height: var(--g-control-sm); padding: 0 var(--g-space-2); border: 0; border-radius: var(--g-radius-pill); background: none; color: var(--g-text-muted); font: var(--g-weight-semibold) var(--g-text-caption) var(--g-font-sans); white-space: nowrap; cursor: pointer; }
+.g-menu-chip-btn:hover, .g-menu-chip-btn[aria-expanded="true"] { background: var(--g-surface-active); color: var(--g-text); }
+.g-menu-chip-btn:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
+.g-menu-chip-btn > svg { transform: rotate(-90deg); }
+.g-menu-chip-menu { position: absolute; left: 0; bottom: calc(100% + var(--g-space-2)); z-index: var(--g-z-dropdown); }
+.g-menu-chip-menu .g-menu { min-width: 220px; }
+.g-menu-chip-menu .g-menu-item { flex-direction: column; align-items: flex-start; justify-content: center; gap: var(--g-space-1); height: auto; min-height: var(--g-control); padding-block: var(--g-space-2); white-space: nowrap; }
+.g-menu-chip-menu .g-menu-item .hint { margin-left: 0; font-weight: var(--g-weight-regular); }

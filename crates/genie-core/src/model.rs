@@ -375,6 +375,9 @@ pub struct HistoryEntry {
 #[ts(export, optional_fields)]
 pub struct NeedsOwner {
     pub question: String,
+    /// Supporting Markdown, separate from the short question.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
     pub by: String,
     pub at: String,
     /// Status to return to once the owner has answered.

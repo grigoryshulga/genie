@@ -42,6 +42,12 @@
   document.getElementById("theme").onchange = (event) => { document.documentElement.dataset.theme = event.target.value; };
   const h = React.createElement;
 
+  function MessageSpecimen() {
+    const [value, setValue] = React.useState("");
+    return h(kit.MessageBox, { value, onChange: setValue, onSubmit: () => setValue(""), label: "Message", placeholder: "Type Markdown", canSend: !!value.trim(),
+      footer: h(kit.MenuChip, { label: "Delivery", items: [{ id: "normal", label: "Normal", checked: true, onSelect: () => {} }, { id: "urgent", label: "Interrupt", onSelect: () => {} }] }, "Normal") });
+  }
+
   /** A specimen block: a heading and whatever the kit renders underneath it. */
   const block = (title, ...children) => h("section", { key: title, className: "specimen-block" }, h("h2", { className: "g-h4" }, title), ...children);
   const row = (...children) => h("div", { className: "samples" }, ...children);
@@ -81,6 +87,7 @@
         h(kit.Popover, { label: "File actions", icon: h(kit.Icon.dots), iconOnly: true }, h(kit.Button, { variant: "ghost" }, "Export")),
         h(kit.MenuButton, { label: "Page actions", icon: h(kit.Icon.dots), items: [{ id: "history", label: "Version history", hint: "view, compare, restore", onSelect: () => {} }] }),
         h(kit.SplitButton, { menuLabel: "Send options", items: [{ id: "normal", label: "Normal", checked: true, onSelect: () => {} }, { id: "interrupt", label: "Interrupt", hint: "once, stops the step", checked: false, onSelect: () => {} }] }, "Send"))),
+    block("Live Markdown message", h(MessageSpecimen)),
     block("Animated tabs", h(AnimatedTabsSpecimen)),
     block("Tabs with page menus", h(MenuTabsSpecimen)),
     block("Tabs, segments, chips, tags, key caps",

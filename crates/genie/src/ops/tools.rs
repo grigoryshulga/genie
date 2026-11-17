@@ -170,7 +170,7 @@ mod tests {
             task["inputSchema"]["properties"]["action"]["enum"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
         assert!(actions.contains(&"show") && actions.contains(&"artifact-read"), "{actions:?}");
         let desc = task["description"].as_str().unwrap();
-        assert!(desc.contains("- status(status, task?, note?, force?, ownerAction?, options?, repo?): Move a task"), "{desc}");
+        assert!(desc.contains("- status(context?, status, task?, note?, force?, ownerAction?, options?, repo?): Move a task"), "{desc}");
         // One argument, several meanings: each is said with its actions.
         let text = task["inputSchema"]["properties"]["text"]["description"].as_str().unwrap_or_default();
         assert!(text.contains("(comment)") || text.contains("comment"), "{text}");

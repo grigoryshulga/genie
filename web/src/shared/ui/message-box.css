@@ -1,0 +1,46 @@
+/* MessageBox: one frame for every message. The frame carries the border and the single focus mark; the field,
+   the widen icon and the send arrow sit inside it. Ink and paper: g-tokens only. */
+.mbx { position: relative; display: flex; flex-direction: column; min-width: 0; border: 1.5px solid var(--g-control-border); border-radius: var(--g-radius-lg); background: var(--g-surface); color: var(--g-text); }
+.mbx:focus-within { border-color: var(--g-focus); outline: 2px solid var(--g-focus); outline-offset: 2px; }
+.mbx.urgent, .mbx.urgent:focus-within { border-color: var(--g-signal); background: var(--g-signal-soft); }
+
+.mbx-field { position: relative; flex: 1; min-height: var(--mbx-min, var(--g-space-7)); max-height: 40vh; overflow: auto; padding: var(--g-space-3) calc(var(--g-control) + var(--g-space-1)) 0 var(--g-space-3); font: var(--g-weight-regular) var(--g-text-dense) / 1.5 var(--g-font-sans); }
+.mbx-prose { min-height: 1.5em; overflow-wrap: anywhere; }
+/* The frame shows the focus; the text draws none of its own. */
+.mbx .mbx-prose:focus { outline: 0; }
+.mbx-prose > :first-child { margin-top: 0; }
+.mbx-prose > :last-child { margin-bottom: 0; }
+.mbx-prose p { margin: 0 0 var(--g-space-2); }
+.mbx-prose :is(h1, h2, h3, h4) { margin: var(--g-space-2) 0; font-size: var(--g-text-ui); color: var(--g-text); }
+.mbx-prose :is(ul, ol) { margin: 0 0 var(--g-space-2); padding-left: var(--g-space-5); }
+.mbx-prose code { padding: 0 var(--g-space-1); border-radius: var(--g-radius-xs); background: var(--g-surface-active); font: var(--g-text-caption) var(--g-font-mono); }
+.mbx-prose pre { margin: 0 0 var(--g-space-2); padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); background: var(--g-surface-active); overflow-x: auto; }
+.mbx-prose pre code { padding: 0; background: none; }
+.mbx-prose blockquote { margin: 0 0 var(--g-space-2); padding-left: var(--g-space-3); border-left: 3px solid var(--g-border-strong); color: var(--g-text-muted); }
+.mbx-placeholder { position: absolute; top: var(--g-space-3); left: var(--g-space-3); right: calc(var(--g-control) + var(--g-space-1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; color: var(--g-text-muted); font: var(--g-weight-regular) var(--g-text-dense) / 1.5 var(--g-font-sans); }
+
+.mbx-bar { flex: none; display: flex; align-items: center; gap: var(--g-space-2); min-height: calc(var(--g-control) + var(--g-space-1)); padding: var(--g-space-2); }
+.mbx-grow { flex: 1; }
+.mbx-wide, .mbx-send { display: grid; place-items: center; padding: 0; border: 0; cursor: pointer; }
+.mbx-wide { position: absolute; top: var(--g-space-2); right: var(--g-space-2); width: var(--g-control-sm); height: var(--g-control-sm); border-radius: var(--g-radius-sm); background: none; color: var(--g-text-muted); }
+.mbx-wide:hover, .mbx-wide[aria-pressed="true"] { background: var(--g-surface-active); color: var(--g-text); }
+.mbx-send { flex: none; width: var(--g-control); height: var(--g-control); border-radius: 50%; background: var(--g-signal); color: var(--g-on-signal); }
+.mbx-send:hover:not(:disabled) { background: var(--g-signal-hover); }
+.mbx-send:disabled { background: var(--g-surface-active); color: var(--g-text-muted); cursor: default; }
+.mbx-wide:focus-visible, .mbx-send:focus-visible { outline: 2px solid var(--g-focus); outline-offset: 2px; }
+
+/* The list that opens above the box. */
+.mbx-suggest { position: absolute; left: 0; right: 0; bottom: calc(100% + var(--g-space-1)); z-index: var(--g-z-dropdown); display: flex; flex-direction: column; max-height: 40vh; overflow-y: auto; padding: var(--g-space-1); border: 1px solid var(--g-border-strong); border-radius: var(--g-radius-md); background: var(--g-surface-raised); box-shadow: var(--g-shadow-overlay); }
+.mbx-option { padding: var(--g-space-2) var(--g-space-3); border-radius: var(--g-radius-sm); font-size: var(--g-text-ui); line-height: var(--g-leading-ui); color: var(--g-text); cursor: pointer; }
+.mbx-option[aria-selected="true"] { background: var(--g-accent-soft); color: var(--g-accent-soft-text); }
+
+/* Widened: the box covers its card or page (the rectangle comes from the component) and the text fills it. */
+.mbx.wide { position: fixed; z-index: var(--g-z-overlay); border-radius: 0; border-width: 0; box-shadow: inset 0 0 0 1.5px var(--g-control-border); }
+.mbx.wide:focus-within { box-shadow: inset 0 0 0 1.5px var(--g-focus); }
+.mbx.wide .mbx-field { max-height: none; }
+
+/* Leave the widen control its own space beside a reply or quoted step. */
+.mbx-top { padding-right: calc(var(--g-control-sm) + var(--g-space-3)); }
+
+/* Decisions and expanded reading surfaces use the comfortable body scale. */
+.owner-box .mbx-field, .owner-box .mbx-placeholder, .mbx.wide .mbx-field, .mbx.wide .mbx-placeholder { font-size: var(--g-text-body); }

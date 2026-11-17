@@ -39,7 +39,8 @@ export function seedTask(bin: string, dataDir: string, project: string, t: SeedT
   for (const status of t.statuses ?? []) {
     const owner = status === "needs_owner" ? ["--action", t.action ?? "ask-free-form", ...(t.options ?? []).flatMap((o) => ["--option", o])] : [];
     const note = status === "needs_owner" && t.note ? ["--note", t.note] : [];
-    run(["task", "status", status, "--task", id, ...note, ...owner]);
+    const context = status === "needs_owner" && t.context ? ["--context", t.context] : [];
+    run(["task", "status", status, "--task", id, ...note, ...context, ...owner]);
   }
   for (const n of t.checked ?? []) run(["task", "check", String(n + 1), "--task", id]);
   for (const c of t.comments ?? []) run(["task", "comment", c.text, "--task", id, "--kind", c.kind ?? "note"]);

@@ -7,7 +7,7 @@ import { type TaskRepo, useMergeRequest, useRepos, useTaskRepos } from "@/entiti
 import { STATUS_NAME, type Status, StatusIcon, type Task, useComment, useMoveTask } from "@/entities/task";
 import type { OwnerAction } from "@/shared/api";
 import { timeAgo } from "@/shared/lib";
-import { ConfirmDialog, Icon, Tag, useToast } from "@/shared/ui";
+import { ConfirmDialog, Icon, Markdown, MessageBox, Tag, useToast } from "@/shared/ui";
 import "./owner-decision.css";
 import { answerText, cardKind, type Kind, mergeHeld, radioIndex } from "../model.ts";
 
@@ -191,8 +191,8 @@ export function OwnerDecision({ task }: { task: Task }) {
     move.mutate({ id: task.id, status, note }, { onSuccess: () => toast(`${task.id} → ${STATUS_NAME[status]} · оркестратор уведомлён`), onError: fail });
 
   const text = answerText(picked.line, words);
-  const send = (andReturn: boolean) => {
-    if (!text) return;
+  const send = () => {
+    if (!text || comment.isPending || move.isPending) return;
     comment.mutate(
       { id: task.id, text },
       {
@@ -204,9 +204,8 @@ export function OwnerDecision({ task }: { task: Task }) {
           const page = box.current?.closest(".task-page, .detail") ?? document;
           const headline = page.querySelector<HTMLElement>(".td-headline .title");
           setPicked({});
-          if (andReturn) back(owner.previous, "Owner answered");
-          else toast("Ответ отправлен оркестратору");
-          if (andReturn) requestAnimationFrame(() => headline?.focus());
+          back(owner.previous, "Owner answered");
+          requestAnimationFrame(() => headline?.focus());
         },
         onError: fail,
       },
@@ -222,25 +221,27 @@ export function OwnerDecision({ task }: { task: Task }) {
           {owner.by} · {timeAgo(owner.at)}
         </span>
       </div>
-      <p>{owner.question}</p>
+      <div className="od-question">
+        <Markdown text={owner.question} />
+      </div>
+      {owner.context && (
+        <details className="od-context">
+          <summary>Подробности</summary>
+          <Markdown text={owner.context} />
+        </details>
+      )}
       {action && hasCard && <Card task={task} action={action} picked={picked} setPicked={setPicked} resolve={(note) => back(owner.previous, note)} />}
       {hasCard && <span className="od-or">{kind === "ask-owner-question" ? "Уточнение или свой вариант" : "Или ответьте словами"}</span>}
-      <textarea
-        aria-label="Ваш ответ"
-        placeholder={kind === "ask-for-merge-pr" ? "Например: сначала поправь название колонки" : "Ваш ответ уйдёт оркестратору и команде"}
+      <MessageBox
         value={words}
-        onChange={(e) => setWords(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && send(true)}
+        onChange={setWords}
+        onSubmit={() => send()}
+        label="Ваш ответ"
+        placeholder={kind === "ask-for-merge-pr" ? "Например: сначала поправь название колонки" : "Ваш ответ уйдёт оркестратору и команде"}
+        canSend={!!text && !comment.isPending && !move.isPending}
+        sendLabel={`Ответить и вернуть в «${STATUS_NAME[owner.previous]}»`}
+        sendTitle={`Ответить и вернуть в «${STATUS_NAME[owner.previous]}» (⌘↵)`}
       />
-      <p className="od-hint">⌘↵ ответить и вернуть в «{STATUS_NAME[owner.previous]}»</p>
-      <div className="od-buttons">
-        <button type="button" className={`g-btn ${kind === "ask-for-merge-pr" ? "ghost" : "primary"}`} disabled={!text} onClick={() => send(true)}>
-          Ответить и вернуть в работу
-        </button>
-        <button type="button" className="g-btn ghost" disabled={!text} onClick={() => send(false)}>
-          Только ответить
-        </button>
-      </div>
     </section>
   );
 }

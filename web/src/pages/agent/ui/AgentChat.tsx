@@ -7,7 +7,7 @@ import { useTask } from "@/entities/task";
 import { ModelMenu } from "@/features/agent-model";
 import { IDEA_TEMPLATE, IdeaPlan } from "@/features/shape-idea";
 import { clock, plural, timeAgo, useTick } from "@/shared/lib";
-import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, LoadingState, Skeleton, SplitButton, Tag, useToast, WorkingArcs } from "@/shared/ui";
+import { Breadcrumbs, Button, Character, characterState, Chip, EmptyState, Icon, IconButton, LoadingState, MenuChip, MessageBox, type MessageBoxHandle, Skeleton, Tag, useToast, WorkingArcs } from "@/shared/ui";
 import "./agent-sheets.css";
 
 type Member = TeamDetail["members"][number];
@@ -138,7 +138,7 @@ export function AgentChat() {
   const [info, setInfo] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const feedRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<MessageBoxHandle>(null);
   const stick = useRef(true);
   // A paused or stopped agent has no session to look into: keep what was seen last.
   const seen = useRef(new Map<string, PeekMessage[]>());
@@ -386,56 +386,42 @@ export function AgentChat() {
                 </>
               )}
             </div>
-            <form
-              className={`ac-composer${lvl === "interrupt" ? " hard" : ""}`}
-              aria-label={`Поправка для ${who}`}
-              onSubmit={(e) => {
-                e.preventDefault();
-                submit();
-              }}
-            >
-              {quote && (
-                <div className="ac-quote">
-                  <span>к шагу</span>
-                  <span className="g-mono">{quote}</span>
-                  <IconButton label="Убрать ссылку на шаг" className="ac-quote-x" onClick={() => setQuote(undefined)}>
-                    <Icon.close size={11} />
-                  </IconButton>
-                </div>
-              )}
-              <div className="ac-box">
-                <textarea
-                  ref={inputRef}
-                  className="g-textarea ac-input"
-                  aria-label="Текст поправки"
-                  rows={2}
-                  value={draft}
-                  placeholder={paused ? `Добавить к почте, которую ${who} получит при продолжении` : idea ? `Ответить ${who} или попросить поправить план` : `Что поправить в работе ${who}?`}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), submit())}
-                />
-                <div className="ac-row">
-                  {(paused || idea) && <span className="ac-hint">{paused ? "придёт при продолжении" : `${who} ответит здесь, план обновится справа`}</span>}
-                  <span className="grow" />
-                  {paused || idea ? (
-                    <Button type="submit" variant="primary" sm className="ac-send" disabled={!draft.trim() || send.isPending} title="Отправить (⌘↵)">
-                      Отправить
-                    </Button>
-                  ) : (
-                    <SplitButton
-                      type="submit"
-                      className="ac-send"
-                      disabled={!draft.trim() || send.isPending}
-                      title="Отправить (⌘↵)"
-                      menuLabel="Когда доставить"
+            <div className="ac-composer">
+              <MessageBox
+                handle={inputRef}
+                value={draft}
+                onChange={setDraft}
+                onSubmit={submit}
+                label="Текст поправки"
+                placeholder={paused ? `Добавить к почте, которую ${who} получит при продолжении` : idea ? `Ответить ${who} или попросить поправить план` : `Что поправить в работе ${who}?`}
+                canSend={!!draft.trim() && !send.isPending}
+                sendLabel={lvl === "interrupt" ? "Прервать шаг и отправить" : "Отправить"}
+                sendTitle="Отправить (⌘↵)"
+                urgent={lvl === "interrupt"}
+                top={
+                  quote && (
+                    <div className="ac-quote">
+                      <span>к шагу</span>
+                      <span className="g-mono">{quote}</span>
+                      <IconButton label="Убрать ссылку на шаг" className="ac-quote-x" onClick={() => setQuote(undefined)}>
+                        <Icon.close size={11} />
+                      </IconButton>
+                    </div>
+                  )
+                }
+                footer={
+                  !paused &&
+                  !idea && (
+                    <MenuChip
+                      label="Когда доставить"
                       items={LEVELS.map((l) => ({ id: l.level, label: l.label, hint: l.hint, checked: level === l.level, onSelect: () => setLevel(l.level) }))}
                     >
-                      {lvl === "interrupt" ? "Прервать и отправить" : "Отправить"}
-                    </SplitButton>
-                  )}
-                </div>
-              </div>
-            </form>
+                      {LEVELS.find((l) => l.level === lvl)?.label}
+                    </MenuChip>
+                  )
+                }
+              />
+            </div>
           </>
         )}
       </main>

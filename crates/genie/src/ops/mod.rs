@@ -524,6 +524,22 @@ mod tests {
         commands(Command::new("genie")).debug_assert();
     }
 
+    #[test]
+    fn owner_context_has_the_same_cli_and_mcp_contract() {
+        let entry = catalog().iter().find(|e| e.group == "task" && e.name == "status").unwrap();
+        assert!(entry.schema["properties"].get("context").is_some());
+        let args = entry
+            .command("status")
+            .try_get_matches_from(["status", "needs_owner", "--note", "Choose?", "--context", "**Evidence**"])
+            .unwrap();
+        assert_eq!(args.get_one::<String>("context").map(String::as_str), Some("**Evidence**"));
+        let mcp: tasks::Status = serde_json::from_value(serde_json::json!({
+            "status": "needs_owner", "note": "Choose?", "context": "**Evidence**"
+        }))
+        .unwrap();
+        assert_eq!(mcp.context.as_deref(), Some("**Evidence**"));
+    }
+
     fn caps(role: genie_core::Role) -> impl Fn(Capability) -> bool {
         let c = genie_core::class_capabilities(role);
         move |x| c.contains(&x)
@@ -540,7 +556,7 @@ mod tests {
             "{orch}"
         );
         assert!(
-            orch.contains("`genie task status <STATUS> [--task …] [--note …] [--force] [--action …] [--option …]... [--repo …]` (review and approved are the team's verdicts"),
+            orch.contains("`genie task status <STATUS> [--context …] [--task …] [--note …] [--force] [--action …] [--option …]... [--repo …]` (review and approved are the team's verdicts"),
             "{orch}"
         );
         assert!(

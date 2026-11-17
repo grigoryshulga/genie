@@ -84,6 +84,7 @@ pub struct ListFilter {
 
 #[derive(Debug, Clone, Default)]
 pub struct StatusOptions {
+    pub context: Option<String>,
     pub note: Option<String>,
     pub force: bool,
     /// needs_owner only: what the owner can do besides answering in words.
@@ -888,6 +889,18 @@ impl Tracker {
         if to == Status::NeedsOwner && note.is_none() {
             return Err(GenieError::invalid("needs_owner requires a note with the question for the owner"));
         }
+        let context = opts.context.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        if context.is_some() && to != Status::NeedsOwner {
+            return Err(GenieError::invalid("context goes with needs_owner only"));
+        }
+        if to == Status::NeedsOwner && note.is_some_and(|s| s.chars().count() > 400) {
+            return Err(GenieError::invalid(
+                "needs_owner question is at most 400 characters; keep --note short and put supporting Markdown in --context",
+            ));
+        }
+        if context.is_some_and(|s| s.chars().count() > 8000) {
+            return Err(GenieError::invalid("needs_owner context is at most 8000 characters"));
+        }
         let mut action = opts.action.clone();
         if let Some(a) = action.as_mut() {
             if to != Status::NeedsOwner {
@@ -939,6 +952,7 @@ impl Tracker {
             let needs_owner = match (to, note) {
                 (Status::NeedsOwner, Some(q)) => Some(serde_json::to_string(&NeedsOwner {
                     question: q.to_string(),
+                    context: context.map(str::to_owned),
                     by: actor.name.clone(),
                     at: at.clone(),
                     previous: from,
@@ -965,7 +979,17 @@ impl Tracker {
             if let (Status::NeedsOwner, Some(q)) = (to, note) {
                 self.conn().execute(
                     "INSERT INTO comments(task, at, author, role, kind, text) VALUES (?1, ?2, ?3, ?4, 'question', ?5)",
-                    params![task.id, at, actor.name, actor.role, format!("Needs owner decision: {q}{}", action_line(action.as_ref()))],
+                    params![
+                        task.id,
+                        at,
+                        actor.name,
+                        actor.role,
+                        format!(
+                            "Needs owner decision: {q}{}{}",
+                            action_line(action.as_ref()),
+                            context.map(|c| format!("\n\n{c}")).unwrap_or_default()
+                        )
+                    ],
                 )?;
             }
             self.event(
